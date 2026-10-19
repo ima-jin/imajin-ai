@@ -401,7 +401,7 @@ export async function GET(request: NextRequest) {
     // DB-level MIME prefix and filename filters
     if (type) conditions.push(like(assets.mimeType, `${type}/%`));
     if (search) {
-      const literalSearch = search.replaceAll(/[\\%_]/g, "\\$&");
+      const literalSearch = search.replaceAll(/[\\%_]/g, String.raw`\$&`);
       conditions.push(ilike(assets.filename, `%${literalSearch}%`));
     }
 
