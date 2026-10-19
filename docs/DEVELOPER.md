@@ -455,10 +455,19 @@ and backwards-compatible; neither new view imports invoices into the meter.
 including orchestration children without environments. It tabulates reported
 inference, compute and platform credits using the existing admin config key
 `usage.warp.credit-rate`, default `{ "usd": 100, "credits": 6500 }`.
-The original conversion rate is stored on each incurred line. Re-observation
+The original conversion rate is stored in each incurred line's `pricing.creditRate`;
+`pricing.credits` retains exact cumulative credits beyond the quantity column's
+six-decimal precision. Re-observation
 is idempotent by run ID; resumed cumulative growth updates the same line at
-its original rate and creation timestamp. It uses the existing run authority
+its original rate and creation timestamp. Pre-2026-10-19 run backfill remains
+out of scope. It uses the existing run authority
 and records, not a new billing credential or a key-wide vendor billing pull.
+Missing terminal usage creates an unpriced line and can later be upgraded at
+its stored rate; an unknown observation never erases a known cost. The existing
+run-watch sweep replays durable terminal records to retry failed meter writes,
+then lifecycle-reads descendants of known kernel dispatches after normal
+in-flight work. Recovery follows the existing 14-day event-log retention;
+incurred rows themselves persist independently.
 Use the canonical `adapter:warp` source/run-ID convention for any external
 Warp emitter to avoid reporting the same run twice.
 
