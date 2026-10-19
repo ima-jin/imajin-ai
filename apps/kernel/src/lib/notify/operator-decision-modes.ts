@@ -92,7 +92,7 @@ export function validateDecisionMode(
 ): DecisionModeValidation {
   if (subject.kind === DECISION_APPROVAL_KIND) return validateDecisionCardMode(decision, mode, subject.detail);
   if (isReachApproval(subject)) {
-    return decision === 'approve' && REACH_MODES.some((choice) => choice === mode)
+    return decision === 'approve' && (REACH_MODES as readonly (string | undefined)[]).includes(mode)
       ? { ok: true }
       : { ok: false, error: 'Reach decisions require approve and reply, accept, decline or block mode' };
   }

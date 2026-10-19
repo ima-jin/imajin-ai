@@ -4,6 +4,7 @@ import { getClient } from '@imajin/db';
 import type { ReachEnvelope } from '@/src/db/schemas/reach';
 import type { KnockRecord } from '../auth/knock';
 import { computeApprovalContentHash } from './operator-approvals';
+import { forEachSequential } from '../async/sequential';
 
 export function reachCardFields(envelope: ReachEnvelope) {
   return {
@@ -79,6 +80,6 @@ export async function backfillReachApprovals(principalDid: string): Promise<void
   const { listReachEnvelopes } = await import('../auth/reach-envelope-store');
   const { listPendingKnocksForTarget } = await import('../auth/knock');
   const envelopes = await listReachEnvelopes({ principalDid, limit: 100 });
-  for (const envelope of envelopes) await publishReachApproval(envelope);
-  for (const knock of await listPendingKnocksForTarget(principalDid)) await publishKnockApproval(knock);
+  await forEachSequential(envelopes, publishReachApproval);
+  await forEachSequential(await listPendingKnocksForTarget(principalDid), publishKnockApproval);
 }

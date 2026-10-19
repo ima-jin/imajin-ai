@@ -8,7 +8,7 @@ export interface ReachStatus {
   state: 'delivered' | 'replied' | 'blocked';
   reply: SignedReachReplyEvent | null;
   /** Shared decisions carry their original evidence and actor countersignature, not a forged legacy reply signature. */
-  approvalDecision?: ReachEnvelope['approvalDecision'];
+  approvalDecision?: NonNullable<ReachEnvelope['approvalDecision']>;
 }
 
 /**

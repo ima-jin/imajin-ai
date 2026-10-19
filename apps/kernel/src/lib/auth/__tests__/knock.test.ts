@@ -279,7 +279,7 @@ describe('submitKnock — validation and escrow', () => {
     expect(await submitKnock(VALID_INPUT)).toMatchObject({ status: 403 });
     expect(knocksStore.size).toBe(0);
     expect(identitiesStore.size).toBe(1);
-    expect(vi.mocked(publishKnockApproval).mock.calls.length).toBe(before);
+    expect(vi.mocked(publishKnockApproval).mock.calls).toHaveLength(before);
   });
 
   it('rechecks blocks under the same principal transaction lock as delivery and block', async () => {
