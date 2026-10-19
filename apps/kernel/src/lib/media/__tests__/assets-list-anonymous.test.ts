@@ -62,6 +62,7 @@ import { GET } from '@/app/media/api/assets/route';
 const OWNER = 'did:imajin:anonymous-fixture';
 const PAGING_OWNER = 'did:imajin:anonymous-pagination';
 const OTHER_OWNER = 'did:imajin:someone-else';
+const SEARCH_OWNER = 'did:imajin:literal-search';
 const DATE = new Date('2026-01-01T00:00:00.000Z');
 
 const accessCases = [
@@ -198,6 +199,11 @@ beforeAll(async () => {
       mimeType: 'audio/mpeg',
       createdAt: new Date(DATE.getTime() + 3000),
     }),
+    ...['100% complete.png', '1000 complete.png', 'under_score.png', 'underXscore.png',
+      String.raw`back\slash.png`, 'backslash.png'].map((filename, index) => asset(`literal-${index}`, {
+      ownerDid: SEARCH_OWNER,
+      filename,
+    })),
     ...Array.from({ length: 205 }, (_, index) => asset(`page-${index}`, {
       ownerDid: PAGING_OWNER,
       fairManifest: { access: index % 2 ? 'public' : { type: 'public' } },
@@ -304,6 +310,50 @@ describe('anonymous GET /media/api/assets — real SQL visibility', () => {
   it('supports ascending order on the already filtered rows', async () => {
     const body = await list({ search: 'Summer', type: 'image', order: 'asc', limit: '1' });
     expect(body.assets.map((row) => row.id)).toEqual(['filter-match-old']);
+  });
+});
+
+describe('signed-in cross-DID GET /media/api/assets — real SQL visibility', () => {
+  it('returns exactly the anonymous descriptor projection to a signed-in stranger', async () => {
+    const anonymous = await list({ limit: '200' });
+    harness.auth.mockResolvedValue({ auth: { did: OTHER_OWNER, identity: null } });
+    const stranger = await list({ limit: '200' });
+    expect(stranger).toEqual(anonymous);
+    for (const row of stranger.assets) {
+      expect(Object.keys(row).sort()).toEqual([
+        'createdAt', 'filename', 'hash', 'id', 'mimeType', 'ownerDid', 'size', 'updatedAt',
+      ]);
+    }
+    expect(stranger.assets.map((row) => row.id)).toEqual(expect.arrayContaining(['public-string', 'public-object']));
+  });
+
+  it.each(accessCases)('signed-in visibility for $id agrees with canonical access resolution', async ({ id, visible }) => {
+    harness.auth.mockResolvedValue({ auth: { did: OTHER_OWNER, identity: null } });
+    const body = await list({ search: id, limit: '200' });
+    expect(body.assets.some((row) => row.id === id)).toBe(visible);
+  });
+
+  it('applies cross-DID visibility before pagination', async () => {
+    harness.auth.mockResolvedValue({ auth: { did: OTHER_OWNER, identity: null } });
+    const body = await list({ search: 'public-', limit: '1', offset: '1' });
+    expect(body.assets).toHaveLength(1);
+    expect(['public-string', 'public-object']).toContain(body.assets[0].id);
+  });
+});
+
+describe.each(['anonymous', 'stranger', 'owner'] as const)('%s literal filename search — real SQL', (caller) => {
+  it.each([
+    ['%', 'literal-0'],
+    ['_', 'literal-2'],
+    [String.raw`back\slash`, 'literal-4'],
+  ])('matches %j literally, not as a SQL pattern', async (search, id) => {
+    if (caller !== 'anonymous') {
+      harness.auth.mockResolvedValue({
+        auth: { did: caller === 'owner' ? SEARCH_OWNER : OTHER_OWNER, identity: null },
+      });
+    }
+    const body = await list({ did: SEARCH_OWNER, search });
+    expect(body.assets.map((row) => row.id)).toEqual([id]);
   });
 });
 

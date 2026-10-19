@@ -87,7 +87,7 @@ beforeAll(async () => {
   )`);
   // Plain-SQL runner migrations must also be safe on a second application.
   await pg.exec(migration);
-});
+}, 30_000);
 afterAll(async () => { await pg.close(); });
 beforeEach(async () => {
   await pg.exec('TRUNCATE auth.foreign_agent_stubs, auth.identities CASCADE');

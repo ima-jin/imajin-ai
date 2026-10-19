@@ -16,6 +16,10 @@ describe('GET /media/api/spec — anonymous asset listing (#2721)', () => {
       { cookieAuth: [] }, { bearerAuth: [] }, { appTokenAuth: [] }, {},
     ]);
     expect(operation.description).toContain('Anonymous callers MUST supply a non-empty `did`');
+    expect(operation.description).toContain('Anonymous and authenticated cross-DID responses');
+    expect(operation.responses['200'].description).toContain('Owners and validated act-as delegates receive full Asset rows');
+    expect(operation.parameters.find((param: { name: string }) => param.name === 'search').description)
+      .toContain('% and _ are not wildcards');
     expect(operation.responses['401'].description).toContain('no non-empty did');
     expect(operation.responses['429']).toHaveProperty('headers.Retry-After');
     expect(spec.components.schemas.PublicAssetDescriptor.additionalProperties).toBe(false);
