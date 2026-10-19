@@ -349,7 +349,7 @@ describe('non-operator visibility (#2059 acceptance (c), per-principal Inbox #27
     installFetch([{ isOperator: false, approvals: [approval({ proposalId: 'opap_eric_1' })] }]);
     render(<OperatorApprovalsPanel />);
 
-    expect(await screen.findByText('Operator approvals')).toBeTruthy();
+    expect(await screen.findByText('Inbox')).toBeTruthy();
     expect(document.getElementById('approval-opap_eric_1')).not.toBeNull();
   });
 
@@ -361,7 +361,7 @@ describe('non-operator visibility (#2059 acceptance (c), per-principal Inbox #27
     });
     expect(spy).toHaveBeenCalledTimes(1);
     expect(container.firstChild).toBeNull();
-    expect(screen.queryByText('Operator approvals')).toBeNull();
+    expect(screen.queryByText('Inbox')).toBeNull();
   });
 
   it('renders nothing while the initial operator check is still loading', async () => {
@@ -408,7 +408,7 @@ describe('operator — empty state', () => {
     installFetch([{ isOperator: true, approvals: [] }]);
     render(<OperatorApprovalsPanel />);
 
-    expect(await screen.findByText('Operator approvals')).toBeDefined();
+    expect(await screen.findByText('Inbox')).toBeDefined();
     expect(screen.getByText('No operator approvals yet.')).toBeDefined();
   });
 });
@@ -588,7 +588,7 @@ describe('poll refresh', () => {
     installIntervalSpy();
     installFetch([{ isOperator: true, approvals: [] }]);
     const { unmount } = render(<OperatorApprovalsPanel />);
-    await screen.findByText('Operator approvals');
+    await screen.findByText('Inbox');
 
     unmount();
 

@@ -1,9 +1,9 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useId } from 'react';
 import IdentityPicker from './IdentityPicker';
-import { SERVICES } from '@imajin/config';
 import { setActingAs } from '@imajin/ui/server';
+import { memberServiceOptions } from '@/src/lib/auth/member-service-scope';
 import { loadRegistryAppOptions } from '@/src/lib/profile/app-options';
 import {
   ASSIGNABLE_MEMBER_ROLES,
@@ -43,23 +43,7 @@ const ROLE_HINTS: Record<string, string> = {
   agent: 'Can act for this identity via X-Acting-For delegation',
 };
 
-/**
- * Services an agent's `allowed_services` can be scoped to.
- *
- * This is the set the X-Acting-For check can actually gate on, so it includes
- * the kernel-hosted services an agent is most often delegated for (media, chat,
- * pay, connections) and excludes the platform surfaces that have no
- * per-identity delegation to restrict (the launcher, auth itself, the registry,
- * internal daemons and meta links).
- */
-const PLATFORM_ONLY_SERVICES = new Set(['kernel', 'auth', 'registry']);
-
-const KERNEL_SERVICES = SERVICES.filter(
-  (s) =>
-    s.category === 'kernel' &&
-    s.visibility !== 'internal' &&
-    !PLATFORM_ONLY_SERVICES.has(s.name)
-);
+const EMPTY_SCOPE_ERROR = 'Pick at least one service, or choose All services.';
 
 function truncateDid(did: string): string {
   return did.length > 32 ? did.slice(0, 28) + '…' : did;
@@ -98,49 +82,64 @@ function provenanceParts(ctrl: Controller): string[] {
   return parts;
 }
 
-/**
- * Service multi-select for a delegated agent.
- *
- * An empty selection is full access, not "no access" — `allowed_services` is a
- * narrowing list, and the delegation check skips it when it is null.
- */
-function AgentServiceScope({
-  selected,
-  onToggle,
+/** null is full access; an empty array is an unfinished restricted selection. */
+function ServiceScope({
+  label,
+  value,
   services,
-}: Readonly<{ selected: string[]; onToggle: (service: string) => void; services: { name: string; label: string }[] }>) {
+  onChange,
+}: Readonly<{
+  label: string;
+  value: string[] | null;
+  services: readonly { name: string; label: string }[];
+  onChange: (value: string[] | null) => void;
+}>) {
+  const modeName = useId();
+  function toggle(service: string) {
+    const selected = value ?? [];
+    onChange(selected.includes(service)
+      ? selected.filter((name) => name !== service)
+      : [...selected, service]);
+  }
   return (
-    <div className="space-y-2 rounded-lg border border-violet-900/50 bg-violet-950/10 p-3">
-      <p className="text-sm text-gray-300">Restrict to specific services</p>
-      <p className="text-xs text-gray-500">
-        {selected.length === 0
-          ? 'No services selected — this agent may act across every service.'
-          : `This agent may only act on: ${selected.join(', ')}.`}
-      </p>
-      <div className="flex flex-wrap gap-2">
-        {services.map(({ name: svc, label }) => {
-          const checked = selected.includes(svc);
-          return (
-            <label
-              key={svc}
-              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs cursor-pointer transition ${
-                checked
-                  ? 'border-amber-600 bg-amber-900/20 text-amber-400'
-                  : 'border-gray-700 bg-gray-900 text-gray-400 hover:border-gray-600'
-              }`}
-            >
-              <input
-                type="checkbox"
-                checked={checked}
-                onChange={() => onToggle(svc)}
-                className="sr-only"
-              />
-              {label}
-            </label>
-          );
-        })}
+    <fieldset className="min-w-0 space-y-2 rounded-lg border border-gray-700 p-3">
+      <legend className="px-1 text-sm text-gray-300">{label}</legend>
+      <div className="flex flex-wrap gap-3 text-sm text-gray-300">
+        <label className="flex items-center gap-2">
+          <input type="radio" name={modeName} checked={value === null} onChange={() => onChange(null)} />
+          <span>All services</span>
+        </label>
+        <label className="flex items-center gap-2">
+          <input type="radio" name={modeName} checked={value !== null} onChange={() => onChange([])} />
+          <span>Restricted services</span>
+        </label>
       </div>
-    </div>
+      {value !== null && (
+        <div className="flex flex-wrap gap-2">
+          {services.map(({ name: svc, label: serviceLabel }) => {
+            const checked = value.includes(svc);
+            return (
+              <label
+                key={svc}
+                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs cursor-pointer transition ${
+                  checked
+                    ? 'border-amber-600 bg-amber-900/20 text-amber-400'
+                    : 'border-gray-700 bg-gray-900 text-gray-400 hover:border-gray-600'
+                }`}
+              >
+                <input
+                  type="checkbox"
+                  checked={checked}
+                  onChange={() => toggle(svc)}
+                  className="sr-only"
+                />
+                {serviceLabel}
+              </label>
+            );
+          })}
+        </div>
+      )}
+    </fieldset>
   );
 }
 
@@ -155,12 +154,12 @@ function MemberEditor({
   controller: Controller;
   endpoint: string;
   viewerRole: string | null;
-  services: { name: string; label: string }[];
+  services: readonly { name: string; label: string }[];
   onCancel: () => void;
   onSaved: () => Promise<void>;
 }>) {
   const [role, setRole] = useState(controller.role);
-  const [selected, setSelected] = useState(controller.allowedServices ?? []);
+  const [selected, setSelected] = useState<string[] | null>(controller.allowedServices);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const roles = ASSIGNABLE_MEMBER_ROLES.filter((value) => value !== 'admin' || viewerRole === 'owner');
@@ -168,6 +167,10 @@ function MemberEditor({
   async function save(event: React.FormEvent) {
     event.preventDefault();
     if (saving || (role === 'admin' && viewerRole !== 'owner')) return;
+    if (selected?.length === 0) {
+      setError(EMPTY_SCOPE_ERROR);
+      return;
+    }
     setSaving(true);
     setError(null);
     try {
@@ -177,7 +180,7 @@ function MemberEditor({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           role,
-          allowedServices: role === 'agent' && selected.length > 0 ? selected : null,
+          allowedServices: selected,
         }),
       });
       if (!response.ok) {
@@ -210,13 +213,7 @@ function MemberEditor({
           </select>
         </label>
         {ROLE_HINTS[role] && <p className="text-xs text-gray-500">{ROLE_HINTS[role]}</p>}
-        {role === 'agent' && (
-          <AgentServiceScope selected={selected} services={services} onToggle={(service) => {
-            setSelected((previous) => previous.includes(service)
-              ? previous.filter((value) => value !== service)
-              : [...previous, service]);
-          }} />
-        )}
+        <ServiceScope label={`Services for ${memberLabel(controller)}`} value={selected} services={services} onChange={setSelected} />
         {error && <p role="alert" className="text-sm text-red-400">{error}</p>}
         <div className="flex gap-2">
           <button type="submit" disabled={role === 'admin' && viewerRole !== 'owner'} className="px-3 py-1.5 rounded-lg bg-amber-500 text-black text-sm disabled:opacity-40">
@@ -240,13 +237,12 @@ export default function IdentityMembersPanel({ groupDid, scope }: Readonly<{ gro
   const [editingDid, setEditingDid] = useState<string | null>(null);
   const [addDid, setAddDid] = useState('');
   const [addRole, setAddRole] = useState('member');
-  const [addAllowedServices, setAddAllowedServices] = useState<string[]>([]);
+  const [addAllowedServices, setAddAllowedServices] = useState<string[] | null>(null);
   const [addingMember, setAddingMember] = useState(false);
   const [removingDid, setRemovingDid] = useState<string | null>(null);
   const [status, setStatus] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
-  const authBase =
-    typeof window === 'undefined'  ? (process.env.NEXT_PUBLIC_AUTH_URL ?? '') : globalThis.location.origin;
+  const authBase = globalThis.location?.origin ?? process.env.NEXT_PUBLIC_AUTH_URL ?? '';
 
   useEffect(() => {
     setEditingDid(null);
@@ -284,15 +280,14 @@ export default function IdentityMembersPanel({ groupDid, scope }: Readonly<{ gro
     setStatus({ type, text });
   }
 
-  function toggleService(service: string) {
-    setAddAllowedServices((prev) =>
-      prev.includes(service) ? prev.filter((s) => s !== service) : [...prev, service]
-    );
-  }
 
   async function handleAddMember(e: React.FormEvent) {
     e.preventDefault();
-    if (!addDid.trim()) return;
+    if (addingMember || !addDid.trim()) return;
+    if (addAllowedServices?.length === 0) {
+      showStatus('error', EMPTY_SCOPE_ERROR);
+      return;
+    }
     setAddingMember(true);
     try {
       const res = await fetch(
@@ -304,17 +299,14 @@ export default function IdentityMembersPanel({ groupDid, scope }: Readonly<{ gro
           body: JSON.stringify({
             did: addDid.trim(),
             role: addRole,
-            // Service scoping only applies to delegated agents; the API ignores
-            // it for every other role.
-            allowedServices:
-              addRole === 'agent' && addAllowedServices.length > 0 ? addAllowedServices : null,
+            allowedServices: addAllowedServices,
           }),
         }
       );
       if (res.ok) {
         setAddDid('');
         setAddRole('member');
-        setAddAllowedServices([]);
+        setAddAllowedServices(null);
         showStatus('success', 'Member added.');
         await loadData();
       } else {
@@ -350,6 +342,7 @@ export default function IdentityMembersPanel({ groupDid, scope }: Readonly<{ gro
   }
 
   const existingDids = controllers.map((c) => c.controllerDid);
+  const services = memberServiceOptions(appServices);
 
   if (loading) {
     return <div className="text-gray-400 py-8">Loading members…</div>;
@@ -358,15 +351,16 @@ export default function IdentityMembersPanel({ groupDid, scope }: Readonly<{ gro
   return (
     <div className="space-y-6">
       {status && (
-        <div
-          className={`p-4 rounded-lg border ${
+        <output
+          role={status.type === 'error' ? 'alert' : undefined}
+          className={`block p-4 rounded-lg border ${
             status.type === 'success'
               ? 'bg-green-900/20 border-green-800 text-green-400'
               : 'bg-red-900/20 border-red-800 text-red-400'
           }`}
         >
           {status.text}
-        </div>
+        </output>
       )}
 
       <div className="bg-[#0a0a0a] border border-gray-800 rounded-2xl p-6">
@@ -441,20 +435,15 @@ export default function IdentityMembersPanel({ groupDid, scope }: Readonly<{ gro
                         </p>
                       </div>
                     </div>
-                    <div className="flex items-center gap-2 flex-shrink-0 sm:ml-3">
+                    <div className="flex min-w-0 flex-wrap items-center gap-2 sm:ml-3">
                       <span className={`px-2 py-0.5 text-xs rounded border capitalize ${roleStyle}`}>
                         {ctrl.role}
                       </span>
-                      {ctrl.allowedServices && ctrl.allowedServices.length > 0 && (
-                        <span
-                          className="px-2 py-0.5 text-xs rounded border border-gray-700 text-gray-400"
-                          title={ctrl.allowedServices.join(', ')}
-                        >
-                          {ctrl.allowedServices.length === 1
-                            ? ctrl.allowedServices[0]
-                            : `${ctrl.allowedServices.length} services`}
-                        </span>
-                      )}
+                      <span
+                        className="min-w-0 max-w-full break-words whitespace-normal px-2 py-0.5 text-xs rounded border border-gray-700 text-gray-400"
+                      >
+                        {ctrl.allowedServices === null ? 'All services' : ctrl.allowedServices.join(', ')}
+                      </span>
                       {canEdit && (
                         <button type="button"
                           onClick={() => setEditingDid(ctrl.controllerDid)}
@@ -481,8 +470,8 @@ export default function IdentityMembersPanel({ groupDid, scope }: Readonly<{ gro
                     <MemberEditor
                       controller={ctrl}
                       viewerRole={viewerRole}
+                      services={services}
                       endpoint={`${authBase}/auth/api/groups/${encodeURIComponent(groupDid)}/controllers/${encodeURIComponent(ctrl.controllerDid)}`}
-                      services={[...KERNEL_SERVICES, ...appServices]}
                       onCancel={() => setEditingDid(null)}
                       onSaved={async () => {
                         setEditingDid(null);
@@ -512,8 +501,8 @@ export default function IdentityMembersPanel({ groupDid, scope }: Readonly<{ gro
               </a>
             </p>
           )}
-          <div className="flex gap-2 items-start">
-            <div className="flex-1 min-w-0">
+          <div className="flex flex-wrap gap-2 items-start">
+            <div className="flex-1 min-w-40">
               <IdentityPicker
                 onSelect={(identity) => setAddDid(identity.did)}
                 placeholder="Search by handle or name…"
@@ -521,6 +510,7 @@ export default function IdentityMembersPanel({ groupDid, scope }: Readonly<{ gro
               />
             </div>
             <select
+              aria-label="New member role"
               value={addRole}
               onChange={(e) => setAddRole(e.target.value)}
               className="px-3 py-2 bg-gray-900 border border-gray-800 rounded-lg text-sm text-white focus:outline-none focus:ring-1 focus:ring-amber-500 focus:border-transparent shrink-0"
@@ -544,14 +534,7 @@ export default function IdentityMembersPanel({ groupDid, scope }: Readonly<{ gro
             <p className="text-xs text-gray-500">{ROLE_HINTS[addRole]}</p>
           )}
 
-          {/*
-            Service scoping is only enforced for the agent role — `allowed_services`
-            is checked by the X-Acting-For delegation path. Showing it for humans
-            would imply a restriction the platform does not apply.
-          */}
-          {addRole === 'agent' && (
-            <AgentServiceScope selected={addAllowedServices} onToggle={toggleService} services={[...KERNEL_SERVICES, ...appServices]} />
-          )}
+          <ServiceScope label="New member services" value={addAllowedServices} services={services} onChange={setAddAllowedServices} />
         </form>
       </div>
     </div>

@@ -227,6 +227,22 @@ components:
       properties:
         reachId: { type: string }
         state: { type: string, enum: [delivered, replied, blocked] }
+        approvalDecision:
+          type: object
+          required: [payload, evidence]
+          description: |
+            Present for a shared /jin Reach decision; omitted for blocked senders.
+            For mode reply, payload.replyMessage is the immutable reply text and
+            state is replied even when the legacy reply field is null.
+            Recompute SHA-256 over canonical evidence and compare to the
+            sha256-prefixed payload.contentHash. Verify payload.operatorSignature
+            over canonical {contentHash,decision,decidedAt,mode,replyMessage?},
+            using the bare hash and the real actor's registered key.
+            Evidence contains the original safe card fields, never replyHandle,
+            gate rules or unpublished topics.
+          properties:
+            payload: { type: object }
+            evidence: { type: object }
         reply:
           type: [object, "null"]
           description: |
@@ -3434,7 +3450,10 @@ paths:
         accepted ownership transfer. Records group.member.added with the actual
         role (a plain member is never called a controller), memberDid, by,
         actingAs and actingFor. The node-signed record and membership commit
-        atomically. Existing audit history is never rewritten.
+        atomically. The event includes oldAllowedServices (null for a new
+        membership) and allowedServices. Existing audit history is never rewritten.
+        Only owners may grant All services (null). Admins must choose a finite
+        subset of their own live allowed_services for add or reactivation.
       security:
         - cookieAuth: []
       parameters:
@@ -3454,11 +3473,13 @@ paths:
                 role: { type: string, enum: [admin, maintainer, member, agent], default: member }
                 allowedServices:
                   type: [array, "null"]
+                  minItems: 1
                   items: { type: string }
-                  description: Agent-only narrowing list; null or empty means unrestricted. Ignored for other roles.
+                  description: Names from the canonical manifest plus the group's available registry apps, for admin/maintainer/member/agent. Null or omitted means All services (owner-only grant); an empty or unknown list is rejected. Owners are always unrestricted and cannot be assigned here.
       responses:
         "201":
           description: Controller added
+        "400": { description: Invalid role or service list; choose at least one known service or null for All services }
 
   /api/groups/{groupDid}/controllers/{controllerDid}:
     patch:
@@ -3473,10 +3494,16 @@ paths:
         Owner changes (including demotion) must use the accepted transfer-owner
         policy from #2892. Missing/removed targets are never re-added by PATCH.
 
-        allowedServices follows the add contract: only role=agent is currently
-        enforced by delegation, so other roles normalize it to null. Omitted
-        fields preserve existing values; null/empty services means unrestricted.
-        The Members UI does not imply service restrictions for human members.
+        allowedServices follows the add contract for admin, maintainer, member
+        and agent. Omitted fields preserve existing values, including across
+        role changes; null means All services. A nonempty list must contain
+        known app-service names from the canonical manifest plus the group's
+        available registry apps. Empty lists are
+        rejected to prevent accidental lockout. Owners remain unrestricted
+        and cannot be edited here.
+        Non-owners may only narrow services to a finite subset of both the
+        target's current scope and their own live allowed_services, including
+        self-edits and role changes. Only owners may widen or grant null.
 
         Each actual role or scope change commits exactly one node-signed
         group.member.role.changed attestation atomically with the membership.
@@ -3506,6 +3533,7 @@ paths:
                 role: { type: string, enum: [admin, maintainer, member, agent] }
                 allowedServices:
                   type: [array, "null"]
+                  minItems: 1
                   items: { type: string, minLength: 1 }
       responses:
         "200":
@@ -4363,14 +4391,31 @@ paths:
         never block or fail the knock itself; resolution problems surface
         as `resolution_failed`. Non-`did:web` methods are always
         `declared_unverified` in v1.
+
+        Submission raises a private source knock card in the target's /jin
+        Inbox. The principal's Reply / Accept thread / Decline / Block actions
+        use the shared signed decision path. A blocked sender cannot knock again.
+
+        On this same endpoint, action receipt reads a private decision without
+        registering an identity or issuing any authority. Send knockId, issuedAt
+        and an Ed25519 hex signature over canonical JSON
+        {action:"knock.receipt",knockId,issuedAt}, signed with the escrowed
+        knock key. Freshness is checked. A public key alone cannot read a reply;
+        invalid, missing or unknown proof always returns the same 401.
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [publicKey, declared_target, self_description, requested_capabilities]
+              oneOf:
+                - required: [publicKey, declared_target, self_description, requested_capabilities]
+                - required: [action, knockId, issuedAt, signature]
               properties:
+                action: { type: string, enum: [receipt], description: Omit for public submission; receipt requires escrow-key proof. }
+                knockId: { type: string }
+                issuedAt: { type: string, format: date-time }
+                signature: { type: string, pattern: "^[0-9a-fA-F]{128}$", description: Signature over canonical action knock.receipt, knockId and issuedAt. }
                 publicKey: { type: string, description: "64-char hex Ed25519 public key" }
                 declared_target: { type: string, description: "DID or handle of an existing principal" }
                 self_description: { type: string }
@@ -4380,6 +4425,12 @@ paths:
                   description: Advisory only — never becomes authority.
                 external_did: { type: string, description: "Optional bring-your-own DID, e.g. did:web:boardy.ai. Recorded as an attestation on accept, never used for auth." }
       responses:
+        "200":
+          description: "Authenticated {receipt}; null while pending, otherwise the original actor-countersigned payload, evidence and node witness. Never gate configuration."
+        "401":
+          description: Missing, invalid, stale or unknown knock receipt proof
+        "403":
+          description: This requester is blocked by the target
         "201":
           description: Knock submitted (or refreshed, if already pending from this keypair to this target)
           content:

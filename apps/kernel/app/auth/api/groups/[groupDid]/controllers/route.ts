@@ -5,6 +5,9 @@ import { requireAuth } from '@imajin/auth';
 import { createLogger } from '@imajin/logger';
 import { MEMBER_ROLES } from '@/src/lib/auth/membership';
 import { recordMemberEvent } from '@/src/lib/auth/member-attestation';
+import { assertMemberServiceGrant } from '@/src/lib/auth/member-service-scope';
+import { parseGroupMemberServices } from '@/src/lib/auth/group-member-services';
+import { OwnershipError } from '@/src/lib/auth/ownership-policy';
 
 const log = createLogger('kernel');
 
@@ -13,7 +16,7 @@ const VALID_ROLES: readonly string[] = MEMBER_ROLES;
 interface AddControllerRequest {
   did: string;
   role: string;
-  /** null = full access. Only ever non-null for the agent role. */
+  /** null = full access for any non-owner authority role. */
   allowedServices: string[] | null;
 }
 
@@ -22,10 +25,11 @@ interface AddControllerRequest {
  *
  * Returns the normalized request, or a NextResponse to return verbatim.
  */
-function parseAddControllerBody(
+async function parseAddControllerBody(
   body: Record<string, unknown>,
-  callerRole: string
-): AddControllerRequest | NextResponse {
+  callerRole: string,
+  groupDid: string,
+): Promise<AddControllerRequest | NextResponse> {
   const { did, role = 'member', allowedServices = null } = body as {
     did?: string;
     role?: string;
@@ -45,13 +49,7 @@ function parseAddControllerBody(
     return NextResponse.json({ error: 'Only owner can add admins' }, { status: 403 });
   }
 
-  // Service scoping is only enforced for delegated agents (the X-Acting-For
-  // path checks allowed_services); ignore it elsewhere rather than storing a
-  // restriction nothing honours.
-  const scoped =
-    role === 'agent' && Array.isArray(allowedServices) && allowedServices.length > 0
-      ? allowedServices.map(String)
-      : null;
+  const scoped = await parseGroupMemberServices(groupDid, allowedServices);
 
   return { did, role, allowedServices: scoped };
 }
@@ -74,7 +72,7 @@ export async function POST(
   return db.transaction(async (tx) => {
     await tx.select({ id: identities.id }).from(identities).where(eq(identities.id, groupDid)).for('update');
     const [callerMembership] = await tx
-      .select({ role: identityMembers.role })
+      .select({ role: identityMembers.role, allowedServices: identityMembers.allowedServices })
       .from(identityMembers)
       .where(
         and(
@@ -96,9 +94,10 @@ export async function POST(
       return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
     }
 
-    const parsed = parseAddControllerBody(body, callerMembership.role);
+    const parsed = await parseAddControllerBody(body, callerMembership.role, groupDid);
     if (parsed instanceof NextResponse) return parsed;
     const { did, role, allowedServices: normalizedServices } = parsed;
+    assertMemberServiceGrant(callerMembership, normalizedServices);
 
     // An agent adding members under X-Acting-For is programmatic provenance;
     // anything else came from a controller clicking Add in the UI.
@@ -106,7 +105,11 @@ export async function POST(
 
     // Check if controller was previously removed (soft delete)
     const [existing] = await tx
-      .select({ removedAt: identityMembers.removedAt, role: identityMembers.role })
+      .select({
+        removedAt: identityMembers.removedAt,
+        role: identityMembers.role,
+        allowedServices: identityMembers.allowedServices,
+      })
       .from(identityMembers)
       .where(
         and(
@@ -150,7 +153,9 @@ export async function POST(
     }
 
     await recordMemberEvent(tx, 'group.member.added', groupDid, did, caller, {
-      role, added_via: addedVia, allowedServices: normalizedServices,
+      role, added_via: addedVia,
+      oldAllowedServices: existing?.allowedServices ?? null,
+      allowedServices: normalizedServices,
     });
 
     return NextResponse.json(
@@ -158,6 +163,9 @@ export async function POST(
       { status: 201 }
     );
   }).catch((error) => {
+    if (error instanceof OwnershipError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
     log.error({ err: String(error) }, '[groups] Add controller error');
     return NextResponse.json({ error: 'Failed to add controller' }, { status: 500 });
   });

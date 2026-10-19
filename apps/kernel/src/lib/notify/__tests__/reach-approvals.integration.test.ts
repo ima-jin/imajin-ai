@@ -75,7 +75,7 @@ beforeAll(async () => {
   await database.exec(`
     CREATE SCHEMA auth; CREATE SCHEMA operator; CREATE SCHEMA connections; CREATE SCHEMA chat;
     CREATE TABLE auth.identities (id text PRIMARY KEY, scope text, subtype text, public_key text, tier text, metadata jsonb, suspended_at timestamptz);
-    CREATE TABLE auth.identity_members (identity_did text, member_did text, role text, removed_at timestamptz);
+    CREATE TABLE auth.identity_members (identity_did text, member_did text, role text, removed_at timestamptz, allowed_services text[]);
     CREATE TABLE auth.reach_envelopes (reach_id text PRIMARY KEY, principal_did text, requester_did text, envelope jsonb);
     CREATE TABLE auth.reach_sender_blocks (principal_did text, requester_did text, created_at timestamptz DEFAULT now(), PRIMARY KEY (principal_did, requester_did));
     CREATE TABLE auth.foreign_agent_stubs (stub_did text, principal_did text, requester_did text, signer_key text,
@@ -107,7 +107,7 @@ beforeEach(async () => {
     await database.query("INSERT INTO auth.identities (id,scope,subtype,public_key,tier) VALUES ($1,'actor','human',$2,'established')",
       [id, authCrypto.getPublicKey(key)]);
   }
-  await database.query("INSERT INTO auth.identity_members VALUES ($1,$2,'admin',null)", [principalDid, actorDid]);
+  await database.query("INSERT INTO auth.identity_members (identity_did,member_did,role,removed_at) VALUES ($1,$2,'admin',null)", [principalDid, actorDid]);
   envelope = {
     reachId: 'reach-test', principalDid, requesterDid: senderDid, requesterTier: 'reach-only',
     onBehalfOfStubDid: 'claimed-person', onBehalfOf: { platform: 'test', externalRef: 'unverified', selfDescription: 'My claim' },
@@ -270,6 +270,13 @@ describe('shared Reach decision path', () => {
   it.each(['maintainer', 'member', 'agent'])('denies act-as role %s despite forged admin hint', async (role) => {
     await database.query('UPDATE auth.identity_members SET role = $1', [role]);
     expect(await decideOperatorApproval(command('decline', admin))).toMatchObject({ ok: false, status: 403 });
+  });
+
+  it.each([{ services: [] }, { services: ['pay'] }, { services: ['jin'] }])('enforces live admin service restrictions $services', async ({ services }) => {
+    await database.query('UPDATE auth.identity_members SET allowed_services = $1::text[]', [services]);
+    const result = await decideOperatorApproval(command('decline', { ...admin, actingAsServices: ['jin'] }));
+    expect(result.ok).toBe(services.includes('jin'));
+    if (!services.includes('jin')) expect(result).toMatchObject({ status: 403 });
   });
 
   it('denies removed admins, delegates, non-owners and non-human principals', async () => {
