@@ -465,10 +465,13 @@ async function resolveDecidedAt(
   decision: ApprovalDecision,
   mode: string | undefined,
   contentHash: string,
-  operatorSignature: OperatorCountersignature | undefined,
-  claimedDecidedAt: string | undefined,
-  replyMessage?: string,
+  options: {
+    operatorSignature?: OperatorCountersignature;
+    claimedDecidedAt?: string;
+    replyMessage?: string;
+  },
 ): Promise<DecidedAtResult> {
+  const { operatorSignature, claimedDecidedAt, replyMessage } = options;
   if (!operatorSignature) {
     return { ok: true, decidedAt: new Date().toISOString() };
   }
@@ -620,7 +623,7 @@ async function persistAndPublishDecision(
  */
 async function decideReachApproval(row: OperatorApprovalRow, params: DecideOperatorApprovalParams): Promise<DecideOperatorApprovalResult> {
   const { identity, operatorSignature, mode, replyMessage } = params;
-  if (!identity || identity.id !== params.operatorDid || !await canDecideReach(identity, row.operatorDid)) {
+  if (identity?.id !== params.operatorDid || !await canDecideReach(identity, row.operatorDid)) {
     return { ok: false, status: 403, error: 'Only the principal or a verified act-as admin may decide this Reach card' };
   }
   const gate = checkDecisionGates(row, params.decision, mode);
@@ -638,7 +641,9 @@ async function decideReachApproval(row: OperatorApprovalRow, params: DecideOpera
     return { ok: true, card: toCard(row) };
   }
   if (row.status !== 'pending') return { ok: false, status: 409, error: 'Proposal is no longer awaiting a decision' };
-  const time = await resolveDecidedAt(row.proposalId, identity.id, params.decision, mode, contentHash, operatorSignature, params.decidedAt, replyMessage);
+  const time = await resolveDecidedAt(row.proposalId, identity.id, params.decision, mode, contentHash, {
+    operatorSignature, claimedDecidedAt: params.decidedAt, replyMessage,
+  });
   if (!time.ok) return time;
   const payload: OperatorApprovalDecidedPayload = {
     proposalId: row.proposalId, source: row.source, kind: row.kind,
@@ -719,7 +724,9 @@ async function decideLegacyApproval(row: OperatorApprovalRow, params: DecideOper
     return { ok: false, error: 'Operator countersignature is required on this node', status: 400 };
   }
 
-  const decidedAtResult = await resolveDecidedAt(proposalId, operatorDid, decision, mode, contentHash, operatorSignature, claimedDecidedAt);
+  const decidedAtResult = await resolveDecidedAt(proposalId, operatorDid, decision, mode, contentHash, {
+    operatorSignature, claimedDecidedAt,
+  });
   if (!decidedAtResult.ok) {
     return { ok: false, error: decidedAtResult.error, status: decidedAtResult.status };
   }

@@ -2,11 +2,10 @@ import { canonicalize, crypto as authCrypto } from '@imajin/auth';
 import type { BusEventMap } from '@imajin/bus';
 import { resolveFrontDoorConfig } from '@/src/lib/jin/front-door';
 import { generateId } from '@/src/lib/kernel/id';
-import { persistReachEnvelope } from './reach-envelope-store';
+import { getReachEnvelope, persistReachEnvelope } from './reach-envelope-store';
 import type { ReachRequestInput } from './agent-reach';
 import type { ReachDeliveryInput } from './reach-delivery-input';
 import { prepareMechanicalAttestation } from './emit-mechanical-attestation';
-import { getReachEnvelope } from './reach-envelope-store';
 import { publishReachApproval } from '../notify/reach-approvals';
 
 type DeliveredEvent = {

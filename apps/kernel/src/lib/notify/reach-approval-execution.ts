@@ -75,7 +75,7 @@ async function loadEvidence(tx: Tx, row: OperatorApprovalRow) {
   const [knock] = await tx.unsafe<KnockSqlRow[]>(`
     SELECT * FROM auth.agent_knocks WHERE declared_target = $1 AND id = $2 FOR UPDATE
   `, [row.operatorDid, String(detail.knockId)]);
-  if (!knock || knock.status !== 'pending' || new Date(knock.expires_at).getTime() <= Date.now()) {
+  if (knock?.status !== 'pending' || new Date(knock.expires_at).getTime() <= Date.now()) {
     throw new ReachDecisionError('Knock is no longer awaiting a decision');
   }
   return { fields: knockCardFields(knockRecord(knock)), envelope: null, knock };
@@ -184,7 +184,7 @@ export async function commitReachDecision(row: OperatorApprovalRow, signed: Sign
     const [current] = await tx.unsafe<{ status: string; content_hash: string }[]>(
       'SELECT status, content_hash FROM operator.approvals WHERE proposal_id = $1 FOR UPDATE', [row.proposalId],
     );
-    if (!current || current.status !== 'pending' || current.content_hash !== row.contentHash) throw new ReachDecisionError('Proposal changed before decision');
+    if (current?.status !== 'pending' || current.content_hash !== row.contentHash) throw new ReachDecisionError('Proposal changed before decision');
     const { fields, envelope, knock } = await loadEvidence(tx, row);
     if (computeApprovalContentHash(fields) !== row.contentHash) throw new ReachDecisionError('Request evidence changed; refresh Inbox');
     const requesterDid = fields.detail.requesterDid;

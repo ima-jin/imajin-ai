@@ -177,8 +177,9 @@ export async function submitKnock(input: SubmitKnockInput): Promise<{ knock: Kno
   const expiresAt = new Date(now.getTime() + KNOCK_TTL);
   const selfDescription = input.selfDescription;
   const requestedCapabilities = [...input.requestedCapabilities];
+  const lockKey = `reach:${targetDid}`;
   const result = await db.transaction(async (tx): Promise<{ knock: KnockRecord } | LibError> => {
-    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${`reach:${targetDid}`}, 0))`);
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))`);
     const reader = knockBlockReader((query) => tx.execute(query));
     if (await isReachSenderBlockedInTransaction(reader, { principalDid: targetDid, requesterDid: agentDid, publicKey })) {
       return { error: 'Knock is not available', status: 403 };
