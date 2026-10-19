@@ -33,7 +33,7 @@ function proseLines(body) {
     const marker = /^\s*(`{3,}|~{3,})/.exec(text)?.[1];
     if (marker) {
       if (!fence) fence = marker;
-      else if (marker[0] === fence[0] && marker.length >= fence.length) fence = undefined;
+      else if (marker.startsWith(fence[0]) && marker.length >= fence.length) fence = undefined;
       return null;
     }
     return fence ? null : { text, line: index + 1 };
