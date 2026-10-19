@@ -21,7 +21,7 @@ import { corsHeaders, corsOptions } from '@/src/lib/kernel/cors';
 import { createLogger } from '@imajin/logger';
 import { readUsageSummary } from '@/src/lib/usage/summary';
 import { parseUsageWindow } from '@/src/lib/usage/window';
-import { parseBudgetQuery } from '@/src/lib/usage/budget';
+import { parseBudgetQuery, parseCostReportQuery } from '@/src/lib/usage/budget';
 
 const log = createLogger('kernel');
 
@@ -58,10 +58,19 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  const budget = parseBudgetQuery(searchParams);
+  const now = new Date();
+  const budget = parseBudgetQuery(searchParams, now);
   if (budget === null) {
     return NextResponse.json(
       { error: 'budgetSince and budgetCap must be paired: a past ISO timestamp with timezone and a positive USD amount (e.g. 4000USD, at most two decimal places)' },
+      { status: 400, headers: cors },
+    );
+  }
+
+  const costReport = parseCostReportQuery(searchParams, now);
+  if (costReport === null) {
+    return NextResponse.json(
+      { error: 'from and to must be paired ISO timestamps with timezone, with from < to <= now' },
       { status: 400, headers: cors },
     );
   }
@@ -73,6 +82,7 @@ export async function GET(request: NextRequest) {
       to: window.to,
       windowLabel: window.label,
       ...(budget ? { budget } : {}),
+      ...(costReport ? { costReport } : {}),
     });
     return NextResponse.json(summary, { headers: { ...cors, 'Cache-Control': 'no-store' } });
   } catch {

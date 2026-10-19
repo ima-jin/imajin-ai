@@ -45,6 +45,29 @@ beforeEach(() => {
 });
 
 describe('GET /usage/api/summary', () => {
+  it('passes a cost-report interval independently of window and budget', async () => {
+    const res = await GET(makeReq('https://kernel.test/usage/api/summary?window=2026-08&budgetSince=2026-01-01T16:13:00Z&budgetCap=4000USD&from=2026-02-01T00:00:00Z&to=2026-02-02T00:00:00Z'));
+    expect(res.status).toBe(200);
+    expect(mocks.readUsageSummary).toHaveBeenCalledWith(expect.objectContaining({
+      windowLabel: '2026-08',
+      budget: expect.objectContaining({ since: new Date('2026-01-01T16:13:00Z') }),
+      costReport: { from: new Date('2026-02-01T00:00:00Z'), to: new Date('2026-02-02T00:00:00Z') },
+    }));
+  });
+
+  it.each([
+    'from=2026-01-01T00:00:00Z', 'to=2026-01-02T00:00:00Z',
+    'from=2026-01-02T00:00:00Z&to=2026-01-01T00:00:00Z',
+    'from=2026-01-02T00:00:00Z&to=2026-01-02T00:00:00Z',
+    'from=2026-01-02T00:00:00Z&to=2999-01-02T00:00:00Z',
+    'from=2026-02-30T00:00:00Z&to=2026-03-02T00:00:00Z',
+    'from=2026-01-01T00:00:00Z&from=2026-01-02T00:00:00Z&to=2026-01-03T00:00:00Z',
+    'from=2026-01-01T00:00:00Z&to=2026-01-02T00:00:00Z&to=2026-01-03T00:00:00Z',
+  ])('rejects invalid report pair without reading the ledger (%s)', async query => {
+    const res = await GET(makeReq(`https://kernel.test/usage/api/summary?${query}`));
+    expect(res.status).toBe(400);
+    expect(mocks.readUsageSummary).not.toHaveBeenCalled();
+  });
   it('passes paired budget inputs as USD Money independent of the normal window', async () => {
     const res = await GET(makeReq('https://kernel.test/usage/api/summary?window=2026-08&budgetSince=2026-01-01T16:13:00Z&budgetCap=4000USD'));
     expect(res.status).toBe(200);

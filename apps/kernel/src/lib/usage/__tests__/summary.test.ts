@@ -26,7 +26,7 @@ const { mockSelect, queue, mockReadReconciliation, whereCalls } = vi.hoisted(() 
 
 vi.mock('@/src/db', () => ({
   db: { select: mockSelect },
-  usageIncurred: { principalDid: 'principal_did', provider: 'provider', costUsd: 'cost_usd', createdAt: 'created_at' },
+  usageIncurred: { principalDid: 'principal_did', provider: 'provider', costUsd: 'cost_usd', createdAt: 'created_at', status: 'status' },
   usageBilled: {
     principalDid: 'principal_did', provider: 'provider', source: 'source', granularity: 'granularity',
     billedUsd: 'billed_usd', periodStart: 'period_start',
@@ -39,6 +39,8 @@ vi.mock('drizzle-orm', () => ({
   eq: (...args: unknown[]) => ({ eq: args }),
   gte: (...args: unknown[]) => ({ gte: args }),
   lt: (...args: unknown[]) => ({ lt: args }),
+  ne: (...args: unknown[]) => ({ ne: args }),
+  or: (...args: unknown[]) => ({ or: args }),
   isNull: (...args: unknown[]) => ({ isNull: args }),
   desc: (...args: unknown[]) => ({ desc: args }),
   sql: (strings: TemplateStringsArray, ...values: unknown[]) => ({ sql: strings.join('?'), values }),
@@ -67,19 +69,35 @@ function enqueue(incurred: unknown[], billed: unknown[], rollup: unknown[]) {
 }
 
 describe('readUsageSummary', () => {
-  it('counts independently billed API runs in the normal summary', async () => {
+  it('preserves legacy day-only billed API filtering and omits optional new views', async () => {
     enqueue([], [{ provider: 'warp', source: 'api', granularity: 'run', billedUsd: '1.23456789' }], []);
     const result = await readUsageSummary({ principalDid: PRINCIPAL_DID, from: FROM, to: TO, windowLabel: '2026-08' });
-    expect(result.billed.total).toBe(1.23456789);
+    expect(result.billed.total).toBe(0);
     expect(result).not.toHaveProperty('budget');
+    expect(result).not.toHaveProperty('costReport');
     expect(mockSelect).toHaveBeenCalledTimes(3);
+  });
+
+  it('reads an independent cost report from incurred even without a budget', async () => {
+    enqueue([], [{ provider: 'anthropic', source: 'api', granularity: 'day', billedUsd: '999' }], []);
+    queue.push([{ provider: 'moonshot', costUsd: '2.12345678', createdAt: new Date('2026-10-20T00:00:00Z'), status: null }]);
+    const costReport = { from: new Date('2026-10-19T16:13:00Z'), to: new Date('2026-10-26T00:00:00Z') };
+    const result = await readUsageSummary({ principalDid: PRINCIPAL_DID, from: FROM, to: TO, windowLabel: '2026-08', costReport });
+    expect(result.costReport).toMatchObject({ total: 2.12345678, rowCount: 1, unpricedCount: 0, byProvider: { moonshot: 2.12345678 } });
+    expect(result.billed.total).toBe(999);
+    expect(result).not.toHaveProperty('budget');
+    expect(whereCalls[3]).toEqual({ and: [
+      { eq: ['principal_did', PRINCIPAL_DID] },
+      { gte: ['created_at', costReport.from] }, { lt: ['created_at', costReport.to] },
+      { or: [{ isNull: ['status'] }, { ne: ['status', 'error'] }] },
+    ] });
   });
 
   it('reads budget independently of normal window with exact SQL bounds and preserves incurred/billed/drift', async () => {
     enqueue([{ provider: 'anthropic', costUsd: '1' }], [{ provider: 'anthropic', source: 'api', granularity: 'day', billedUsd: '2' }], []);
     queue.push([
-      { provider: 'warp', source: 'api', granularity: 'run', billedUsd: '10', periodStart: new Date('2026-10-20T00:00:00Z') },
-      { provider: 'anthropic', source: 'api', granularity: 'month', billedUsd: '999', periodStart: new Date('2026-10-20T00:00:00Z') },
+      { provider: 'warp', costUsd: '10', createdAt: new Date('2026-10-20T00:00:00Z'), status: null },
+      { provider: 'moonshot', costUsd: null, createdAt: new Date('2026-10-20T00:00:00Z'), status: null },
     ]);
     mockReadReconciliation.mockResolvedValueOnce([{ driftUsd: 1 }]);
     const budget = {
@@ -89,12 +107,14 @@ describe('readUsageSummary', () => {
     expect(result.incurred.total).toBe(1);
     expect(result.billed.total).toBe(2);
     expect(result.drift).toBe(1);
-    expect(result.budget?.billed.total).toBe(10);
+    expect(result.budget?.incurred.total).toBe(10);
+    expect(result.budget?.incurred.unpricedCount).toBe(1);
     expect(mockReadReconciliation).toHaveBeenCalledWith({ principalDid: PRINCIPAL_DID, from: FROM, to: TO });
     expect(whereCalls[3]).toEqual({ and: [
       { eq: ['principal_did', PRINCIPAL_DID] },
-      { gte: ['period_start', budget.since] },
-      { lt: ['period_start', budget.now] },
+      { gte: ['created_at', budget.since] },
+      { lt: ['created_at', budget.now] },
+      { or: [{ isNull: ['status'] }, { ne: ['status', 'error'] }] },
     ] });
   });
 
