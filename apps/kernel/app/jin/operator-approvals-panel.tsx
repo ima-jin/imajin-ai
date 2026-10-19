@@ -1293,9 +1293,8 @@ function renderPanelBody(
   onDecide: InboxDecisionHandler,
   busyId: string,
   deepLinkedProposalId: string | null,
-  decisionsLocked: boolean,
+  authority: { decisionsLocked: boolean; reachActAsAllowed: boolean },
   onArchive: (approval: OperatorApprovalCard) => void,
-  reachActAsAllowed: boolean,
 ) {
   if (loading) {
     return <p className="text-sm text-gray-500 py-6 text-center">Loading…</p>;
@@ -1319,8 +1318,8 @@ function renderPanelBody(
           onDecide={onDecide}
           busy={busyId === approval.proposalId}
           highlighted={deepLinkedProposalId === approval.proposalId}
-          decisionsLocked={decisionsLocked}
-          reachActAsAllowed={reachActAsAllowed}
+          decisionsLocked={authority.decisionsLocked}
+          reachActAsAllowed={authority.reachActAsAllowed}
           onArchive={onArchive}
         />
       ))}
@@ -1570,7 +1569,7 @@ function OperatorApprovalsPanelInner() {
       <ApprovalInbox
         approvals={approvals}
         deepLinkedProposalId={deepLinkedProposalId}
-        renderCards={(cards) => renderPanelBody(loading, cards, handleDecide, busyId, deepLinkedProposalId, actAs !== null, handleArchive, reachActAsAllowed)}
+        renderCards={(cards) => renderPanelBody(loading, cards, handleDecide, busyId, deepLinkedProposalId, { decisionsLocked: actAs !== null, reachActAsAllowed }, handleArchive)}
       />
     </section>
   );

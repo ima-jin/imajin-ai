@@ -151,3 +151,15 @@ it('recognizes only the two Inbox source/kind pairs', () => {
   expect(isReachApproval(card('knock'))).toBe(true);
   expect(isReachApproval({ source: 'reach', kind: 'reach:other' })).toBe(false);
 });
+
+it('announces the signed action using native output and removes completed controls', async () => {
+  inbox({
+    ...card(), status: 'applied',
+    decision: { decidedBy: 'did:imajin:ryan', decidedAt: '2026-10-18T12:00:00.000Z', mode: 'block' },
+  });
+  render(<OperatorApprovalsPanel />);
+  const result = await screen.findByRole('status');
+  expect(result.tagName).toBe('OUTPUT');
+  expect(result.textContent).toBe('Signed action: block');
+  expect(screen.queryByRole('button', { name: 'Block' })).toBeNull();
+});

@@ -40,7 +40,7 @@ export function ReachApprovalDetail({ approval }: Readonly<{ approval: OperatorA
         {typeof claim.selfDescription === 'string' && <p className="whitespace-pre-wrap break-words">{claim.selfDescription}</p>}
       </div>
       {approval.decision?.mode && (
-        <p role="status" className="text-xs text-green-300">Signed action: {approval.decision.mode}</p>
+        <output className="block text-xs text-green-300">Signed action: {approval.decision.mode}</output>
       )}
       {typeof threadDid === 'string' && /^did:imajin:dm:[a-f0-9]{16}$/.test(threadDid) && (
         <a className="inline-flex min-h-11 items-center text-sm text-amber-300 underline"
