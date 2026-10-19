@@ -43,7 +43,7 @@ function proseLines(body) {
 export function linkedIssues(body, repo) {
   const result = [];
   for (const { text } of proseLines(body)) {
-    const clauses = text.split(/\b(?:close[sd]?|fix(?:es|ed)?|resolve[sd]?|address(?:es|ed)?)\s*:?\s+/i);
+    const clauses = text.split(/\b(?:close|closes|closed|fix|fixes|fixed|resolve|resolves|resolved|address|addresses|addressed)\s*:?\s+/i);
     for (const clause of clauses.slice(1)) {
       let remaining = clause;
       let match = REFERENCE.exec(remaining);
@@ -77,7 +77,7 @@ function acceptance(issue) {
   let level = 0;
   const selected = new Set();
   for (const { text, line } of proseLines(issue.body)) {
-    const heading = /^(#{1,6})\s+(.+)$/.exec(text);
+    const heading = /^(#{1,6})[ \t]+(\S.*)$/.exec(text);
     if (heading) {
       if (level && heading[1].length <= level) level = 0;
       if (/^acceptance\b/i.test(heading[2])) level = heading[1].length;
@@ -99,6 +99,11 @@ function epicLines(issue, warnings) {
 function isEpic(issue, chainLength) {
   return chainLength > 1 || /^epic\b/i.test(issue.title) || issue.body.startsWith('OUTCOME ·');
 }
+function cachedIssue(api, issues, ref) {
+  const id = key(ref);
+  if (!issues.has(id)) issues.set(id, api.issue(ref));
+  return issues.get(id);
+}
 
 export function collectDoneCheck(prRef, api) {
   const pr = api.pullRequest(prRef);
@@ -119,8 +124,7 @@ export function collectDoneCheck(prRef, api) {
         break;
       }
       visited.add(id);
-      if (!issues.has(id)) issues.set(id, api.issue(current));
-      const issue = issues.get(id);
+      const issue = cachedIssue(api, issues, current);
       chain.push(id);
       lines.push(...rulings(issue));
       if (!issue.parent && isEpic(issue, chain.length)) lines.push(...epicLines(issue, warnings));
