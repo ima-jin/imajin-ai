@@ -26,7 +26,7 @@ interface BalanceEnvelope {
   };
 }
 
-export function createMoonshotBalanceReader(options: { apiKey: string; fetchImpl?: typeof fetch }) {
+export function createMoonshotBalanceReader(options: { apiKey: string; fetchImpl?: typeof fetch; timeoutMs?: number }) {
   return {
     provider: 'moonshot' as const,
     billedMode: 'manual-only' as const,
@@ -41,6 +41,7 @@ export function createMoonshotBalanceReader(options: { apiKey: string; fetchImpl
           params: {},
           headers: { Authorization: `Bearer ${options.apiKey}` },
           fetchImpl: options.fetchImpl ?? fetch,
+          timeoutMs: options.timeoutMs ?? 10_000,
         });
       } catch (error) {
         // Transport/parser errors can include headers or provider bodies.

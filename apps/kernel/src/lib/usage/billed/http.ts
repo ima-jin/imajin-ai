@@ -38,6 +38,8 @@ export interface FetchBillingJsonOptions {
   /** Request headers — providers differ here (API-key header vs Bearer token). */
   headers: Record<string, string>;
   fetchImpl: typeof fetch;
+  /** Optional bounded request; existing billing adapters retain their current policy. */
+  timeoutMs?: number;
 }
 
 /**
@@ -52,7 +54,10 @@ export async function fetchBillingJson<T>(opts: FetchBillingJsonOptions): Promis
   const { providerId, providerLabel, baseUrl, path, params, headers, fetchImpl } = opts;
   const url = buildBillingApiUrl(baseUrl, path, params);
 
-  const response = await fetchImpl(url.toString(), { headers });
+  const response = await fetchImpl(url.toString(), {
+    headers,
+    ...(opts.timeoutMs === undefined ? {} : { signal: AbortSignal.timeout(opts.timeoutMs) }),
+  });
 
   if (!response.ok) {
     if (response.status === 401 || response.status === 403) {

@@ -17,6 +17,7 @@ describe('Moonshot balance reader', () => {
     expect(reader.billedMode).toBe('manual-only');
     expect(http).toHaveBeenCalledWith('https://api.moonshot.ai/v1/users/me/balance', {
       headers: { Authorization: `Bearer ${key}` },
+      signal: expect.any(AbortSignal),
     });
   });
 
@@ -48,6 +49,14 @@ describe('Moonshot balance reader', () => {
       .rejects.toThrow('Moonshot balance unavailable');
     http.mockResolvedValue(new Response(key));
     await expect(createMoonshotBalanceReader({ apiKey: key, fetchImpl: http }).fetch())
+      .rejects.toThrow('Moonshot balance unavailable');
+  });
+
+  it('aborts a stalled balance request and reports only a safe error', async () => {
+    const http: typeof fetch = vi.fn((_url, init) => new Promise<Response>((_resolve, reject) => {
+      init?.signal?.addEventListener('abort', () => reject(new Error(key)), { once: true });
+    }));
+    await expect(createMoonshotBalanceReader({ apiKey: key, fetchImpl: http, timeoutMs: 5 }).fetch())
       .rejects.toThrow('Moonshot balance unavailable');
   });
 });
