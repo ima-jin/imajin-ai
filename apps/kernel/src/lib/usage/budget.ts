@@ -78,7 +78,8 @@ function capDate(now: Date, remaining: number, dailyRate: number): string | null
 export function buildUsageBudget(query: BudgetQuery, rows: BudgetBilledRow[]) {
   const { since, now, cap } = query;
   const included = rows.filter(row => countsTowardBilledTotal(row) && row.periodStart >= since && row.periodStart < now);
-  const vendors = [...new Set(['warp', 'anthropic', 'moonshot', ...included.map(row => row.provider)])].sort();
+  const vendors = [...new Set(['warp', 'anthropic', 'moonshot', ...included.map(row => row.provider)])]
+    .sort((left, right) => left.localeCompare(right));
   const byVendor = zeroVendors(vendors);
   const trailingByVendor = zeroVendors(vendors);
   const weeks = [];

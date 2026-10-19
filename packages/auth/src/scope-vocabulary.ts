@@ -246,6 +246,8 @@ function brainInferScope<C extends ConnectorId>(
  * Never released to a third party — same SELF_SENSITIVE → owner-only
  * quadrant as `brainInferScope`, and the same duplication-avoidance reason
  * for extracting the shape once rather than hand-copying it per provider.
+ * Moonshot (#2972) instead grants balance reads with its existing sealed key;
+ * that snapshot is never interpreted as a period-billed statement.
  */
 function connectorBillingScope<C extends ConnectorId>(
   connector: C,
@@ -460,8 +462,8 @@ export const SCOPE_VOCABULARY = [
   // ── Provider billing/admin keys (#1076 Stage 1) — distinct from the
   // `*:infer` key above: this is the ADMIN/org-billing credential the daily
   // reconciliation job uses to pull the provider's own usage/cost statement
-  // into `usage.billed`. Anthropic and OpenAI only for Stage 1; the
-  // remaining brain connectors are left for a later pass.
+  // into `usage.billed`. Moonshot's later balance-only capability explicitly
+  // uses its existing key and does not write billed spend.
   connectorBillingScope('anthropic', 'anthropic-billing-api', 'Use your Anthropic Admin API key for usage/cost reconciliation'),
   connectorBillingScope('openai', 'openai-billing-api', 'Use your OpenAI org admin API key for usage/cost reconciliation'),
   connectorBillingScope('moonshot', 'moonshot-api', 'Read your Moonshot account balance (billed receipts remain manual)'),

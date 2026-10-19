@@ -437,7 +437,11 @@ The existing `usage-billed-ingest` cron is the only scheduled ingestion job.
   connector and grant `warp:dispatch`, the same authority used by dispatch/list.
   Terminal orchestration children count even without an environment. Each run
   has one billed line, with its credit conversion rate frozen at first ingest;
-  resumed usage growth updates that line, not a second charge.
+  resumed usage growth updates that line, not a second charge. The existing
+  admin config key `usage.warp.credit-rate` accepts `{ "usd": 100, "credits": 6500 }`
+  (the default); the rate is stored in each line's audit `raw.creditRate`.
+  The scan begins at 2026-10-19T00:00:00Z and attributes the cumulative run
+  charge to its original creation instant, including after a resume.
 - **Anthropic:** the existing reader covers the organization visible to the
   principal's **Admin API key**, not an inference key. Seal it through the
   Anthropic billing slot and grant `anthropic:billing`. It paginates the org
