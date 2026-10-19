@@ -1,4 +1,5 @@
 import { normalizeDomain } from '@/src/lib/domains/normalize';
+import { forEachSequential } from '@/src/lib/async/sequential';
 import { isSpf, mergeSpf } from './spf';
 import { DnsError, scopedRecords, type DnsProvider, type DnsRecord, type DnsSetupResult } from './types';
 
@@ -24,7 +25,7 @@ interface Write {
 export function txtValue(content: string): string {
   if (!content.startsWith('"')) return content;
   const chunks = content.match(/"(?:[^"\\]|\\["\\])*"/gu);
-  if (!chunks || chunks.join('') !== content.replace(/"\s+"/gu, '""')) {
+  if (chunks?.join('') !== content.replace(/"\s+"/gu, '""')) {
     throw new DnsError('unsupported_txt_encoding');
   }
   return chunks.map((chunk) => chunk.slice(1, -1).replace(/\\(["\\])/gu, '$1')).join('');
@@ -59,9 +60,9 @@ function plan(record: DnsRecord, existing: CloudflareRecord[]): Write {
  * resolver. Native private storage prevents accidental inspection/serialization.
  */
 export class CloudflareDnsProvider implements DnsProvider {
-  #token: string;
-  #domain: string;
-  #zoneId: string;
+  readonly #token: string;
+  readonly #domain: string;
+  readonly #zoneId: string;
 
   constructor(domain: string, zoneId: string, token: string) {
     this.#domain = normalizeDomain(domain);
@@ -117,8 +118,10 @@ export class CloudflareDnsProvider implements DnsProvider {
     }
     const writes: Write[] = [];
     // Preflight every record before writing; don't half-apply a known conflict.
-    for (const record of scoped) writes.push(plan(record, await this.list(record.name)));
-    for (const write of writes) await this.write(write);
+    await forEachSequential(scoped, async (record) => {
+      writes.push(plan(record, await this.list(record.name)));
+    });
+    await forEachSequential(writes, (write) => this.write(write));
     return { mode: 'automatic', status: 'written', records: writes.map((write) => write.record),
       instructions: ['Recheck domain ownership and mail verification after DNS propagation.'] };
   }

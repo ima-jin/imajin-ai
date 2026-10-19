@@ -6,6 +6,7 @@ import { DnsError, scopedRecords, type DnsProvider, type DnsProviderConfig, type
 
 /** Shared purpose with the domain credential contract used by #2895. */
 export const CLOUDFLARE_DNS_PURPOSE = 'dns.cloudflare';
+const DEFAULT_DNS_PROVIDER: DnsProviderConfig = { provider: 'manual' };
 class VaultCloudflareProvider implements DnsProvider {
   constructor(private readonly domain: string, private readonly granteeDid: string, private readonly zoneId: string) {}
 
@@ -31,7 +32,7 @@ class VaultCloudflareProvider implements DnsProvider {
  * identifiers only; no token input, raw unseal, env fallback or secret response.
  */
 export function resolveDnsProvider(
-  domain: string, granteeDid: string, config: DnsProviderConfig = { provider: 'manual' },
+  domain: string, granteeDid: string, config: DnsProviderConfig = DEFAULT_DNS_PROVIDER,
 ): DnsProvider {
   const normalized = normalizeDomain(domain);
   if (config.provider === 'manual') return new ManualDnsProvider(normalized);
