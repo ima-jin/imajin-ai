@@ -6,9 +6,9 @@ export const dynamic = 'force-dynamic';
 
 export default async function PublicReachPage({
   params,
-}: {
+}: Readonly<{
   params: Promise<{ handle: string }>;
-}) {
+}>) {
   const { handle } = await params;
   const card = await resolveReachDiscovery(handle);
   if (!card) notFound();

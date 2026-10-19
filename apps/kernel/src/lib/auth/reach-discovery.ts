@@ -113,7 +113,7 @@ export async function resolveReachDiscovery(id: string): Promise<ReachCard | nul
     id: identities.id, handle: identities.handle, name: identities.name, metadata: identities.metadata,
     scope: identities.scope, subtype: identities.subtype, suspendedAt: identities.suspendedAt,
   }).from(identities).where(eq(column, alias)).limit(1);
-  if (!identity || identity.scope !== 'actor' || identity.subtype !== 'human' || identity.suspendedAt) return null;
+  if (identity?.scope !== 'actor' || identity.subtype !== 'human' || identity.suspendedAt) return null;
   // Authored gates are self-contained and fail closed even if legacy consent
   // still exists. Only legacy principals need the consent-grant lookup.
   const authored = typeof identity.metadata === 'object' && identity.metadata !== null

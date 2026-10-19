@@ -20,8 +20,8 @@ export function ReachPage({ card }: Readonly<{ card: ReachCard }>) {
   const openapi = card.transports.find(transport => transport.id === 'openapi');
   const signed = card.transports.find(transport => transport.id === 'signed');
   const displayName = card.name || (card.handle ? `@${card.handle}` : 'this person');
-  const knock = `curl --request POST '${card.onboarding.endpoint}' \\
-  --header 'Content-Type: application/json' \\
+  const knock = String.raw`curl --request POST '${card.onboarding.endpoint}' \
+  --header 'Content-Type: application/json' \
   --data '{
     "agentLabel": "My assistant",
     "onBehalfOf": {
