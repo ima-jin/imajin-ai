@@ -11,7 +11,7 @@
  * here as a non-zero gap. No settlement, no `pay.transactions` write: this
  * is a read-only comparison.
  */
-import { and, eq, gte, lt, sql } from 'drizzle-orm';
+import { and, eq, gte, inArray, lt, sql } from 'drizzle-orm';
 import { db, usageIncurred, usageBilled } from '@/src/db';
 
 export interface ReconciliationRow {
@@ -86,10 +86,10 @@ interface BilledRow {
 }
 
 async function readBilled(query: ReconciliationQuery): Promise<BilledRow[]> {
-  // Only day-granularity rows participate in the per-day comparison — the
+  // Day buckets and individual runs participate in the per-day comparison — the
   // month-to-date row is a separate, coarser bucket that would double-count
   // against the same days if included here.
-  const conditions = [eq(usageBilled.principalDid, query.principalDid), eq(usageBilled.granularity, 'day')];
+  const conditions = [eq(usageBilled.principalDid, query.principalDid), inArray(usageBilled.granularity, ['day', 'run'])];
   if (query.provider) conditions.push(eq(usageBilled.provider, query.provider));
   if (query.from) conditions.push(gte(usageBilled.periodStart, query.from));
   if (query.to) conditions.push(lt(usageBilled.periodStart, query.to));

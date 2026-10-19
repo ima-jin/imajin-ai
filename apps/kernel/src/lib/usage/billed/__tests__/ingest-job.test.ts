@@ -6,6 +6,7 @@ const {
   mockCreateAnthropicReader, mockCreateOpenAIReader,
   mockIngestBilledUsage,
   mockAnthropicFetch, mockOpenAIFetch,
+  mockListWarpOwners, mockIngestWarp, mockLog,
 } = vi.hoisted(() => ({
   mockListAnthropicOwners: vi.fn(),
   mockLoadAnthropicCreds: vi.fn(),
@@ -16,10 +17,13 @@ const {
   mockIngestBilledUsage: vi.fn(),
   mockAnthropicFetch: vi.fn(),
   mockOpenAIFetch: vi.fn(),
+  mockListWarpOwners: vi.fn(),
+  mockIngestWarp: vi.fn(),
+  mockLog: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
 
 vi.mock('@imajin/logger', () => ({
-  createLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
+  createLogger: () => mockLog,
 }));
 
 vi.mock('@/src/lib/anthropic/billing-connector', () => ({
@@ -33,6 +37,8 @@ vi.mock('@/src/lib/openai/billing-connector', () => ({
 vi.mock('../anthropic', () => ({ createAnthropicBilledUsageReader: mockCreateAnthropicReader }));
 vi.mock('../openai', () => ({ createOpenAIBilledUsageReader: mockCreateOpenAIReader }));
 vi.mock('../ingest', () => ({ ingestBilledUsage: mockIngestBilledUsage }));
+vi.mock('../warp', () => ({ ingestWarpBilledUsage: mockIngestWarp }));
+vi.mock('@/src/lib/warp/connector', () => ({ listWarpGrantOwners: mockListWarpOwners }));
 
 import { runBilledUsageIngestion } from '../ingest-job';
 import { BillingApiError } from '../types';
@@ -44,9 +50,35 @@ const NOW = new Date('2026-08-15T12:00:00Z');
 describe('runBilledUsageIngestion', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockListWarpOwners.mockResolvedValue([]);
     mockCreateAnthropicReader.mockImplementation(() => ({ provider: 'anthropic', fetch: mockAnthropicFetch }));
     mockCreateOpenAIReader.mockImplementation(() => ({ provider: 'openai', fetch: mockOpenAIFetch }));
     mockIngestBilledUsage.mockImplementation(async ({ lines }: { lines: unknown[] }) => lines.length);
+  });
+
+  it('ingests one run-granularity pass per Warp owner and continues after a safe failure', async () => {
+    mockListAnthropicOwners.mockResolvedValue([]);
+    mockListOpenaiOwners.mockResolvedValue([]);
+    mockListWarpOwners.mockResolvedValue([OWNER_A, OWNER_B]);
+    mockIngestWarp.mockRejectedValueOnce(new BillingApiError('warp', 401, 'sensitive-provider-echo'))
+      .mockResolvedValueOnce(2);
+    const result = await runBilledUsageIngestion(NOW);
+    expect(mockIngestWarp).toHaveBeenCalledWith(OWNER_A, NOW);
+    expect(result.results).toEqual([{ provider: 'warp', ownerDid: OWNER_B, granularity: 'run', rowsWritten: 2 }]);
+    expect(result.failures).toEqual([{ provider: 'warp', ownerDid: OWNER_A, granularity: 'run', error: 'Billed usage unavailable', authError: true }]);
+    expect(JSON.stringify([result, mockLog.warn.mock.calls])).not.toContain('sensitive-provider-echo');
+  });
+
+  it('never exposes provider credential or pull exception messages', async () => {
+    mockListAnthropicOwners.mockResolvedValue([OWNER_A, OWNER_B]);
+    mockListOpenaiOwners.mockRejectedValue(new Error('sensitive-provider-echo'));
+    mockListWarpOwners.mockRejectedValue(new Error('sensitive-provider-echo'));
+    mockLoadAnthropicCreds.mockRejectedValueOnce(new Error('sensitive-provider-echo'))
+      .mockResolvedValueOnce({ apiKey: 'test-key' });
+    mockAnthropicFetch.mockRejectedValue(new Error('sensitive-provider-echo'));
+    const result = await runBilledUsageIngestion(NOW);
+    expect(result.failures).toHaveLength(3);
+    expect(JSON.stringify([result, mockLog.error.mock.calls])).not.toContain('sensitive-provider-echo');
   });
 
   it('pulls yesterday + month-to-date for every owner with an active grant, per provider', async () => {

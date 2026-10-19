@@ -86,6 +86,11 @@ export function requireAgentKey(principalDid: string): Promise<string> {
   return warpConnector.requireSecret(principalDid, WARP_DISPATCH_SCOPE);
 }
 
+/** Billing reads the same owners and sealed keys as dispatch/list, not a second credential path. */
+export function listWarpGrantOwners(): Promise<string[]> {
+  return warpConnector.listActiveGrantOwners(WARP_DISPATCH_SCOPE);
+}
+
 /** Revoke the delegation grant, killing dispatch for this DID immediately. */
 export const revokeWarpAgentKeyGrant = warpConnector.revokeGrant;
 

@@ -7,8 +7,8 @@
  * full framing note). Never merged into `usage.incurred`.
  */
 
-/** The two granularities the daily ingestion job pulls (#1076 Stage 1). */
-export type BilledGranularity = 'day' | 'month';
+/** Provider buckets, plus individually identified Warp runs (#2972). */
+export type BilledGranularity = 'day' | 'month' | 'run';
 
 /** One reporting window to pull a provider's statement for. */
 export interface BilledPeriod {

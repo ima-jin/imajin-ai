@@ -53,6 +53,7 @@ export async function ingestBilledUsage(params: IngestBilledUsageParams): Promis
         (${generateId('billed')}, ${principalDid}, ${provider}, ${period.start}, ${period.end}, ${granularity},
          ${line.model}, ${line.tokensIn}, ${line.tokensOut}, ${billedUsd}, ${sql.json(raw)}, now())
       ON CONFLICT (principal_did, provider, period_start, granularity, COALESCE(model, ''))
+      WHERE granularity <> 'run'
       DO UPDATE SET
         period_end = EXCLUDED.period_end,
         tokens_in = EXCLUDED.tokens_in,

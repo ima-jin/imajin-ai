@@ -20,6 +20,8 @@ import { listBillingGrantOwners as listOpenaiOwners, loadOpenaiBillingCredential
 import { createAnthropicBilledUsageReader } from './anthropic';
 import { createOpenAIBilledUsageReader } from './openai';
 import { ingestBilledUsage } from './ingest';
+import { ingestWarpBilledUsage } from './warp';
+import { listWarpGrantOwners } from '@/src/lib/warp/connector';
 import { forEachSequential } from '@/src/lib/async/sequential';
 import { BillingApiError, type BilledUsageReader, type BilledPeriod, type BilledGranularity } from './types';
 
@@ -109,9 +111,9 @@ async function pullWindow(
     if (authError) {
       log.warn({ provider, ownerDid, granularity: window.granularity }, 'billed usage pull skipped — admin key missing or insufficiently scoped');
     } else {
-      log.error({ err: String(err), provider, ownerDid, granularity: window.granularity }, 'billed usage pull failed');
+      log.error({ provider, ownerDid, granularity: window.granularity }, 'billed usage pull failed');
     }
-    return { provider, ownerDid, granularity: window.granularity, error: String(err), authError };
+    return { provider, ownerDid, granularity: window.granularity, error: 'Billed usage unavailable', authError };
   }
 }
 
@@ -128,9 +130,9 @@ async function ingestOwnerProvider(
   let adminApiKey: string | undefined;
   try {
     adminApiKey = await config.loadAdminApiKey(ownerDid);
-  } catch (err) {
-    log.error({ err: String(err), provider: config.provider, ownerDid }, 'billed usage credential resolution failed');
-    return [{ provider: config.provider, ownerDid, granularity: 'day', error: String(err), authError: false }];
+  } catch {
+    log.error({ provider: config.provider, ownerDid }, 'billed usage credential resolution failed');
+    return [{ provider: config.provider, ownerDid, granularity: 'day', error: 'Billed usage unavailable', authError: false }];
   }
 
   if (!adminApiKey) {
@@ -151,6 +153,33 @@ async function ingestOwnerProvider(
   return rows;
 }
 
+async function ingestWarpOwners(
+  now: Date,
+  ownersSeen: Set<string>,
+  results: BilledIngestResult[],
+  failures: BilledIngestFailure[],
+): Promise<void> {
+  // Warp is run-granularity: repeatedly scan the fixed inception cutoff so a
+  // resumed run's cumulative usage is updated even after its original day.
+  let warpOwners: string[] = [];
+  try {
+    warpOwners = await listWarpGrantOwners();
+  } catch {
+    log.error({ provider: 'warp' }, 'billed usage: failed to enumerate owners — skipping provider');
+  }
+  await forEachSequential(warpOwners, async (ownerDid) => {
+    ownersSeen.add(ownerDid);
+    try {
+      const rowsWritten = await ingestWarpBilledUsage(ownerDid, now);
+      results.push({ provider: 'warp', ownerDid, granularity: 'run', rowsWritten });
+    } catch (err) {
+      const authError = err instanceof BillingApiError && err.isAuthError;
+      log.warn({ provider: 'warp', ownerDid, authError }, 'Warp billed usage pull failed');
+      failures.push({ provider: 'warp', ownerDid, granularity: 'run', error: 'Billed usage unavailable', authError });
+    }
+  });
+}
+
 /**
  * Run the full sweep across every configured provider. `now` is injectable
  * for tests; defaults to the current time.
@@ -167,8 +196,8 @@ export async function runBilledUsageIngestion(now: Date = new Date()): Promise<B
     let owners: string[];
     try {
       owners = await config.listOwners();
-    } catch (err) {
-      log.error({ err: String(err), provider: config.provider }, 'billed usage: failed to enumerate owners — skipping provider');
+    } catch {
+      log.error({ provider: config.provider }, 'billed usage: failed to enumerate owners — skipping provider');
       return;
     }
 
@@ -181,6 +210,8 @@ export async function runBilledUsageIngestion(now: Date = new Date()): Promise<B
       }
     });
   });
+
+  await ingestWarpOwners(now, ownersSeen, results, failures);
 
   log.info(
     { owners: ownersSeen.size, results: results.length, failures: failures.length },

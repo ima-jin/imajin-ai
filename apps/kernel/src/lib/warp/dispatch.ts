@@ -833,6 +833,12 @@ function toStatusMessage(value: unknown): WarpRunStatusMessage | null {
 function toUsage(value: unknown): WarpRunUsage | null {
   const body = objectOrNull(value);
   if (body === null) return null;
+  // Missing/null components are legitimate (e.g. inference-only children).
+  // Malformed non-null components make the whole statement unknown: coercing
+  // them to null would let billing silently charge an incomplete total.
+  const components = [body.inference_cost, body.compute_cost, body.platform_cost];
+  if (components.some(cost => cost !== null && cost !== undefined
+    && (typeof cost !== 'number' || !Number.isFinite(cost) || cost < 0))) return null;
 
   return {
     inferenceCost: numberOrNull(body.inference_cost),

@@ -152,7 +152,7 @@ export const usageBilled = usageSchema.table(
     provider: text('provider').notNull(),                 // 'anthropic' | 'openai' (manual/document rows: the submitted vendor name)
     periodStart: timestamp('period_start', { withTimezone: true }).notNull(),
     periodEnd: timestamp('period_end', { withTimezone: true }).notNull(),
-    granularity: text('granularity').notNull(),           // 'day' | 'month' | 'manual' (#2030 — see migrations/0125)
+    granularity: text('granularity').notNull(),           // 'day' | 'month' | 'manual' | 'run' (#2972)
     model: text('model'),                                 // nullable: providers report per-model where available
     tokensIn: bigint('tokens_in', { mode: 'number' }),
     tokensOut: bigint('tokens_out', { mode: 'number' }),
@@ -184,7 +184,8 @@ export const usageBilled = usageSchema.table(
     // Idempotent upsert target on re-fetch — see the migration's comment on
     // why COALESCE(model, '') rather than a bare column.
     periodUniq: uniqueIndex('uniq_usage_billed_period')
-      .on(table.principalDid, table.provider, table.periodStart, table.granularity, sql`COALESCE(${table.model}, '')`),
+      .on(table.principalDid, table.provider, table.periodStart, table.granularity, sql`COALESCE(${table.model}, '')`)
+      .where(sql`${table.granularity} <> 'run'`),
     principalIdx: index('idx_usage_billed_principal').on(table.principalDid, table.provider, table.periodStart),
     fetchedIdx: index('idx_usage_billed_fetched').on(table.fetchedAt),
     sourceIdx: index('idx_usage_billed_source').on(table.principalDid, table.source, table.periodStart),

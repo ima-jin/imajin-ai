@@ -14,9 +14,19 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { getTableColumns } from 'drizzle-orm';
+import { getTableConfig, PgDialect } from 'drizzle-orm/pg-core';
 import { usageBilled } from '../usage';
 
 describe('usageBilled drizzle schema', () => {
+  it('#2972: excludes individually identified run rows from bucket uniqueness in schema and migration', () => {
+    const migration = readFileSync(resolve(__dirname, '../../../../../../migrations/0214_usage_billed_warp_runs.sql'), 'utf-8');
+    expect(migration).toContain('DROP INDEX IF EXISTS "usage"."uniq_usage_billed_period"');
+    expect(migration).toContain('CREATE UNIQUE INDEX IF NOT EXISTS "uniq_usage_billed_period"');
+    expect(migration).toContain('WHERE "granularity" <> \'run\'');
+    const index = getTableConfig(usageBilled).indexes.find((item) => item.config.name === 'uniq_usage_billed_period');
+    expect(index?.config.where).toBeDefined();
+    expect(new PgDialect().sqlToQuery(index!.config.where!).sql).toContain('<> \'run\'');
+  });
   it('declares every column the ingest/reconciliation code depends on', () => {
     const columns = getTableColumns(usageBilled);
     const dbNames = Object.fromEntries(Object.entries(columns).map(([key, col]) => [key, col.name]));
