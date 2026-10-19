@@ -83,6 +83,10 @@ describe('canonical and opted-in discovery', () => {
     null,
   ])('withholds disabled or missing reach configuration: %j', async (config) => {
     mocks.config.mockResolvedValue(config);
+    mocks.rows.mockResolvedValue([{
+      ...principal, handle: 'ryan', name: 'Ryan', scope: 'actor', subtype: 'human',
+      metadata: config === null ? {} : { agentReachGate: config },
+    }]);
     const response = await getSpec();
     expect(response.status).toBe(404);
     expect(response.headers.get('cache-control')).toBe('no-store');

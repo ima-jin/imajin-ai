@@ -139,10 +139,12 @@ describe('per-principal lazy-auth MCP', () => {
   });
 
   it('uses the verified requester, not the recipient, to read a reply', async () => {
+    vi.mocked(resolveReachDiscovery).mockRejectedValue(new Error('Optional discovery unavailable'));
     const response = await call('reach_status', { reachId: 'reach_1' }, 'Bearer valid');
     expect(await content(response)).toMatchObject({ reachId: 'reach_1', state: 'replied' });
     expect(reachStatus).toHaveBeenCalledWith({ principalDid: 'did:imajin:ryan', requesterDid: credential.requesterDid, reachId: 'reach_1' });
     expect(resolveReachBearer).toHaveBeenCalledWith('valid', 'did:imajin:ryan', 'status');
+    expect(resolveReachDiscovery).not.toHaveBeenCalled();
   });
 
   it('returns a non-disclosing 404 for a foreign or missing receipt', async () => {

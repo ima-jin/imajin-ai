@@ -69,9 +69,9 @@ export async function POST(request: NextRequest, props: Props) {
   }
   try {
     const { handle } = await props.params;
-    const card = await resolveReachDiscovery(handle);
     // Opt-out hides discovery, not requester-private receipts or existing reach authority.
     const gatedCall = body.method === 'tools/call' && REACH_GATED_TOOLS.has(String(body.params?.name));
+    const card = gatedCall ? null : await resolveReachDiscovery(handle);
     if (!card && !gatedCall) return NextResponse.json({ error: 'Reach recipient not found' }, { status: 404, headers });
     const principal = await resolveReachRecipient(card?.principalDid ?? handle);
     if (!principal) return NextResponse.json({ error: 'Reach recipient not found' }, { status: 404, headers });

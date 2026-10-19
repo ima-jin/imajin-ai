@@ -1,7 +1,7 @@
 import { eq } from 'drizzle-orm';
 import { db, identities } from '@/src/db';
 import { nodeUrl } from '@/src/lib/http/node-url';
-import { isGateOpen, publishedTopicLabels, readFrontDoorConfig } from '@/src/lib/jin/front-door';
+import { isGateOpen, publishedTopicLabels, readFrontDoorConfig, resolveFrontDoorConfig } from '@/src/lib/jin/front-door';
 
 interface ReachIdentity {
   id: string;
@@ -114,7 +114,13 @@ export async function resolveReachDiscovery(id: string): Promise<ReachCard | nul
     scope: identities.scope, subtype: identities.subtype, suspendedAt: identities.suspendedAt,
   }).from(identities).where(eq(column, alias)).limit(1);
   if (!identity || identity.scope !== 'actor' || identity.subtype !== 'human' || identity.suspendedAt) return null;
-  const config = await readFrontDoorConfig(identity.id);
+  // Authored gates are self-contained and fail closed even if legacy consent
+  // still exists. Only legacy principals need the consent-grant lookup.
+  const authored = typeof identity.metadata === 'object' && identity.metadata !== null
+    && 'agentReachGate' in identity.metadata;
+  const config = authored
+    ? resolveFrontDoorConfig(identity.metadata, false)
+    : await readFrontDoorConfig(identity.id);
   if (!config || !isGateOpen(config)) return null;
   return buildReachCard(identity, nodeUrl());
 }
