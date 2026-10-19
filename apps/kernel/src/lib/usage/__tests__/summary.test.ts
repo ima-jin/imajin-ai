@@ -8,7 +8,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 function createChain(result: unknown) {
   const chain: Record<string, unknown> = {
     from: () => chain,
-    where: () => chain,
+    where: (conditions: unknown) => { whereCalls.push(conditions); return chain; },
     groupBy: () => chain,
     orderBy: () => chain,
     limit: () => chain,
@@ -17,10 +17,11 @@ function createChain(result: unknown) {
   return chain;
 }
 
-const { mockSelect, queue, mockReadReconciliation } = vi.hoisted(() => ({
+const { mockSelect, queue, mockReadReconciliation, whereCalls } = vi.hoisted(() => ({
   mockSelect: vi.fn(),
   queue: [] as unknown[],
   mockReadReconciliation: vi.fn(),
+  whereCalls: [] as unknown[],
 }));
 
 vi.mock('@/src/db', () => ({
@@ -53,6 +54,7 @@ const TO = new Date('2026-09-01T00:00:00.000Z');
 
 beforeEach(() => {
   queue.length = 0;
+  whereCalls.length = 0;
   mockSelect.mockReset();
   mockSelect.mockImplementation(() => createChain(queue.shift() ?? []));
   mockReadReconciliation.mockReset();
@@ -65,6 +67,41 @@ function enqueue(incurred: unknown[], billed: unknown[], rollup: unknown[]) {
 }
 
 describe('readUsageSummary', () => {
+  it('counts independently billed API runs in the normal summary', async () => {
+    enqueue([], [{ provider: 'warp', source: 'api', granularity: 'run', billedUsd: '1.23456789' }], []);
+    const result = await readUsageSummary({ principalDid: PRINCIPAL_DID, from: FROM, to: TO, windowLabel: '2026-08' });
+    expect(result.billed.total).toBe(1.23456789);
+    expect(result).not.toHaveProperty('budget');
+    expect(mockSelect).toHaveBeenCalledTimes(3);
+  });
+
+  it('reads budget independently of normal window with exact SQL bounds and preserves incurred/billed/drift', async () => {
+    enqueue([{ provider: 'anthropic', costUsd: '1' }], [{ provider: 'anthropic', source: 'api', granularity: 'day', billedUsd: '2' }], []);
+    queue.push([
+      { provider: 'warp', source: 'api', granularity: 'run', billedUsd: '10', periodStart: new Date('2026-10-20T00:00:00Z') },
+      { provider: 'anthropic', source: 'api', granularity: 'month', billedUsd: '999', periodStart: new Date('2026-10-20T00:00:00Z') },
+    ]);
+    mockReadReconciliation.mockResolvedValueOnce([{ driftUsd: 1 }]);
+    const budget = {
+      since: new Date('2026-10-19T16:13:00Z'), now: new Date('2026-10-26T16:13:00Z'), cap: { amount: 400000, currency: 'USD' },
+    };
+    const result = await readUsageSummary({ principalDid: PRINCIPAL_DID, from: FROM, to: TO, windowLabel: '2026-08', budget });
+    expect(result.incurred.total).toBe(1);
+    expect(result.billed.total).toBe(2);
+    expect(result.drift).toBe(1);
+    expect(result.budget?.billed.total).toBe(10);
+    expect(mockReadReconciliation).toHaveBeenCalledWith({ principalDid: PRINCIPAL_DID, from: FROM, to: TO });
+    expect(whereCalls[3]).toEqual({ and: [
+      { eq: ['principal_did', PRINCIPAL_DID] },
+      { gte: ['period_start', budget.since] },
+      { lt: ['period_start', budget.now] },
+    ] });
+  });
+
+  it('propagates read failure instead of inventing a zero budget', async () => {
+    mockSelect.mockImplementationOnce(() => { throw new Error('unavailable'); });
+    await expect(readUsageSummary({ principalDid: PRINCIPAL_DID, from: FROM, to: TO, windowLabel: '2026-08' })).rejects.toThrow('unavailable');
+  });
   it('sums incurred by provider and reports the grand total', async () => {
     enqueue(
       [

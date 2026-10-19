@@ -21,6 +21,7 @@ import { corsHeaders, corsOptions } from '@/src/lib/kernel/cors';
 import { createLogger } from '@imajin/logger';
 import { readUsageSummary } from '@/src/lib/usage/summary';
 import { parseUsageWindow } from '@/src/lib/usage/window';
+import { parseBudgetQuery } from '@/src/lib/usage/budget';
 
 const log = createLogger('kernel');
 
@@ -57,16 +58,25 @@ export async function GET(request: NextRequest) {
     );
   }
 
+  const budget = parseBudgetQuery(searchParams);
+  if (budget === null) {
+    return NextResponse.json(
+      { error: 'budgetSince and budgetCap must be paired: a past ISO timestamp with timezone and a positive USD amount (e.g. 4000USD, at most two decimal places)' },
+      { status: 400, headers: cors },
+    );
+  }
+
   try {
     const summary = await readUsageSummary({
       principalDid: did,
       from: window.from,
       to: window.to,
       windowLabel: window.label,
+      ...(budget ? { budget } : {}),
     });
     return NextResponse.json(summary, { headers: { ...cors, 'Cache-Control': 'no-store' } });
-  } catch (err) {
-    log.error({ err: String(err), did }, 'usage summary query failed');
+  } catch {
+    log.error({ did }, 'usage summary query failed');
     return NextResponse.json({ error: 'Usage summary unavailable' }, { status: 500, headers: cors });
   }
 }

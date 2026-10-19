@@ -4,6 +4,7 @@ import { NextRequest } from 'next/server';
 const mocks = vi.hoisted(() => ({
   requireAuth: vi.fn(),
   readUsageSummary: vi.fn(),
+  logError: vi.fn(),
 }));
 
 vi.mock('@imajin/auth', () => ({
@@ -11,7 +12,7 @@ vi.mock('@imajin/auth', () => ({
   resolveActingDid: (identity: { actingFor?: string; id: string }) => identity.actingFor ?? identity.id,
 }));
 
-vi.mock('@imajin/logger', () => ({ createLogger: () => ({ error: vi.fn(), info: vi.fn(), warn: vi.fn() }) }));
+vi.mock('@imajin/logger', () => ({ createLogger: () => ({ error: mocks.logError, info: vi.fn(), warn: vi.fn() }) }));
 
 vi.mock('@/src/lib/kernel/cors', () => ({
   corsHeaders: () => ({ 'Access-Control-Allow-Origin': 'https://example.test' }),
@@ -44,6 +45,27 @@ beforeEach(() => {
 });
 
 describe('GET /usage/api/summary', () => {
+  it('passes paired budget inputs as USD Money independent of the normal window', async () => {
+    const res = await GET(makeReq('https://kernel.test/usage/api/summary?window=2026-08&budgetSince=2026-01-01T16:13:00Z&budgetCap=4000USD'));
+    expect(res.status).toBe(200);
+    expect(mocks.readUsageSummary).toHaveBeenCalledWith(expect.objectContaining({
+      windowLabel: '2026-08',
+      budget: { since: new Date('2026-01-01T16:13:00Z'), cap: { amount: 400000, currency: 'USD' }, now: expect.any(Date) },
+    }));
+  });
+
+  it.each([
+    'budgetSince=2026-01-01T00:00:00Z', 'budgetCap=4000USD',
+    'budgetSince=invalid&budgetCap=4000USD', 'budgetSince=2026-02-30T00:00:00Z&budgetCap=4000USD',
+    'budgetSince=2026-01-01T00:00:00Z&budgetCap=4000CAD',
+    'budgetSince=2026-01-01T00:00:00Z&budgetCap=0USD',
+    'budgetSince=2026-01-01T00:00:00Z&budgetCap=4000USD&budgetCap=1USD',
+  ])('rejects invalid budget query without reading the ledger (%s)', async query => {
+    const res = await GET(makeReq(`https://kernel.test/usage/api/summary?${query}`));
+    expect(res.status).toBe(400);
+    expect(res.headers.get('Access-Control-Allow-Origin')).toBe('https://example.test');
+    expect(mocks.readUsageSummary).not.toHaveBeenCalled();
+  });
   it('fails closed on auth failure', async () => {
     mocks.requireAuth.mockResolvedValueOnce({ error: 'Unauthorized', status: 401 });
 
@@ -119,12 +141,13 @@ describe('GET /usage/api/summary', () => {
   });
 
   it('returns 500 without leaking the underlying failure when the query throws', async () => {
-    mocks.readUsageSummary.mockRejectedValueOnce(new Error('db down'));
+    mocks.readUsageSummary.mockRejectedValueOnce(new Error('sensitive provider failure'));
 
     const res = await GET(makeReq('https://kernel.test/usage/api/summary'));
 
     expect(res.status).toBe(500);
     expect(await res.json()).toEqual({ error: 'Usage summary unavailable' });
+    expect(mocks.logError).toHaveBeenCalledWith({ did: OWNER_DID }, 'usage summary query failed');
   });
 
   it('answers CORS pre-flight', async () => {

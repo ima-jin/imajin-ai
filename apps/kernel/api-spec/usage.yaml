@@ -65,6 +65,97 @@ components:
         drift: { type: number, description: "USD; sum of lib/usage/reconciliation's driftUsd for the same window" }
         rollup: { $ref: "#/components/schemas/UsageRollupPointer" }
         currency: { type: string, default: USD }
+        budget: { $ref: "#/components/schemas/UsageBudget" }
+    BudgetTotals:
+      type: object
+      required: [total, byVendor]
+      properties:
+        total: { type: number, description: "USD, retaining ledger precision" }
+        byVendor:
+          type: object
+          additionalProperties: { type: number }
+          description: "USD keyed by vendor; always includes warp, anthropic and moonshot, including zero totals"
+    UsageBudget:
+      type: object
+      description: |
+        Present only when both budgetSince and budgetCap are supplied.
+        Independent of window: includes billed rows whose periodStart is in
+        [budgetSince, asOf), with one captured server instant asOf.
+        Attribution is by periodStart, not prorated across periods: a daily
+        statement beginning before budgetSince is excluded, even if its period
+        overlaps the budget. Warp run lines are attributed to their recorded
+        run timestamp, including terminal child runs. API day and run rows
+        count; overlapping API month buckets do not. Manual/document/receipt
+        rows count once. Incurred, normal billed, drift and rollup are unchanged.
+        These are ledger actuals, not proof every provider has ingested.
+      required: [since, asOf, currency, cap, billed, remaining, weeks, sources, projection]
+      properties:
+        since: { type: string, format: date-time }
+        asOf: { type: string, format: date-time }
+        currency: { type: string, const: USD }
+        cap:
+          type: object
+          description: "Money: integer USD cents; budgetCap=4000USD becomes amount=400000"
+          required: [amount, currency]
+          properties:
+            amount: { type: integer, minimum: 1, maximum: 9007199254740991 }
+            currency: { type: string, const: USD }
+        billed: { $ref: "#/components/schemas/BudgetTotals" }
+        remaining: { type: number, description: "USD cap minus cumulative billed; negative explicitly indicates overspend" }
+        weeks:
+          type: array
+          description: "Every UTC Monday-based ISO week intersecting [since, asOf), including zero weeks; first/last bounds clipped to that interval"
+          items:
+            type: object
+            required: [week, from, to, billed, cumulative]
+            properties:
+              week: { type: string, pattern: '^\d{4}-W\d{2}$', description: "ISO week-year (may differ from calendar year)" }
+              from: { type: string, format: date-time, description: "Inclusive" }
+              to: { type: string, format: date-time, description: "Exclusive" }
+              billed: { $ref: "#/components/schemas/BudgetTotals" }
+              cumulative: { $ref: "#/components/schemas/BudgetTotals" }
+        sources:
+          type: object
+          description: |
+            Supported billed-source modes, not live grant/credential status or
+            ingestion freshness. Warp API requires the principal's sealed key
+            via warp:dispatch; Anthropic API requires anthropic:billing with an
+            organization Admin API key (covers that key's organization).
+            Moonshot exposes a balance snapshot, not period statements;
+            its billed mode is manual-only. Balance snapshots/deltas are never
+            booked as spend. Use POST /usage/api/billed with vendor=moonshot
+            for top-up receipts.
+          additionalProperties:
+            type: object
+            properties:
+              billed: { type: string, enum: [api, manual-only] }
+              grant: { type: string }
+              path: { type: string }
+              note: { type: string }
+        projection:
+          type: object
+          description: |
+            Straight-line ledger estimate, not a provider forecast. Sum billed
+            rows with periodStart in [max(since, asOf - 7 days), asOf), divide
+            by exactly seven days, even for a younger budget (no startup
+            annualization). Does not extrapolate missing provider statements.
+            next7Days is that rate times seven; projectedTotalIn7Days adds it
+            to cumulative billed. projectedCapDate = asOf + remaining/dailyRate
+            days only for positive rate and positive remaining, otherwise null
+            (also null if outside the representable date range). A cap already
+            reached has capReached=true and no fabricated future cap date.
+          required: [basis, from, to, denominatorDays, billed, dailyRate, next7Days, projectedTotalIn7Days, projectedCapDate, capReached]
+          properties:
+            basis: { type: string, const: trailing-7-days }
+            from: { type: string, format: date-time }
+            to: { type: string, format: date-time }
+            denominatorDays: { type: integer, const: 7 }
+            billed: { $ref: "#/components/schemas/BudgetTotals" }
+            dailyRate: { type: number, description: "USD/day" }
+            next7Days: { type: number, description: "Projected additional USD spend in the next 7 days" }
+            projectedTotalIn7Days: { type: number, description: "USD cumulative plus next7Days" }
+            projectedCapDate: { type: [string, "null"], format: date-time }
+            capReached: { type: boolean }
     UsageRollupAttestation:
       type: object
       description: |
@@ -255,6 +346,16 @@ paths:
           in: query
           schema: { type: string }
           description: "YYYY-MM or YYYY-MM-DD..YYYY-MM-DD (UTC); defaults to the current UTC month"
+        - name: budgetSince
+          in: query
+          schema: { type: string, format: date-time }
+          example: "2026-10-19T16:13:00Z"
+          description: "Optional, paired with budgetCap exactly once each. Valid past ISO timestamp with seconds, optional 1-3 fractional digits, and explicit Z or timezone offset. No calendar normalization or future/equal-now timestamp."
+        - name: budgetCap
+          in: query
+          schema: { type: string, pattern: '^(?:0|[1-9]\d*)(?:\.\d{1,2})?USD$' }
+          example: "4000USD"
+          description: "Optional, paired with budgetSince. Positive USD decimal followed immediately by USD, at most two decimals, no whitespace/sign/exponent/leading zeros; integer cents must fit Number.MAX_SAFE_INTEGER. No non-USD or overprecision rounding."
       responses:
         "200":
           description: Usage summary
@@ -262,7 +363,7 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/UsageSummary" }
         "400":
-          description: Malformed window
+          description: Malformed window or invalid/unpaired/repeated budget inputs
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
@@ -325,6 +426,10 @@ paths:
         `usage.billed` attestation on the principal's own DID binding the
         line item — NEVER writes to `usage.incurred` (D5: never merge, only
         reconcile).
+        For Moonshot/Kimi use vendor=moonshot and record USD top-up receipts
+        through this existing path. Its balance endpoint reports current
+        cash/voucher/available balances, not attributable billed spend; neither
+        balance snapshots nor inferred balance deltas are billed lines.
       security:
         - cookieAuth: []
         - bearerAuth: []
