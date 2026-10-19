@@ -42,6 +42,15 @@ const OPENROUTER_BRAIN: ResolvedBrain = {
   baseURL: 'https://openrouter.ai/api/v1',
 };
 
+const MOONSHOT_BRAIN: ResolvedBrain = {
+  connector: 'moonshot',
+  credentialDid: 'did:imajin:owner',
+  provider: 'openai',
+  modelId: 'kimi-k2-0711-preview',
+  apiKey: 'mock-moonshot-key',
+  baseURL: 'https://api.moonshot.ai/v1',
+};
+
 describe('forwardOpenAiCompatible', () => {
   let fetchMock: ReturnType<typeof vi.fn>;
 
@@ -52,6 +61,52 @@ describe('forwardOpenAiCompatible', () => {
 
   afterEach(() => {
     vi.unstubAllGlobals();
+  });
+
+  it('captures Moonshot JSON tokens for our rate-card meter, ignoring an upstream cost field', async () => {
+    mockRecordInferenceUsage.mockClear();
+    fetchMock.mockResolvedValueOnce(Response.json({
+      id: 'kimi-response', choices: [],
+      usage: { prompt_tokens: 1_000_000, completion_tokens: 1_000_000, cost: 999 },
+    }));
+    const response = await forwardOpenAiCompatible(MOONSHOT_BRAIN, { messages: [] }, { sessionId: 'kimi-session' });
+    expect(mockRecordInferenceUsage).toHaveBeenCalledOnce();
+    expect(mockRecordInferenceUsage).toHaveBeenCalledWith(expect.objectContaining({
+      principalDid: 'did:imajin:owner', provider: 'moonshot', model: 'kimi-k2-0711-preview',
+      tokensIn: 1_000_000, tokensOut: 1_000_000, explicitCostUsd: undefined,
+      sessionId: 'kimi-session', externalId: 'kimi-response',
+    }));
+    expect(fetchMock.mock.calls[0][0]).toBe('https://api.moonshot.ai/v1/chat/completions');
+    expect(await response.text()).not.toContain('mock-moonshot-key');
+  });
+
+  it('meters a fragmented final Moonshot SSE usage frame without a trailing newline', async () => {
+    mockRecordInferenceUsage.mockClear();
+    const wire = 'data: {"id":"kimi-stream","choices":[]}\n\ndata: {"usage":{"prompt_tokens":200,"completion_tokens":40,"cost":999}}';
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode(wire.slice(0, 65)));
+        controller.enqueue(new TextEncoder().encode(wire.slice(65)));
+        controller.close();
+      },
+    });
+    fetchMock.mockResolvedValueOnce(new Response(stream, { headers: { 'content-type': 'text/event-stream' } }));
+    const response = await forwardOpenAiCompatible(MOONSHOT_BRAIN, { messages: [], stream: true }, {});
+    expect(await response.text()).toBe(wire);
+    await vi.waitFor(() => expect(mockRecordInferenceUsage).toHaveBeenCalledOnce());
+    expect(mockRecordInferenceUsage).toHaveBeenCalledWith(expect.objectContaining({
+      provider: 'moonshot', tokensIn: 200, tokensOut: 40, externalId: 'kimi-stream', explicitCostUsd: undefined,
+    }));
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body).stream_options).toEqual({ include_usage: true });
+  });
+
+  it('does not infer Moonshot cost from an upstream figure when token counts are absent', async () => {
+    mockRecordInferenceUsage.mockClear();
+    fetchMock.mockResolvedValueOnce(Response.json({ id: 'kimi-unpriced', usage: { cost: 123 } }));
+    await forwardOpenAiCompatible(MOONSHOT_BRAIN, { messages: [] }, {});
+    expect(mockRecordInferenceUsage).toHaveBeenCalledWith(expect.objectContaining({
+      provider: 'moonshot', tokensIn: undefined, tokensOut: undefined, explicitCostUsd: undefined,
+    }));
   });
 
   it('forwards a non-streaming request to {baseURL}/chat/completions with the sealed key and resolved model', async () => {
