@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
-import { resolveReachRecipient } from '@/src/lib/access/reach-bearer';
-import { REACH_SCOPE, reachResourceUrls } from '@/src/lib/mcp/reach-resource';
+import { resolveReachDiscovery } from '@/src/lib/auth/reach-discovery';
+import { REACH_SCOPE } from '@/src/lib/mcp/reach-resource';
 
 export const dynamic = 'force-dynamic';
 const headers = { 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'no-store' };
@@ -9,15 +9,15 @@ const headers = { 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'no-store
 export async function GET(_request: Request, props: Readonly<{ params: Promise<{ handle: string }> }>) {
   try {
     const { handle } = await props.params;
-    if (!await resolveReachRecipient(handle)) {
+    const card = await resolveReachDiscovery(handle);
+    if (!card) {
       return NextResponse.json({ error: 'Reach recipient not found' }, { status: 404, headers });
     }
-    const urls = reachResourceUrls(handle);
     return NextResponse.json({
-      resource: urls.resource,
+      resource: card.transports.find((transport) => transport.id === 'mcp')!.endpoint,
       scopes_supported: [REACH_SCOPE],
       bearer_methods_supported: ['header'],
-      resource_documentation: urls.knock,
+      resource_documentation: card.onboarding.endpoint,
     }, { headers });
   } catch {
     return NextResponse.json({ error: 'Unable to resolve reach resource' }, { status: 503, headers });

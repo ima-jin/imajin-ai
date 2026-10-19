@@ -122,6 +122,21 @@ components:
         principalDid: { type: string }
         handle: { type: [string, "null"] }
         name: { type: [string, "null"] }
+        url: { type: string, format: uri, description: Canonical unified card URL. }
+        instructionsUrl: { type: string, format: uri, description: Public per-platform setup and share page. }
+        transports:
+          type: array
+          description: Live transports only. Authentication describes supported credentials, not private admission policy.
+          items:
+            type: object
+            required: [id, endpoint, protocol, authentication]
+            properties:
+              id: { type: string, enum: [mcp, openapi, signed] }
+              endpoint: { type: string, format: uri }
+              protocol: { type: string }
+              authentication: { type: array, items: { type: string } }
+              discovery: { type: string, format: uri }
+              tools: { type: array, items: { type: string } }
         reach:
           type: object
           required: [endpoint, protocol, description]
@@ -133,8 +148,28 @@ components:
               type: array
               items: { type: string }
               description: Only topic labels the principal opted to publish. Omitted when none are published; never gate rules.
-        authentication: { type: object, properties: { schemes: { type: array, items: { type: string } } } }
-        onboarding: { type: object, description: "Existing card onboarding metadata; reach-only bearer clients use /reach/{handle}/knock." }
+        authentication:
+          type: object
+          properties:
+            schemes: { type: array, items: { type: string } }
+            tiers:
+              type: array
+              description: Credential capabilities only. Anonymous access is discovery only; gate admission is never published.
+              items:
+                type: object
+                required: [id, description, transports]
+                properties:
+                  id: { type: string }
+                  description: { type: string }
+                  transports: { type: array, items: { type: string } }
+        onboarding:
+          type: object
+          description: Reach-only bearer clients knock without owner registration or per-agent acceptance.
+          properties:
+            flow: { type: string, const: knock }
+            endpoint: { type: string, format: uri }
+            flowDocument: { type: string, format: uri, description: Per-recipient reach-only onboarding contract. }
+            description: { type: string }
     ReachOnBehalfOf:
       type: object
       required: [platform, externalRef]
@@ -839,8 +874,9 @@ paths:
       operationId: reach_card
       summary: Read a person's public reach card
       description: |
-        Resolve a handle or DID to the existing per-person card and reach
-        endpoint. Only opted-in published topic labels appear, never gate rules.
+        Resolve a handle, @handle or DID to the per-person unified card and live
+        transports. Disabled reach returns 404. Only opted-in published topic
+        labels appear, never gate rules.
         The card is public; the two action operations below document current
         signed and reach-only bearer authentication independently of card prose.
       servers:

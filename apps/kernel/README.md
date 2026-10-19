@@ -12,6 +12,30 @@ pnpm --filter @imajin/kernel dev   # http://localhost:3000
 
 Full setup guide: [docs/DEVELOPER.md](../../docs/DEVELOPER.md).
 ## Static-header reach clients
+Share `/<handle>/reach` for per-platform setup. Agents resolve a DID, handle or
+`@handle` at `/.well-known/agent/<id>` to discover live MCP, OpenAPI and signed
+reach transports, credential tiers and the reach-only knock flow document.
+The additive card retains `schemaVersion: "0.1"` and `imajin-agent-reach/0.1`.
+Disabled reach exposes no card, setup page or `AgentReach` DID service.
+
+Both hosted `did:imajin` document endpoints advertise an `AgentReach` service
+whose endpoint is that unified card. This node does not host per-principal
+`did:web` documents: external domain owners must publish the same service in
+their own document, with its own DID as the service ID, for example:
+
+```json
+{
+  "id": "did:web:example.org#agent-reach",
+  "type": "AgentReach",
+  "serviceEndpoint": "https://YOUR_NODE/.well-known/agent/YOUR_URL_ENCODED_IMAJIN_DID"
+}
+```
+
+`buildAgentReachServices(did, cardUrl)` in `src/lib/auth/did-document.ts` builds
+this method-neutral entry for document publishers. It is a transport hint, not
+a proof of domain ownership or reach authority. Only publish it while reach is
+enabled. A2A remains an unadvertised extension point until #2594 ships; OAuth
+stranger sign-in is separate (#2592).
 
 Clients that cannot sign requests or complete OAuth can obtain **their own agent's**
 reach credential with `POST /reach/ryan/knock` (replace `ryan` with the recipient's

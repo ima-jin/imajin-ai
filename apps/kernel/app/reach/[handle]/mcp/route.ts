@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { resolveReachBearer, resolveReachRecipient } from '@/src/lib/access/reach-bearer';
 import { handleMcpRpc } from '@/src/lib/mcp/server';
 import { createReachSurface } from '@/src/lib/mcp/reach';
+import { resolveReachDiscovery } from '@/src/lib/auth/reach-discovery';
 import { REACH_GATED_TOOLS, REACH_SCOPE, reachResourceUrls } from '@/src/lib/mcp/reach-resource';
 import {
   headerMismatchError, httpStatusForModernResponse, isModernProtocolVersion,
@@ -33,9 +34,11 @@ async function credentialFor(request: NextRequest, body: JsonRpcMessage, princip
   return resolveReachBearer(authorization.slice(7), principalDid,
     body.params?.name === 'reach_status' ? 'status' : 'send');
 }
+function isGatedCall(body: JsonRpcMessage) {
+  return body.method === 'tools/call' && REACH_GATED_TOOLS.has(String(body.params?.name));
+}
 function needsCredential(body: JsonRpcMessage, declared: string | undefined) {
-  return body.method === 'tools/call' && REACH_GATED_TOOLS.has(String(body.params?.name))
-    && (declared === undefined || isSupportedProtocolVersion(declared));
+  return isGatedCall(body) && (declared === undefined || isSupportedProtocolVersion(declared));
 }
 
 function isMessage(body: unknown): body is JsonRpcMessage {
@@ -68,19 +71,26 @@ export async function POST(request: NextRequest, props: Props) {
   }
   try {
     const { handle } = await props.params;
-    const principal = await resolveReachRecipient(handle);
+    // Opt-out hides discovery, not requester-private receipts or existing reach authority.
+    const gatedCall = isGatedCall(body);
+    const card = gatedCall ? null : await resolveReachDiscovery(handle);
+    if (!card && !gatedCall) return NextResponse.json({ error: 'Reach recipient not found' }, { status: 404, headers });
+    const principal = await resolveReachRecipient(card?.principalDid ?? handle);
     if (!principal) return NextResponse.json({ error: 'Reach recipient not found' }, { status: 404, headers });
+    const canonical = card?.handle ?? card?.principalDid ?? handle;
     let credential = null;
     if (needsCredential(body, declared)) {
       credential = await credentialFor(request, body, principal.id);
-      if (!credential) return unauthorized(handle);
+      if (!credential) return unauthorized(canonical);
     }
     const outcome = { status: 200 };
-    const surface = createReachSurface(principal, handle, credential, outcome);
+    const surface = createReachSurface({
+      ...principal, handle: card?.handle ?? null, name: card?.name ?? null,
+    }, canonical, credential, outcome);
     const response = await handleMcpRpc(body, {
       did: credential?.requesterDid ?? '', appDid: '', scopes: new Set(),
     }, surface);
-    if (outcome.status === 401) return unauthorized(handle);
+    if (outcome.status === 401) return unauthorized(canonical);
     if (response === null) return new NextResponse(null, { status: 202, headers: responseHeaders });
     return NextResponse.json(response, {
       status: outcome.status === 200 ? httpStatusForModernResponse(response) : outcome.status,
