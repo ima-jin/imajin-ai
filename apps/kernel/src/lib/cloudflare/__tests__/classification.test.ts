@@ -201,14 +201,14 @@ describe('read-only runtime and trusted registry loading', () => {
   });
 
 
-  it('allows reasoned source overrides only for ambiguity, never a known hazard', () => {
+  it('does not accept source comments as an override, even for ambiguity', () => {
     const dir = fixture({
       'app/api/ambiguous/route.ts': '/* x-edge-class: proxy-unsafe\nx-edge-reason: Operator deadline has no bound */\nexport const maxDuration = Number(process.env.DEADLINE); export function POST(){}',
       'app/api/stream/route.ts': '/* x-edge-class: proxy-bypass\nx-edge-reason: Claimed safe */\nexport function GET(){return new Response(new ReadableStream())}',
       'app/api/broken/route.ts': '/* x-edge-class: proxy-bypass\nx-edge-reason: Claimed safe */\nexport const GET = missing;',
     });
     const routes = scanKernelRoutes(dir);
-    expect(routes.find(route => route.path === '/api/ambiguous')?.class).toBe('proxy-unsafe');
+    expect(routes.find(route => route.path === '/api/ambiguous')?.class).toBe('unclassified');
     expect(routes.find(route => route.path === '/api/stream')?.class).toBe('proxy-unsafe');
     expect(routes.find(route => route.path === '/api/broken')?.class).toBe('unclassified');
   });

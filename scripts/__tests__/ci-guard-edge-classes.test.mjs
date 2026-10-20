@@ -47,4 +47,27 @@ describe('edge class CI guard', () => {
     expect(result.routes.some(route => route.path === '/ws' && route.class === 'proxy-unsafe')).toBe(true);
     expect(result.routes.some(route => route.path.startsWith('/.well-known/'))).toBe(true);
   }, 120_000);
+
+  it.each([
+    ['websocket', 'export function GET(){ return new WebSocket("wss://fixture.invalid"); }'],
+    ['upload', 'export async function POST(request){ const file = await request.formData(); return file.arrayBuffer(); }'],
+  ])('fails an implemented new %s route on a prospective proxied host', (_name, text) => {
+    const kernel = fixture({ 'app/api/new/route.ts': text });
+    const dnsOnly = checkEdgeClasses(kernel);
+    expect(dnsOnly.routes[0].class).toBe('proxy-unsafe');
+    expect(dnsOnly.failures).toEqual([]);
+    const proxied = checkEdgeClasses(kernel, { proxied: true });
+    expect(proxied.failures[0].source).toBe('app/api/new/route.ts');
+  });
+
+  it('checks ambiguous spec-only operations and resolves source ambiguity via OpenAPI, not comments', () => {
+    const kernel = fixture({
+      'app/api/new/route.ts': 'export const maxDuration = Number(process.env.DEADLINE); export function POST(){}',
+      'api-spec/new.yaml': 'servers: [{url: /}]\npaths:\n  /api/new:\n    post:\n      x-edge-class: proxy-unsafe\n      x-edge-reason: Unbounded operator-configured request deadline\n',
+    });
+    expect(checkEdgeClasses(kernel).failures).toEqual([]);
+    writeFileSync(join(kernel, 'api-spec/new.yaml'), 'paths:\n  /unknown:\n    get:\n      $ref: https://untrusted.invalid/operation\n');
+    const result = checkEdgeClasses(kernel);
+    expect(result.failures.some(route => route.source === 'api-spec/new.yaml')).toBe(true);
+  });
 });

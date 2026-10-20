@@ -9,6 +9,8 @@ export interface ClassifiedRoute {
   class: EdgeClass;
   reason: string;
   source: string;
+  /** Internal derivation evidence: only unresolved bounds/loaders may be overridden. */
+  overrideAllowed?: boolean;
 }
 export interface HostManifest {
   hostname: string;
@@ -18,12 +20,12 @@ export const EDGE_DOCS = {
   sockets: 'https://developers.cloudflare.com/network/websockets/',
   read: 'https://developers.cloudflare.com/fundamentals/reference/connection-limits/',
   upload: 'https://developers.cloudflare.com/support/troubleshooting/http-status-codes/4xx-client-error/error-413/',
+  streaming: 'https://developers.cloudflare.com/rules/configuration-rules/response-body-inspection/',
 } as const;
 export const READ_LIMIT_REASON = `Conservative 100s issue threshold (Cloudflare documents a 125s proxy read timeout): ${EDGE_DOCS.read}`;
 export const UPLOAD_REASON = `Upload body must fit the plan envelope: Free/Pro 100MB, Business 200MB, Enterprise up to 5GB; multipart overhead also counts. ${EDGE_DOCS.upload}`;
 const METHODS = new Set(['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS']);
 const CLASSES = new Set<EdgeClass>(['cacheable', 'proxy-bypass', 'proxy-unsafe', 'never-proxied', 'unclassified']);
-const BLOCKING_OVERRIDE = new Set<EdgeClass>(['proxy-unsafe', 'never-proxied', 'unclassified']);
 
 function walk(node: ts.Node, visit: (node: ts.Node) => void): void {
   visit(node);
@@ -34,22 +36,6 @@ function exported(node: ts.Node): boolean {
   return ts.canHaveModifiers(node) && !!ts.getModifiers(node)?.some(m => m.kind === ts.SyntaxKind.ExportKeyword);
 }
 
-/** A narrow escape hatch in the route source, not a hand-maintained manifest. */
-function sourceOverride(file: ts.SourceFile): { class: EdgeClass; reason: string } | undefined {
-  const scanner = ts.createScanner(ts.ScriptTarget.Latest, false, ts.LanguageVariant.Standard, file.text);
-  let classification: EdgeClass | undefined;
-  let reason: string | undefined;
-  for (let token = scanner.scan(); token !== ts.SyntaxKind.EndOfFileToken; token = scanner.scan()) {
-    if (![ts.SyntaxKind.SingleLineCommentTrivia, ts.SyntaxKind.MultiLineCommentTrivia].includes(token)) continue;
-    const text = scanner.getTokenText().replace(/^\/[/*]/, '').replace(/\*\/$/, '');
-    const declared = /^\s*\*?\s*x-edge-class:\s*([a-z-]+)\s*$/m.exec(text)?.[1] as EdgeClass | undefined;
-    const why = /^\s*\*?\s*x-edge-reason:\s*(\S[^\r\n]*)/m.exec(text)?.[1]?.trim();
-    if (declared) classification = declared;
-    if (why) reason = why;
-  }
-  return classification && CLASSES.has(classification) && classification !== 'cacheable' && reason
-    ? { class: classification, reason } : undefined;
-}
 
 export function scanKernelRoutes(kernel: string): ClassifiedRoute[] {
   const graph = new SourceGraph(kernel);
@@ -67,7 +53,7 @@ function specTraits(op: Record<string, unknown>): Pick<ClassifiedRoute, 'class' 
     return { class: 'proxy-unsafe', reason: `WebSocket requires observed heartbeat/reconnect evidence. ${EDGE_DOCS.sockets}` };
   }
   if (encoded.includes('multipart/form-data') || encoded.includes('"format":"binary"')) return { class: 'proxy-unsafe', reason: UPLOAD_REASON };
-  if (encoded.includes('text/event-stream')) return { class: 'proxy-unsafe', reason: `SSE has no proven bounded lifetime. ${READ_LIMIT_REASON}` };
+  if (encoded.includes('text/event-stream')) return { class: 'proxy-unsafe', reason: `SSE requires verified heartbeat and buffering configuration; unknown lifetime stays DNS-only. ${EDGE_DOCS.streaming} ${READ_LIMIT_REASON}` };
   if (encoded.includes('"$ref"')) return { class: 'unclassified', reason: 'OpenAPI reference needs source or an explicit class and reason' };
   return { class: 'proxy-bypass', reason: 'All public or authenticated API operations bypass cache' };
 }
@@ -79,7 +65,8 @@ function applySpecOverride(op: Record<string, unknown>, result: Pick<ClassifiedR
   if (!CLASSES.has(override) || typeof reason !== 'string' || !reason.trim() || override === 'cacheable') {
     return { class: 'unclassified', reason: 'Invalid x-edge-class override: API cannot be cacheable and a reason is required' };
   }
-  return result.class === 'unclassified' ? { class: override, reason } : result;
+  const restrictive = override === 'proxy-unsafe' || override === 'never-proxied' || override === 'unclassified';
+  return result.class === 'unclassified' || restrictive ? { class: override, reason } : result;
 }
 
 interface Facts {
@@ -96,13 +83,31 @@ function merge(target: Facts, other: Facts): void {
   target.session ||= other.session;
 }
 
+/** Do not mistake string-comparison vocabulary in tooling for real headers. */
+function transportStrings(file: ts.SourceFile): Set<string> {
+  const result = new Set<string>();
+  walk(file, node => {
+    if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)
+      && ['get', 'set', 'append', 'getHeader', 'setHeader', 'on', 'once'].includes(node.expression.name.text)) {
+      for (const argument of node.arguments.slice(0, 2)) {
+        if (ts.isStringLiteralLike(argument)) result.add(argument.text.toLowerCase());
+      }
+    }
+    if (ts.isPropertyAssignment(node)) {
+      const key = node.name.getText(file).replaceAll('"', '').replaceAll("'", '').toLowerCase();
+      if (key === 'content-type' && ts.isStringLiteralLike(node.initializer)) result.add(node.initializer.text.toLowerCase());
+    }
+  });
+  return result;
+}
+
 /** Syntax, not comments or filename guesses, is the source of transport traits. */
 export function inspectSource(text: string, filename = 'route.ts'): Facts {
   const file = ts.createSourceFile(filename, text, ts.ScriptTarget.Latest, true, filename.endsWith('tsx') ? ts.ScriptKind.TSX : ts.ScriptKind.TS);
   const result = facts();
   const diagnostics = (file as ts.SourceFile & { parseDiagnostics: readonly ts.Diagnostic[] }).parseDiagnostics;
   if (diagnostics.length) result.missing.add('Source contains syntax errors');
-  const strings = new Set<string>();
+  const strings = transportStrings(file);
   const names = new Set<string>();
   const declared = new Set<string>();
   walk(file, node => {
@@ -117,7 +122,6 @@ export function inspectSource(text: string, filename = 'route.ts'): Facts {
     'encodeURIComponent', 'decodeURIComponent', 'encodeURI', 'decodeURI', 'atob', 'btoa', 'queueMicrotask',
     'structuredClone', 'getComputedStyle', 'requestAnimationFrame', 'cancelAnimationFrame', 'alert', 'confirm']);
   walk(file, node => {
-    if (ts.isStringLiteralLike(node)) strings.add(node.text.toLowerCase());
     if (ts.isIdentifier(node)) names.add(node.text);
     if (ts.isCallExpression(node) || ts.isNewExpression(node) || ts.isAwaitExpression(node)) result.calls = true;
     if (ts.isCallExpression(node) && ts.isIdentifier(node.expression)
@@ -133,11 +137,14 @@ export function inspectSource(text: string, filename = 'route.ts'): Facts {
       if (delay && ts.isNumericLiteral(delay) && Number(delay.text) > 100_000) result.reasons.add(READ_LIMIT_REASON);
     }
   });
-  if (names.has('WebSocket') || names.has('WebSocketServer') || names.has('handleUpgrade') || strings.has('upgrade')) {
+  // Provider support alone is not an origin liveness/reconnect implementation.
+  const socketCompatible = names.has('ping') && names.has('setInterval')
+    && strings.has('pong') && strings.has('close') && names.has('reconnect');
+  if (!socketCompatible && (names.has('WebSocket') || names.has('WebSocketServer') || names.has('handleUpgrade') || strings.has('upgrade'))) {
     result.reasons.add(`WebSockets are supported on all Cloudflare plans, but observed heartbeat AND reconnect evidence is required before proxying; source alone is not evidence. ${EDGE_DOCS.sockets}`);
   }
   if (strings.has('text/event-stream') || names.has('ReadableStream') || names.has('TransformStream')) {
-    result.reasons.add(`SSE/streaming connection has no proven bounded lifetime. ${READ_LIMIT_REASON}`);
+    result.reasons.add(`SSE/streaming connection needs verified heartbeat and buffering configuration. ${EDGE_DOCS.streaming} ${READ_LIMIT_REASON}`);
   }
   if (names.has('arrayBuffer') || strings.has('multipart/form-data') || (names.has('formData') && (names.has('Blob') || names.has('File')))) {
     result.reasons.add(`Body-consuming upload requires a verified complete request-size bound before proxying. ${UPLOAD_REASON}`);
@@ -221,7 +228,7 @@ class SourceGraph {
       const resolved = resolveImport(specifier, filename, this.kernel);
       if (resolved) value.imports.push(resolved);
       else if (specifier.startsWith('.') || specifier.startsWith('@/')) value.facts.missing.add(`Unresolved source import: ${specifier}`);
-      else if (!specifier.startsWith('node:') && !['next/server', 'next/headers', 'next/navigation', 'react', 'react/jsx-runtime', 'typescript'].includes(specifier)) {
+      else if (!specifier.startsWith('node:') && !['next/server', 'next/headers', 'next/navigation', 'react', 'react/jsx-runtime', 'typescript', 'ws'].includes(specifier)) {
         value.facts.reasons.add(`Opaque dependency ${specifier}: end-to-end transport/deadline cannot be proven; retain DNS-only`);
       }
     });
@@ -291,13 +298,6 @@ function classifyTraits(traits: Facts, entry: SourceEntry, page: boolean): Pick<
   return { class: 'cacheable', reason: 'Literal public page without session or executable dependencies' };
 }
 
-function applySourceOverride(traits: Facts, entry: SourceEntry, result: Pick<ClassifiedRoute, 'class' | 'reason'>): typeof result {
-  const override = sourceOverride(entry.file);
-  if (result.class !== 'unclassified' || !override) return result;
-  const ambiguous = [...traits.missing].every(reason => reason.startsWith('Non-literal maxDuration') || reason.startsWith('Computed module loading'));
-  if (!ambiguous || (traits.reasons.size && !BLOCKING_OVERRIDE.has(override.class))) return result;
-  return { class: override.class, reason: [override.reason, ...[...traits.reasons].sort()].join('; ') };
-}
 
 function inheritedTraits(app: string, filename: string, graph: SourceGraph): Facts {
   const result = graph.inspect(filename);
@@ -319,8 +319,11 @@ function classifyRouteFile(kernel: string, filename: string, graph: SourceGraph)
   if (page) methods.add('GET');
   if (!methods.size) return [{ path: routePath(app, filename), method: '*', class: 'unclassified', reason: 'No statically enumerable HTTP exports', source: relative(kernel, filename) }];
   const traits = inheritedTraits(app, filename, graph);
-  const result = applySourceOverride(traits, entry, classifyTraits(traits, entry, page));
-  return [...methods].sort().map(method => ({ path: routePath(app, filename), method, ...result, source: relative(kernel, filename) }));
+  const result = classifyTraits(traits, entry, page);
+  const overrideAllowed = result.class === 'unclassified' && !traits.reasons.size
+    && [...traits.missing].every(reason => reason.startsWith('Non-literal maxDuration') || reason.startsWith('Computed module loading'));
+  return [...methods].sort().map(method => ({ path: routePath(app, filename), method, ...result,
+    ...(overrideAllowed ? { overrideAllowed: true } : {}), source: relative(kernel, filename) }));
 }
 
 function upgradePaths(file: ts.SourceFile): string[] {
@@ -410,4 +413,38 @@ export function classifySpec(spec: unknown, source: string, prefix = ''): Classi
     }
   }
   return deduplicateRoutes(routes);
+}
+
+export interface EdgeSpecDocument { document: unknown; source: string; prefix: string }
+
+/** Server paths are topology; no server or external reference is fetched here. */
+export function specRoutePrefix(document: unknown, fallback = ''): string {
+  const server = (document as { servers?: { url?: string }[] } | null)?.servers?.[0]?.url;
+  return server ? new URL(server, 'https://spec.invalid').pathname.replace(/\/$/, '') : fallback;
+}
+
+function explicitOverrides(spec: EdgeSpecDocument): Map<string, ClassifiedRoute> {
+  const overrides = new Map<string, ClassifiedRoute>();
+  const paths = (spec.document as { paths?: Record<string, unknown> } | null)?.paths ?? {};
+  for (const [path, item] of Object.entries(paths)) {
+    if (!item || typeof item !== 'object') continue;
+    for (const [method, value] of Object.entries(item)) {
+      if (!METHODS.has(method.toUpperCase()) || !value || typeof value !== 'object') continue;
+      const op = value as Record<string, unknown>;
+      if (op['x-edge-class'] === undefined) continue;
+      const classified = classifySpec({ paths: { [path]: { [method]: op } } }, spec.source, spec.prefix)[0];
+      if (classified && classified.class !== 'unclassified') overrides.set(`${method.toUpperCase()} ${spec.prefix}${path}`, classified);
+    }
+  }
+  return overrides;
+}
+
+/** Only operation-level explicit overrides resolve source ambiguity, never hazards. */
+export function mergeSourceAndSpecs(source: ClassifiedRoute[], specs: EdgeSpecDocument[]): ClassifiedRoute[] {
+  const overrides = new Map(specs.flatMap(spec => [...explicitOverrides(spec)]));
+  const resolved = source.map(route => {
+    const override = route.overrideAllowed ? overrides.get(`${route.method} ${route.path}`) : undefined;
+    return override ? { ...override, reason: `Explicit OpenAPI ambiguity override: ${override.reason}` } : route;
+  });
+  return deduplicateRoutes([...resolved, ...specs.flatMap(spec => classifySpec(spec.document, spec.source, spec.prefix))]);
 }

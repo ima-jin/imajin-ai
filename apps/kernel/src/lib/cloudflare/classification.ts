@@ -10,8 +10,8 @@ import type { CacheRule, DnsRecord } from '../../../app/jin/cloudflare-client';
 import { loadRegistryEdgeSpec } from './edge-spec-loader';
 import { listRegisteredEdgeApps, type RegisteredEdgeApp } from './edge-registry';
 import {
-  classifySpec, deduplicateRoutes, scanKernelRoutes,
-  type ClassifiedRoute, type HostManifest,
+  classifySpec, deduplicateRoutes, scanKernelRoutes, mergeSourceAndSpecs, specRoutePrefix,
+  type ClassifiedRoute, type HostManifest, type EdgeSpecDocument,
 } from './classification-source';
 
 export type { ClassifiedRoute, HostManifest, EdgeClass } from './classification-source';
@@ -185,7 +185,9 @@ export async function deriveHostManifests(domain: string, options: Classificatio
     manifests.push({ hostname, routes: [{ path: '/.well-known/acme-challenge/{token}', method: '*', class: 'never-proxied',
       reason: 'Caddy TLS-ALPN validation needs direct origin TLS; HTTP cache bypass cannot preserve the ALPN handshake', source: 'trusted TLS configuration' }] });
   }
-  manifests[0].routes.push(...localSpecRoutes());
+  const local = localSpecInventory();
+  manifests[0].routes = mergeSourceAndSpecs(manifests[0].routes, local.documents);
+  manifests[0].routes.push(...local.routes);
   const services = await serviceManifests(kernelHost, origin, options);
   const apps = await registeredManifests(domain, kernelHost, origin, options);
   manifests.push(...services.manifests, ...apps.manifests);
@@ -194,8 +196,9 @@ export async function deriveHostManifests(domain: string, options: Classificatio
 }
 
 /** Enumerate all local specs, including connectors absent from SERVICES. */
-function localSpecRoutes(): ClassifiedRoute[] {
+function localSpecInventory(): { documents: EdgeSpecDocument[]; routes: ClassifiedRoute[] } {
   const routes: ClassifiedRoute[] = [];
+  const documents: EdgeSpecDocument[] = [];
   for (const service of listApiSpecServices()) {
     const raw = readApiSpec(service);
     if (!raw || raw.truncated) {
@@ -204,12 +207,12 @@ function localSpecRoutes(): ClassifiedRoute[] {
     }
     try {
       const document = parseYaml(raw.content);
-      routes.push(...classifySpec(document, `api-spec/${service}.yaml`, localSpecPrefix(document, service)));
+      documents.push({ document, source: `api-spec/${service}.yaml`, prefix: specRoutePrefix(document, `/${service}`) });
     } catch {
       routes.push({ path: `/${service}`, method: '*', class: 'unclassified', reason: 'Kernel spec cannot be parsed', source: `api-spec/${service}.yaml` });
     }
   }
-  return routes;
+  return { documents, routes };
 }
 
 async function serviceManifests(kernelHost: string, origin: string | null, options: ClassificationOptions) {
@@ -252,12 +255,6 @@ async function registeredManifests(domain: string, kernelHost: string, origin: s
   return { manifests, warnings };
 }
 
-function localSpecPrefix(document: unknown, service: string): string {
-  const spec = document as { servers?: { url?: string }[] } | null;
-  const server = spec?.servers?.[0]?.url;
-  if (!server) return `/${service}`;
-  return new URL(server, 'https://spec.invalid').pathname.replace(/\/$/, '');
-}
 
 async function serviceSpec(service: ServiceDefinition, url: URL, options: ClassificationOptions, warnings: string[]): Promise<{ document: unknown; source: string }> {
   let document: unknown;
