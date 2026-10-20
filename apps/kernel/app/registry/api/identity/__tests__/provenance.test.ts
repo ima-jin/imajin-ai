@@ -27,7 +27,7 @@ const client = new PGlite();
 const APP = 'did:imajin:registeringapp';
 const FOREIGN = 'did:imajin:foreignapp';
 const root = resolve(__dirname, '../../../../../../..');
-const migration = readFileSync(resolve(root, 'migrations/0212_identity_registering_app.sql'), 'utf8');
+const migration = readFileSync(resolve(root, 'migrations/archive/pre-kernel-baseline/0212_identity_registering_app.sql'), 'utf8');
 
 function register(ref = 'entity', metadata: Record<string, unknown> = {}) {
   return POST(new Request('https://kernel.test/registry/api/identity', {

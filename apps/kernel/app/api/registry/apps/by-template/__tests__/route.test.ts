@@ -27,7 +27,7 @@ vi.setConfig({ testTimeout: 30_000, hookTimeout: 30_000 });
 let client: PGlite;
 const TEMPLATE = 'ima-jin/imajin-app-template';
 const SYNC = { templateRef: 'v2.0.0', templateSyncedAt: '2026-10-17T17:00:00Z' };
-const migration = readFileSync(new URL('../../../../../../../../migrations/0206_registry_apps_template_lineage.sql', import.meta.url), 'utf8');
+const migration = readFileSync(new URL('../../../../../../../../migrations/archive/pre-kernel-baseline/0206_registry_apps_template_lineage.sql', import.meta.url), 'utf8');
 
 beforeEach(async () => {
   vi.clearAllMocks();

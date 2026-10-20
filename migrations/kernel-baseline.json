@@ -828,6 +828,58 @@
     {
       "filename": "0203_registry_apps_featured.sql",
       "checksum": "c43c7d65a96de72dcb3c9e3b1b42732c8d641676b9591dbe3fc38a03f508a3e4"
+    },
+    {
+      "filename": "0204_registry_apps_visibility.sql",
+      "checksum": "514038753f8f99d35aff52a6e5edd3bec71e939d91649f984bf2019a53773679"
+    },
+    {
+      "filename": "0205_registry_apps_profile_widget.sql",
+      "checksum": "d8775ea769882d4945eb654c9701fb3edada9511f72dc200e2fef55d9e5bf213"
+    },
+    {
+      "filename": "0206_registry_apps_template_lineage.sql",
+      "checksum": "f64c2bfd674126769e75f6fa4a15b1bd0a12260181bc2bbced24514994c5b959"
+    },
+    {
+      "filename": "0207_seed_agent_reach_throttled_chain.sql",
+      "checksum": "3a4c0bb43e0b646265128eef30111ad345eda376edb143529a71b639de5e1d8b"
+    },
+    {
+      "filename": "0208_seed_vault_key_imported_chain.sql",
+      "checksum": "a6f4b144cffd6982f98feec437748ce6b2059538595e7c5d73ac366bac012898"
+    },
+    {
+      "filename": "0209_chat_conversations_app_binding.sql",
+      "checksum": "fb70d95121257dcbf6cd0c67fb6f7256b00c8ae2a1bd8379180a68fbcede0a6a"
+    },
+    {
+      "filename": "0210_mail_senders.sql",
+      "checksum": "fc248f83b1bcb9eb1f8b02807ac5d78529466909de71adaa40dc7fa43182530f"
+    },
+    {
+      "filename": "0211_domain_bindings.sql",
+      "checksum": "7f1d27b6c51b9cf98cc04daa52aa9febf367ba862e6d7d760270c55c7791a332"
+    },
+    {
+      "filename": "0212_identity_registering_app.sql",
+      "checksum": "e08fecf258c8a83ee33c196a957d3449185875e9f405d8e3e2894dc768c9b9fc"
+    },
+    {
+      "filename": "0213_connection_relationship_labels.sql",
+      "checksum": "fbdb2294e0fa53dca553aa7853f4cffe17921b9e1bc794038be1f4d17536f611"
+    },
+    {
+      "filename": "0214_usage_incurred_pricing.sql",
+      "checksum": "1730e01f5191263853b28c611636fc721ada25b7aa40e197e39c95963a602ad2"
+    },
+    {
+      "filename": "0215_registry_apps_sign_in_audience.sql",
+      "checksum": "5ca43434e53ba26c1ba31282489d2d99abaa34aa5733456c9c8d771a6f2b73de"
+    },
+    {
+      "filename": "0216_restore_conversation_members_unique.sql",
+      "checksum": "322ec3f44f4637f92fc2b9bdc2961d795f71ae8e8f5b81f322b521d3829b64f5"
     }
   ]
 }

@@ -84,7 +84,7 @@ beforeAll(async () => {
     await pg.exec(`CREATE TABLE "${config.schema}"."${config.name}" (${columns.join(', ')})`);
   }
   // Apply the actual deploy migration twice, including its DB CHECK constraints.
-  const migration = await readFile('migrations/0213_connection_relationship_labels.sql', 'utf8');
+  const migration = await readFile('migrations/archive/pre-kernel-baseline/0213_connection_relationship_labels.sql', 'utf8');
   await pg.exec(migration);
   await pg.exec(migration);
 }, 30_000);

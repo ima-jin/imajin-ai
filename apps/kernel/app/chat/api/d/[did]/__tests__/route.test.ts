@@ -44,8 +44,8 @@ const OTHER_OWNER = 'did:imajin:othercreator';
 const EVENT = 'did:imajin:eventidentity';
 const SESSION = 'eyJ0eXAiOiJKV1QifQ.fixture-session.fixture-signature';
 const root = resolve(__dirname, '../../../../../../../..');
-const migration = readFileSync(resolve(root, 'migrations/0209_chat_conversations_app_binding.sql'), 'utf8');
-const provenanceMigration = readFileSync(resolve(root, 'migrations/0212_identity_registering_app.sql'), 'utf8');
+const migration = readFileSync(resolve(root, 'migrations/archive/pre-kernel-baseline/0209_chat_conversations_app_binding.sql'), 'utf8');
+const provenanceMigration = readFileSync(resolve(root, 'migrations/archive/pre-kernel-baseline/0212_identity_registering_app.sql'), 'utf8');
 let client: PGlite;
 let sessionDid: string | null;
 
@@ -87,7 +87,7 @@ beforeAll(async () => {
   client = new PGlite({ extensions: { pgcrypto } });
   await client.waitReady;
   for (const file of ['0001_seed.sql', '0007_registry_apps.sql', '0179_registry_apps_approved_service_scopes.sql']) {
-    await client.exec(readFileSync(resolve(root, 'migrations', file), 'utf8'));
+    await client.exec(readFileSync(resolve(root, 'migrations/archive/pre-kernel-baseline', file), 'utf8'));
   }
   await client.exec(migration);
   await client.exec(provenanceMigration);

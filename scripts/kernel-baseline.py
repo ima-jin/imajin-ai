@@ -164,6 +164,14 @@ def verify(scratch, content):
         raise RuntimeError("Full-history and baseline kernel catalogs differ")
     if scratch.sql("history", EXTENSIONS) != scratch.sql("fresh", EXTENSIONS):
         raise RuntimeError("Full-history and baseline required extensions differ")
+    for db in ("history", "fresh"):
+        membership_index = scratch.sql(db, """
+            SELECT indisunique AND indisvalid AND pg_get_indexdef(indexrelid) =
+              'CREATE UNIQUE INDEX idx_conv_members_unique ON chat.conversation_members USING btree (conversation_did, member_did)'
+            FROM pg_index WHERE indexrelid = 'chat.idx_conv_members_unique'::regclass
+        """)
+        if membership_index.strip() != "t":
+            raise RuntimeError(f"{db}: migration 0216 membership unique index is missing or differs")
     if seed_rows(scratch, "history") != seed_rows(scratch, "fresh"):
         raise RuntimeError("Full-history and baseline static seed rows differ")
     apps = scratch.sql("fresh", """SELECT nspname FROM pg_namespace
@@ -171,6 +179,7 @@ def verify(scratch, content):
     if apps.strip():
         raise RuntimeError("Fresh kernel contains app-owned schemas")
     print("PASS: baseline alone matches full-history kernel catalogs and static seeds; no app schemas", flush=True)
+    print("PASS: history and baseline-only fresh init retain the exact valid membership unique index from 0216", flush=True)
 
 
 def install_runner(scratch):

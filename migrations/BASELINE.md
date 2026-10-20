@@ -1,6 +1,6 @@
 # Kernel baseline squash (#2525, #1991 phase 3)
 
-## Scope and merge hold
+## Scope and current cut
 Kernel schemas: `auth`, `chat`, `connections`, `consent_requests`, `github`,
 `inference`, `kernel`, `media`, `money`, `notify`, `operator`, `pay`, `profile`,
 `registry`, `relay`, `usage`, `www`. App schemas/ledgers belong in app repos.
@@ -13,10 +13,18 @@ is superseded. #1991 and #2517 are closed. `kernel-baseline.json` records the
 exact cut and checksums. Future migrations use numbers above its highest
 historical number, not `0002`.
 
-**Merge waits for Jin's post-release prod re-diff (#2865) and actual
-dev-restore dry run.** Synthetic CI evidence does not claim a real dev backup
-passed. No live environment was accessed. Requested train: v0.8.19; package
-versions remain release-workflow controlled.
+Cycle **v0.8.26**: the regenerated cut absorbs all **213** historical files
+through **`0216_restore_conversation_members_unique.sql`**, including
+0201–0216 unchanged. Fresh initialization must match full-history replay,
+including `chat.idx_conv_members_unique` on `(conversation_did, member_did)`.
+The next migration number is 0217.
+
+The operator hold is lifted: #2865 closed via PR #2990 (0216); the reported
+prod re-diff is structurally clean apart from six name-only constraint
+differences, recorded under **Known name-only drift** in PR #2886. This pass
+does not rename constraints. No live environment was accessed; the synthetic
+restore proof below is not a claim that this agent ran a real dev backup.
+Package versions remain release-workflow controlled.
 
 ## Reproduce/finalize
 Prerequisites: Linux, Docker, Python 3, Node 22, pnpm 9. No env files, real
@@ -132,9 +140,10 @@ Failure means stop and leave the PR unmerged. Attach only a sanitized error
 and exact SHA to #2525, never backup contents/rows/credentials. Investigate
 missing history/checksum errors; do not edit the ledger to bypass them.
 Record successful command, exact SHA, backup provenance/time (not contents),
-PostgreSQL version and PASS result in #2525. Jin separately records the
-post-release #2865 prod re-diff. These operator results satisfy the real
-dev-restore acceptance and merge hold, not this PR's synthetic evidence.
+PostgreSQL version and PASS result in #2525. The post-release prod re-diff
+and lifted hold are recorded above; retain this runbook for operator-owned
+restore verification. Synthetic evidence alone does not establish the
+real dev-restore acceptance.
 
 ## CI and rollback
 The baseline job checks reproducibility, baseline-only init, catalog/seeds,

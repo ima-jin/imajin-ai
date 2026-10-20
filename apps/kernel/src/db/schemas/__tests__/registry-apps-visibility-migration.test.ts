@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { PGlite } from '@electric-sql/pglite';
 
 vi.setConfig({ testTimeout: 30_000 });
-const migration = readFileSync(new URL('../../../../../../migrations/0204_registry_apps_visibility.sql', import.meta.url), 'utf8');
+const migration = readFileSync(new URL('../../../../../../migrations/archive/pre-kernel-baseline/0204_registry_apps_visibility.sql', import.meta.url), 'utf8');
 let client: PGlite;
 afterEach(async () => { await client?.close(); });
 

@@ -39,7 +39,7 @@ beforeAll(async () => {
     CREATE SCHEMA registry;
     CREATE TABLE registry.node_config (key text PRIMARY KEY, value jsonb);
   `);
-  const migrations = resolve(__dirname, '../../../../../../migrations');
+  const migrations = resolve(__dirname, '../../../../../../migrations/archive/pre-kernel-baseline');
   for (const file of [
     '0119_usage_incurred.sql', '0120_usage_incurred_quantity.sql', '0121_usage_emitters.sql',
     '0146_usage_incurred_status.sql', '0214_usage_incurred_pricing.sql',

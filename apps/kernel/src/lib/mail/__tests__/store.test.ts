@@ -22,7 +22,7 @@ beforeAll(async () => {
   state.db = drizzle(client, { schema: { mailSenders, registryApps } });
   await client.exec(`CREATE SCHEMA registry; CREATE TABLE registry.apps
     (owner_did text NOT NULL, app_did text PRIMARY KEY, status text NOT NULL, revoked_at timestamptz);`);
-  const migration = readFileSync(new URL('../../../../../../migrations/0210_mail_senders.sql', import.meta.url), 'utf8');
+  const migration = readFileSync(new URL('../../../../../../migrations/archive/pre-kernel-baseline/0210_mail_senders.sql', import.meta.url), 'utf8');
   await client.exec(migration);
   await client.exec(migration);
 });

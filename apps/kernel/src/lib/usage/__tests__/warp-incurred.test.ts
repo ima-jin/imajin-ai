@@ -19,7 +19,7 @@ import { sweepWarpIncurredUsage, WARP_USAGE_SETTLE_MS } from '../../warp/usage-s
 
 const OWNER = 'did:imajin:owner';
 const CREATED = '2026-10-19T12:00:00.000Z';
-const ROOT = resolve(__dirname, '../../../../../../migrations');
+const ROOT = resolve(__dirname, '../../../../../../migrations/archive/pre-kernel-baseline');
 let pg: PGlite;
 const run = (credits = 6500) => makeAgentRun({
   runId: 'run-a', createdAt: CREATED, modelId: 'actual-model',

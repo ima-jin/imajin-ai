@@ -34,7 +34,7 @@ import {
 import { DomainError, normalizeDomain } from '../normalize';
 import { provisionAppDomain } from '@/src/lib/apps/provision-domain';
 
-const migration = readFileSync('migrations/0211_domain_bindings.sql', 'utf8');
+const migration = readFileSync('migrations/archive/pre-kernel-baseline/0211_domain_bindings.sql', 'utf8');
 const key = '1'.repeat(64);
 let pg: PGlite;
 

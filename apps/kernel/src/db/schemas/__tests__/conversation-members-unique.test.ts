@@ -8,7 +8,7 @@ import { PGlite } from '@electric-sql/pglite';
 import { conversationMembers } from '../chat-v2';
 
 const root = fileURLToPath(new URL('../../../../../../', import.meta.url));
-const migration = readFileSync(join(root, 'migrations/0216_restore_conversation_members_unique.sql'), 'utf8');
+const migration = readFileSync(join(root, 'migrations/archive/pre-kernel-baseline/0216_restore_conversation_members_unique.sql'), 'utf8');
 const indexes = getTableConfig(conversationMembers).indexes
   .filter(({ config }) => config.unique && !config.where)
   .map(({ config }) => config.columns.map(column => column.name).sort());

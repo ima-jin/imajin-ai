@@ -511,6 +511,25 @@ CREATE TABLE auth.devices (
 
 
 --
+-- Name: domain_bindings; Type: TABLE; Schema: auth; Owner: -
+--
+
+CREATE TABLE auth.domain_bindings (
+    id text NOT NULL,
+    domain text NOT NULL,
+    zone_owner text NOT NULL,
+    site_owner text NOT NULL,
+    app_did text,
+    method text NOT NULL,
+    status text DEFAULT 'pending'::text NOT NULL,
+    attestation jsonb,
+    verified_at timestamp with time zone,
+    checked_at timestamp with time zone,
+    created_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
 -- Name: foreign_agent_stubs; Type: TABLE; Schema: auth; Owner: -
 --
 
@@ -563,7 +582,8 @@ CREATE TABLE auth.identities (
     upload_limit_mb integer,
     suspended_at timestamp with time zone,
     scope text NOT NULL,
-    subtype text
+    subtype text,
+    registered_by_app_did text
 );
 
 
@@ -846,7 +866,8 @@ CREATE TABLE chat.conversations_v2 (
     context jsonb DEFAULT '{}'::jsonb,
     visibility text DEFAULT 'private'::text,
     trust_radius text,
-    pod_id text
+    pod_id text,
+    app_did text
 );
 
 
@@ -938,7 +959,11 @@ CREATE TABLE connections.connections (
     did_a text NOT NULL,
     did_b text NOT NULL,
     connected_at timestamp with time zone DEFAULT now() NOT NULL,
-    disconnected_at timestamp with time zone
+    disconnected_at timestamp with time zone,
+    relationship_label_a text,
+    relationship_label_b text,
+    CONSTRAINT connections_relationship_label_a_check CHECK ((relationship_label_a = ANY (ARRAY['client'::text, 'vendor'::text, 'partner'::text, 'other'::text]))),
+    CONSTRAINT connections_relationship_label_b_check CHECK ((relationship_label_b = ANY (ARRAY['client'::text, 'vendor'::text, 'partner'::text, 'other'::text])))
 );
 
 
@@ -1478,6 +1503,22 @@ CREATE TABLE kernel.loops (
     finished_at timestamp with time zone,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: mail_senders; Type: TABLE; Schema: kernel; Owner: -
+--
+
+CREATE TABLE kernel.mail_senders (
+    owner_did text NOT NULL,
+    purpose text NOT NULL,
+    app_did text DEFAULT ''::text NOT NULL,
+    domain text NOT NULL,
+    local_part text NOT NULL,
+    display_name text NOT NULL,
+    reply_to text,
+    CONSTRAINT mail_senders_purpose_check CHECK ((purpose = ANY (ARRAY['signin'::text, 'receipts'::text, 'notifications'::text, 'contact'::text])))
 );
 
 
@@ -2407,7 +2448,17 @@ CREATE TABLE registry.apps (
     act_as_allowed boolean DEFAULT false NOT NULL,
     secrets jsonb DEFAULT '[]'::jsonb NOT NULL,
     featured boolean DEFAULT false NOT NULL,
-    CONSTRAINT registry_apps_tier_check CHECK ((tier = ANY (ARRAY['first_party'::text, 'third_party'::text])))
+    visibility text DEFAULT 'public'::text NOT NULL,
+    profile_widget jsonb,
+    source_repo text,
+    template text,
+    template_ref text,
+    template_synced_at timestamp with time zone,
+    joined boolean DEFAULT false NOT NULL,
+    sign_in_audience text DEFAULT 'members'::text NOT NULL,
+    CONSTRAINT registry_apps_sign_in_audience_check CHECK ((sign_in_audience = ANY (ARRAY['members'::text, 'anyone'::text]))),
+    CONSTRAINT registry_apps_tier_check CHECK ((tier = ANY (ARRAY['first_party'::text, 'third_party'::text]))),
+    CONSTRAINT registry_apps_visibility_check CHECK ((visibility = ANY (ARRAY['public'::text, 'unlisted'::text, 'private'::text, 'internal'::text])))
 );
 
 
@@ -3008,7 +3059,8 @@ CREATE TABLE usage.incurred (
     quantity numeric(24,6),
     unit text,
     external_id text,
-    status text
+    status text,
+    pricing jsonb
 );
 
 
@@ -3298,6 +3350,14 @@ ALTER TABLE ONLY auth.delegation_grants
 
 ALTER TABLE ONLY auth.devices
     ADD CONSTRAINT devices_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: domain_bindings domain_bindings_pkey; Type: CONSTRAINT; Schema: auth; Owner: -
+--
+
+ALTER TABLE ONLY auth.domain_bindings
+    ADD CONSTRAINT domain_bindings_pkey PRIMARY KEY (id);
 
 
 --
@@ -3786,6 +3846,14 @@ ALTER TABLE ONLY kernel.loop_output_artifacts
 
 ALTER TABLE ONLY kernel.loops
     ADD CONSTRAINT loops_pkey PRIMARY KEY (loop_id);
+
+
+--
+-- Name: mail_senders mail_senders_pkey; Type: CONSTRAINT; Schema: kernel; Owner: -
+--
+
+ALTER TABLE ONLY kernel.mail_senders
+    ADD CONSTRAINT mail_senders_pkey PRIMARY KEY (owner_did, purpose, app_did);
 
 
 --
@@ -5018,6 +5086,27 @@ CREATE UNIQUE INDEX idx_devices_did_fingerprint ON auth.devices USING btree (did
 
 
 --
+-- Name: idx_domain_bindings_recheck; Type: INDEX; Schema: auth; Owner: -
+--
+
+CREATE INDEX idx_domain_bindings_recheck ON auth.domain_bindings USING btree (checked_at) WHERE ((status = 'verified'::text) AND (method = 'dns-txt'::text));
+
+
+--
+-- Name: idx_domain_bindings_site_owner; Type: INDEX; Schema: auth; Owner: -
+--
+
+CREATE INDEX idx_domain_bindings_site_owner ON auth.domain_bindings USING btree (site_owner);
+
+
+--
+-- Name: idx_domain_bindings_zone_owner; Type: INDEX; Schema: auth; Owner: -
+--
+
+CREATE INDEX idx_domain_bindings_zone_owner ON auth.domain_bindings USING btree (zone_owner);
+
+
+--
 -- Name: idx_foreign_principal_stubs_stub_did; Type: INDEX; Schema: auth; Owner: -
 --
 
@@ -5183,6 +5272,20 @@ CREATE UNIQUE INDEX uniq_claim_stub_index_active_email ON auth.claim_stub_index 
 --
 
 CREATE UNIQUE INDEX uniq_delegate_grant_bearers_token_hash ON auth.delegate_grant_bearers USING btree (token_hash);
+
+
+--
+-- Name: uniq_domain_binding_claim; Type: INDEX; Schema: auth; Owner: -
+--
+
+CREATE UNIQUE INDEX uniq_domain_binding_claim ON auth.domain_bindings USING btree (domain, zone_owner);
+
+
+--
+-- Name: uniq_domain_binding_verified; Type: INDEX; Schema: auth; Owner: -
+--
+
+CREATE UNIQUE INDEX uniq_domain_binding_verified ON auth.domain_bindings USING btree (domain) WHERE (status = ANY (ARRAY['verified'::text, 'legacy'::text]));
 
 
 --
@@ -6628,6 +6731,13 @@ CREATE INDEX idx_registry_apps_status ON registry.apps USING btree (status);
 
 
 --
+-- Name: idx_registry_apps_template; Type: INDEX; Schema: registry; Owner: -
+--
+
+CREATE INDEX idx_registry_apps_template ON registry.apps USING btree (template);
+
+
+--
 -- Name: idx_registry_apps_tier; Type: INDEX; Schema: registry; Owner: -
 --
 
@@ -7380,7 +7490,7 @@ INSERT INTO auth.attestation_type_registry SELECT * FROM jsonb_populate_record(N
 INSERT INTO auth.attestation_type_registry SELECT * FROM jsonb_populate_record(NULL::auth.attestation_type_registry, '{"created_at":"2000-01-01T00:00:00+00:00","description":"Agent-signed commitment to one tool call within a turn: input/output hashes, tool name, observed-at, and an optional retained-output asset reference. Hashes and references only \u2014 never raw tool I/O.","namespace":"platform","registered_by_did":null,"revoked_at":null,"type_name":"agent.turn.evidence"}'::jsonb);
 INSERT INTO auth.attestation_type_registry SELECT * FROM jsonb_populate_record(NULL::auth.attestation_type_registry, '{"created_at":"2000-01-01T00:00:00+00:00","description":"Either party signs that the conversation happened. Evidence-graded via the existing countersign/decline flow: unilateral / corroborated / disputed.","namespace":"platform","registered_by_did":null,"revoked_at":null,"type_name":"conversation_happened"}'::jsonb);
 INSERT INTO auth.attestation_type_registry SELECT * FROM jsonb_populate_record(NULL::auth.attestation_type_registry, '{"created_at":"2000-01-01T00:00:00+00:00","description":"One party claims off-platform value was realized (a deal closed, a hire made); the other countersigns. Only the countersigned (bilateral) form may trigger a .fair settlement (#1886).","namespace":"platform","registered_by_did":null,"revoked_at":null,"type_name":"value_realized"}'::jsonb);
-INSERT INTO auth.identities SELECT * FROM jsonb_populate_record(NULL::auth.identities, '{"avatar_asset_id":null,"avatar_url":null,"contact_email":null,"created_at":"2000-01-01T00:00:00+00:00","handle":null,"handle_claimed_at":null,"id":"did:imajin:claude-desktop","key_roles":null,"metadata":{"adapter":"oauth","adapterAppId":"app_claude_desktop","agent":true,"client":true},"name":"Claude Desktop","public_key":"agent_app_claude_desktop","scope":"actor","subtype":"agent","suspended_at":null,"tier":"soft","updated_at":"2000-01-01T00:00:00+00:00","upload_limit_mb":null}'::jsonb);
+INSERT INTO auth.identities SELECT * FROM jsonb_populate_record(NULL::auth.identities, '{"avatar_asset_id":null,"avatar_url":null,"contact_email":null,"created_at":"2000-01-01T00:00:00+00:00","handle":null,"handle_claimed_at":null,"id":"did:imajin:claude-desktop","key_roles":null,"metadata":{"adapter":"oauth","adapterAppId":"app_claude_desktop","agent":true,"client":true},"name":"Claude Desktop","public_key":"agent_app_claude_desktop","registered_by_app_did":null,"scope":"actor","subtype":"agent","suspended_at":null,"tier":"soft","updated_at":"2000-01-01T00:00:00+00:00","upload_limit_mb":null}'::jsonb);
 INSERT INTO kernel.bus_chain_configs SELECT * FROM jsonb_populate_record(NULL::kernel.bus_chain_configs, '{"created_at":"2000-01-01T00:00:00+00:00","enabled":true,"event_type":"access.bearer.denied","id":"a036b110-7af5-537f-b099-5925917cebdc","reactors":[{"config":{"fields":["bearerId","principalDid","surface","reason"]},"enabled":true,"type":"audit-log"}],"scope":null,"updated_at":"2000-01-01T00:00:00+00:00","version":1}'::jsonb);
 INSERT INTO kernel.bus_chain_configs SELECT * FROM jsonb_populate_record(NULL::kernel.bus_chain_configs, '{"created_at":"2000-01-01T00:00:00+00:00","enabled":true,"event_type":"access.bearer.issued","id":"9a5ac44c-ca86-5b30-bed6-38c6697626ad","reactors":[{"config":{"fields":["bearerId","requestId","principalDid","clientLabel","purpose","scopes","surfaces","expiresAt","hardCapAt"]},"enabled":true,"type":"audit-log"}],"scope":null,"updated_at":"2000-01-01T00:00:00+00:00","version":1}'::jsonb);
 INSERT INTO kernel.bus_chain_configs SELECT * FROM jsonb_populate_record(NULL::kernel.bus_chain_configs, '{"created_at":"2000-01-01T00:00:00+00:00","enabled":true,"event_type":"access.bearer.revoked","id":"c703459a-467d-56b7-aeff-9b702ed15249","reactors":[{"config":{"fields":["bearerId","principalDid","clientLabel","revokedBy"]},"enabled":true,"type":"audit-log"}],"scope":null,"updated_at":"2000-01-01T00:00:00+00:00","version":1}'::jsonb);
@@ -7390,6 +7500,7 @@ INSERT INTO kernel.bus_chain_configs SELECT * FROM jsonb_populate_record(NULL::k
 INSERT INTO kernel.bus_chain_configs SELECT * FROM jsonb_populate_record(NULL::kernel.bus_chain_configs, '{"created_at":"2000-01-01T00:00:00+00:00","enabled":true,"event_type":"agent.reach.delivered","id":"4a4f50f2-51fd-58e2-a082-3f1c85f78a7b","reactors":[{"config":{"fields":["reachId","principalDid","requesterDid","topic","requesterTier","transcriptHash","issuedAt"]},"enabled":true,"type":"emit"},{"config":{"body":"Reach message about {{topic}} from {{requesterDid}}","title":"New Reach message"},"enabled":true,"type":"notify"}],"scope":null,"updated_at":"2000-01-01T00:00:00+00:00","version":1}'::jsonb);
 INSERT INTO kernel.bus_chain_configs SELECT * FROM jsonb_populate_record(NULL::kernel.bus_chain_configs, '{"created_at":"2000-01-01T00:00:00+00:00","enabled":true,"event_type":"agent.reach.denied","id":"aa33c5de-836e-5db1-9655-7d442b4752da","reactors":[{"config":{"fields":["requesterDid","principalDid","reason"]},"enabled":true,"type":"audit-log"}],"scope":null,"updated_at":"2000-01-01T00:00:00+00:00","version":1}'::jsonb);
 INSERT INTO kernel.bus_chain_configs SELECT * FROM jsonb_populate_record(NULL::kernel.bus_chain_configs, '{"created_at":"2000-01-01T00:00:00+00:00","enabled":true,"event_type":"agent.reach.replied","id":"195dcba3-8555-50ef-8a23-d1bd532b0704","reactors":[{"config":{"fields":["reachId","principalDid","requesterDid","transcriptHash","issuedAt","state","context_id","context_type"]},"enabled":true,"type":"emit"},{"config":{"body":"Your signed Reach reply is available","title":"Reach reply sent"},"enabled":true,"type":"notify"}],"scope":null,"updated_at":"2000-01-01T00:00:00+00:00","version":2}'::jsonb);
+INSERT INTO kernel.bus_chain_configs SELECT * FROM jsonb_populate_record(NULL::kernel.bus_chain_configs, '{"created_at":"2000-01-01T00:00:00+00:00","enabled":true,"event_type":"agent.reach.throttled","id":"75bb8a9b-8857-5a4e-9b96-85eef417c5f3","reactors":[{"await":true,"config":{"fields":["principalDid","requesterDid","dimension","tier","retryAfter","context_id","context_type"]},"enabled":true,"type":"audit-log"}],"scope":null,"updated_at":"2000-01-01T00:00:00+00:00","version":1}'::jsonb);
 INSERT INTO kernel.bus_chain_configs SELECT * FROM jsonb_populate_record(NULL::kernel.bus_chain_configs, '{"created_at":"2000-01-01T00:00:00+00:00","enabled":true,"event_type":"app.register","id":"cf40a1bd-572e-50a2-a1c5-5252ac72ced4","reactors":[{"config":{},"enabled":true,"type":"emit"}],"scope":null,"updated_at":"2000-01-01T00:00:00+00:00","version":1}'::jsonb);
 INSERT INTO kernel.bus_chain_configs SELECT * FROM jsonb_populate_record(NULL::kernel.bus_chain_configs, '{"created_at":"2000-01-01T00:00:00+00:00","enabled":true,"event_type":"approval.decision","id":"e9993fbb-5165-577f-9ccd-7d6967b79cc8","reactors":[{"config":{},"enabled":true,"type":"emit"}],"scope":null,"updated_at":"2000-01-01T00:00:00+00:00","version":1}'::jsonb);
 INSERT INTO kernel.bus_chain_configs SELECT * FROM jsonb_populate_record(NULL::kernel.bus_chain_configs, '{"created_at":"2000-01-01T00:00:00+00:00","enabled":true,"event_type":"asset.fair.upgraded","id":"355e7eb4-ec4a-58a8-9791-bc13e9b14001","reactors":[{"config":{"attestationType":"asset.fair.upgraded"},"enabled":true,"type":"attestation"}],"scope":null,"updated_at":"2000-01-01T00:00:00+00:00","version":1}'::jsonb);
@@ -7494,6 +7605,7 @@ INSERT INTO kernel.bus_chain_configs SELECT * FROM jsonb_populate_record(NULL::k
 INSERT INTO kernel.bus_chain_configs SELECT * FROM jsonb_populate_record(NULL::kernel.bus_chain_configs, '{"created_at":"2000-01-01T00:00:00+00:00","enabled":true,"event_type":"usage.rollup","id":"2550d821-872f-5613-a4b7-5e7c6d96af2b","reactors":[{"await":true,"config":{"attestationType":"usage.rollup"},"enabled":true,"type":"attestation"},{"config":{},"enabled":true,"type":"emit"}],"scope":null,"updated_at":"2000-01-01T00:00:00+00:00","version":1}'::jsonb);
 INSERT INTO kernel.bus_chain_configs SELECT * FROM jsonb_populate_record(NULL::kernel.bus_chain_configs, '{"created_at":"2000-01-01T00:00:00+00:00","enabled":true,"event_type":"vault.delegation.acked","id":"efbeabcb-98eb-52b1-9202-9a309e94339f","reactors":[{"config":{"fields":["grantId","granteeDid","ownerDid","purpose","outcome","evidenceKind","ackedAt"]},"enabled":true,"type":"audit-log"}],"scope":null,"updated_at":"2000-01-01T00:00:00+00:00","version":1}'::jsonb);
 INSERT INTO kernel.bus_chain_configs SELECT * FROM jsonb_populate_record(NULL::kernel.bus_chain_configs, '{"created_at":"2000-01-01T00:00:00+00:00","enabled":true,"event_type":"vault.delegation.fetched","id":"c4815fa0-a5f4-5037-a481-36ed25738542","reactors":[{"config":{"fields":["grantId","field","granteeDid","purpose","oneTime","outcome"]},"enabled":true,"type":"audit-log"}],"scope":null,"updated_at":"2000-01-01T00:00:00+00:00","version":1}'::jsonb);
+INSERT INTO kernel.bus_chain_configs SELECT * FROM jsonb_populate_record(NULL::kernel.bus_chain_configs, '{"created_at":"2000-01-01T00:00:00+00:00","enabled":true,"event_type":"vault.key.imported","id":"3c23a886-0163-56af-820b-0495644db8b1","reactors":[{"config":{"fields":["field","ownerDid","consumerDid","purpose","fingerprint","grantId","authorizedBy","replacesField"]},"enabled":true,"type":"audit-log"}],"scope":null,"updated_at":"2000-01-01T00:00:00+00:00","version":1}'::jsonb);
 INSERT INTO kernel.bus_chain_configs SELECT * FROM jsonb_populate_record(NULL::kernel.bus_chain_configs, '{"created_at":"2000-01-01T00:00:00+00:00","enabled":true,"event_type":"vault.key.minted","id":"49c5cd41-62b2-5498-b845-0ecb1e438234","reactors":[{"config":{"fields":["mintId","did","publicKey","field","purpose","requestedBy","mintedBy","grantId"]},"enabled":true,"type":"audit-log"}],"scope":null,"updated_at":"2000-01-01T00:00:00+00:00","version":1}'::jsonb);
 INSERT INTO kernel.bus_chain_configs SELECT * FROM jsonb_populate_record(NULL::kernel.bus_chain_configs, '{"created_at":"2000-01-01T00:00:00+00:00","enabled":true,"event_type":"vault.key.revoked","id":"797e6828-afab-5af5-9363-5d72b2ce2ba8","reactors":[{"config":{"fields":["mintId","did","publicKey","revokedBy"]},"enabled":true,"type":"audit-log"}],"scope":null,"updated_at":"2000-01-01T00:00:00+00:00","version":1}'::jsonb);
 INSERT INTO kernel.bus_chain_configs SELECT * FROM jsonb_populate_record(NULL::kernel.bus_chain_configs, '{"created_at":"2000-01-01T00:00:00+00:00","enabled":true,"event_type":"vault.secret.generated","id":"d242f2af-9170-5fc3-b0ed-1824cfac2b38","reactors":[{"config":{"fields":["purpose","grantId","contentHash"]},"enabled":true,"type":"audit-log"}],"scope":null,"updated_at":"2000-01-01T00:00:00+00:00","version":1}'::jsonb);
@@ -7522,12 +7634,13 @@ INSERT INTO notify.templates SELECT * FROM jsonb_populate_record(NULL::notify.te
 INSERT INTO notify.templates SELECT * FROM jsonb_populate_record(NULL::notify.templates, '{"body_tpl":"{{name}} accepted your invitation.","created_at":"2000-01-01T00:00:00+00:00","created_by":"migration:0158","enabled":false,"html_tpl":"{{name}} accepted your invitation.","id":"532fd3ed-2aa8-5aaf-8dfd-ee433a386fef","scope":"connection:invite-accepted","subject_tpl":"Invitation accepted","updated_at":"2000-01-01T00:00:00+00:00","updated_by":"migration:0158","urgency":"normal"}'::jsonb);
 INSERT INTO notify.templates SELECT * FROM jsonb_populate_record(NULL::notify.templates, '{"body_tpl":"{{summary}}","created_at":"2000-01-01T00:00:00+00:00","created_by":"migration:0158","enabled":false,"html_tpl":null,"id":"cde4565c-d271-56fc-a1cd-8b4201dfe302","scope":"operator.approval.requested","subject_tpl":"Operator approval needed \u2014 {{kind}}","updated_at":"2000-01-01T00:00:00+00:00","updated_by":"migration:0158","urgency":"urgent"}'::jsonb);
 INSERT INTO notify.templates SELECT * FROM jsonb_populate_record(NULL::notify.templates, '{"body_tpl":"{{totalFormatted}} was voided by the issuer.","created_at":"2000-01-01T00:00:00+00:00","created_by":"migration:0158","enabled":false,"html_tpl":"{{totalFormatted}} was voided by the issuer.","id":"c5fca8b8-67a0-57ab-9f2b-472807522c71","scope":"pay:payment_request-voided","subject_tpl":"Payment request voided","updated_at":"2000-01-01T00:00:00+00:00","updated_by":"migration:0158","urgency":"normal"}'::jsonb);
-INSERT INTO registry.apps SELECT * FROM jsonb_populate_record(NULL::registry.apps, '{"act_as_allowed":false,"allowed_redirect_hosts":["coffee"],"app_did":"did:imajin:app-coffee","approved_service_scopes":[],"callback_url":"https://your-node.imajin.ai/coffee","created_at":"2000-01-01T00:00:00+00:00","depends_on":[],"description":"Tipping/support pages (first-party, #1990)","emittable_events":[],"entry_url":"/coffee","featured":false,"homepage_url":null,"icon":"\u2615","id":"app_first_party_coffee","logo_url":null,"name":"Coffee","owner_did":"did:imajin:platform","placements":["launcher","home","auth-submenu"],"provides_scopes":[],"public_key":"firstparty_placeholder_coffee_0000000000000000000000000000000000000000","redirect_uris":["https://your-node.imajin.ai/coffee"],"requested_scopes":[],"required_scope":null,"revoked_at":null,"secrets":[],"service_scopes_approval_id":null,"service_scopes_approved_at":null,"slug":"coffee","status":"active","tier":"first_party","token_audiences":["coffee"],"updated_at":"2000-01-01T00:00:00+00:00"}'::jsonb);
-INSERT INTO registry.apps SELECT * FROM jsonb_populate_record(NULL::registry.apps, '{"act_as_allowed":false,"allowed_redirect_hosts":["dykil"],"app_did":"did:imajin:app-dykil","approved_service_scopes":[],"callback_url":"https://your-node.imajin.ai/dykil","created_at":"2000-01-01T00:00:00+00:00","depends_on":[],"description":"Community spending surveys (first-party, #1990)","emittable_events":[],"entry_url":"/dykil","featured":false,"homepage_url":null,"icon":"\ud83d\udccb","id":"app_first_party_dykil","logo_url":null,"name":"Dykil","owner_did":"did:imajin:platform","placements":["launcher","home","auth-submenu"],"provides_scopes":[],"public_key":"firstparty_placeholder_dykil_00000000000000000000000000000000000000000","redirect_uris":["https://your-node.imajin.ai/dykil"],"requested_scopes":[],"required_scope":null,"revoked_at":null,"secrets":[],"service_scopes_approval_id":null,"service_scopes_approved_at":null,"slug":"dykil","status":"active","tier":"first_party","token_audiences":["dykil"],"updated_at":"2000-01-01T00:00:00+00:00"}'::jsonb);
-INSERT INTO registry.apps SELECT * FROM jsonb_populate_record(NULL::registry.apps, '{"act_as_allowed":false,"allowed_redirect_hosts":["events"],"app_did":"did:imajin:app-events","approved_service_scopes":[],"callback_url":"https://your-node.imajin.ai/events","created_at":"2000-01-01T00:00:00+00:00","depends_on":[],"description":"Events & ticketing (first-party, #1990)","emittable_events":[],"entry_url":"/events","featured":false,"homepage_url":null,"icon":"\ud83c\udfab","id":"app_first_party_events","logo_url":null,"name":"Events","owner_did":"did:imajin:platform","placements":["launcher","home","auth-submenu"],"provides_scopes":[],"public_key":"firstparty_placeholder_events_0000000000000000000000000000000000000000","redirect_uris":["https://your-node.imajin.ai/events"],"requested_scopes":[],"required_scope":null,"revoked_at":null,"secrets":[],"service_scopes_approval_id":null,"service_scopes_approved_at":null,"slug":"events","status":"active","tier":"first_party","token_audiences":["events"],"updated_at":"2000-01-01T00:00:00+00:00"}'::jsonb);
-INSERT INTO registry.apps SELECT * FROM jsonb_populate_record(NULL::registry.apps, '{"act_as_allowed":false,"allowed_redirect_hosts":["jin"],"app_did":"did:imajin:app-jin","approved_service_scopes":[],"callback_url":"https://your-node.imajin.ai","created_at":"2000-01-01T00:00:00+00:00","depends_on":[],"description":"Neutral shell \u2014 auth, pay, profile, connections, chat, media, notify (first-party, #1990)","emittable_events":[],"entry_url":null,"featured":false,"homepage_url":null,"icon":null,"id":"app_first_party_jin","logo_url":null,"name":"Jin","owner_did":"did:imajin:platform","placements":[],"provides_scopes":[],"public_key":"firstparty_placeholder_jin_000000000000000000000000000000000000000000","redirect_uris":["https://your-node.imajin.ai"],"requested_scopes":[],"required_scope":null,"revoked_at":null,"secrets":[],"service_scopes_approval_id":null,"service_scopes_approved_at":null,"slug":"jin","status":"active","tier":"first_party","token_audiences":["jin"],"updated_at":"2000-01-01T00:00:00+00:00"}'::jsonb);
-INSERT INTO registry.apps SELECT * FROM jsonb_populate_record(NULL::registry.apps, '{"act_as_allowed":false,"allowed_redirect_hosts":["learn"],"app_did":"did:imajin:app-learn","approved_service_scopes":[],"callback_url":"https://your-node.imajin.ai/learn","created_at":"2000-01-01T00:00:00+00:00","depends_on":[],"description":"Courses/enrollment (first-party, #1990)","emittable_events":[],"entry_url":"/learn","featured":false,"homepage_url":null,"icon":"\ud83d\udcda","id":"app_first_party_learn","logo_url":null,"name":"Learn","owner_did":"did:imajin:platform","placements":["launcher","home","auth-submenu"],"provides_scopes":[],"public_key":"firstparty_placeholder_learn_00000000000000000000000000000000000000000","redirect_uris":["https://your-node.imajin.ai/learn"],"requested_scopes":[],"required_scope":null,"revoked_at":null,"secrets":[],"service_scopes_approval_id":null,"service_scopes_approved_at":null,"slug":"learn","status":"active","tier":"first_party","token_audiences":["learn"],"updated_at":"2000-01-01T00:00:00+00:00"}'::jsonb);
-INSERT INTO registry.apps SELECT * FROM jsonb_populate_record(NULL::registry.apps, '{"act_as_allowed":false,"allowed_redirect_hosts":["links"],"app_did":"did:imajin:app-links","approved_service_scopes":[],"callback_url":"https://your-node.imajin.ai/links","created_at":"2000-01-01T00:00:00+00:00","depends_on":[],"description":"Link-in-bio pages (first-party, #1990)","emittable_events":[],"entry_url":"/links","featured":false,"homepage_url":null,"icon":"\ud83d\udd17","id":"app_first_party_links","logo_url":null,"name":"Links","owner_did":"did:imajin:platform","placements":["launcher","home","auth-submenu"],"provides_scopes":[],"public_key":"firstparty_placeholder_links_00000000000000000000000000000000000000000","redirect_uris":["https://your-node.imajin.ai/links"],"requested_scopes":[],"required_scope":null,"revoked_at":null,"secrets":[],"service_scopes_approval_id":null,"service_scopes_approved_at":null,"slug":"links","status":"active","tier":"first_party","token_audiences":["links"],"updated_at":"2000-01-01T00:00:00+00:00"}'::jsonb);
-INSERT INTO registry.apps SELECT * FROM jsonb_populate_record(NULL::registry.apps, '{"act_as_allowed":false,"allowed_redirect_hosts":["market"],"app_did":"did:imajin:app-market","approved_service_scopes":[],"callback_url":"https://your-node.imajin.ai/market","created_at":"2000-01-01T00:00:00+00:00","depends_on":[],"description":"Local commerce (first-party, #1990)","emittable_events":[],"entry_url":"/market","featured":false,"homepage_url":null,"icon":"\ud83c\udfea","id":"app_first_party_market","logo_url":null,"name":"Market","owner_did":"did:imajin:platform","placements":["launcher","home","auth-submenu"],"provides_scopes":[],"public_key":"firstparty_placeholder_market_0000000000000000000000000000000000000000","redirect_uris":["https://your-node.imajin.ai/market"],"requested_scopes":[],"required_scope":null,"revoked_at":null,"secrets":[],"service_scopes_approval_id":null,"service_scopes_approved_at":null,"slug":"market","status":"active","tier":"first_party","token_audiences":["market"],"updated_at":"2000-01-01T00:00:00+00:00"}'::jsonb);
-INSERT INTO registry.apps SELECT * FROM jsonb_populate_record(NULL::registry.apps, '{"act_as_allowed":false,"allowed_redirect_hosts":[],"app_did":"did:imajin:claude-desktop","approved_service_scopes":[],"callback_url":"https://claude.ai/api/mcp/auth_callback","created_at":"2000-01-01T00:00:00+00:00","depends_on":[],"description":"Anthropic Claude Desktop \u2014 read-only media MCP connector (#1166)","emittable_events":[],"entry_url":null,"featured":false,"homepage_url":"https://claude.ai","icon":null,"id":"app_claude_desktop","logo_url":null,"name":"Claude Desktop","owner_did":"did:imajin:platform","placements":[],"provides_scopes":[],"public_key":"c1a0dec0ffeec1a0dec0ffeec1a0dec0ffeec1a0dec0ffeec1a0dec0ffeedead","redirect_uris":["https://claude.ai/api/mcp/auth_callback"],"requested_scopes":["media:read","media:write"],"required_scope":null,"revoked_at":null,"secrets":[],"service_scopes_approval_id":null,"service_scopes_approved_at":null,"slug":null,"status":"active","tier":"third_party","token_audiences":[],"updated_at":"2000-01-01T00:00:00+00:00"}'::jsonb);
+INSERT INTO registry.apps SELECT * FROM jsonb_populate_record(NULL::registry.apps, '{"act_as_allowed":false,"allowed_redirect_hosts":["coffee"],"app_did":"did:imajin:app-coffee","approved_service_scopes":[],"callback_url":"https://your-node.imajin.ai/coffee","created_at":"2000-01-01T00:00:00+00:00","depends_on":[],"description":"Tipping/support pages (first-party, #1990)","emittable_events":[],"entry_url":"/coffee","featured":false,"homepage_url":null,"icon":"\u2615","id":"app_first_party_coffee","joined":false,"logo_url":null,"name":"Coffee","owner_did":"did:imajin:platform","placements":["launcher","home","auth-submenu"],"profile_widget":null,"provides_scopes":[],"public_key":"firstparty_placeholder_coffee_0000000000000000000000000000000000000000","redirect_uris":["https://your-node.imajin.ai/coffee"],"requested_scopes":[],"required_scope":null,"revoked_at":null,"secrets":[],"service_scopes_approval_id":null,"service_scopes_approved_at":null,"sign_in_audience":"members","slug":"coffee","source_repo":"ima-jin/coffee","status":"active","template":"ima-jin/imajin-app-template","template_ref":null,"template_synced_at":null,"tier":"first_party","token_audiences":["coffee"],"updated_at":"2000-01-01T00:00:00+00:00","visibility":"public"}'::jsonb);
+INSERT INTO registry.apps SELECT * FROM jsonb_populate_record(NULL::registry.apps, '{"act_as_allowed":false,"allowed_redirect_hosts":["dykil"],"app_did":"did:imajin:app-dykil","approved_service_scopes":[],"callback_url":"https://your-node.imajin.ai/dykil","created_at":"2000-01-01T00:00:00+00:00","depends_on":[],"description":"Community spending surveys (first-party, #1990)","emittable_events":[],"entry_url":"/dykil","featured":false,"homepage_url":null,"icon":"\ud83d\udccb","id":"app_first_party_dykil","joined":false,"logo_url":null,"name":"Dykil","owner_did":"did:imajin:platform","placements":["launcher","home","auth-submenu"],"profile_widget":null,"provides_scopes":[],"public_key":"firstparty_placeholder_dykil_00000000000000000000000000000000000000000","redirect_uris":["https://your-node.imajin.ai/dykil"],"requested_scopes":[],"required_scope":null,"revoked_at":null,"secrets":[],"service_scopes_approval_id":null,"service_scopes_approved_at":null,"sign_in_audience":"members","slug":"dykil","source_repo":"ima-jin/dykil","status":"active","template":"ima-jin/imajin-app-template","template_ref":null,"template_synced_at":null,"tier":"first_party","token_audiences":["dykil"],"updated_at":"2000-01-01T00:00:00+00:00","visibility":"public"}'::jsonb);
+INSERT INTO registry.apps SELECT * FROM jsonb_populate_record(NULL::registry.apps, '{"act_as_allowed":false,"allowed_redirect_hosts":["events"],"app_did":"did:imajin:app-events","approved_service_scopes":[],"callback_url":"https://your-node.imajin.ai/events","created_at":"2000-01-01T00:00:00+00:00","depends_on":[],"description":"Events & ticketing (first-party, #1990)","emittable_events":[],"entry_url":"/events","featured":false,"homepage_url":null,"icon":"\ud83c\udfab","id":"app_first_party_events","joined":false,"logo_url":null,"name":"Events","owner_did":"did:imajin:platform","placements":["launcher","home","auth-submenu"],"profile_widget":{"icon":"\ud83c\udf9f","label":"Events","path":"/profile"},"provides_scopes":[],"public_key":"firstparty_placeholder_events_0000000000000000000000000000000000000000","redirect_uris":["https://your-node.imajin.ai/events"],"requested_scopes":[],"required_scope":null,"revoked_at":null,"secrets":[],"service_scopes_approval_id":null,"service_scopes_approved_at":null,"sign_in_audience":"members","slug":"events","source_repo":"ima-jin/events","status":"active","template":"ima-jin/imajin-app-template","template_ref":null,"template_synced_at":null,"tier":"first_party","token_audiences":["events"],"updated_at":"2000-01-01T00:00:00+00:00","visibility":"public"}'::jsonb);
+INSERT INTO registry.apps SELECT * FROM jsonb_populate_record(NULL::registry.apps, '{"act_as_allowed":false,"allowed_redirect_hosts":["jin"],"app_did":"did:imajin:app-jin","approved_service_scopes":[],"callback_url":"https://your-node.imajin.ai","created_at":"2000-01-01T00:00:00+00:00","depends_on":[],"description":"Neutral shell \u2014 auth, pay, profile, connections, chat, media, notify (first-party, #1990)","emittable_events":[],"entry_url":null,"featured":false,"homepage_url":null,"icon":null,"id":"app_first_party_jin","joined":false,"logo_url":null,"name":"Jin","owner_did":"did:imajin:platform","placements":[],"profile_widget":null,"provides_scopes":[],"public_key":"firstparty_placeholder_jin_000000000000000000000000000000000000000000","redirect_uris":["https://your-node.imajin.ai"],"requested_scopes":[],"required_scope":null,"revoked_at":null,"secrets":[],"service_scopes_approval_id":null,"service_scopes_approved_at":null,"sign_in_audience":"members","slug":"jin","source_repo":null,"status":"active","template":null,"template_ref":null,"template_synced_at":null,"tier":"first_party","token_audiences":["jin"],"updated_at":"2000-01-01T00:00:00+00:00","visibility":"public"}'::jsonb);
+INSERT INTO registry.apps SELECT * FROM jsonb_populate_record(NULL::registry.apps, '{"act_as_allowed":false,"allowed_redirect_hosts":["learn"],"app_did":"did:imajin:app-learn","approved_service_scopes":[],"callback_url":"https://your-node.imajin.ai/learn","created_at":"2000-01-01T00:00:00+00:00","depends_on":[],"description":"Courses/enrollment (first-party, #1990)","emittable_events":[],"entry_url":"/learn","featured":false,"homepage_url":null,"icon":"\ud83d\udcda","id":"app_first_party_learn","joined":false,"logo_url":null,"name":"Learn","owner_did":"did:imajin:platform","placements":["launcher","home","auth-submenu"],"profile_widget":null,"provides_scopes":[],"public_key":"firstparty_placeholder_learn_00000000000000000000000000000000000000000","redirect_uris":["https://your-node.imajin.ai/learn"],"requested_scopes":[],"required_scope":null,"revoked_at":null,"secrets":[],"service_scopes_approval_id":null,"service_scopes_approved_at":null,"sign_in_audience":"members","slug":"learn","source_repo":"ima-jin/learn","status":"active","template":"ima-jin/imajin-app-template","template_ref":null,"template_synced_at":null,"tier":"first_party","token_audiences":["learn"],"updated_at":"2000-01-01T00:00:00+00:00","visibility":"public"}'::jsonb);
+INSERT INTO registry.apps SELECT * FROM jsonb_populate_record(NULL::registry.apps, '{"act_as_allowed":false,"allowed_redirect_hosts":["links"],"app_did":"did:imajin:app-links","approved_service_scopes":[],"callback_url":"https://your-node.imajin.ai/links","created_at":"2000-01-01T00:00:00+00:00","depends_on":[],"description":"Link-in-bio pages (first-party, #1990)","emittable_events":[],"entry_url":"/links","featured":false,"homepage_url":null,"icon":"\ud83d\udd17","id":"app_first_party_links","joined":false,"logo_url":null,"name":"Links","owner_did":"did:imajin:platform","placements":["launcher","home","auth-submenu"],"profile_widget":null,"provides_scopes":[],"public_key":"firstparty_placeholder_links_00000000000000000000000000000000000000000","redirect_uris":["https://your-node.imajin.ai/links"],"requested_scopes":[],"required_scope":null,"revoked_at":null,"secrets":[],"service_scopes_approval_id":null,"service_scopes_approved_at":null,"sign_in_audience":"members","slug":"links","source_repo":"ima-jin/links","status":"active","template":"ima-jin/imajin-app-template","template_ref":null,"template_synced_at":null,"tier":"first_party","token_audiences":["links"],"updated_at":"2000-01-01T00:00:00+00:00","visibility":"public"}'::jsonb);
+INSERT INTO registry.apps SELECT * FROM jsonb_populate_record(NULL::registry.apps, '{"act_as_allowed":false,"allowed_redirect_hosts":["market"],"app_did":"did:imajin:app-market","approved_service_scopes":[],"callback_url":"https://your-node.imajin.ai/market","created_at":"2000-01-01T00:00:00+00:00","depends_on":[],"description":"Local commerce (first-party, #1990)","emittable_events":[],"entry_url":"/market","featured":false,"homepage_url":null,"icon":"\ud83c\udfea","id":"app_first_party_market","joined":false,"logo_url":null,"name":"Market","owner_did":"did:imajin:platform","placements":["launcher","home","auth-submenu"],"profile_widget":{"icon":"\ud83d\udecd","label":"Market","path":"/profile"},"provides_scopes":[],"public_key":"firstparty_placeholder_market_0000000000000000000000000000000000000000","redirect_uris":["https://your-node.imajin.ai/market"],"requested_scopes":[],"required_scope":null,"revoked_at":null,"secrets":[],"service_scopes_approval_id":null,"service_scopes_approved_at":null,"sign_in_audience":"members","slug":"market","source_repo":"ima-jin/market","status":"active","template":"ima-jin/imajin-app-template","template_ref":null,"template_synced_at":null,"tier":"first_party","token_audiences":["market"],"updated_at":"2000-01-01T00:00:00+00:00","visibility":"public"}'::jsonb);
+INSERT INTO registry.apps SELECT * FROM jsonb_populate_record(NULL::registry.apps, '{"act_as_allowed":false,"allowed_redirect_hosts":[],"app_did":"did:imajin:claude-desktop","approved_service_scopes":[],"callback_url":"https://claude.ai/api/mcp/auth_callback","created_at":"2000-01-01T00:00:00+00:00","depends_on":[],"description":"Anthropic Claude Desktop \u2014 read-only media MCP connector (#1166)","emittable_events":[],"entry_url":null,"featured":false,"homepage_url":"https://claude.ai","icon":null,"id":"app_claude_desktop","joined":false,"logo_url":null,"name":"Claude Desktop","owner_did":"did:imajin:platform","placements":[],"profile_widget":null,"provides_scopes":[],"public_key":"c1a0dec0ffeec1a0dec0ffeec1a0dec0ffeec1a0dec0ffeec1a0dec0ffeedead","redirect_uris":["https://claude.ai/api/mcp/auth_callback"],"requested_scopes":["media:read","media:write"],"required_scope":null,"revoked_at":null,"secrets":[],"service_scopes_approval_id":null,"service_scopes_approved_at":null,"sign_in_audience":"members","slug":null,"source_repo":null,"status":"active","template":null,"template_ref":null,"template_synced_at":null,"tier":"third_party","token_audiences":[],"updated_at":"2000-01-01T00:00:00+00:00","visibility":"public"}'::jsonb);
+INSERT INTO usage.emitters SELECT * FROM jsonb_populate_record(NULL::usage.emitters, '{"acting_for":null,"cadence":"warp-run-watch","config":{"externalId":"runId","unit":"warp-credits"},"created_at":"2000-01-01T00:00:00+00:00","issuer_did":"did:imajin:platform","key_field":null,"reader":"internal","source":"adapter:warp","status":"active","updated_at":"2000-01-01T00:00:00+00:00"}'::jsonb);
 INSERT INTO usage.emitters SELECT * FROM jsonb_populate_record(NULL::usage.emitters, '{"acting_for":null,"cadence":null,"config":{},"created_at":"2000-01-01T00:00:00+00:00","issuer_did":"did:imajin:platform","key_field":null,"reader":"internal","source":"inference-passthrough","status":"active","updated_at":"2000-01-01T00:00:00+00:00"}'::jsonb);

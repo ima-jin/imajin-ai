@@ -75,7 +75,7 @@ async function seedRow(appDid: string | null, rail = 'stripe-byo') {
 
 beforeAll(async () => {
   harness = await createPgliteLedgerHarness();
-  await harness.client.exec(readFileSync(join(__dirname, '../../../../../../migrations/0007_registry_apps.sql'), 'utf8'));
+  await harness.client.exec(readFileSync(join(__dirname, '../../../../../../migrations/archive/pre-kernel-baseline/0007_registry_apps.sql'), 'utf8'));
   await harness.client.exec('ALTER TABLE registry.apps ADD COLUMN IF NOT EXISTS slug TEXT, ADD COLUMN IF NOT EXISTS entry_url TEXT');
   db = drizzle(harness.client);
   mocks.db = db;
