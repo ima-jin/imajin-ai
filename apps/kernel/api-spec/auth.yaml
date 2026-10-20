@@ -4360,14 +4360,20 @@ paths:
         retained separately as actorDid. No agent membership is required or
         created by issuance.
 
-        Every actual issue/renew/revoke/capability change atomically records a
+        Every actual issue/renew/capability-add atomically records a
         signed mechanical attestation `delegation.grant.<event>` (events:
         issued, renewed, revoked, capability_added, capability_revoked).
         subjectDid is the delegator DID; payload is
         {grantId, delegatorDid, actorDid, event, capability?}.
         The existing grant history actorDid also names the authenticated human.
-        No-op changes do not emit events. A signing/evidence failure rolls back
-        the mutation. These rules apply to every grants route below.
+        No-op changes do not create events. A signing/evidence failure rolls back
+        issue, renew and capability-add only. Revocation commits authority first,
+        with durable pending_revocation_audits on the existing grant row, then
+        attempts signed history delivery. Signing/history/attestation failures
+        never restore authority: the protected /api/cron/grant-audit-retry job
+        retries every minute, preserving the original delegator, human actor and
+        occurredAt timestamp. Delivery and clearing retry intent are atomic and
+        serialized, so replay cannot duplicate history. No parallel authority store.
 
         `capabilities` accepts two shapes: (1) a member of the closed
         `domain:verb` GRANT_SCOPE_REGISTRY vocabulary (`@imajin/auth`'s
@@ -4461,8 +4467,10 @@ paths:
         service access via allowed_services and owner/admin, non-agent org
         controller; actingFor is refused. Authorization compares the grant
         delegatorDid with identity.actingAs ?? identity.id, not the human DID.
-        Actual changes atomically write signed delegation.grant.revoked
-        evidence naming delegatorDid and authenticated human actorDid.
+        Revocation commits first, then writes signed delegation.grant.revoked
+        evidence naming delegatorDid, authenticated human actorDid and occurredAt.
+        Signing or event-store failure leaves the grant revoked and its durable
+        audit intent queued for the protected minute-by-minute retry job.
       security:
         - cookieAuth: []
         - bearerAuth: []
@@ -4559,8 +4567,10 @@ paths:
         service auth in allowed_services (or null/all), owner/admin and a
         non-agent identity. actingFor is refused. Authorization uses
         identity.actingAs ?? identity.id as delegator, retaining identity.id
-        as human actorDid. An actual change atomically emits signed
-        delegation.grant.capability_revoked evidence naming both and capability.
+        as human actorDid. Capability revocation commits first, then emits signed
+        delegation.grant.capability_revoked evidence naming both, capability and
+        occurredAt. Signing/event failures cannot restore the capability; durable
+        intent on the grant row is retried by the protected minute-by-minute job.
       security:
         - cookieAuth: []
         - bearerAuth: []

@@ -51,7 +51,7 @@ beforeEach(() => {
 
 describe('POST /auth/api/grants — user-push-only issuance', () => {
   it('refuses Cloudflare group grants from stale act-as context and rechecks actual actor authority', async () => {
-    requireAuthMock.mockResolvedValue({ identity: { id: DELEGATOR, actingAs: 'did:imajin:group' } });
+    requireAuthMock.mockResolvedValue({ identity: { id: DELEGATOR, actingAs: 'did:imajin:group', actingAsRole: 'admin' } });
     const res = await POST(makeRequest('POST', {
       agentDid: AGENT, capabilities: ['cloudflare:dns'], audience: { type: 'dids', values: [`did:imajin:cloudflare-${'a'.repeat(32)}`] },
     }));

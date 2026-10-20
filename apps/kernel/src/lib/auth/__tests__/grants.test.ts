@@ -18,7 +18,7 @@ const { grantsStore, capsStore, eventsStore, GRANTS_TABLE, CAPS_TABLE, EVENTS_TA
   const GRANTS_TABLE = {
     __table: 'grants',
     id: 'id', agentDid: 'agentDid', delegatorDid: 'delegatorDid', audience: 'audience',
-    onBehalfOf: 'onBehalfOf', issuedAt: 'issuedAt', expiresAt: 'expiresAt', status: 'status',
+    pendingRevocationAudits: 'pendingRevocationAudits', onBehalfOf: 'onBehalfOf', issuedAt: 'issuedAt', expiresAt: 'expiresAt', status: 'status',
     revokedAt: 'revokedAt', lastUsedAt: 'lastUsedAt', createdAt: 'createdAt', updatedAt: 'updatedAt',
   };
   const CAPS_TABLE = {

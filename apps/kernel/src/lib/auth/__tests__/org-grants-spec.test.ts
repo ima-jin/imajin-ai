@@ -34,7 +34,7 @@ describe('served grants /spec act-as contract (#2997)', () => {
     expect(operation.security).toEqual([{ cookieAuth: [] }, { bearerAuth: [] }]);
   });
 
-  it('documents atomic signed lifecycle proof without agent membership', async () => {
+  it('documents atomic increases, post-commit revoke retries and no agent membership', async () => {
     const issue = (await servedSpec()).paths['/api/grants'].post;
     expect(issue.description).toContain('No agent membership is required or');
     expect(issue.description).toContain('created by issuance');
@@ -42,5 +42,9 @@ describe('served grants /spec act-as contract (#2997)', () => {
     expect(issue.description).toContain('subjectDid is the delegator DID');
     expect(issue.description).toContain('{grantId, delegatorDid, actorDid, event, capability?}');
     expect(issue.description).toContain('failure rolls back');
+    expect(issue.description).toContain('Revocation commits authority first');
+    expect(issue.description).toContain('pending_revocation_audits');
+    expect(issue.description).toContain('/api/cron/grant-audit-retry');
+    expect(issue.description).toContain('never restore authority');
   });
 });

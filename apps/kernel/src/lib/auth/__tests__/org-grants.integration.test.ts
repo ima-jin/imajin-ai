@@ -1,12 +1,12 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { randomUUID } from 'node:crypto';
 import { NextRequest } from 'next/server';
-import { canonicalize, crypto as authCrypto, provideInternalApiKey } from '@imajin/auth';
+import { canonicalize, crypto as authCrypto, provideInternalApiKey, agentCardUrl } from '@imajin/auth';
 import { SESSION_COOKIE_NAME } from '@imajin/config';
 import { createOrgGrantHarness } from './org-grant-harness';
 
 const fixture = vi.hoisted(() => ({
-  db: null as unknown, nodeDid: vi.fn(), createProvision: vi.fn(), revokeProvision: vi.fn(),
+  db: null as unknown, nodeDid: vi.fn(), createProvision: vi.fn(), revokeProvision: vi.fn(), cronAuth: vi.fn(),
 }));
 vi.mock('@/src/db', async () => ({
   ...await import('@/src/db/schemas/auth'),
@@ -15,6 +15,7 @@ vi.mock('@/src/db', async () => ({
   get db() { return fixture.db; },
 }));
 vi.mock('@/src/lib/kernel/node-identity', () => ({ getNodeDid: fixture.nodeDid }));
+vi.mock('@/src/cron/auth', () => ({ requireCronAuth: fixture.cronAuth }));
 // Notification transport is stubbed; grant lifecycle, ingest, signatures and storage are real.
 vi.mock('@imajin/bus', () => ({ publish: vi.fn().mockResolvedValue(undefined) }));
 vi.mock('../agent-provisioner', () => ({
@@ -36,6 +37,8 @@ import { authorizeEvidencePublisher } from '@/src/lib/turn-evidence/authorize-pu
 import { POST as publishEvidence } from '@/app/auth/api/attestations/turn-evidence/route';
 import { POST as provisionAgent } from '@/app/auth/api/agents/provision/route';
 import { DELETE as revokeProvision } from '@/app/auth/api/agents/provision/[id]/route';
+import { GET as retryAuditJob } from '@/app/api/cron/grant-audit-retry/route';
+import { retryGrantRevocationAudits } from '../grants';
 import { AGENT_KEYPAIR, signedItem, wireBody } from '@/src/lib/turn-evidence/__tests__/helpers';
 
 vi.setConfig({ hookTimeout: 30_000, testTimeout: 30_000 });
@@ -111,6 +114,7 @@ async function assertSignedEvent(grantId: string, event: string, capability?: st
   expect(row.payload).toEqual({
     grantId, delegatorDid: ORG, actorDid: HUMAN, event,
     ...(capability ? { capability } : {}),
+    ...(['revoked', 'capability_revoked'].includes(event) ? { occurredAt: expect.any(String) } : {}),
   });
   const signedMessage = canonicalize({
     subject_did: row.subjectDid, type: row.type, context_id: row.contextId,
@@ -136,8 +140,15 @@ beforeAll(async () => {
 afterAll(async () => { await harness.close(); });
 beforeEach(async () => {
   await harness.reset();
+  await harness.client.exec(`INSERT INTO auth.identities (id, public_key, scope, subtype, name) VALUES
+    ('${HUMAN}', 'human-key', 'actor', 'human', 'Controller'),
+    ('${ORG}', 'org-key', 'business', NULL, 'Org'),
+    ('${OTHER_ORG}', 'other-org-key', 'business', NULL, 'Other org');
+    INSERT INTO auth.identity_members (identity_did, member_did, role) VALUES ('${ORG}', '${HUMAN}', 'owner');`);
+  vi.stubEnv('DATABASE_URL', 'postgresql://fixture:fixture@localhost:5432/unused');
   fixture.createProvision.mockReset();
   fixture.revokeProvision.mockReset();
+  fixture.cronAuth.mockResolvedValue(null);
   role = 'owner';
   subtype = 'human';
   allowedServices = null;
@@ -174,7 +185,64 @@ afterEach(() => {
 });
 
 describe('organization grant acceptance (#2997)', () => {
-  it.each(['issue', 'renew', 'add', 'remove', 'revoke'])('rolls back %s when signed audit storage fails', async (action) => {
+  it.each([
+    ['revoke', 'signing'], ['remove', 'signing'],
+    ['revoke', 'attestation'], ['remove', 'attestation'],
+    ['revoke', 'history'], ['remove', 'history'],
+  ])('commits %s before %s failure, keeps authority denied and retries signed history exactly once', async (action, failure) => {
+    const grant = await issuedGrant();
+    const table = failure === 'history' ? 'delegation_grant_events' : 'attestations';
+    if (failure === 'signing') vi.stubEnv('AUTH_PRIVATE_KEY', '');
+    else await harness.client.exec(`ALTER TABLE auth.${table} ADD CONSTRAINT reject_retry_fixture CHECK (false) NOT VALID`);
+    try {
+      expect((await mutate(action, grant.grantId)).status).toBe(200);
+      expect(await authorizeEvidencePublisher(AGENT, ORG)).toEqual({ authorized: false });
+      const queued = await harness.client.query<{ pending_revocation_audits: unknown[] }>(
+        'SELECT pending_revocation_audits FROM auth.delegation_grants WHERE id = $1', [grant.grantId],
+      );
+      expect(queued.rows[0].pending_revocation_audits).toEqual([expect.objectContaining({
+        grantId: grant.grantId, delegatorDid: ORG, actorDid: HUMAN,
+        event: action === 'revoke' ? 'revoked' : 'capability_revoked',
+        occurredAt: expect.any(String),
+      })]);
+      const committed = await harness.snapshot();
+      expect(await retryGrantRevocationAudits()).toEqual({ attempted: 1, delivered: 0, failed: 1 });
+      expect(await harness.snapshot()).toEqual(committed);
+    } finally {
+      if (failure === 'signing') vi.stubEnv('AUTH_PRIVATE_KEY', keys.privateKey);
+      else await harness.client.exec(`ALTER TABLE auth.${table} DROP CONSTRAINT reject_retry_fixture`);
+    }
+    // No in-memory queue is involved: the scheduled retry reads the committed intent.
+    const response = await retryAuditJob(request('GET', { as: null }));
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ ok: true, attempted: 1, delivered: 1, failed: 0 });
+    await Promise.all([retryGrantRevocationAudits(), retryGrantRevocationAudits()]);
+    await assertSignedEvent(grant.grantId, action === 'revoke' ? 'revoked' : 'capability_revoked',
+      action === 'remove' ? 'evidence:publish' : undefined);
+    expect(await authorizeEvidencePublisher(AGENT, ORG)).toEqual({ authorized: false });
+    const queued = await harness.client.query<{ pending_revocation_audits: unknown[] }>(
+      'SELECT pending_revocation_audits FROM auth.delegation_grants WHERE id = $1', [grant.grantId],
+    );
+    expect(queued.rows[0].pending_revocation_audits).toEqual([]);
+  });
+
+  it.each([401, 503])('protects scheduled audit replay with cron auth (%s)', async (status) => {
+    await issuedGrant();
+    fixture.cronAuth.mockResolvedValue(Response.json({ error: 'Cron denied' }, { status }));
+    const before = await harness.snapshot();
+    expect((await retryAuditJob(request('GET'))).status).toBe(status);
+    expect(await harness.snapshot()).toEqual(before);
+  });
+
+  it('returns a retryable cron error when the pending scan is unavailable', async () => {
+    const select = vi.spyOn(harness.db, 'select').mockImplementationOnce(() => { throw new Error('fixture unavailable'); });
+    try {
+      expect((await retryAuditJob(request('GET'))).status).toBe(500);
+    } finally {
+      select.mockRestore();
+    }
+  });
+  it.each(['issue', 'renew', 'add'])('rolls back %s when signed audit storage fails', async (action) => {
     const grant = await issuedGrant();
     const before = await harness.snapshot();
     await harness.client.exec("ALTER TABLE auth.attestations ADD CONSTRAINT reject_grant_audit CHECK (type NOT LIKE 'delegation.grant.%') NOT VALID");
@@ -186,7 +254,7 @@ describe('organization grant acceptance (#2997)', () => {
     }
   });
 
-  it.each(['issue', 'renew', 'add', 'remove', 'revoke'])('rolls back %s when queryable history storage fails', async (action) => {
+  it.each(['issue', 'renew', 'add'])('rolls back %s when queryable history storage fails', async (action) => {
     const grant = await issuedGrant();
     const before = await harness.snapshot();
     await harness.client.exec("ALTER TABLE auth.delegation_grant_events ADD CONSTRAINT reject_grant_history CHECK (event = 'unreachable_fixture') NOT VALID");
@@ -198,7 +266,7 @@ describe('organization grant acceptance (#2997)', () => {
     }
   });
 
-  it.each(['issue', 'renew', 'add', 'remove', 'revoke'])('rolls back %s when signing is unconfigured', async (action) => {
+  it.each(['issue', 'renew', 'add'])('rolls back %s when signing is unconfigured', async (action) => {
     const grant = await issuedGrant();
     const before = await harness.snapshot();
     vi.stubEnv('AUTH_PRIVATE_KEY', '');
@@ -228,7 +296,7 @@ describe('organization grant acceptance (#2997)', () => {
     expect(await orgResponse.json()).toMatchObject({ grants: [{ grantId: grant.grantId, delegatorDid: ORG, agentDid: AGENT }] });
     const personal = await listGrants(request('GET', { as: null }));
     expect(await personal.json()).toEqual({ grants: [] });
-    expect((await harness.client.query('SELECT * FROM auth.identity_members')).rows).toEqual([]);
+    expect((await harness.client.query('SELECT * FROM auth.identity_members WHERE member_did = $1 OR identity_did = $1', [AGENT])).rows).toEqual([]);
     await assertSignedEvent(grant.grantId, 'issued');
   });
 
@@ -365,6 +433,9 @@ describe('organization grant acceptance (#2997)', () => {
     });
     expect(authority).toHaveProperty('grant');
     const before = await harness.snapshot();
+    const issueResponse = await mutate('issue', grant.grantId, { as: ORG, actingFor: OTHER_ORG });
+    expect(issueResponse.status).toBe(403);
+    expect(await issueResponse.json()).toMatchObject({ onboarding: agentCardUrl() });
     for (const action of ['issue', 'renew', 'add', 'remove', 'revoke']) {
       expect((await mutate(action, grant.grantId, { as: ORG, actingFor: OTHER_ORG })).status, action).toBe(403);
     }

@@ -30,7 +30,7 @@ export async function resolveCallerIdentity(
   request: NextRequest,
   options: { grantManagement?: boolean } = {},
 ): Promise<CallerIdentity | CallerIdentityError> {
-  const authResult = options.grantManagement ? await requireGrantPrincipal(request) : await requireAuth(request, { service: 'auth' });
+  const authResult = options.grantManagement ? await requireGrantPrincipal(request) : await requireAuth(request);
   if ('error' in authResult) {
     return { errorResponse: authErrorResponse(authResult) };
   }

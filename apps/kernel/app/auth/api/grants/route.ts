@@ -74,7 +74,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'capabilities must be an array of strings' }, { status: 400 });
   }
   if (!(await mayIssueCloudflareGrant(identity, delegatorDid, capabilities))) {
-    return NextResponse.json({ error: 'Current zone owner authority required' }, { status: 403 });
+    return authErrorResponse({ error: 'Current zone owner authority required', status: 403 });
   }
 
   // Validate the intro-attribution split BEFORE issuing the grant (#1886): a

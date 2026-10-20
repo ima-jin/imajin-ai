@@ -10,7 +10,7 @@ export async function createOrgGrantHarness() {
   await client.exec(`
     CREATE SCHEMA auth;
     CREATE TABLE auth.identities (
-      id text PRIMARY KEY, public_key text NOT NULL UNIQUE, scope text NOT NULL, subtype text
+      id text PRIMARY KEY, public_key text NOT NULL UNIQUE, scope text NOT NULL, subtype text, name text, handle text, suspended_at timestamptz
     );
     CREATE TABLE auth.identity_members (
       identity_did text NOT NULL, member_did text NOT NULL, role text NOT NULL DEFAULT 'member',
@@ -28,7 +28,7 @@ export async function createOrgGrantHarness() {
       revoked_at timestamptz, lapsed_at timestamptz
     );
   `);
-  for (const name of ['0099_delegation_grants.sql', '0104_delegation_grant_audit.sql']) {
+  for (const name of ['0099_delegation_grants.sql', '0104_delegation_grant_audit.sql', '0217_grant_revocation_audit_retry.sql', '0217_grant_revocation_audit_retry.sql']) {
     await client.exec(await readFile(new URL(`../../../../../../migrations/${name}`, import.meta.url), 'utf8'));
   }
   const db = drizzle(client, { schema });

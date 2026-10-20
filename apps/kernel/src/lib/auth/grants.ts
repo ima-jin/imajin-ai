@@ -22,8 +22,8 @@
  *   - Per-capability revocation never touches sibling capabilities or the
  *     parent grant; whole-grant revocation is a distinct, explicit action.
  */
-import { and, eq, gt, inArray, desc } from 'drizzle-orm';
-import { db, delegationGrants, delegationGrantCapabilities, delegationGrantEvents, attestations } from '@/src/db';
+import { and, eq, gt, inArray, desc, sql } from 'drizzle-orm';
+import { db, delegationGrants, delegationGrantCapabilities, delegationGrantEvents, attestations, type PendingGrantRevocationAudit } from '@/src/db';
 import { generateId } from '@/src/lib/kernel/id';
 import { createLogger } from '@imajin/logger';
 import {
@@ -41,11 +41,11 @@ import { isCloudflareZoneAudience } from '@/src/lib/cloudflare/contract';
 
 const log = createLogger('kernel');
 
-async function controlsGrantOwner(actorDid: string, ownerDid: string, audience: unknown): Promise<boolean> {
+async function controlsGrantOwner(actorDid: string, ownerDid: string, audience: unknown, executor: DbExecutor): Promise<boolean> {
   // Introspection must not initialize custody or operator services. Only grant
   // management needs the current group-controller check.
   const { controlsImportOwner } = await import('@/src/lib/vault/import-authority');
-  return controlsImportOwner(actorDid, ownerDid, db, isCloudflareZoneAudience(audience) ? 'vault' : 'auth');
+  return controlsImportOwner(actorDid, ownerDid, executor, isCloudflareZoneAudience(audience) ? 'vault' : 'auth');
 }
 
 export interface LibError {
@@ -113,22 +113,22 @@ async function recordGrantEvent(tx: DbExecutor, params: {
   delegatorDid: string;
   actorDid: string;
   capability?: string;
-}): Promise<void> {
+}, audit?: PendingGrantRevocationAudit): Promise<void> {
   const { prepareMechanicalAttestation } = await import('./emit-mechanical-attestation');
   const attestation = await prepareMechanicalAttestation({
     subjectDid: params.delegatorDid,
     type: `delegation.grant.${params.event}`,
     contextId: params.grantId,
     contextType: 'delegation_grant',
-    payload: { ...params },
-  });
+    payload: { ...params, ...(audit ? { occurredAt: audit.occurredAt } : {}) },
+  }, audit ? `att_${audit.id}` : undefined);
   await tx.insert(delegationGrantEvents).values({
-    id: generateId('gevt'),
+    id: audit?.id ?? generateId('gevt'),
     grantId: params.grantId,
     event: params.event,
     capability: params.capability ?? null,
     actorDid: params.actorDid,
-    createdAt: attestation.issuedAt,
+    createdAt: audit ? new Date(audit.occurredAt) : attestation.issuedAt,
   });
   await tx.insert(attestations).values(attestation);
 }
@@ -144,6 +144,41 @@ export interface IssueGrantInput {
   audience: unknown;
   onBehalfOf?: unknown;
   ttlMs?: number;
+}
+
+/** Signing/history failure never restores authority; the row retains retry intent. */
+export async function deliverGrantRevocationAudits(grantId: string): Promise<boolean> {
+  try {
+    await db.transaction(async (tx) => {
+      const [grant] = await tx.select({ pending: delegationGrants.pendingRevocationAudits })
+        .from(delegationGrants).where(eq(delegationGrants.id, grantId)).limit(1).for('update');
+      const pending = grant?.pending ?? [];
+      if (pending.length === 0) return;
+      for (const audit of pending) {
+        await recordGrantEvent(tx, {
+          grantId: audit.grantId, event: audit.event, delegatorDid: audit.delegatorDid,
+          actorDid: audit.actorDid, ...(audit.capability ? { capability: audit.capability } : {}),
+        }, audit);
+      }
+      await tx.update(delegationGrants).set({ pendingRevocationAudits: [] })
+        .where(eq(delegationGrants.id, grantId));
+    });
+    return true;
+  } catch {
+    log.error({ grantId }, 'Grant revocation is effective; signed audit remains queued for retry');
+    return false;
+  }
+}
+
+/** Bounded restart-safe sweep; shared grant locks make concurrent retries idempotent. */
+export async function retryGrantRevocationAudits() {
+  const rows = await db.select({ id: delegationGrants.id }).from(delegationGrants)
+    .where(sql`${delegationGrants.pendingRevocationAudits} <> '[]'::jsonb`).limit(100);
+  let delivered = 0;
+  for (const row of rows) {
+    if (await deliverGrantRevocationAudits(row.id)) delivered += 1;
+  }
+  return { attempted: rows.length, delivered, failed: rows.length - delivered };
 }
 
 /**
@@ -234,16 +269,21 @@ async function requireGrantDelegator(tx: DbExecutor, params: {
   requestedBy: string;
   action: string;
   requireActiveError?: string;
-}): Promise<{ delegatorDid: string; agentDid: string; status: string; audience: unknown } | LibError> {
+  actorDid?: string;
+}): Promise<{ delegatorDid: string; agentDid: string; status: string; audience: unknown; pendingRevocationAudits: PendingGrantRevocationAudit[] } | LibError> {
   const [grant] = await tx
-    .select({ delegatorDid: delegationGrants.delegatorDid, agentDid: delegationGrants.agentDid, status: delegationGrants.status, audience: delegationGrants.audience })
+    .select({ delegatorDid: delegationGrants.delegatorDid, agentDid: delegationGrants.agentDid, status: delegationGrants.status, audience: delegationGrants.audience, pendingRevocationAudits: delegationGrants.pendingRevocationAudits })
     .from(delegationGrants)
     .where(eq(delegationGrants.id, params.grantId))
     .limit(1)
     .for('update');
 
   if (!grant) return { error: 'Grant not found', status: 404 };
-  if (grant.delegatorDid !== params.requestedBy && !await controlsGrantOwner(params.requestedBy, grant.delegatorDid, grant.audience)) {
+  const actorDid = params.actorDid ?? params.requestedBy;
+  if (params.actorDid !== undefined && params.requestedBy !== grant.delegatorDid && !isCloudflareZoneAudience(grant.audience)) {
+    return { error: `Only the delegator may ${params.action} this grant`, status: 403 };
+  }
+  if (grant.delegatorDid !== actorDid && !await controlsGrantOwner(actorDid, grant.delegatorDid, grant.audience, tx)) {
     return { error: `Only the delegator may ${params.action} this grant`, status: 403 };
   }
   if (params.requireActiveError && grant.status !== 'active') {
@@ -253,39 +293,49 @@ async function requireGrantDelegator(tx: DbExecutor, params: {
 }
 
 /** Revoke the entire grant. Only the issuing delegator may do this. */
-export function revokeGrant(params: { grantId: string; requestedBy: string; actorDid?: string }): Promise<{ revoked: boolean } | LibError> {
-  return db.transaction(async (tx) => {
-    const grant = await requireGrantDelegator(tx, { grantId: params.grantId, requestedBy: params.requestedBy, action: 'revoke' });
+export async function revokeGrant(params: { grantId: string; requestedBy: string; actorDid?: string }): Promise<{ revoked: boolean } | LibError> {
+  const outcome = await db.transaction(async (tx) => {
+    const grant = await requireGrantDelegator(tx, { grantId: params.grantId, requestedBy: params.requestedBy, actorDid: params.actorDid, action: 'revoke' });
     if ('error' in grant) return grant;
 
+    const audit: PendingGrantRevocationAudit = {
+      id: generateId('gevt'), grantId: params.grantId, delegatorDid: grant.delegatorDid,
+      actorDid: params.actorDid ?? params.requestedBy, event: 'revoked',
+      occurredAt: new Date().toISOString(),
+    };
+    const pendingRevocationAudits = [...(grant.pendingRevocationAudits ?? []), audit];
     const result = await tx
       .update(delegationGrants)
-      .set({ status: 'revoked', revokedAt: new Date(), updatedAt: new Date() })
+      .set({ status: 'revoked', revokedAt: new Date(audit.occurredAt), updatedAt: new Date(), pendingRevocationAudits })
       .where(and(eq(delegationGrants.id, params.grantId), eq(delegationGrants.status, 'active')))
       .returning({ id: delegationGrants.id });
 
-    if (result.length > 0) {
-      await recordGrantEvent(tx, { grantId: params.grantId, event: 'revoked', delegatorDid: grant.delegatorDid, actorDid: params.actorDid ?? params.requestedBy });
-    }
-
     return { revoked: result.length > 0 };
   });
+  if (!('error' in outcome)) await deliverGrantRevocationAudits(params.grantId);
+  return outcome;
 }
 
 /**
  * Revoke exactly one capability, leaving the rest of the grant (and every
  * other capability on it) untouched (#1882 item 4).
  */
-export function revokeGrantCapability(params: {
+export async function revokeGrantCapability(params: {
   grantId: string;
   capability: string;
   requestedBy: string;
   actorDid?: string;
 }): Promise<{ revoked: boolean } | LibError> {
-  return db.transaction(async (tx) => {
-    const grant = await requireGrantDelegator(tx, { grantId: params.grantId, requestedBy: params.requestedBy, action: 'revoke' });
+  const outcome = await db.transaction(async (tx) => {
+    const grant = await requireGrantDelegator(tx, { grantId: params.grantId, requestedBy: params.requestedBy, actorDid: params.actorDid, action: 'revoke' });
     if ('error' in grant) return grant;
 
+    const audit: PendingGrantRevocationAudit = {
+      id: generateId('gevt'), grantId: params.grantId, delegatorDid: grant.delegatorDid,
+      actorDid: params.actorDid ?? params.requestedBy, event: 'capability_revoked',
+      occurredAt: new Date().toISOString(), capability: params.capability,
+    };
+    const pendingRevocationAudits = [...(grant.pendingRevocationAudits ?? []), audit];
     const result = await tx
       .update(delegationGrantCapabilities)
       .set({ status: 'revoked', revokedAt: new Date() })
@@ -299,11 +349,13 @@ export function revokeGrantCapability(params: {
       .returning({ id: delegationGrantCapabilities.id });
 
     if (result.length > 0) {
-      await recordGrantEvent(tx, { grantId: params.grantId, event: 'capability_revoked', delegatorDid: grant.delegatorDid, actorDid: params.actorDid ?? params.requestedBy, capability: params.capability });
+      await tx.update(delegationGrants).set({ pendingRevocationAudits }).where(eq(delegationGrants.id, params.grantId));
     }
 
     return { revoked: result.length > 0 };
   });
+  if (!('error' in outcome)) await deliverGrantRevocationAudits(params.grantId);
+  return outcome;
 }
 
 /**
@@ -331,6 +383,7 @@ export function addGrantCapability(params: {
     const grant = await requireGrantDelegator(tx, {
       grantId: params.grantId,
       requestedBy: params.requestedBy,
+      actorDid: params.actorDid,
       action: 'modify',
       requireActiveError: 'Cannot add a capability to a revoked grant — issue a new one',
     });
@@ -386,6 +439,7 @@ export function renewGrant(params: {
     const grant = await requireGrantDelegator(tx, {
       grantId: params.grantId,
       requestedBy: params.requestedBy,
+      actorDid: params.actorDid,
       action: 'renew',
       requireActiveError: 'A revoked grant cannot be renewed — issue a new one',
     });
