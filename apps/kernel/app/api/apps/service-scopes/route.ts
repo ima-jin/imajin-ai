@@ -61,7 +61,7 @@ function decodeCursor(cursor: string | null): string | null {
 
 async function discoverApps(identity: Identity, params: URLSearchParams, headers: Record<string, string>) {
   const operatorDid = await getOperatorDid();
-  if (!operatorDid || !isOperatorIdentity(identity, operatorDid)) {
+  if (!operatorDid || identity.actingAs || !isOperatorIdentity(identity, operatorDid)) {
     return NextResponse.json({ error: 'Only the node operator may list registered apps' }, { status: 403, headers });
   }
   let cursor: string | null;

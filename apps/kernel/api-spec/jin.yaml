@@ -805,6 +805,15 @@ components:
           type: boolean
           default: false
           description: Reissue a claim code for an already-succeeded app only; preserves ownership, visibility, sign-in audience, callback URL, redirect hosts, source repository and domain bindings. Any provided sourceRepo or signInAudience is refused.
+    AppServiceScopesMetadata:
+      type: object
+      required: [appDid, requestedScopes, approvedServiceScopes, approvalId, approvedAt]
+      properties:
+        appDid: { type: string }
+        requestedScopes: { type: array, items: { type: string }, readOnly: true, description: "Normalized registry requests; not approvals." }
+        approvedServiceScopes: { type: array, items: { type: string } }
+        approvalId: { type: string, nullable: true }
+        approvedAt: { type: string, format: date-time, nullable: true }
     AppServiceScopesRequest:
       type: object
       description: >-
@@ -1744,48 +1753,62 @@ paths:
     get:
       tags: [apps]
       operationId: getAppServiceScopes
-      summary: Read an app's requested and approved service scopes (#2711, #2822)
+      summary: Read app scopes or discover registered apps (#2711, #2822, #2976)
+      description: >-
+        With appDid, retains the owner/operator single-app read. Without appDid,
+        only the directly authenticated node operator may discover all registry
+        apps, including self-registered apps without a slug or provisioning row
+        and inactive apps. Returns at most 50 apps ordered by appDid. Pass the
+        opaque nextCursor as cursor for the next page; null ends pagination.
+        Both reads use Cache-Control no-store. Scope sets are normalized;
+        requested scopes are not approvals. No keys, credentials, callback URLs,
+        secrets or provisioning records are returned.
       security:
         - cookieAuth: []
       parameters:
         - name: appDid
           in: query
-          required: true
+          required: false
           schema: { type: string }
+        - name: cursor
+          in: query
+          required: false
+          schema: { type: string, maxLength: 2048 }
+          description: Opaque continuation from nextCursor; used only without appDid.
       responses:
         "200":
-          description: "Requested and approved scopes under the same owner/operator gate; approvalId/approvedAt identify the last countersigned change."
+          description: Targeted app metadata or an operator-only registry page
           content:
             application/json:
               schema:
-                type: object
-                required: [appDid, requestedScopes, approvedServiceScopes, approvalId, approvedAt]
-                properties:
-                  appDid: { type: string }
-                  requestedScopes: { type: array, items: { type: string }, readOnly: true, description: "Normalized registry requested scopes; not an approval." }
-                  approvedServiceScopes: { type: array, items: { type: string } }
-                  approvalId: { type: string, nullable: true }
-                  approvedAt: { type: string, format: date-time, nullable: true }
+                oneOf:
+                  - $ref: "#/components/schemas/AppServiceScopesMetadata"
+                  - type: object
+                    required: [apps, nextCursor]
+                    additionalProperties: false
+                    properties:
+                      apps:
+                        type: array
+                        maxItems: 50
+                        items:
+                          allOf:
+                            - $ref: "#/components/schemas/AppServiceScopesMetadata"
+                            - type: object
+                              required: [name, status]
+                              properties:
+                                name: { type: string }
+                                status: { type: string }
+                      nextCursor: { type: string, nullable: true }
         "400":
-          description: Missing appDid query parameter
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/Error" }
+          description: Invalid discovery cursor
         "401":
           description: Not authenticated
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/Error" }
         "403":
-          description: Caller is neither the app owner nor the node operator
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/Error" }
+          description: Discovery requires the node operator; targeted reads require the owner or operator
         "404":
-          description: Unknown app DID
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/Error" }
+          description: Unknown app DID on targeted read
+        "503":
+          description: Registry discovery unavailable; not an empty app list
 
   /api/apps/claim:
     post:

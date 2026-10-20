@@ -210,6 +210,10 @@ describe('POST /api/apps/service-scopes', () => {
     expect(recordApprovalRequestedMock).not.toHaveBeenCalled();
   });
 
+
+});
+
+describe('GET /api/apps/service-scopes', () => {
   function asOperator() {
     requireAuthMock.mockResolvedValue({ identity: { id: OPERATOR, scope: 'actor', subtype: 'human' } });
     selectWhereMock.mockReturnValue({ orderBy: selectOrderByMock });
@@ -257,6 +261,7 @@ describe('POST /api/apps/service-scopes', () => {
   it.each([
     { id: OWNER, scope: 'actor', subtype: 'human' },
     { id: OPERATOR, scope: 'actor', subtype: 'human', actingFor: OWNER },
+    { id: OPERATOR, scope: 'actor', subtype: 'human', actingAs: OWNER, actingAsRole: 'owner' },
   ])('rejects non-operator discovery before querying registry', async (identity) => {
     requireAuthMock.mockResolvedValue({ identity });
     expect((await GET(get('') as never)).status).toBe(403);
@@ -270,9 +275,7 @@ describe('POST /api/apps/service-scopes', () => {
     expect(res.status).toBe(503);
     expect(res.headers.get('Cache-Control')).toBe('no-store');
   });
-});
 
-describe('GET /api/apps/service-scopes', () => {
   it('lets the operator read platform-owned requested scopes', async () => {
     requireAuthMock.mockResolvedValue({ identity: { id: OPERATOR, scope: 'actor', subtype: 'human' } });
     selectWhereMock.mockResolvedValue([app({ ownerDid: 'did:imajin:platform', requested: ['pay:settle'] })]);
