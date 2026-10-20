@@ -3,6 +3,10 @@ import { corsHeaders } from '@imajin/config';
 import { db, attestations } from '@/src/db';
 import { and, eq, isNull } from 'drizzle-orm';
 import { resolveCallerDid } from '../../caller-did';
+import { requireDocumentActor } from '@/src/lib/auth/document-authorization';
+import { revokeAgreement } from '@/src/lib/auth/revoke-agreement';
+
+export const dynamic = 'force-dynamic';
 
 /**
  * POST /api/attestations/:id/revoke (#2649)
@@ -29,6 +33,7 @@ export async function POST(
     return NextResponse.json({ error: 'Not authenticated' }, { status: 401, headers: cors });
   }
 
+
   const { did: rawId } = await params;
   const attestationId = decodeURIComponent(rawId);
 
@@ -38,12 +43,20 @@ export async function POST(
       issuerDid: attestations.issuerDid,
       delegatorDid: attestations.delegatorDid,
       revokedAt: attestations.revokedAt,
+      type: attestations.type,
     })
     .from(attestations)
     .where(eq(attestations.id, attestationId))
     .limit(1);
   if (!att) {
     return NextResponse.json({ error: 'Attestation not found' }, { status: 404, headers: cors });
+  }
+  if (att.type === 'agreement') {
+    const actor = await requireDocumentActor(request, { write: true });
+    if (actor instanceof Response) return actor;
+    const result = await revokeAgreement({ attestationId, effectiveDid: actor.effectiveDid, actingHumanDid: actor.actingHumanDid });
+    const { status, ...body } = result;
+    return NextResponse.json(body, { status, headers: cors });
   }
 
   // A scoped app token (#2394) resolves to the *user* who minted it, while an
