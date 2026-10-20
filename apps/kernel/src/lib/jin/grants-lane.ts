@@ -83,6 +83,8 @@ export interface RevokeAction {
 export interface GrantCard {
   id: string;
   source: GrantSourceKind;
+  delegatorDid?: string;
+  history?: { event: string; actorDid: string; createdAt: string; capability: string | null }[];
   /** Agent DID / OAuth client label / bearer client label — never a secret value. */
   grantee: string;
   /** Non-secret capability/scope labels — a purpose string for vault, a coarse role for legacy membership. */
@@ -200,6 +202,8 @@ function normalizeAuthGrants(grants: Awaited<ReturnType<typeof listGrantDetailsF
     return {
       id: `auth-grant:${grant.grantId}`,
       source: 'auth-grant',
+      delegatorDid: grant.delegatorDid,
+      history: grant.history,
       grantee: grant.agentDid,
       capabilities: activeCapabilities.length > 0 ? activeCapabilities : ['(no active capabilities)'],
       issuedAt: grant.issuedAt,
@@ -211,6 +215,12 @@ function normalizeAuthGrants(grants: Awaited<ReturnType<typeof listGrantDetailsF
       revoke: grant.status === 'revoked' ? null : { method: 'DELETE', path: `/auth/api/grants/${encodeURIComponent(grant.grantId)}` },
     };
   });
+}
+
+/** Org controllers may read their org's auth grants, never node-operator vault/app sources. */
+export async function listAuthGrantsForDelegator(delegatorDid: string): Promise<GrantCard[]> {
+  const grants = await listGrantDetailsForDelegator(delegatorDid);
+  return normalizeAuthGrants(grants).sort((a, b) => (b.issuedAt ?? '').localeCompare(a.issuedAt ?? ''));
 }
 
 function normalizeLegacyMemberships(memberships: LegacyAgentMembership[]): GrantCard[] {

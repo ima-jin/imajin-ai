@@ -3,7 +3,8 @@
  * holds, normalized across sources (#2292). Powers the /jin Grants lane
  * panel.
  *
- * Same operator-identity gate as `GET /jin/api/operator-approvals` (#2059):
+ * Org owner/admin act-as sees ONLY its scoped auth grants (#2997). Other
+ * sources retain the operator-identity gate from operator-approvals (#2059):
  * a non-operator identity — including `@jin` itself, or anyone else
  * authenticated on this node — gets `{ isOperator: false, grants: [] }`,
  * indistinguishable from "no grants" so this endpoint never confirms
@@ -19,16 +20,31 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@imajin/auth';
 import { corsHeaders } from '@/src/lib/kernel/cors';
 import { getOperatorDid, isOperatorIdentity } from '@/src/lib/notify/operator-approvals';
-import { listGrantsForOperator } from '@/src/lib/jin/grants-lane';
+import { listAuthGrantsForDelegator, listGrantsForOperator } from '@/src/lib/jin/grants-lane';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: NextRequest) {
   const cors = corsHeaders(request);
 
-  const authResult = await requireAuth(request);
+  const authResult = await requireAuth(request, { service: 'auth' });
   if ('error' in authResult) {
     return NextResponse.json({ error: authResult.error }, { status: authResult.status, headers: cors });
+  }
+
+  const { identity } = authResult;
+  if (identity.actingAs) {
+    if (identity.actingFor || identity.subtype === 'agent' || !['owner', 'admin'].includes(identity.actingAsRole ?? '')) {
+      return NextResponse.json({ error: 'Only an org owner or admin may manage org grants' }, { status: 403, headers: cors });
+    }
+    const grants = await listAuthGrantsForDelegator(identity.actingAs);
+    return NextResponse.json({
+      isOperator: false,
+      canManageGrants: true,
+      delegatorDid: identity.actingAs,
+      actorDid: identity.id,
+      grants,
+    }, { headers: cors });
   }
 
   const operatorDid = await getOperatorDid();
