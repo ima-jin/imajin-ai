@@ -1,7 +1,8 @@
 import { db, identities, attestations, attestationSignatures } from '@/src/db';
-import { eq, or, and, isNull, desc, inArray, notInArray } from 'drizzle-orm';
+import { eq, ne, or, and, isNull, desc, inArray, notInArray } from 'drizzle-orm';
 import Link from 'next/link';
 import DocumentSigningCard, { type DocumentAttestation, type Signature } from '../attestations/components/DocumentSigningCard';
+import { relationshipLabelOrgDids, RELATIONSHIP_LABEL_EVENT } from '../api/attestations/relationship-label-visibility';
 
 const TYPE_BADGE: Record<string, { label: string; classes: string }> = {
   'session.created': {
@@ -74,11 +75,12 @@ const PAGE_SIZE = 20;
 
 interface Props {
   sessionDid: string;
+  viewerDid: string;
   searchParams: { type?: string; role?: string; page?: string };
   excludeDocumentTypes?: boolean;
 }
 
-export default async function AttestationList({ sessionDid, searchParams, excludeDocumentTypes = false }: Readonly<Props>) {
+export default async function AttestationList({ sessionDid, viewerDid, searchParams, excludeDocumentTypes = false }: Readonly<Props>) {
   const { type: typeFilter, role = 'all' } = searchParams;
   const page = Math.max(1, Number.parseInt(searchParams.page || '1'));
   const offset = (page - 1) * PAGE_SIZE;
@@ -90,6 +92,12 @@ export default async function AttestationList({ sessionDid, searchParams, exclud
     (() => { if (role === 'issued') { return issuedByMe; } if (role === 'subject') { return aboutMe; } return or(issuedByMe, aboutMe)!; })();
 
   const conditions = [roleCondition, isNull(attestations.revokedAt)];
+  const allowedOrgDids = await relationshipLabelOrgDids(viewerDid, [sessionDid]);
+  const notLabelEvent = ne(attestations.type, RELATIONSHIP_LABEL_EVENT);
+  // Apply privacy before LIMIT/OFFSET so hidden history cannot create empty pages.
+  conditions.push(allowedOrgDids.length > 0
+    ? or(notLabelEvent, inArray(attestations.subjectDid, allowedOrgDids))!
+    : notLabelEvent);
   if (typeFilter) conditions.push(eq(attestations.type, typeFilter));
   if (excludeDocumentTypes && !typeFilter) conditions.push(notInArray(attestations.type, DOCUMENT_TYPES));
 
