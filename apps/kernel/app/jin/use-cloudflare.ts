@@ -4,12 +4,14 @@ import { useState } from 'react';
 import { requestApprovalsRefresh } from './approval-anchor';
 import { cloudflareFailure, cloudflareRequest, type CacheRule, type CloudflareHistory, type CloudflareZone, type CustomHostname, type DnsRecord } from './cloudflare-client';
 import { cloudflareList, isCacheRule, isCloudflareHistory, isCustomHostname, isDnsRecord } from './cloudflare-client';
+import { useCloudflareClassification } from './use-cloudflare-classification';
 
-export const sections = ['DNS', 'Settings / SSL', 'SSL', 'Cache rules', 'Custom hostnames', 'Signed history'] as const;
+export const sections = ['DNS', 'Edge classification', 'Settings / SSL', 'SSL', 'Cache rules', 'Custom hostnames', 'Signed history'] as const;
 export type Section = typeof sections[number];
 type Change = { recordId: string; proxied: boolean };
 
 export function useCloudflare() {
+  const edge = useCloudflareClassification();
   const [zone, setZone] = useState<CloudflareZone | null>(null);
   const [section, setSection] = useState<Section>('DNS');
   const [busy, setBusy] = useState(false);
@@ -38,7 +40,10 @@ export function useCloudflare() {
     } finally { setBusy(false); }
   };
   const load = async (target: CloudflareZone, tab: Section) => {
-    if (tab === 'DNS') {
+    edge.invalidate();
+    if (tab === 'Edge classification') {
+      await edge.loadClassification(target);
+    } else if (tab === 'DNS') {
       const data = await cloudflareRequest<{ records: DnsRecord[] }>(target, 'dns');
       setRecords(cloudflareList(data, 'records', isDnsRecord)); setSelected([]); setPreview(null); setEditing(undefined); setDeleting(null);
     } else if (tab === 'Cache rules') {
@@ -91,6 +96,6 @@ export function useCloudflare() {
     setHostnames(hostnames.map((item) => item.id === hostname.id ? data.hostname : item));
   });
 
-  return { zone, setZone, section, setSection, busy, notice, proposal, records, setRecords, rules, setRules, editingRule, setEditingRule, hostnames, setHostnames, history, setHistory, settings, setSettings, editing, setEditing, deleting, setDeleting, selected, setSelected, proxy, setProxy, preview, setPreview, cachePreview, setCachePreview, run, load, mutate, bulk, cachePlan, saveRules, refreshHostname, setNotice };
+  return { zone, setZone, section, setSection, busy: busy || edge.working, edge, notice, proposal, records, setRecords, rules, setRules, editingRule, setEditingRule, hostnames, setHostnames, history, setHistory, settings, setSettings, editing, setEditing, deleting, setDeleting, selected, setSelected, proxy, setProxy, preview, setPreview, cachePreview, setCachePreview, run, load, mutate, bulk, cachePlan, saveRules, refreshHostname, setNotice };
 }
 export type CloudflareModel = ReturnType<typeof useCloudflare>;
