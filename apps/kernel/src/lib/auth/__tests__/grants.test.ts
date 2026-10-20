@@ -38,6 +38,7 @@ const { grantsStore, capsStore, eventsStore, GRANTS_TABLE, CAPS_TABLE, EVENTS_TA
 function storeFor(table: { __table: string }): Map<string, Row> {
   if (table.__table === 'grants') return grantsStore;
   if (table.__table === 'caps') return capsStore;
+  if (table.__table === 'attestations') return new Map();
   return eventsStore;
 }
 
@@ -97,7 +98,8 @@ function queryable(rows: Row[]) {
     then: p.then.bind(p),
     catch: p.catch.bind(p),
     finally: p.finally.bind(p),
-    limit: (n: number) => Promise.resolve(rows.slice(0, n)),
+    limit: (n: number) => queryable(rows.slice(0, n)),
+    for: () => p,
     returning: (projection?: Record<string, string>) => Promise.resolve(project(rows, projection)),
     orderBy: (spec?: DescSpec) => Promise.resolve(sortByDesc(rows, spec)),
   };
@@ -157,10 +159,18 @@ vi.mock('@/src/db', () => ({
     delete: deleteFrom,
     update: updateTable,
     select: selectFrom,
+    transaction: (callback: (tx: unknown) => Promise<unknown>) => callback({
+      insert: insertInto, delete: deleteFrom, update: updateTable, select: selectFrom,
+    }),
   },
   delegationGrants: GRANTS_TABLE,
   delegationGrantCapabilities: CAPS_TABLE,
   delegationGrantEvents: EVENTS_TABLE,
+  attestations: { __table: 'attestations' },
+}));
+
+vi.mock('../emit-mechanical-attestation', () => ({
+  prepareMechanicalAttestation: async () => ({ id: 'att_fixture', issuedAt: new Date() }),
 }));
 
 vi.mock('@/src/lib/kernel/id', () => {

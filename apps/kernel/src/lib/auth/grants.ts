@@ -23,7 +23,7 @@
  *     parent grant; whole-grant revocation is a distinct, explicit action.
  */
 import { and, eq, gt, inArray, desc } from 'drizzle-orm';
-import { db, delegationGrants, delegationGrantCapabilities, delegationGrantEvents } from '@/src/db';
+import { db, delegationGrants, delegationGrantCapabilities, delegationGrantEvents, attestations } from '@/src/db';
 import { generateId } from '@/src/lib/kernel/id';
 import { createLogger } from '@imajin/logger';
 import {
@@ -38,8 +38,10 @@ import {
 import { validateAttestDelegationCapabilities } from './attest-delegation';
 import type { DbExecutor } from '@/src/lib/vault/index';
 import { isCloudflareZoneAudience } from '@/src/lib/cloudflare/contract';
+import { prepareMechanicalAttestation } from './emit-mechanical-attestation';
 
 const log = createLogger('kernel');
+type GrantTransaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
 async function controlsGrantOwner(actorDid: string, ownerDid: string, audience: unknown): Promise<boolean> {
   // Introspection must not initialize custody or operator services. Only grant
@@ -106,26 +108,30 @@ function toGrantRecord(row: {
   };
 }
 
-/** Grant lifecycle audit trail (#1887 grants-view read surface). Best-effort:
- * a logging failure must never unwind an otherwise-successful grant mutation. */
-async function recordGrantEvent(params: {
+/** The queryable history and signed proof commit with the authority change. */
+async function recordGrantEvent(tx: DbExecutor, params: {
   grantId: string;
   event: 'issued' | 'renewed' | 'revoked' | 'capability_revoked' | 'capability_added';
+  delegatorDid: string;
   actorDid: string;
   capability?: string;
 }): Promise<void> {
-  try {
-    await db.insert(delegationGrantEvents).values({
-      id: generateId('gevt'),
-      grantId: params.grantId,
-      event: params.event,
-      capability: params.capability ?? null,
-      actorDid: params.actorDid,
-      createdAt: new Date(),
-    });
-  } catch (err) {
-    log.error({ err: String(err), grantId: params.grantId, event: params.event }, 'Failed to record grant lifecycle event');
-  }
+  const attestation = await prepareMechanicalAttestation({
+    subjectDid: params.delegatorDid,
+    type: `delegation.grant.${params.event}`,
+    contextId: params.grantId,
+    contextType: 'delegation_grant',
+    payload: { ...params },
+  });
+  await tx.insert(delegationGrantEvents).values({
+    id: generateId('gevt'),
+    grantId: params.grantId,
+    event: params.event,
+    capability: params.capability ?? null,
+    actorDid: params.actorDid,
+    createdAt: attestation.issuedAt,
+  });
+  await tx.insert(attestations).values(attestation);
 }
 
 export interface IssueGrantInput {
@@ -187,37 +193,26 @@ export async function issueGrant(input: IssueGrantInput, executor: DbExecutor = 
   const expiresAt = new Date(issuedAt.getTime() + ttlMs);
   const grantId = input.grantId ?? generateId('grant');
 
-  await executor.insert(delegationGrants).values({
-    id: grantId,
-    agentDid,
-    delegatorDid,
-    audience,
-    onBehalfOf,
-    issuedAt,
-    expiresAt,
-    status: 'active',
-  });
-
-  try {
-    await executor.insert(delegationGrantCapabilities).values(
+  const persist = async (tx: DbExecutor) => {
+    await tx.insert(delegationGrants).values({
+      id: grantId,
+      agentDid,
+      delegatorDid,
+      audience,
+      onBehalfOf,
+      issuedAt,
+      expiresAt,
+      status: 'active',
+    });
+    await tx.insert(delegationGrantCapabilities).values(
       valid.map((capability) => ({ id: generateId('gcap'), grantId, capability, status: 'active' as const })),
     );
-  } catch (err) {
-    // The parent row must never outlive its capabilities — an orphaned grant
-    // with zero capabilities would introspect as "no capability covers this",
-    // which is safe, but is still dead state nobody asked for.
-    await executor.delete(delegationGrants).where(eq(delegationGrants.id, grantId)).catch(() => undefined);
-    throw err;
-  }
+    await recordGrantEvent(tx, { grantId, event: 'issued', delegatorDid, actorDid: input.actorDid ?? delegatorDid });
+  };
+  if (executor === db) await db.transaction(persist);
+  else await persist(executor);
 
   log.info({ grantId, delegatorDid, agentDid, capabilities: valid }, 'Delegation grant issued');
-  if (executor === db) {
-    await recordGrantEvent({ grantId, event: 'issued', actorDid: input.actorDid ?? delegatorDid });
-  } else {
-    await executor.insert(delegationGrantEvents).values({
-      id: generateId('gevt'), grantId, event: 'issued', actorDid: input.actorDid ?? delegatorDid, createdAt: new Date(),
-    });
-  }
 
   return {
     grant: toGrantRecord({ id: grantId, agentDid, delegatorDid, audience, onBehalfOf, issuedAt, expiresAt, status: 'active', revokedAt: null }, valid),
@@ -235,17 +230,18 @@ export async function issueGrant(input: IssueGrantInput, executor: DbExecutor = 
  * omit it and rely on their own mutation's `WHERE status = 'active'` guard
  * instead.
  */
-async function requireGrantDelegator(params: {
+async function requireGrantDelegator(tx: DbExecutor, params: {
   grantId: string;
   requestedBy: string;
   action: string;
   requireActiveError?: string;
 }): Promise<{ delegatorDid: string; agentDid: string; status: string; audience: unknown } | LibError> {
-  const [grant] = await db
+  const [grant] = await tx
     .select({ delegatorDid: delegationGrants.delegatorDid, agentDid: delegationGrants.agentDid, status: delegationGrants.status, audience: delegationGrants.audience })
     .from(delegationGrants)
     .where(eq(delegationGrants.id, params.grantId))
-    .limit(1);
+    .limit(1)
+    .for('update');
 
   if (!grant) return { error: 'Grant not found', status: 404 };
   if (grant.delegatorDid !== params.requestedBy && !await controlsGrantOwner(params.requestedBy, grant.delegatorDid, grant.audience)) {
@@ -258,21 +254,23 @@ async function requireGrantDelegator(params: {
 }
 
 /** Revoke the entire grant. Only the issuing delegator may do this. */
-export async function revokeGrant(params: { grantId: string; requestedBy: string }): Promise<{ revoked: boolean } | LibError> {
-  const grant = await requireGrantDelegator({ grantId: params.grantId, requestedBy: params.requestedBy, action: 'revoke' });
-  if ('error' in grant) return grant;
+export async function revokeGrant(params: { grantId: string; requestedBy: string; actorDid?: string }): Promise<{ revoked: boolean } | LibError> {
+  return db.transaction(async (tx) => {
+    const grant = await requireGrantDelegator(tx, { grantId: params.grantId, requestedBy: params.requestedBy, action: 'revoke' });
+    if ('error' in grant) return grant;
 
-  const result = await db
-    .update(delegationGrants)
-    .set({ status: 'revoked', revokedAt: new Date(), updatedAt: new Date() })
-    .where(and(eq(delegationGrants.id, params.grantId), eq(delegationGrants.status, 'active')))
-    .returning({ id: delegationGrants.id });
+    const result = await tx
+      .update(delegationGrants)
+      .set({ status: 'revoked', revokedAt: new Date(), updatedAt: new Date() })
+      .where(and(eq(delegationGrants.id, params.grantId), eq(delegationGrants.status, 'active')))
+      .returning({ id: delegationGrants.id });
 
-  if (result.length > 0) {
-    await recordGrantEvent({ grantId: params.grantId, event: 'revoked', actorDid: params.requestedBy });
-  }
+    if (result.length > 0) {
+      await recordGrantEvent(tx, { grantId: params.grantId, event: 'revoked', delegatorDid: grant.delegatorDid, actorDid: params.actorDid ?? params.requestedBy });
+    }
 
-  return { revoked: result.length > 0 };
+    return { revoked: result.length > 0 };
+  });
 }
 
 /**
@@ -283,27 +281,30 @@ export async function revokeGrantCapability(params: {
   grantId: string;
   capability: string;
   requestedBy: string;
+  actorDid?: string;
 }): Promise<{ revoked: boolean } | LibError> {
-  const grant = await requireGrantDelegator({ grantId: params.grantId, requestedBy: params.requestedBy, action: 'revoke' });
-  if ('error' in grant) return grant;
+  return db.transaction(async (tx) => {
+    const grant = await requireGrantDelegator(tx, { grantId: params.grantId, requestedBy: params.requestedBy, action: 'revoke' });
+    if ('error' in grant) return grant;
 
-  const result = await db
-    .update(delegationGrantCapabilities)
-    .set({ status: 'revoked', revokedAt: new Date() })
-    .where(
-      and(
-        eq(delegationGrantCapabilities.grantId, params.grantId),
-        eq(delegationGrantCapabilities.capability, params.capability),
-        eq(delegationGrantCapabilities.status, 'active'),
-      ),
-    )
-    .returning({ id: delegationGrantCapabilities.id });
+    const result = await tx
+      .update(delegationGrantCapabilities)
+      .set({ status: 'revoked', revokedAt: new Date() })
+      .where(
+        and(
+          eq(delegationGrantCapabilities.grantId, params.grantId),
+          eq(delegationGrantCapabilities.capability, params.capability),
+          eq(delegationGrantCapabilities.status, 'active'),
+        ),
+      )
+      .returning({ id: delegationGrantCapabilities.id });
 
-  if (result.length > 0) {
-    await recordGrantEvent({ grantId: params.grantId, event: 'capability_revoked', actorDid: params.requestedBy, capability: params.capability });
-  }
+    if (result.length > 0) {
+      await recordGrantEvent(tx, { grantId: params.grantId, event: 'capability_revoked', delegatorDid: grant.delegatorDid, actorDid: params.actorDid ?? params.requestedBy, capability: params.capability });
+    }
 
-  return { revoked: result.length > 0 };
+    return { revoked: result.length > 0 };
+  });
 }
 
 /**
@@ -325,47 +326,50 @@ export async function addGrantCapability(params: {
   grantId: string;
   capability: string;
   requestedBy: string;
+  actorDid?: string;
 }): Promise<{ added: boolean } | LibError> {
-  const grant = await requireGrantDelegator({
-    grantId: params.grantId,
-    requestedBy: params.requestedBy,
-    action: 'modify',
-    requireActiveError: 'Cannot add a capability to a revoked grant — issue a new one',
+  return db.transaction(async (tx) => {
+    const grant = await requireGrantDelegator(tx, {
+      grantId: params.grantId,
+      requestedBy: params.requestedBy,
+      action: 'modify',
+      requireActiveError: 'Cannot add a capability to a revoked grant — issue a new one',
+    });
+    if ('error' in grant) return grant;
+
+    if (params.capability.startsWith('cloudflare:') && !isCloudflareZoneAudience(grant.audience)) {
+      return { error: 'Cloudflare capabilities require one exact zone DID audience', status: 400 };
+    }
+    const capabilityResult = await resolveGrantCapabilities([params.capability], grant.agentDid);
+    if ('error' in capabilityResult) {
+      return { error: `Unknown capability: ${params.capability}`, status: capabilityResult.status };
+    }
+    const [capability] = capabilityResult.valid;
+
+    const [existing] = await tx
+      .select({ id: delegationGrantCapabilities.id, status: delegationGrantCapabilities.status })
+      .from(delegationGrantCapabilities)
+      .where(and(eq(delegationGrantCapabilities.grantId, params.grantId), eq(delegationGrantCapabilities.capability, capability)))
+      .limit(1);
+
+    if (existing?.status === 'active') {
+      return { added: false };
+    }
+
+    if (existing) {
+      await tx
+        .update(delegationGrantCapabilities)
+        .set({ status: 'active', revokedAt: null })
+        .where(eq(delegationGrantCapabilities.id, existing.id));
+    } else {
+      await tx.insert(delegationGrantCapabilities).values({ id: generateId('gcap'), grantId: params.grantId, capability, status: 'active' });
+    }
+
+    log.info({ grantId: params.grantId, delegatorDid: params.requestedBy, capability }, 'Delegation grant capability added');
+    await recordGrantEvent(tx, { grantId: params.grantId, event: 'capability_added', delegatorDid: grant.delegatorDid, actorDid: params.actorDid ?? params.requestedBy, capability });
+
+    return { added: true };
   });
-  if ('error' in grant) return grant;
-
-  if (params.capability.startsWith('cloudflare:') && !isCloudflareZoneAudience(grant.audience)) {
-    return { error: 'Cloudflare capabilities require one exact zone DID audience', status: 400 };
-  }
-  const capabilityResult = await resolveGrantCapabilities([params.capability], grant.agentDid);
-  if ('error' in capabilityResult) {
-    return { error: `Unknown capability: ${params.capability}`, status: capabilityResult.status };
-  }
-  const [capability] = capabilityResult.valid;
-
-  const [existing] = await db
-    .select({ id: delegationGrantCapabilities.id, status: delegationGrantCapabilities.status })
-    .from(delegationGrantCapabilities)
-    .where(and(eq(delegationGrantCapabilities.grantId, params.grantId), eq(delegationGrantCapabilities.capability, capability)))
-    .limit(1);
-
-  if (existing?.status === 'active') {
-    return { added: false };
-  }
-
-  if (existing) {
-    await db
-      .update(delegationGrantCapabilities)
-      .set({ status: 'active', revokedAt: null })
-      .where(eq(delegationGrantCapabilities.id, existing.id));
-  } else {
-    await db.insert(delegationGrantCapabilities).values({ id: generateId('gcap'), grantId: params.grantId, capability, status: 'active' });
-  }
-
-  log.info({ grantId: params.grantId, delegatorDid: params.requestedBy, capability }, 'Delegation grant capability added');
-  await recordGrantEvent({ grantId: params.grantId, event: 'capability_added', actorDid: params.requestedBy, capability });
-
-  return { added: true };
 }
 
 /**
@@ -376,26 +380,29 @@ export async function addGrantCapability(params: {
 export async function renewGrant(params: {
   grantId: string;
   requestedBy: string;
+  actorDid?: string;
   ttlMs?: number;
 }): Promise<{ grantId: string; expiresAt: string } | LibError> {
-  const grant = await requireGrantDelegator({
-    grantId: params.grantId,
-    requestedBy: params.requestedBy,
-    action: 'renew',
-    requireActiveError: 'A revoked grant cannot be renewed — issue a new one',
+  return db.transaction(async (tx) => {
+    const grant = await requireGrantDelegator(tx, {
+      grantId: params.grantId,
+      requestedBy: params.requestedBy,
+      action: 'renew',
+      requireActiveError: 'A revoked grant cannot be renewed — issue a new one',
+    });
+    if ('error' in grant) return grant;
+
+    const expiresAt = new Date(Date.now() + clampTtlMs(params.ttlMs));
+
+    await tx
+      .update(delegationGrants)
+      .set({ expiresAt, updatedAt: new Date() })
+      .where(eq(delegationGrants.id, params.grantId));
+
+    await recordGrantEvent(tx, { grantId: params.grantId, event: 'renewed', delegatorDid: grant.delegatorDid, actorDid: params.actorDid ?? params.requestedBy });
+
+    return { grantId: params.grantId, expiresAt: expiresAt.toISOString() };
   });
-  if ('error' in grant) return grant;
-
-  const expiresAt = new Date(Date.now() + clampTtlMs(params.ttlMs));
-
-  await db
-    .update(delegationGrants)
-    .set({ expiresAt, updatedAt: new Date() })
-    .where(eq(delegationGrants.id, params.grantId));
-
-  await recordGrantEvent({ grantId: params.grantId, event: 'renewed', actorDid: params.requestedBy });
-
-  return { grantId: params.grantId, expiresAt: expiresAt.toISOString() };
 }
 
 export interface IntrospectionResult {

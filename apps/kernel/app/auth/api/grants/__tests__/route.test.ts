@@ -88,7 +88,7 @@ describe('POST /auth/api/grants — user-push-only issuance', () => {
   });
 
   it('sources delegatorDid from actingAs (group impersonation by an authorized controller, distinct from agent bootstrap)', async () => {
-    requireAuthMock.mockResolvedValue({ identity: { id: 'did:imajin:admin', actingAs: 'did:imajin:group' } });
+    requireAuthMock.mockResolvedValue({ identity: { id: 'did:imajin:admin', actingAs: 'did:imajin:group', actingAsRole: 'admin' } });
     issueGrantMock.mockResolvedValue({ grant: { grantId: 'grant_1' } });
 
     await POST(makeRequest('POST', { agentDid: AGENT, capabilities: ['messages:write'], audience: { type: 'all' } }));
