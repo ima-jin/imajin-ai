@@ -10,11 +10,9 @@
  *   destroy    Remove that backup after the rotation has been verified.
  *                node scripts/key-rotation.mjs destroy --env-file apps/kernel/.env.local
  *
- *   preflight  Before the env swap. Pure: no database, no kernel. Refuses an
- *              unusable old/new pair and prints the AUTH_PREVIOUS_PUBLIC_KEY*
- *              values to set for the grace window.
- *                OLD_AUTH_PRIVATE_KEY=<current> NEW_AUTH_PRIVATE_KEY=<next> \
- *                  node scripts/key-rotation.mjs preflight [--grace-hours 48]
+ *   preflight  Offline check after generate: new key from the env file, old
+ *              key from the adjacent .key-rotation.bak. No shell key transport.
+ *                node -- scripts/key-rotation.mjs preflight --env-file apps/kernel/.env.local
  *
  *   sign       OFFLINE, AFTER the restart on the new key. Signs the rotation
  *              statement with BOTH keys and prints the PUBLIC payload (kids,
@@ -23,24 +21,26 @@
  *              restarted kernel began signing with the new key. Anything the old
  *              key signed after that instant would later verify as invalid, so
  *              there is no "now" default. The old private key must still be held.
- *                OLD_AUTH_PRIVATE_KEY=<previous> NEW_AUTH_PRIVATE_KEY=<current> \
- *                  node scripts/key-rotation.mjs sign --effective-at 2026-10-06T12:00:00Z > key-rotated.json
+ *                node -- scripts/key-rotation.mjs sign --env-file apps/kernel/.env.local \
+ *                  --effective-at 2026-10-06T12:00:00Z > key-rotated.json
  *
  *   submit     After the Phase 2 sweep. POSTs the payload to the kernel's
  *              admin endpoint, which re-verifies both signatures and files the
  *              node-issued `key.rotated` attestation.
- *                KERNEL_ADMIN_COOKIE='...' node scripts/key-rotation.mjs submit --payload key-rotated.json
+ *              Legacy compatibility only; operators upload in /admin/keys.
  *
  *   verify     After submit, and any time later. Asks the kernel to verify the
  *              whole recorded key history against the key it is signing with.
  *              Exit 1 on any failure.
- *                KERNEL_ADMIN_COOKIE='...' node scripts/key-rotation.mjs verify [--anchor <old-public-key-hex>]
+ *              Legacy compatibility only; operators verify in /admin/keys.
  *
  * KERNEL_ADMIN_COOKIE is the full Cookie header of a logged-in admin session
  * (same as scripts/migrate-vault-custody.mjs); KERNEL_BASE_URL defaults to
  * http://localhost:3000. `generate` reads the old key from the env file and
- * writes the new key there without shell transport. Legacy preflight/sign read
- * keys from the environment. No private keys are printed.
+ * writes the new key there without shell transport. `sign --env-file` and
+ * `preflight --env-file` use that file and its rollback backup, never shell
+ * keys. Legacy preflight/sign without --env-file read keys from the environment;
+ * this is not the operator runbook path. No private keys are printed.
  * Exit codes: 0 ok, 1 a check failed, 2 bad usage.
  *
  * The crypto is `@imajin/auth/key-rotation`'s pre-built module — run after
@@ -60,13 +60,17 @@ if (!existsSync(KEY_ROTATION_BUILD)) {
   process.exit(2);
 }
 
-const keyRotation = await import(pathToFileURL(KEY_ROTATION_BUILD).href);
-
-const code = await runKeyRotationCli(process.argv.slice(2), {
-  keyRotation,
-  env: process.env,
-  fetchImpl: fetch,
-  readFile,
-  out: { log: (line) => console.log(line), error: (line) => console.error(line) },
-});
-process.exit(code);
+try {
+  const keyRotation = await import(pathToFileURL(KEY_ROTATION_BUILD).href);
+  const code = await runKeyRotationCli(process.argv.slice(2), {
+    keyRotation,
+    env: process.env,
+    fetchImpl: fetch,
+    readFile,
+    out: { log: (line) => console.log(line), error: (line) => console.error(line) },
+  });
+  process.exit(code);
+} catch {
+  console.error('key-rotation: could not load or run rotation tooling; check the package build without printing secret material');
+  process.exit(1);
+}
