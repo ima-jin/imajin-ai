@@ -7,6 +7,7 @@
 export const ATTESTATION_TYPES = [
   'domain.verified',
   'domain.revoked',
+  'cloudflare.mutation',
   'mail.sent',
   'event.attendance',
   'institution.verified',
@@ -304,6 +305,7 @@ export const MECHANICAL_ATTESTATION_TYPES = [
   'group.member.role.changed',
   'domain.verified',
   'domain.revoked',
+  'cloudflare.mutation',
   'mail.sent',
   'identity.owner.transferred',
   // #2894 — unilateral read provenance, never awaiting a countersignature.

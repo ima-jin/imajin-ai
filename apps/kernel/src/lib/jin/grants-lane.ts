@@ -56,6 +56,8 @@ import { listGrantDetailsForDelegator } from '@/src/lib/auth/grants';
 import { listVaultKeyCards } from '@/src/lib/vault';
 import { mintedKeyField } from '@/src/lib/vault/mint';
 import { listDelegateGrantBearersForPrincipal } from '@/src/lib/access/delegate-grant';
+import { listImportOwners } from '@/src/lib/vault/import-authority';
+import { isCloudflareZoneAudience } from '@/src/lib/cloudflare/contract';
 
 export type GrantSourceKind =
   | 'auth-grant'
@@ -316,9 +318,18 @@ function normalizeAppAuthorizations(apps: AppAuthorizationSummary[]): GrantCard[
  * function does no authorization of its own, matching every other /jin/api
  * service function's split of "gate at the route, read in the service".
  */
+async function ownedZoneGrants(operatorDid: string) {
+  const owners = await listImportOwners(operatorDid);
+  const groups = await Promise.all(owners.map(async owner => {
+    const grants = await listGrantDetailsForDelegator(owner.did);
+    return owner.did === operatorDid ? grants : grants.filter(grant => isCloudflareZoneAudience(grant.audience));
+  }));
+  return groups.flat();
+}
+
 export async function listGrantsForOperator(operatorDid: string): Promise<GrantCard[]> {
   const [authGrants, legacyMemberships, vaultKeyCards, accessBearers, appAuthorizations] = await Promise.all([
-    listGrantDetailsForDelegator(operatorDid),
+    ownedZoneGrants(operatorDid),
     listLegacyAgentMemberships(operatorDid),
     listVaultKeyCards(),
     listDelegateGrantBearersForPrincipal(operatorDid),

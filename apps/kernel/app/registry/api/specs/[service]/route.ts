@@ -3,13 +3,13 @@ import { corsHeaders, corsOptions, getService, SERVICES } from "@imajin/config";
 import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { parse as parseYaml } from "yaml";
+import { readApiSpec } from "@/src/lib/kernel/api-specs";
 
 /** Kernel services serve specs from local YAML files */
 const KERNEL_SERVICES = new Set(
   SERVICES.filter((s) => s.category === "kernel").map((s) => s.name)
 );
 
-const PORT = process.env.PORT || "3000";
 
 export function OPTIONS(request: NextRequest) {
   return corsOptions(request);
@@ -19,6 +19,13 @@ export async function GET(request: NextRequest, props: { params: Promise<{ servi
   const params = await props.params;
   const cors = corsHeaders(request);
   const { service } = params;
+  if (service === "cloudflare") {
+    const spec = readApiSpec(service);
+    if (!spec) return NextResponse.json({ error: "Spec unavailable" }, { status: 404, headers: cors });
+    return NextResponse.json(parseYaml(spec.content), {
+      headers: { ...cors, "Cache-Control": "public, max-age=60" },
+    });
+  }
 
   if (!getService(service)) {
     return NextResponse.json({ error: "Unknown service" }, { status: 404, headers: cors });

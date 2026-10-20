@@ -45,6 +45,12 @@ describe('DELETE /auth/api/grants/:grantId', () => {
     expect(revokeGrantMock).not.toHaveBeenCalled();
   });
 
+  it('refuses coarse agent delegation rather than impersonating its principal', async () => {
+    requireAuthMock.mockResolvedValue({ identity: { id: 'did:imajin:agent', actingFor: DELEGATOR } });
+    expect((await DELETE(makeRequest(), params())).status).toBe(403);
+    expect(revokeGrantMock).not.toHaveBeenCalled();
+  });
+
   it('revokes using the directly authenticated identity as requestedBy', async () => {
     requireAuthMock.mockResolvedValue({ identity: { id: DELEGATOR } });
     revokeGrantMock.mockResolvedValue({ revoked: true });
@@ -55,13 +61,13 @@ describe('DELETE /auth/api/grants/:grantId', () => {
     expect(revokeGrantMock).toHaveBeenCalledWith({ grantId: GRANT_ID, requestedBy: DELEGATOR });
   });
 
-  it('sources requestedBy from actingAs', async () => {
+  it('sources requestedBy from the real actor, not a cached actingAs identity', async () => {
     requireAuthMock.mockResolvedValue({ identity: { id: 'did:imajin:admin', actingAs: 'did:imajin:group' } });
     revokeGrantMock.mockResolvedValue({ revoked: true });
 
     await DELETE(makeRequest(), params());
 
-    expect(revokeGrantMock).toHaveBeenCalledWith({ grantId: GRANT_ID, requestedBy: 'did:imajin:group' });
+    expect(revokeGrantMock).toHaveBeenCalledWith({ grantId: GRANT_ID, requestedBy: 'did:imajin:admin' });
   });
 
   it('surfaces a lib-level error with its own status code', async () => {

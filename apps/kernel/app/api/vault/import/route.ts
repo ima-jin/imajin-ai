@@ -9,9 +9,20 @@ import { recordApprovalRequested } from '@/src/lib/notify/operator-approvals-ser
 import { importProposer, listImportOwners, canExecuteImport } from '@/src/lib/vault/import-authority';
 import { listImportedKeyCards, requireImportRotationTarget, validateImportBody } from '@/src/lib/vault/import';
 import { stageImport, importFingerprint, discardImportForProposal, type ImportDetail } from '@/src/lib/vault/import-staging';
-import { isVaultTier1 } from '@/src/lib/vault/sealing';
+import { getNodeSigningIdentity, isVaultTier1 } from '@/src/lib/vault/sealing';
+import { cloudflarePurpose } from '@/src/lib/cloudflare/contract';
+import { requireCloudflareImportBinding } from '@/src/lib/vault/cloudflare-import';
+import { listDomains } from '@/src/lib/domains/service';
 
 export const dynamic = 'force-dynamic';
+
+async function discardFailedImport(stagingRef: string | undefined, proposalId: string, approverDid: string, detail: ImportDetail) {
+  if (!stagingRef) return;
+  await discardImportForProposal({
+    proposalId, operatorDid: approverDid, source: 'vault', kind: 'vault:import',
+    detail: { ...detail, stagingRef }, status: 'denied',
+  }).catch(() => undefined);
+}
 
 async function authorize(request: NextRequest) {
   const headers = new Headers(corsHeaders(request));
@@ -39,7 +50,14 @@ export async function GET(request: NextRequest) {
   if (selected && !auth.owners.some(owner => owner.did === selected)) return auth.fail('Owner not authorized', 403);
   try {
     const cards = await listImportedKeyCards(selected ? [selected] : auth.owners.map(owner => owner.did));
-    return NextResponse.json({ ownerDid: selected ?? auth.ownerDid, owners: auth.owners, cards }, { headers: auth.headers });
+    const domains = (await Promise.all(auth.owners.map(async owner =>
+      (await listDomains(owner.did, true)).filter(binding => binding.zoneOwner === owner.did)
+        .map(binding => ({ domain: binding.domain, ownerDid: binding.zoneOwner })),
+    ))).flat();
+    return NextResponse.json({
+      ownerDid: selected ?? auth.ownerDid, owners: auth.owners, cards, domains,
+      nodeDid: getNodeSigningIdentity().senderDid,
+    }, { headers: auth.headers });
   } catch {
     return auth.fail('Import metadata unavailable', 503);
   }
@@ -53,16 +71,20 @@ export async function POST(request: NextRequest) {
   if (!validateImportBody(raw)) return auth.fail('Invalid vault import request', 400);
   if (!auth.owners.some(owner => owner.did === raw.ownerDid)) return auth.fail('Owner not authorized', 403);
   if (isVaultTier1()) return auth.fail('Vault import requires synchronous node custody', 409);
-  const proposalId = generateId('vimport');
+  const proposalId = generateId(raw.cloudflare ? 'cfimport' : 'vimport');
   const detail: ImportDetail = {
-    ownerDid: raw.ownerDid, consumerDid: raw.consumerDid, purpose: raw.purpose.trim(),
+    ownerDid: raw.ownerDid,
+    consumerDid: raw.cloudflare ? getNodeSigningIdentity().senderDid : raw.consumerDid,
+    purpose: raw.cloudflare ? cloudflarePurpose(raw.cloudflare.zoneId) : raw.purpose.trim(),
     fingerprint: importFingerprint(raw.secret), label: raw.label ?? null,
     expiresAt: raw.expiresAt ? new Date(raw.expiresAt).toISOString() : null,
     replacesField: raw.replacesField ?? null,
+    ...(raw.cloudflare ? { cloudflare: raw.cloudflare } : {}),
   };
   let stagingRef: string | undefined;
   try {
     if (!(await canExecuteImport(auth.approverDid, detail.ownerDid))) return auth.fail('Approver cannot authorize this owner', 403);
+    try { await requireCloudflareImportBinding(detail); } catch { return auth.fail('Verified zone binding unavailable', 403); }
     try { await requireImportRotationTarget(detail); } catch { return auth.fail('Import rotation target unavailable', 409); }
     stagingRef = await stageImport(proposalId, auth.approverDid, detail, raw.secret);
     const proposalDetail = { ...detail, stagingRef };
@@ -76,10 +98,7 @@ export async function POST(request: NextRequest) {
       proposalId, fingerprint: detail.fingerprint, purpose: detail.purpose, status: 'pending',
     }, { status: 201, headers: auth.headers });
   } catch {
-    if (stagingRef) await discardImportForProposal({
-      proposalId, operatorDid: auth.approverDid, source: 'vault', kind: 'vault:import',
-      detail: { ...detail, stagingRef }, status: 'denied',
-    }).catch(() => undefined);
+    await discardFailedImport(stagingRef, proposalId, auth.approverDid, detail);
     return auth.fail('Import proposal unavailable', 503);
   }
 }

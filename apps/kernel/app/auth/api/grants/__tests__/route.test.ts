@@ -9,6 +9,8 @@ const { requireAuthMock, issueGrantMock, listGrantsForDelegatorMock, recordIntro
   listGrantsForDelegatorMock: vi.fn(),
   recordIntroAttributionTermsMock: vi.fn(),
 }));
+const ownerAuthority = vi.hoisted(() => vi.fn().mockResolvedValue(false));
+vi.mock('@/src/lib/vault/import-authority', () => ({ controlsImportOwner: ownerAuthority }));
 
 vi.mock('@imajin/auth', () => ({
   requireAuth: requireAuthMock,
@@ -48,6 +50,15 @@ beforeEach(() => {
 });
 
 describe('POST /auth/api/grants — user-push-only issuance', () => {
+  it('refuses Cloudflare group grants from stale act-as context and rechecks actual actor authority', async () => {
+    requireAuthMock.mockResolvedValue({ identity: { id: DELEGATOR, actingAs: 'did:imajin:group' } });
+    const res = await POST(makeRequest('POST', {
+      agentDid: AGENT, capabilities: ['cloudflare:dns'], audience: { type: 'dids', values: [`did:imajin:cloudflare-${'a'.repeat(32)}`] },
+    }));
+    expect(res.status).toBe(403);
+    expect(ownerAuthority).toHaveBeenCalledWith(DELEGATOR, 'did:imajin:group');
+    expect(issueGrantMock).not.toHaveBeenCalled();
+  });
   it('rejects a caller acting under X-Acting-For agent delegation', async () => {
     requireAuthMock.mockResolvedValue({ identity: { id: 'did:imajin:agent', actingFor: DELEGATOR } });
 

@@ -36,8 +36,17 @@ import {
   type DelegationGrant,
 } from '@imajin/auth';
 import { validateAttestDelegationCapabilities } from './attest-delegation';
+import type { DbExecutor } from '@/src/lib/vault/index';
+import { isCloudflareZoneAudience } from '@/src/lib/cloudflare/contract';
 
 const log = createLogger('kernel');
+
+async function controlsGrantOwner(actorDid: string, ownerDid: string, audience: unknown): Promise<boolean> {
+  // Introspection must not initialize custody or operator services. Only grant
+  // management needs the current group-controller check.
+  const { controlsImportOwner } = await import('@/src/lib/vault/import-authority');
+  return controlsImportOwner(actorDid, ownerDid, db, isCloudflareZoneAudience(audience) ? 'vault' : 'auth');
+}
 
 export interface LibError {
   error: string;
@@ -120,6 +129,10 @@ async function recordGrantEvent(params: {
 }
 
 export interface IssueGrantInput {
+  /** Internal stable ID for an existing approval rail; public routes do not accept it. */
+  grantId?: string;
+  /** Authenticated issuer/countersigner; never sourced from a public request body. */
+  actorDid?: string;
   delegatorDid: string;
   agentDid: string;
   capabilities: readonly string[];
@@ -134,12 +147,12 @@ export interface IssueGrantInput {
  * created by the delegator principal, never requested-and-auto-created by
  * the agent") — this function does not and cannot verify that on its own.
  */
-export async function issueGrant(input: IssueGrantInput): Promise<{ grant: DelegationGrant } | LibError> {
+export async function issueGrant(input: IssueGrantInput, executor: DbExecutor = db): Promise<{ grant: DelegationGrant } | LibError> {
   const { delegatorDid, agentDid } = input;
   if (!delegatorDid || !agentDid) {
     return { error: 'delegatorDid and agentDid are required', status: 400 };
   }
-  if (agentDid === delegatorDid) {
+  if (agentDid === delegatorDid && !(input.capabilities ?? []).every(capability => capability.startsWith('cloudflare:'))) {
     return { error: 'agentDid must differ from delegatorDid — a grant delegates to someone else', status: 400 };
   }
 
@@ -160,6 +173,9 @@ export async function issueGrant(input: IssueGrantInput): Promise<{ grant: Deleg
     };
   }
   const audience = input.audience;
+  if (valid.some(capability => capability.startsWith('cloudflare:')) && !isCloudflareZoneAudience(audience)) {
+    return { error: 'Cloudflare capabilities require one exact zone DID audience', status: 400 };
+  }
 
   const onBehalfOf = input.onBehalfOf ?? [];
   if (!isOnBehalfOfChain(onBehalfOf, delegatorDid, agentDid)) {
@@ -169,9 +185,9 @@ export async function issueGrant(input: IssueGrantInput): Promise<{ grant: Deleg
   const ttlMs = clampTtlMs(input.ttlMs);
   const issuedAt = new Date();
   const expiresAt = new Date(issuedAt.getTime() + ttlMs);
-  const grantId = generateId('grant');
+  const grantId = input.grantId ?? generateId('grant');
 
-  await db.insert(delegationGrants).values({
+  await executor.insert(delegationGrants).values({
     id: grantId,
     agentDid,
     delegatorDid,
@@ -183,19 +199,25 @@ export async function issueGrant(input: IssueGrantInput): Promise<{ grant: Deleg
   });
 
   try {
-    await db.insert(delegationGrantCapabilities).values(
+    await executor.insert(delegationGrantCapabilities).values(
       valid.map((capability) => ({ id: generateId('gcap'), grantId, capability, status: 'active' as const })),
     );
   } catch (err) {
     // The parent row must never outlive its capabilities — an orphaned grant
     // with zero capabilities would introspect as "no capability covers this",
     // which is safe, but is still dead state nobody asked for.
-    await db.delete(delegationGrants).where(eq(delegationGrants.id, grantId)).catch(() => undefined);
+    await executor.delete(delegationGrants).where(eq(delegationGrants.id, grantId)).catch(() => undefined);
     throw err;
   }
 
   log.info({ grantId, delegatorDid, agentDid, capabilities: valid }, 'Delegation grant issued');
-  await recordGrantEvent({ grantId, event: 'issued', actorDid: delegatorDid });
+  if (executor === db) {
+    await recordGrantEvent({ grantId, event: 'issued', actorDid: input.actorDid ?? delegatorDid });
+  } else {
+    await executor.insert(delegationGrantEvents).values({
+      id: generateId('gevt'), grantId, event: 'issued', actorDid: input.actorDid ?? delegatorDid, createdAt: new Date(),
+    });
+  }
 
   return {
     grant: toGrantRecord({ id: grantId, agentDid, delegatorDid, audience, onBehalfOf, issuedAt, expiresAt, status: 'active', revokedAt: null }, valid),
@@ -218,15 +240,15 @@ async function requireGrantDelegator(params: {
   requestedBy: string;
   action: string;
   requireActiveError?: string;
-}): Promise<{ delegatorDid: string; agentDid: string; status: string } | LibError> {
+}): Promise<{ delegatorDid: string; agentDid: string; status: string; audience: unknown } | LibError> {
   const [grant] = await db
-    .select({ delegatorDid: delegationGrants.delegatorDid, agentDid: delegationGrants.agentDid, status: delegationGrants.status })
+    .select({ delegatorDid: delegationGrants.delegatorDid, agentDid: delegationGrants.agentDid, status: delegationGrants.status, audience: delegationGrants.audience })
     .from(delegationGrants)
     .where(eq(delegationGrants.id, params.grantId))
     .limit(1);
 
   if (!grant) return { error: 'Grant not found', status: 404 };
-  if (grant.delegatorDid !== params.requestedBy) {
+  if (grant.delegatorDid !== params.requestedBy && !await controlsGrantOwner(params.requestedBy, grant.delegatorDid, grant.audience)) {
     return { error: `Only the delegator may ${params.action} this grant`, status: 403 };
   }
   if (params.requireActiveError && grant.status !== 'active') {
@@ -312,6 +334,9 @@ export async function addGrantCapability(params: {
   });
   if ('error' in grant) return grant;
 
+  if (params.capability.startsWith('cloudflare:') && !isCloudflareZoneAudience(grant.audience)) {
+    return { error: 'Cloudflare capabilities require one exact zone DID audience', status: 400 };
+  }
   const capabilityResult = await resolveGrantCapabilities([params.capability], grant.agentDid);
   if ('error' in capabilityResult) {
     return { error: `Unknown capability: ${params.capability}`, status: capabilityResult.status };

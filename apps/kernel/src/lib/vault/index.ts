@@ -41,7 +41,8 @@ import { VaultDelegationError } from './errors';
 import { isInternalSecretField } from './internal-secret';
 import { rotateInternalSecret } from './internal-secret-rotate';
 import { reissueFieldGrants } from './shared-internal-secret';
-import { isGroupKeyField } from './field-grammar';
+import { isCloudflareImportedKeyField, isGroupKeyField } from './field-grammar';
+import { isCloudflarePurpose } from '@/src/lib/cloudflare/contract';
 import { forEachSequential, mapWithConcurrency } from '@/src/lib/async/sequential';
 
 const log = createLogger('kernel');
@@ -1706,6 +1707,8 @@ export async function getGrantById(grantId: string): Promise<VaultDelegationGran
 export async function fetchGrantSecret(params: {
   grantId: string;
   granteeDid: string;
+  /** Trusted in-process credential use only; never forwarded from an HTTP body. */
+  kernelCredentialUse?: boolean;
 }): Promise<GrantFetchOutcome> {
   const rows = await db
     .select()
@@ -1720,6 +1723,9 @@ export async function fetchGrantSecret(params: {
     // Deliberately distinct from 'not_found' only in the caller's log, never in
     // the HTTP response shape: confirming a grantId exists but belongs to
     // someone else would let a caller enumerate grantIds it cannot use.
+    return { status: 'not_grantee' };
+  }
+  if (!params.kernelCredentialUse && (isCloudflarePurpose(grant.purpose) || isCloudflareImportedKeyField(grant.field))) {
     return { status: 'not_grantee' };
   }
   if (grant.status !== 'active') {

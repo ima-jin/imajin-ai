@@ -1,3 +1,5 @@
+import { isCloudflareImport } from '@/src/lib/cloudflare/contract';
+
 /** Only signed import metadata is visible here; no generic detail dump. */
 export function VaultImportApproval({ detail }: Readonly<{ detail: Record<string, unknown> | null }>) {
   const fields = [
@@ -20,6 +22,13 @@ export function VaultImportApproval({ detail }: Readonly<{ detail: Record<string
           </div>
         ))}
       </dl>
+      {isCloudflareImport(detail?.cloudflare) && <div className="space-y-1">
+        <div>Verified zone: {detail.cloudflare.domain}</div>
+        <div>Cloudflare zone ID: {detail.cloudflare.zoneId}</div>
+        <div>Capability grantee: {detail.cloudflare.granteeDid}</div>
+        <div>Capabilities: {detail.cloudflare.capabilities.join(', ')}</div>
+        <p>Only the node can fetch this credential. The grantee receives revocable operations, never token access.</p>
+      </div>}
       {typeof detail?.replacesField === 'string' && <p className="text-amber-300">
         Re-import rotation: grant the replacement, then revoke the old access as one signed operation.
       </p>}

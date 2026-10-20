@@ -11,6 +11,17 @@ const h = vi.hoisted(() => ({
   vault: { version: 1, entries: [] } as VaultFile,
   log: vi.fn(), emit: vi.fn().mockResolvedValue(undefined), publish: vi.fn().mockResolvedValue(undefined),
   saveError: null as Error | null,
+  zoneOwner: 'did:imajin:organization',
+}));
+vi.mock('@/src/lib/domains/service', async () => ({
+  ...await import('@/src/lib/domains/normalize'),
+  resolveVerifiedDomain: vi.fn(async (domain: string) => domain === 'example.com' && h.zoneOwner
+    ? { domain, zoneOwner: h.zoneOwner, status: 'verified' } : null),
+  listDomains: vi.fn(async (ownerDid: string) => ownerDid === h.zoneOwner
+    ? [{ domain: 'example.com', zoneOwner: ownerDid, status: 'verified' }] : []),
+}));
+vi.mock('@/src/lib/auth/attest-delegation', () => ({
+  validateAttestDelegationCapabilities: vi.fn(async (requested: string[]) => ({ valid: [], invalid: requested })),
 }));
 vi.mock('@/src/db', async () => {
   const auth = await import('@/src/db/schemas/auth');
@@ -44,7 +55,7 @@ vi.mock('../vault-repository', () => ({
 import { PGlite } from '@electric-sql/pglite';
 import { drizzle } from 'drizzle-orm/pglite';
 import { getTableConfig, type PgTable } from 'drizzle-orm/pg-core';
-import { identities, identityMembers } from '@/src/db/schemas/auth';
+import { identities, identityMembers, delegationGrants, delegationGrantCapabilities, delegationGrantEvents } from '@/src/db/schemas/auth';
 import { internalSecretProvisions, vaultDelegationGrants, vaultOwnerEnvelopes } from '@/src/db/schemas/vault';
 import { operatorApprovals } from '@/src/db/schemas/operator-approvals';
 import { NextRequest } from 'next/server';
@@ -60,6 +71,8 @@ import { importFingerprint, stageImport } from '../import-staging';
 import { listImportOwners, canExecuteImport } from '../import-authority';
 import { getNodeSigningIdentity } from '../sealing';
 import { fetchGrantSecret, listGrantsForGrantee, vaultService } from '../index';
+import { introspectGrant, issueGrant, revokeGrant, revokeGrantCapability } from '@/src/lib/auth/grants';
+import { cloudflarePurpose, cloudflareZoneDid } from '@/src/lib/cloudflare/contract';
 
 const HUMAN = 'did:imajin:human';
 const ORG = 'did:imajin:organization';
@@ -67,7 +80,10 @@ const AGENT = 'did:imajin:agent';
 const STRANGER = 'did:imajin:stranger';
 const personKeys = generateKeypair();
 const agentKeys = generateKeypair();
-const tables = [identities, identityMembers, internalSecretProvisions, vaultDelegationGrants, vaultOwnerEnvelopes, operatorApprovals];
+const tables = [identities, identityMembers, internalSecretProvisions, vaultDelegationGrants, vaultOwnerEnvelopes, operatorApprovals,
+  delegationGrants, delegationGrantCapabilities, delegationGrantEvents];
+const ZONE = 'a'.repeat(32);
+const zoneImport = { domain: 'example.com', zoneId: ZONE, granteeDid: AGENT, capabilities: ['cloudflare:read', 'cloudflare:dns'] };
 let client: PGlite;
 let db: ReturnType<typeof drizzle>;
 
@@ -104,6 +120,7 @@ beforeEach(async () => {
   vi.unstubAllGlobals();
   h.log.mockClear(); h.emit.mockClear(); h.publish.mockClear();
   h.saveError = null;
+  h.zoneOwner = ORG;
   h.vault = { version: 1, entries: [] };
   h.identity = { id: HUMAN, scope: 'actor', subtype: 'human', actingAs: ORG };
   for (const table of tables) await db.delete(table);
@@ -143,6 +160,152 @@ async function imported(secret: string, extra: Record<string, unknown> = {}) {
 }
 
 describe('vault import acceptance — real SQL, signatures, encryption and grants', () => {
+  it('Cloudflare import forces node custody and issues only zone-scoped revocable operations', async () => {
+    const secret = randomBytes(32).toString('hex');
+    const upstream = vi.fn().mockResolvedValue(Response.json({ success: true, result: { id: ZONE, name: 'example.com' } }));
+    vi.stubGlobal('fetch', upstream);
+    const proposal = await propose(secret, { cloudflare: zoneImport });
+    expect(upstream).not.toHaveBeenCalled();
+    const card = await approve(proposal.proposalId);
+    expect(card.detail).toMatchObject({
+      consumerDid: getNodeSigningIdentity().senderDid, purpose: cloudflarePurpose(ZONE), cloudflare: zoneImport,
+    });
+    expect(await executeImportApproval(card)).toEqual({ ok: true });
+    expect(upstream).toHaveBeenCalledWith(`https://api.cloudflare.com/client/v4/zones/${ZONE}`,
+      expect.objectContaining({ redirect: 'error', headers: { Authorization: `Bearer ${secret}` } }));
+    const [rawGrant] = await db.select().from(vaultDelegationGrants);
+    expect(rawGrant.grantedTo).toBe(getNodeSigningIdentity().senderDid);
+    expect(await fetchGrantSecret({ grantId: rawGrant.id, granteeDid: AGENT })).toEqual({ status: 'not_grantee' });
+    h.identity = { id: AGENT, scope: 'actor', subtype: 'agent' };
+    expect((await fetchRoute(new NextRequest('https://kernel.test/fetch', { method: 'POST' }),
+      { params: Promise.resolve({ grantId: rawGrant.id }) })).status).toBe(403);
+    expect(await introspectGrant({ agentDid: AGENT, capability: 'cloudflare:dns', delegatorDid: ORG, targetDid: cloudflareZoneDid(ZONE) }))
+      .toMatchObject({ authorized: true });
+    expect(await introspectGrant({ agentDid: AGENT, capability: 'cloudflare:dns', delegatorDid: ORG, targetDid: cloudflareZoneDid('b'.repeat(32)) }))
+      .toMatchObject({ authorized: false });
+    const [grant] = await db.select().from(delegationGrants);
+    expect(await db.select().from(delegationGrantEvents)).toEqual([
+      expect.objectContaining({ grantId: grant.id, actorDid: HUMAN, event: 'issued' }),
+    ]);
+    expect(await revokeGrantCapability({ grantId: grant.id, capability: 'cloudflare:dns', requestedBy: HUMAN })).toEqual({ revoked: true });
+    expect(await introspectGrant({ agentDid: AGENT, capability: 'cloudflare:dns', delegatorDid: ORG, targetDid: cloudflareZoneDid(ZONE) }))
+      .toMatchObject({ authorized: false });
+    expect(await revokeGrant({ grantId: grant.id, requestedBy: HUMAN })).toEqual({ revoked: true });
+    expect(await introspectGrant({ agentDid: AGENT, capability: 'cloudflare:read', delegatorDid: ORG, targetDid: cloudflareZoneDid(ZONE) }))
+      .toMatchObject({ authorized: false });
+    expect(JSON.stringify([h.vault, h.emit.mock.calls, h.publish.mock.calls, h.log.mock.calls, await listImportedKeyCards([ORG])])).not.toContain(secret);
+  });
+
+  it('revalidates exact verified zone ownership before staging and again before approved token use', async () => {
+    const secret = randomBytes(32).toString('hex');
+    const upstream = vi.fn();
+    vi.stubGlobal('fetch', upstream);
+    h.zoneOwner = STRANGER;
+    expect((await POST(request({ ownerDid: ORG, secret, cloudflare: zoneImport }))).status).toBe(403);
+    h.zoneOwner = ORG;
+    const proposal = await propose(secret, { cloudflare: zoneImport });
+    const card = await approve(proposal.proposalId);
+    h.zoneOwner = STRANGER;
+    expect(await executeImportApproval(card)).toMatchObject({ ok: false });
+    expect(upstream).not.toHaveBeenCalled();
+    expect(await db.select().from(delegationGrants)).toEqual([]);
+    expect(await db.select().from(vaultDelegationGrants)).toEqual([]);
+  });
+
+  it.each(['mismatch', 'provider', 'network', 'json'])('sanitizes Cloudflare %s failures and never commits authority', async failure => {
+    const secret = randomBytes(32).toString('hex');
+    const upstream = vi.fn();
+    if (failure === 'network') upstream.mockRejectedValue(new Error(secret));
+    else if (failure === 'json') upstream.mockResolvedValue({ ok: true, json: () => { throw new Error(secret); } });
+    else upstream.mockResolvedValue(Response.json({
+      success: failure !== 'provider', result: { id: ZONE, name: 'other.example.com' }, errors: [{ message: secret }],
+    }));
+    vi.stubGlobal('fetch', upstream);
+    const proposal = await propose(secret, { cloudflare: zoneImport });
+    const card = await approve(proposal.proposalId);
+    const result = await executeImportApproval(card);
+    expect(result.ok).toBe(false);
+    expect(await db.select().from(delegationGrants)).toEqual([]);
+    expect(await db.select().from(vaultDelegationGrants)).toEqual([]);
+    expect(JSON.stringify([result, h.log.mock.calls])).not.toContain(secret);
+  });
+
+  it('accepts any valid grantee DID and rolls back scoped grants when ciphertext persistence fails', async () => {
+    const secret = randomBytes(32).toString('hex');
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({ success: true, result: { id: ZONE, name: 'example.com' } })));
+    const proposal = await propose(secret, { cloudflare: { ...zoneImport, granteeDid: 'did:web:external.example' } });
+    const card = await approve(proposal.proposalId);
+    const setSpy = vi.spyOn(vaultService, 'set').mockRejectedValue(new Error(secret));
+    expect(await executeImportApproval(card)).toMatchObject({ ok: false });
+    expect(await db.select().from(delegationGrants)).toEqual([]);
+    expect(await db.select().from(delegationGrantCapabilities)).toEqual([]);
+    expect(await db.select().from(vaultDelegationGrants)).toEqual([]);
+    setSpy.mockRestore();
+  });
+
+  it('supports non-agent and owner grantees; rotation revokes prior operation authority', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => Response.json({ success: true, result: { id: ZONE, name: 'example.com' } })));
+    const first = await propose(randomBytes(32).toString('hex'), { cloudflare: { ...zoneImport, granteeDid: 'did:web:external.example' } });
+    expect(await executeImportApproval(await approve(first.proposalId))).toEqual({ ok: true });
+    expect(await introspectGrant({ agentDid: 'did:web:external.example', capability: 'cloudflare:dns', delegatorDid: ORG, targetDid: cloudflareZoneDid(ZONE) }))
+      .toMatchObject({ authorized: true });
+    const next = await propose(randomBytes(32).toString('hex'), {
+      cloudflare: { ...zoneImport, granteeDid: ORG }, replacesField: importedKeyField(first.proposalId),
+    });
+    const outcome = await executeImportApproval(await approve(next.proposalId));
+    expect({ outcome, errors: h.log.mock.calls.filter(call => call[1] === 'Vault import execution unavailable') }).toEqual({ outcome: { ok: true }, errors: [] });
+    expect(await introspectGrant({ agentDid: 'did:web:external.example', capability: 'cloudflare:dns', delegatorDid: ORG, targetDid: cloudflareZoneDid(ZONE) }))
+      .toMatchObject({ authorized: false });
+    expect(await introspectGrant({ agentDid: ORG, capability: 'cloudflare:dns', delegatorDid: ORG, targetDid: cloudflareZoneDid(ZONE) }))
+      .toMatchObject({ authorized: true });
+  });
+
+  it('removed group admins cannot revoke a group grant, and membership is never operation authority', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({ success: true, result: { id: ZONE, name: 'example.com' } })));
+    const proposal = await propose(randomBytes(32).toString('hex'), { cloudflare: zoneImport });
+    expect(await executeImportApproval(await approve(proposal.proposalId))).toEqual({ ok: true });
+    expect(await introspectGrant({ agentDid: HUMAN, capability: 'cloudflare:dns', delegatorDid: ORG, targetDid: cloudflareZoneDid(ZONE) }))
+      .toMatchObject({ authorized: false });
+    const [grant] = await db.select().from(delegationGrants);
+    await db.update(identityMembers).set({ removedAt: new Date() });
+    expect(await revokeGrant({ grantId: grant.id, requestedBy: HUMAN })).toMatchObject({ status: 403 });
+  });
+
+  it('preserves generic group grant management and checks the current service scope for each lane', async () => {
+    const generic = await issueGrant({ delegatorDid: ORG, agentDid: AGENT, capabilities: ['messages:read'], audience: { type: 'all' } });
+    const scoped = await issueGrant({ delegatorDid: ORG, agentDid: AGENT, capabilities: ['cloudflare:dns'],
+      audience: { type: 'dids', values: [cloudflareZoneDid(ZONE)] } });
+    if ('error' in generic || 'error' in scoped) throw new Error('Expected valid grants');
+    await db.update(identityMembers).set({ allowedServices: ['vault'] });
+    expect(await revokeGrant({ grantId: generic.grant.grantId, requestedBy: HUMAN })).toMatchObject({ status: 403 });
+    await db.update(identityMembers).set({ allowedServices: ['auth'] });
+    expect(await revokeGrant({ grantId: generic.grant.grantId, requestedBy: HUMAN })).toEqual({ revoked: true });
+    expect(await revokeGrant({ grantId: scoped.grant.grantId, requestedBy: HUMAN })).toMatchObject({ status: 403 });
+    await db.update(identityMembers).set({ allowedServices: ['vault'] });
+    expect(await revokeGrant({ grantId: scoped.grant.grantId, requestedBy: HUMAN })).toEqual({ revoked: true });
+  });
+
+  it('rejects malformed Cloudflare contracts and reserved-purpose generic bypass', () => {
+    const raw = { ownerDid: ORG, secret: 'FAKE_TEST_TOKEN', cloudflare: zoneImport };
+    expect(validateImportBody(raw)).toBe(true);
+    for (const patch of [
+      { zoneId: 'A'.repeat(32) }, { zoneId: '../zones' }, { domain: 'Example.com' }, { domain: 'example.com.' },
+      { domain: 'https://example.com' }, { capabilities: [] }, { capabilities: ['cloudflare:admin'] },
+      { capabilities: ['cloudflare:dns', 'cloudflare:dns'] }, { granteeDid: '*' }, { extra: 'secret' },
+    ]) expect(validateImportBody({ ...raw, cloudflare: { ...zoneImport, ...patch } })).toBe(false);
+    expect(validateImportBody({ ownerDid: ORG, secret: 'FAKE_TEST_TOKEN', consumerDid: AGENT, purpose: cloudflarePurpose(ZONE) })).toBe(false);
+  });
+
+  it('does not use a token from a withdrawn or unsigned Cloudflare proposal', async () => {
+    const upstream = vi.fn();
+    vi.stubGlobal('fetch', upstream);
+    const proposal = await propose(randomBytes(32).toString('hex'), { cloudflare: zoneImport });
+    const card = await approve(proposal.proposalId);
+    expect(await executeImportApproval({ ...card, decision: null })).toMatchObject({ ok: false });
+    await db.update(operatorApprovals).set({ status: 'withdrawn' }).where(eq(operatorApprovals.proposalId, card.proposalId));
+    expect(await executeImportApproval(card)).toMatchObject({ ok: false });
+    expect(upstream).not.toHaveBeenCalled();
+  });
   it('can stage metadata-bound operator input with current organization authority', async () => {
     expect(await canExecuteImport(HUMAN, ORG)).toBe(true);
     const value = randomBytes(20).toString('hex');
