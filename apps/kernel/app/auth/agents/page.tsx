@@ -979,7 +979,7 @@ export default function AgentsPage() {
 
   /** Provision a new agent via the envelope provisioner (#1933): identity + minimal grants + RFC-31 envelope in one call. */
   async function handleCreateProvision(input: { name: string; harness: ProvisionHarness; placement: ProvisionPlacement; scopes: string[]; provider: string }) {
-    if (!session) return;
+    if (!session || !delegator) return;
     setActionLoading('provision');
     try {
       const res = await fetch('/auth/api/agents/provision', {
@@ -987,7 +987,7 @@ export default function AgentsPage() {
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({
-          servingDid: session.did,
+          servingDid: delegator.did,
           name: input.name,
           harness: input.harness,
           placement: input.placement,
