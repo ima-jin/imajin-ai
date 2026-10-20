@@ -5,7 +5,9 @@ import { canonicalize, crypto as authCrypto, provideInternalApiKey } from '@imaj
 import { SESSION_COOKIE_NAME } from '@imajin/config';
 import { createOrgGrantHarness } from './org-grant-harness';
 
-const fixture = vi.hoisted(() => ({ db: null as unknown, nodeDid: vi.fn() }));
+const fixture = vi.hoisted(() => ({
+  db: null as unknown, nodeDid: vi.fn(), createProvision: vi.fn(), revokeProvision: vi.fn(),
+}));
 vi.mock('@/src/db', async () => ({
   ...await import('@/src/db/schemas/auth'),
   ...await import('@/src/db/schemas/registry'),
@@ -13,8 +15,16 @@ vi.mock('@/src/db', async () => ({
   get db() { return fixture.db; },
 }));
 vi.mock('@/src/lib/kernel/node-identity', () => ({ getNodeDid: fixture.nodeDid }));
-// Only notification transport is stubbed; ingest, signatures and storage are real.
+// Notification transport is stubbed; grant lifecycle, ingest, signatures and storage are real.
 vi.mock('@imajin/bus', () => ({ publish: vi.fn().mockResolvedValue(undefined) }));
+vi.mock('../agent-provisioner', () => ({
+  // Denial-only tests assert these operations are never reached by the real auth gate.
+  createProvision: fixture.createProvision,
+  revokeProvision: fixture.revokeProvision,
+  listProvisions: vi.fn(),
+  getProvision: vi.fn(),
+  ProvisionError: class extends Error { status = 400; },
+}));
 
 import { GET as listGrants, POST as issue } from '@/app/auth/api/grants/route';
 import { DELETE as revoke } from '@/app/auth/api/grants/[grantId]/route';
@@ -24,6 +34,8 @@ import { POST as introspect } from '@/app/auth/api/internal/grants/introspect/ro
 import { resolveAgentAuthority } from '../agent-authority';
 import { authorizeEvidencePublisher } from '@/src/lib/turn-evidence/authorize-publisher';
 import { POST as publishEvidence } from '@/app/auth/api/attestations/turn-evidence/route';
+import { POST as provisionAgent } from '@/app/auth/api/agents/provision/route';
+import { DELETE as revokeProvision } from '@/app/auth/api/agents/provision/[id]/route';
 import { AGENT_KEYPAIR, signedItem, wireBody } from '@/src/lib/turn-evidence/__tests__/helpers';
 
 vi.setConfig({ hookTimeout: 30_000, testTimeout: 30_000 });
@@ -124,6 +136,8 @@ beforeAll(async () => {
 afterAll(async () => { await harness.close(); });
 beforeEach(async () => {
   await harness.reset();
+  fixture.createProvision.mockReset();
+  fixture.revokeProvision.mockReset();
   role = 'owner';
   subtype = 'human';
   allowedServices = null;
@@ -160,6 +174,51 @@ afterEach(() => {
 });
 
 describe('organization grant acceptance (#2997)', () => {
+  it.each(['issue', 'renew', 'add', 'remove', 'revoke'])('rolls back %s when signed audit storage fails', async (action) => {
+    const grant = await issuedGrant();
+    const before = await harness.snapshot();
+    await harness.client.exec("ALTER TABLE auth.attestations ADD CONSTRAINT reject_grant_audit CHECK (type NOT LIKE 'delegation.grant.%') NOT VALID");
+    try {
+      await expect(mutate(action, grant.grantId)).rejects.toThrow();
+      expect(await harness.snapshot()).toEqual(before);
+    } finally {
+      await harness.client.exec('ALTER TABLE auth.attestations DROP CONSTRAINT reject_grant_audit');
+    }
+  });
+
+  it.each(['issue', 'renew', 'add', 'remove', 'revoke'])('rolls back %s when queryable history storage fails', async (action) => {
+    const grant = await issuedGrant();
+    const before = await harness.snapshot();
+    await harness.client.exec("ALTER TABLE auth.delegation_grant_events ADD CONSTRAINT reject_grant_history CHECK (event = 'unreachable_fixture') NOT VALID");
+    try {
+      await expect(mutate(action, grant.grantId)).rejects.toThrow();
+      expect(await harness.snapshot()).toEqual(before);
+    } finally {
+      await harness.client.exec('ALTER TABLE auth.delegation_grant_events DROP CONSTRAINT reject_grant_history');
+    }
+  });
+
+  it.each(['issue', 'renew', 'add', 'remove', 'revoke'])('rolls back %s when signing is unconfigured', async (action) => {
+    const grant = await issuedGrant();
+    const before = await harness.snapshot();
+    vi.stubEnv('AUTH_PRIVATE_KEY', '');
+    await expect(mutate(action, grant.grantId)).rejects.toThrow('AUTH_PRIVATE_KEY not set');
+    expect(await harness.snapshot()).toEqual(before);
+  });
+
+  it.each(['service-restricted', 'agent'])('cannot bypass grant management through provisioning as %s', async (caller) => {
+    await issuedGrant();
+    if (caller === 'agent') subtype = 'agent';
+    else allowedServices = ['events'];
+    const before = await harness.snapshot();
+    expect((await provisionAgent(request('POST', {
+      body: { servingDid: ORG, name: 'Org agent', harness: 'nanoclaw', placement: 'hosted', scopes: ['messages:write'] },
+    }))).status).toBe(403);
+    expect((await revokeProvision(request('DELETE'), { params: Promise.resolve({ id: 'prov_fixture' }) })).status).toBe(403);
+    expect(fixture.createProvision).not.toHaveBeenCalled();
+    expect(fixture.revokeProvision).not.toHaveBeenCalled();
+    expect(await harness.snapshot()).toEqual(before);
+  });
   it.each(['owner', 'admin'])('%s issues as the business, never as their personal DID or through agent membership', async (controllerRole) => {
     role = controllerRole;
     const grant = await issuedGrant();
@@ -272,6 +331,7 @@ describe('organization grant acceptance (#2997)', () => {
 
   it.each(['issue', 'renew', 'add', 'remove', 'revoke'])('refuses service-restricted %s with 403 and zero writes', async (action) => {
     const grant = await issuedGrant();
+    role = 'admin';
     allowedServices = ['events'];
     const before = await harness.snapshot();
     expect((await mutate(action, grant.grantId)).status).toBe(403);
