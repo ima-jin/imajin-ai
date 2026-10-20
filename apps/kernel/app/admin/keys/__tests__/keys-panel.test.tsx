@@ -120,10 +120,12 @@ describe('public-only keys workflow', () => {
     fireEvent.click(screen.getByRole('checkbox'));
     fireEvent.click(button('Reimport encrypted handoff'));
     await screen.findByText('Vault reimport complete. Resealed fields: 3.');
+    expect(button('Reimport encrypted handoff').closest('section')?.textContent).toContain('Vault reimport complete.');
     expect(button('Reimport encrypted handoff').disabled).toBe(true);
     await upload();
     fireEvent.click(button('Submit key.rotated'));
     await screen.findByText('key.rotated recorded. Verify from the old public anchor below.');
+    expect(button('Submit key.rotated').closest('section')?.textContent).toContain('key.rotated recorded.');
     expect(button('Submit key.rotated').disabled).toBe(true);
     change('Old public anchor', oldPublicKey);
     fireEvent.click(button('Verify anchored history'));

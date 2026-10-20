@@ -12,11 +12,11 @@ const MAX_PUBLIC_FILE_BYTES = 16 * 1024;
 const buttonClass = 'rounded bg-orange-600 px-4 py-2 text-white disabled:opacity-50';
 const inputClass = 'block w-full mt-2 rounded border p-2 bg-white dark:bg-gray-900 font-mono text-sm';
 function VerificationResult({ report }: Readonly<{ report: ReturnType<typeof parseVerification> }>) {
-  return <div role="status">
+  return <div role="status" className="break-words">
     <p>{report.ok ? 'Key history verified.' : 'Key history verification failed. Resolve node configuration or history before continuing.'}</p>
     <p>Recorded rotations: {report.rotations}</p>
     <p>Current key ID: {report.currentKid ?? 'Unavailable'}</p>
-    <p className="break-all">Node DID: {report.nodeDid ?? 'Unavailable'} (source: {report.nodeDidSource})</p>
+    <p>Node DID: {report.nodeDid ?? 'Unavailable'} (source: {report.nodeDidSource})</p>
     <p>Signing process started at (UTC): {report.processStartedAt}</p>
   </div>;
 }
@@ -42,6 +42,8 @@ export function KeysPanel() {
   const [verification, setVerification] = useState<ReturnType<typeof parseVerification> | null>(null);
   const [anchored, setAnchored] = useState(false);
   const [custody, setCustody] = useState<ReturnType<typeof parseCustody> | null>(null);
+  const [reimported, setReimported] = useState<number | null>(null);
+  const [recorded, setRecorded] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const uploadVersion = useRef(0);
@@ -87,6 +89,7 @@ export function KeysPanel() {
   async function upload(file?: File) {
     const version = ++uploadVersion.current;
     setPayload(null);
+    setRecorded(false);
     setError('');
     setMessage('');
     if (!file) return;
@@ -148,6 +151,7 @@ export function KeysPanel() {
               setHandoff(null);
               setHandoff(parseExport(await request(SWEEP, { phase: 'export', newPublicKey: newKey }), newKey));
               setRestarted(false);
+              setReimported(null);
               setMessage('Encrypted handoff prepared. The new key is already installed in the env file; restart per the runbook, then reimport.');
             }, 'Export could not be confirmed. Refresh handoff status before retrying; do not restart until it is confirmed.');
           }}>Export encrypted handoff</button>
@@ -178,14 +182,16 @@ export function KeysPanel() {
         <button className={buttonClass} disabled={busy || !handoff?.pending || !restarted}
           onClick={() => {
             if (!handoff?.pending || !restarted) return;
+            setReimported(null);
             void run(async () => {
               const resealed = parseResealed(await request(SWEEP, { phase: 'reimport' }));
               if (resealed !== handoff.exported) throw new Error('Unexpected reimport count');
               setHandoff({ pending: false });
               setRestarted(false);
-              setMessage(`Vault reimport complete. Resealed fields: ${resealed}.`);
+              setReimported(resealed);
             }, 'Reimport failed or could not be confirmed. Refresh status and retry after confirming the new key is loaded.');
           }}>Reimport encrypted handoff</button>
+        {reimported !== null && <p role="status">Vault reimport complete. Resealed fields: {reimported}.</p>}
       </section>
 
       <section className="rounded border p-4 space-y-3" aria-labelledby="record-title">
@@ -198,12 +204,14 @@ export function KeysPanel() {
         {payload && <p>Public payload validated and ready for server verification.</p>}
         <button className={buttonClass} disabled={busy || !payload} onClick={() => {
           if (!payload) return;
+          setRecorded(false);
           void run(async () => {
             parseRecorded(await request(ROTATION, payload));
             setPayload(null);
-            setMessage('key.rotated recorded. Verify from the old public anchor below.');
+            setRecorded(true);
           }, 'Recording failed or could not be confirmed. Verify key history before retrying.');
         }}>Submit key.rotated</button>
+        {recorded && <p role="status">key.rotated recorded. Verify from the old public anchor below.</p>}
       </section>
 
       <section className="rounded border p-4 space-y-3" aria-labelledby="anchor-title">
