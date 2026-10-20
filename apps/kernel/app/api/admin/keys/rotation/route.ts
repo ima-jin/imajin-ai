@@ -4,6 +4,10 @@ import { createLogger } from '@imajin/logger';
 import { recordKeyRotation, verifyNodeKeyHistory } from '@/src/lib/auth/node-key-rotation';
 
 const log = createLogger('kernel');
+const PUBLIC_FIELDS = new Set([
+  'oldKid', 'newKid', 'oldPublicKey', 'newPublicKey',
+  'effectiveAt', 'oldKeySignature', 'newKeySignature',
+]);
 
 /** Reads live key + DB state per request; must never be statically prerendered. */
 export const dynamic = 'force-dynamic';
@@ -25,7 +29,11 @@ export async function GET(request: NextRequest) {
 
   const anchor = request.nextUrl.searchParams.get('anchor') ?? undefined;
   try {
-    return NextResponse.json(await verifyNodeKeyHistory({ anchorPublicKey: anchor }));
+    return NextResponse.json({
+      ...await verifyNodeKeyHistory({ anchorPublicKey: anchor }),
+      // Millisecond precision without exposing pm2's secret-bearing environment.
+      processStartedAt: new Date(performance.timeOrigin).toISOString(),
+    }, { headers: { 'Cache-Control': 'no-store' } });
   } catch {
     log.error({}, 'Node key history verification failed');
     return NextResponse.json({ error: 'Node key history verification failed' }, { status: 500 });
@@ -56,6 +64,13 @@ export async function POST(request: NextRequest) {
     body = await request.json();
   } catch {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
+  }
+  // The signature verifier validates the seven values. Reject extra properties
+  // here so a valid signed payload cannot smuggle private material into storage.
+  if (!body || typeof body !== 'object' || Array.isArray(body) ||
+    Object.keys(body).length !== PUBLIC_FIELDS.size ||
+    Object.keys(body).some((key) => !PUBLIC_FIELDS.has(key))) {
+    return NextResponse.json({ error: 'Expected only the seven public rotation fields' }, { status: 400 });
   }
 
   try {
