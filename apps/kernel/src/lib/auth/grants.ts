@@ -253,7 +253,7 @@ async function requireGrantDelegator(tx: DbExecutor, params: {
 }
 
 /** Revoke the entire grant. Only the issuing delegator may do this. */
-export async function revokeGrant(params: { grantId: string; requestedBy: string; actorDid?: string }): Promise<{ revoked: boolean } | LibError> {
+export function revokeGrant(params: { grantId: string; requestedBy: string; actorDid?: string }): Promise<{ revoked: boolean } | LibError> {
   return db.transaction(async (tx) => {
     const grant = await requireGrantDelegator(tx, { grantId: params.grantId, requestedBy: params.requestedBy, action: 'revoke' });
     if ('error' in grant) return grant;
@@ -276,7 +276,7 @@ export async function revokeGrant(params: { grantId: string; requestedBy: string
  * Revoke exactly one capability, leaving the rest of the grant (and every
  * other capability on it) untouched (#1882 item 4).
  */
-export async function revokeGrantCapability(params: {
+export function revokeGrantCapability(params: {
   grantId: string;
   capability: string;
   requestedBy: string;
@@ -321,7 +321,7 @@ export async function revokeGrantCapability(params: {
  * decision) rather than leaving an orphaned duplicate around — the unique
  * (grantId, capability) index would reject a second insert anyway.
  */
-export async function addGrantCapability(params: {
+export function addGrantCapability(params: {
   grantId: string;
   capability: string;
   requestedBy: string;
@@ -376,7 +376,7 @@ export async function addGrantCapability(params: {
  * active (non-revoked) grant — a revoked grant is a deliberate act and must
  * be re-issued, never resurrected via renewal.
  */
-export async function renewGrant(params: {
+export function renewGrant(params: {
   grantId: string;
   requestedBy: string;
   actorDid?: string;
