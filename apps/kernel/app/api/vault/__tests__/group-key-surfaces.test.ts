@@ -1,4 +1,6 @@
+import { ed25519 } from '@noble/curves/ed25519';
 import { randomBytes } from 'node:crypto';
+const rotationPublicKey = Buffer.from(ed25519.getPublicKey(randomBytes(32))).toString('hex');
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { GROUP_KEY_NAMESPACE, isGroupKeyField } from '@/src/lib/vault/field-grammar';
 
@@ -40,6 +42,10 @@ vi.mock('@imajin/logger', () => ({
 vi.mock('@/src/db', () => ({
   db: { selectDistinct: mocks.selectDistinct, update: mocks.update, insert: mocks.insert },
   vaultDelegationGrants: { field: 'field', status: 'status' }, vaultGrantRequests: {},
+}));
+vi.mock('@/src/lib/vault/rotation-handoff', async (original) => ({
+  ...await original<typeof import('@/src/lib/vault/rotation-handoff')>(),
+  exportRotationHandoff: async (newPublicKey: string, collect: () => Promise<unknown[]>) => ({ exported: (await collect()).length, newPublicKey }),
 }));
 vi.mock('@/src/lib/vault', () => ({
   fetchGrantSecret: mocks.fetchGrantSecret, getGrantById: mocks.getGrantById,
@@ -150,9 +156,9 @@ describe('group-key plaintext HTTP surfaces', () => {
 
   it('omits group keys from rotation export without unsealing them', async () => {
     const { POST } = await import('../rotation-sweep/route');
-    const response = await POST(request('rotation-sweep', { phase: 'export' }));
+    const response = await POST(request('rotation-sweep', { phase: 'export', newPublicKey: rotationPublicKey }));
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ fields: [] });
+    expect(await response.json()).toEqual({ exported: 0, newPublicKey: rotationPublicKey });
     expect(mocks.loadAndUnseal).not.toHaveBeenCalled();
     expect(mocks.log).not.toHaveBeenCalled();
   });
@@ -160,10 +166,10 @@ describe('group-key plaintext HTTP surfaces', () => {
   it('retains ordinary rotation exports alongside protected group keys', async () => {
     mocks.rows.mockResolvedValue([{ field: FIELD }, { field: 'GH_TOKEN' }]);
     const { POST } = await import('../rotation-sweep/route');
-    const response = await POST(request('rotation-sweep', { phase: 'export' }));
+    const response = await POST(request('rotation-sweep', { phase: 'export', newPublicKey: rotationPublicKey }));
     expect(response.status).toBe(200);
     const body = await response.json();
-    expect(body.fields.map((entry: { field: string }) => entry.field)).toEqual(['GH_TOKEN']);
+    expect(body).toEqual({ exported: 1, newPublicKey: rotationPublicKey });
     expect(mocks.loadAndUnseal.mock.calls.map(([field]) => field)).toEqual(['GH_TOKEN']);
     expect(mocks.log).not.toHaveBeenCalled();
   });

@@ -1,3 +1,6 @@
+import { randomBytes } from 'node:crypto';
+import { ed25519 } from '@noble/curves/ed25519';
+const rotationPublicKey = Buffer.from(ed25519.getPublicKey(randomBytes(32))).toString('hex');
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
@@ -6,6 +9,10 @@ const mocks = vi.hoisted(() => ({
 vi.mock('@imajin/auth', () => ({
   requireAdmin: async () => true,
   requireAuth: async () => ({ identity: { id: 'did:imajin:fake-owner' } }),
+}));
+vi.mock('@/src/lib/vault/rotation-handoff', async (original) => ({
+  ...await original<typeof import('@/src/lib/vault/rotation-handoff')>(),
+  exportRotationHandoff: async (newPublicKey: string, collect: () => Promise<unknown[]>) => ({ exported: (await collect()).length, newPublicKey }),
 }));
 vi.mock('@/src/lib/vault', () => ({
   vaultService: { list: mocks.list, loadVault: mocks.load },
@@ -58,10 +65,10 @@ describe('operator app input has no generic vault escape hatch', () => {
     expect(mocks.read).not.toHaveBeenCalled();
     expect(mocks.seal).not.toHaveBeenCalled();
   });
-  it('never unseals app, staging or imported fields during the admin plaintext export sweep', async () => {
+  it('never unseals app, staging or imported fields during the admin sealed export sweep', async () => {
     mocks.rows.mockResolvedValue([{ field: staging }, { field: appSecret }, { field: importedSecret }]);
-    const response = await sweep(request({ phase: 'export' }));
-    expect(await response.json()).toEqual({ fields: [] });
+    const response = await sweep(request({ phase: 'export', newPublicKey: rotationPublicKey }));
+    expect(await response.json()).toEqual({ exported: 0, newPublicKey: rotationPublicKey });
     expect(mocks.read).not.toHaveBeenCalled();
   });
   it.each([staging, appSecret, importedSecret])('refuses generic reimport of %s before any mutation', async (field) => {

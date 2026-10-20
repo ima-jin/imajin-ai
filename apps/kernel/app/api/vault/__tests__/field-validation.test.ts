@@ -193,30 +193,13 @@ describe('POST /api/vault/migrate-custody — fields[]', () => {
   });
 });
 
-describe('POST /api/vault/rotation-sweep — reimport', () => {
-  const reimport = (fields: unknown[]) => post('rotation-sweep', { phase: 'reimport', fields });
-
-  it('400s an entry with an invalid field name and re-seals nothing', async () => {
+describe('POST /api/vault/rotation-sweep — legacy reimport refused', () => {
+  it('rejects caller plaintext, including valid field names, before any vault access', async () => {
     const { POST } = await import('../rotation-sweep/route');
-    const response = await POST(reimport([{ field: 'a:', plaintext: 'x' }]) as never);
-    expect(response.status).toBe(400);
-    expect(await errorOf(response)).toContain('not a valid vault field name');
+    const response = await POST(post('rotation-sweep', {
+      phase: 'reimport', fields: [{ field: 'internal-secret:kernel.pepper', plaintext: 'OBVIOUSLY_FAKE_INPUT' }],
+    }) as never);
+    expect(response.status).toBe(403);
     expectNothingReached();
-  });
-
-  it('400s an entry with no field name', async () => {
-    const { POST } = await import('../rotation-sweep/route');
-    const response = await POST(reimport([{ plaintext: 'x' }]) as never);
-    expect(response.status).toBe(400);
-    expect(await errorOf(response)).toContain('field is required');
-    expectNothingReached();
-  });
-
-  it('re-seals under the trimmed field name', async () => {
-    mocks.sealAndStoreV2.mockResolvedValue({ entry: {}, grantId: 'g' });
-    const { POST } = await import('../rotation-sweep/route');
-    const response = await POST(reimport([{ field: ' internal-secret:kernel.pepper ', plaintext: 'x' }]) as never);
-    expect(response.status).toBe(200);
-    expect(mocks.sealAndStoreV2).toHaveBeenCalledWith('internal-secret:kernel.pepper', 'x');
   });
 });

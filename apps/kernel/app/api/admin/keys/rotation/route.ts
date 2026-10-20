@@ -26,8 +26,8 @@ export async function GET(request: NextRequest) {
   const anchor = request.nextUrl.searchParams.get('anchor') ?? undefined;
   try {
     return NextResponse.json(await verifyNodeKeyHistory({ anchorPublicKey: anchor }));
-  } catch (error) {
-    log.error({ err: String(error) }, 'Node key history verification failed');
+  } catch {
+    log.error({}, 'Node key history verification failed');
     return NextResponse.json({ error: 'Node key history verification failed' }, { status: 500 });
   }
 }
@@ -72,8 +72,8 @@ export async function POST(request: NextRequest) {
       },
       { status: 201 },
     );
-  } catch (error) {
-    log.error({ err: String(error) }, 'Recording node key rotation failed');
+  } catch {
+    log.error({}, 'Recording node key rotation failed');
     return NextResponse.json({ error: 'Recording node key rotation failed' }, { status: 500 });
   }
 }
