@@ -79,7 +79,7 @@ let client: PGlite | undefined;
 afterEach(async () => { await client?.close(); client = undefined; vi.unstubAllEnvs(); });
 
 describe('#2935 — one approved provision, no owner PATCH', () => {
-  it('registers a private app for a memberless stub, on its own callback host, and follows live org membership', async () => {
+  it.each([undefined, 'members', 'anyone'])('registers a private app with audience %s for a memberless stub and follows live org discovery membership', async (signInAudience) => {
     client = new PGlite();
     h.database = drizzle(client);
     // Use the real Drizzle column names/types so registration and directory
@@ -102,12 +102,14 @@ describe('#2935 — one approved provision, no owner PATCH', () => {
       detail: {
         slug: 'gbs', displayName: 'GBS', siteOwnerDid: 'did:imajin:gbs',
         visibility: 'private', domain: 'dev-gbs.imajin.ai',
+        ...(signInAudience ? { signInAudience } : {}),
       },
     } as OperatorApprovalCard);
     expect(result, JSON.stringify(result)).toMatchObject({ ok: true, data: { appDid: 'did:imajin:gbs-app', claimCode: 'fixture-claim-code' } });
     const [app] = await h.database.select().from(registryApps);
     expect(app).toMatchObject({
       ownerDid: 'did:imajin:gbs', visibility: 'private',
+      signInAudience: signInAudience ?? 'members',
       callbackUrl: 'https://dev-gbs.imajin.ai/api/auth/callback',
       allowedRedirectHosts: ['dev-gbs.imajin.ai'], tokenAudiences: ['gbs'],
       sourceRepo: 'ima-jin/gbs', template: 'ima-jin/imajin-app-template', joined: true,

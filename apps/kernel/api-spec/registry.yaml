@@ -159,6 +159,19 @@ components:
         on joining the identity and disappears on leaving it.
         internal: API-only; no tile and launcher returns 404.
         Public web pages are served regardless of this value.
+    AppSignInAudience:
+      type: string
+      enum: [members, anyone]
+      default: members
+      description: |
+        Independent of discovery visibility. For private apps, members permits
+        only the owner and current members to consent; anyone permits any
+        authenticated person via a direct sign-in link without public discovery.
+        Does not grant organization membership, scopes or service authority.
+        Public/unlisted consent behavior is unchanged; internal apps remain
+        non-interactive. Invalid/null values are rejected. Omission on PATCH
+        preserves the stored value. Widening members -> anyone requires the
+        owner's own session/countersign, using the visibility-widening policy.
     AppWrite:
       allOf:
         - $ref: "#/components/schemas/AppLineage"
@@ -172,11 +185,12 @@ components:
         requestedScopes: { type: array, items: { type: string } }
         providesScopes: { type: array, items: { type: string } }
         visibility: { $ref: "#/components/schemas/AppVisibility" }
+        signInAudience: { $ref: "#/components/schemas/AppSignInAudience" }
     App:
       allOf:
         - $ref: "#/components/schemas/AppWrite"
         - type: object
-          required: [id, ownerDid, appDid, visibility]
+          required: [id, ownerDid, appDid, visibility, signInAudience]
           properties:
             id: { type: string }
             ownerDid: { type: string }
@@ -284,6 +298,7 @@ paths:
       description: |
         Visibility defaults to public. Only the four documented values are
         accepted. Self-service registration is always third_party.
+        signInAudience defaults to members; accepts only members or anyone.
         dependsOn and emittableEvents are operator-only and rejected.
         A supplied Ed25519 publicKey keeps private key material client-side;
         otherwise the generated keypair is returned once and never stored.
@@ -332,6 +347,11 @@ paths:
       tags: [registry]
       operationId: getRegistryApp
       summary: Read an app by registration id
+      description: |
+        Public/unlisted detail remains directly readable. Private apps require
+        owner/current membership unless signInAudience is anyone, which permits
+        authenticated direct reads for consent. This does not widen the directory.
+        Internal management detail remains owner-only.
       responses:
         "200":
           description: App detail, including visibility
@@ -345,6 +365,9 @@ paths:
       summary: Update an app (owner only, compared against the acting DID)
       description: |
         Omitted visibility is preserved; null and unknown values are rejected.
+        Omitted signInAudience is also preserved; only members/anyone are valid.
+        Widening signInAudience from members to anyone uses the same owner-only
+        visibility-widening delegation policy, independently of visibility.
         Reversible metadata edits and narrowing may be executed by a delegate
         with an active grant. Widening visibility requires the owner's own
         countersign/session: internal -> private/unlisted/public,
@@ -372,7 +395,7 @@ paths:
         "401": { description: Not authenticated }
         "403": { description: "Not the owner, or widening requires owner countersign (AGENT_APPROVAL_REQUIRED)" }
         "404": { description: App not found }
-        "409": { description: Owner or visibility changed concurrently; reload before saving }
+        "409": { description: Owner, visibility or sign-in audience changed concurrently; reload before saving }
     delete:
       tags: [registry]
       operationId: revokeRegistryApp

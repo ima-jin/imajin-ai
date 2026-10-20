@@ -5,6 +5,8 @@ import { useRouter } from 'next/navigation';
 import { SCOPES } from '@imajin/auth/scope-vocabulary';
 import { APP_VISIBILITY_DESCRIPTIONS, type AppVisibility } from '@/src/lib/apps/visibility';
 import VisibilitySelect from '../../components/VisibilitySelect';
+import SignInAudienceSelect from '../../components/SignInAudienceSelect';
+import { APP_SIGN_IN_AUDIENCE_DESCRIPTIONS, type AppSignInAudience } from '@/src/lib/apps/sign-in-audience';
 
 interface App {
   id: string;
@@ -19,6 +21,7 @@ interface App {
   requestedScopes: string[] | null;
   status: string;
   visibility: AppVisibility;
+  signInAudience: AppSignInAudience;
   createdAt: Date | string | null;
   updatedAt: Date | string | null;
 }
@@ -67,6 +70,7 @@ export default function AppDetailClient({ app: initialApp }: Readonly<Props>) {
   const [editLogoUrl, setEditLogoUrl] = useState(app.logoUrl ?? '');
   const [editScopes, setEditScopes] = useState<string[]>(app.requestedScopes ?? []);
   const [editVisibility, setEditVisibility] = useState<AppVisibility>(app.visibility);
+  const [editSignInAudience, setEditSignInAudience] = useState<AppSignInAudience>(app.signInAudience ?? 'members');
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
 
@@ -87,6 +91,7 @@ export default function AppDetailClient({ app: initialApp }: Readonly<Props>) {
     setEditLogoUrl(app.logoUrl ?? '');
     setEditScopes(app.requestedScopes ?? []);
     setEditVisibility(app.visibility);
+    setEditSignInAudience(app.signInAudience ?? 'members');
     setSaveError('');
     setEditing(true);
   }
@@ -107,6 +112,7 @@ export default function AppDetailClient({ app: initialApp }: Readonly<Props>) {
           logoUrl: editLogoUrl.trim() || null,
           requestedScopes: editScopes,
           visibility: editVisibility,
+          signInAudience: editSignInAudience,
         }),
       });
       const data = await res.json();
@@ -237,9 +243,10 @@ export default function AppDetailClient({ app: initialApp }: Readonly<Props>) {
           </div>
 
           <VisibilitySelect id="edit-app-visibility" value={editVisibility} onChange={setEditVisibility} />
+          <SignInAudienceSelect id="edit-app-sign-in-audience" value={editSignInAudience} onChange={setEditSignInAudience} />
           <p className="text-xs text-zinc-400">
-            Widening visibility discloses your app to more people and requires the owner to confirm directly.
-            Delegates with an active grant can narrow visibility.
+            Widening visibility or sign-in audience requires the owner to confirm directly.
+            Delegates with an active grant can narrow either setting.
           </p>
 
           {/* Scopes */}
@@ -328,6 +335,9 @@ export default function AppDetailClient({ app: initialApp }: Readonly<Props>) {
           <Field label="App visibility">
             <p className="text-sm text-zinc-300">{app.visibility} — {APP_VISIBILITY_DESCRIPTIONS[app.visibility]}</p>
             <p className="mt-1 text-xs text-zinc-400">Public web pages remain public.</p>
+          </Field>
+          <Field label="Sign-in audience">
+            <p className="text-sm text-zinc-300">{app.signInAudience ?? 'members'} — {APP_SIGN_IN_AUDIENCE_DESCRIPTIONS[app.signInAudience ?? 'members']}</p>
           </Field>
           {app.slug && app.visibility === 'unlisted' && (
             <Field label="Add app link">

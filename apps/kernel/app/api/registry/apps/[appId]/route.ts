@@ -8,6 +8,7 @@ import { validateTemplateLineage } from '@/src/lib/apps/template-lineage';
 import { enforceRoutePolicy, type IdentitySource } from '@imajin/auth/delegation-policy';
 import { isAppVisibility, isVisibilityWidening, APP_VISIBILITY_ERROR, type AppVisibility } from '@/src/lib/apps/visibility';
 import { canAccessAppListing, resolveAppOwnerDids } from '@/src/lib/kernel/app-visibility';
+import { isAppSignInAudience, APP_SIGN_IN_AUDIENCE_ERROR } from '@/src/lib/apps/sign-in-audience';
 
 // GET /api/registry/apps/:appId — app detail (public)
 export async function GET(request: NextRequest, props: { params: Promise<{ appId: string }> }) {
@@ -18,6 +19,7 @@ export async function GET(request: NextRequest, props: { params: Promise<{ appId
       ownerDid: registryApps.ownerDid,
       name: registryApps.name,
       visibility: registryApps.visibility,
+      signInAudience: registryApps.signInAudience,
       description: registryApps.description,
       appDid: registryApps.appDid,
       publicKey: registryApps.publicKey,
@@ -49,11 +51,30 @@ export async function GET(request: NextRequest, props: { params: Promise<{ appId
     const did = resolveActingDid(auth.identity);
     const visible = app.visibility === 'internal'
       ? app.ownerDid === did
-      : canAccessAppListing(app, await resolveAppOwnerDids(did));
+      : app.signInAudience === 'anyone' || canAccessAppListing(app, await resolveAppOwnerDids(did));
     if (!visible) return NextResponse.json({ error: 'Not found' }, { status: 404 });
   }
 
   return NextResponse.json(app, { headers: { 'Cache-Control': 'private, no-store' } });
+}
+
+function validateDisclosureChange(
+  identity: IdentitySource,
+  existing: { visibility: AppVisibility; signInAudience: string },
+  body: Record<string, unknown>,
+  appId: string,
+): Response | null {
+  if (body.visibility !== undefined && !isAppVisibility(body.visibility)) {
+    return NextResponse.json({ error: APP_VISIBILITY_ERROR }, { status: 400 });
+  }
+  if (body.signInAudience !== undefined && !isAppSignInAudience(body.signInAudience)) {
+    return NextResponse.json({ error: APP_SIGN_IN_AUDIENCE_ERROR }, { status: 400 });
+  }
+  if (body.signInAudience === 'anyone' && existing.signInAudience !== 'anyone') {
+    const denied = enforceRoutePolicy(identity, 'kernel.registry-app.visibility-widen', { resourceId: appId });
+    if (denied) return denied;
+  }
+  return enforceVisibilityPolicy(identity, existing.visibility, body.visibility, appId);
 }
 
 type AppUpdates = Partial<typeof registryApps.$inferInsert>;
@@ -70,6 +91,7 @@ function buildFieldUpdates(body: Record<string, unknown>): AppUpdates {
   if (typeof body.homepageUrl === 'string') updates.homepageUrl = body.homepageUrl || null;
   if (typeof body.logoUrl === 'string') updates.logoUrl = body.logoUrl || null;
   if (Array.isArray(body.requestedScopes)) updates.requestedScopes = body.requestedScopes;
+  if (isAppSignInAudience(body.signInAudience)) updates.signInAudience = body.signInAudience;
   return updates;
 }
 
@@ -151,6 +173,7 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ app
       ownerDid: registryApps.ownerDid,
       slug: registryApps.slug,
       visibility: registryApps.visibility,
+      signInAudience: registryApps.signInAudience,
       requestedScopes: registryApps.requestedScopes,
       providesScopes: registryApps.providesScopes,
       dependsOn: registryApps.dependsOn,
@@ -174,12 +197,9 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ app
   if (!body || typeof body !== 'object' || Array.isArray(body)) {
     return NextResponse.json({ error: 'Expected a JSON object' }, { status: 400 });
   }
-  if (body.visibility !== undefined && !isAppVisibility(body.visibility)) {
-    return NextResponse.json({ error: APP_VISIBILITY_ERROR }, { status: 400 });
-  }
   // requireAuth establishes the active actingFor grant. Disclosure needs the
   // owner's own session/countersign; metadata/narrowing remains delegable.
-  const delegationDenied = enforceVisibilityPolicy(identity, existing.visibility, body.visibility, params.appId);
+  const delegationDenied = validateDisclosureChange(identity, existing, body, params.appId);
   if (delegationDenied) return delegationDenied;
 
   // #2663: `dependsOn` grants an app's tokens another service's audience (e.g.
@@ -223,11 +243,12 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ app
       eq(registryApps.id, params.appId),
       eq(registryApps.ownerDid, existing.ownerDid),
       ...(updates.visibility === undefined ? [] : [eq(registryApps.visibility, existing.visibility)]),
+      ...(updates.signInAudience === undefined ? [] : [eq(registryApps.signInAudience, existing.signInAudience)]),
     ))
     .returning();
 
   if (!updated) {
-    return NextResponse.json({ error: 'App changed; reload before saving visibility' }, { status: 409 });
+    return NextResponse.json({ error: 'App changed; reload before saving visibility or sign-in audience' }, { status: 409 });
   }
   return NextResponse.json(updated);
 }

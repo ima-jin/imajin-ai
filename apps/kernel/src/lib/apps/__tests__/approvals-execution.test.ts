@@ -64,6 +64,14 @@ describe('executeAppsProvisionApproval — countersignature gate', () => {
 });
 
 describe('executeAppsProvisionApproval — kind/detail validation', () => {
+  it.each([null, '', 'Anyone', true, {}])('refuses invalid signed audience %j', async signInAudience => {
+    expect(await executeAppsProvisionApproval(card({ detail: { slug: 'gbs', displayName: 'GBS', signInAudience } }))).toMatchObject({ ok: false, error: expect.stringContaining('signInAudience') });
+    expect(runAppProvisionMock).not.toHaveBeenCalled();
+  });
+  it('refuses audience on signed reissue cards', async () => {
+    expect(await executeAppsProvisionApproval(card({ detail: { slug: 'gbs', displayName: 'GBS', reissueClaim: true, signInAudience: 'members' } }))).toEqual({ ok: false, error: 'Reissuing a claim cannot change signInAudience' });
+    expect(runAppProvisionMock).not.toHaveBeenCalled();
+  });
   it.each([null, '', 'hidden', 42])('refuses invalid signed visibility %j', async (visibility) => {
     const result = await executeAppsProvisionApproval(card({ detail: { slug: 'gbs', displayName: 'GBS', visibility } }));
     expect(result).toEqual({ ok: false, error: 'visibility must be one of: public, unlisted, private, internal' });
@@ -98,6 +106,16 @@ describe('executeAppsProvisionApproval — kind/detail validation', () => {
 });
 
 describe('executeAppsProvisionApproval — execution', () => {
+  it.each(['members', 'anyone'])('forwards exactly the countersigned audience %s', async signInAudience => {
+    runAppProvisionMock.mockResolvedValue({ status: 'failed', failedStep: 'repo', error: 'test' });
+    await executeAppsProvisionApproval(card({ detail: { slug: 'gbs', displayName: 'GBS', signInAudience } }));
+    expect(runAppProvisionMock).toHaveBeenCalledWith(expect.objectContaining({ signInAudience }));
+  });
+  it('does not default the audience on a claim reissue', async () => {
+    runAppProvisionMock.mockResolvedValue({ status: 'failed', failedStep: 'repo', error: 'test' });
+    await executeAppsProvisionApproval(card({ detail: { slug: 'gbs', displayName: 'GBS', reissueClaim: true } }));
+    expect(runAppProvisionMock.mock.calls[0][0]).not.toHaveProperty('signInAudience');
+  });
   it.each(['public', 'unlisted', 'private', 'internal'])('forwards countersigned visibility %s', async (visibility) => {
     runAppProvisionMock.mockResolvedValue({ status: 'failed', failedStep: 'repo', error: 'test' });
     await executeAppsProvisionApproval(card({ detail: { slug: 'gbs', displayName: 'GBS', visibility } }));

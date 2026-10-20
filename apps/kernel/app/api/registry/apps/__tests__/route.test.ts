@@ -36,6 +36,7 @@ const {
         appDid: 'did:imajin:generatedDid',
         name: 'Test App',
         visibility: values.visibility,
+        signInAudience: values.signInAudience,
         publicKey: 'a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f9',
       },
     ]),
@@ -114,6 +115,18 @@ beforeEach(() => {
 });
 
 describe('POST /api/registry/apps (#1739)', () => {
+  it.each([undefined, 'members', 'anyone'])('persists audience %s independently of private visibility', async signInAudience => {
+    const res = await POST(makeRequest({ name: 'Private app', callbackUrl: 'https://example.com/callback', visibility: 'private', signInAudience }) as never);
+    expect(res.status).toBe(201);
+    expect(await res.json()).toHaveProperty('signInAudience', signInAudience ?? 'members');
+    expect(mockDbInsertValues).toHaveBeenCalledWith(expect.objectContaining({ visibility: 'private', signInAudience: signInAudience ?? 'members' }));
+  });
+  it.each([null, '', 'Anyone', 'public', true, 1, {}, ['members']])('rejects invalid audience %j before key generation or writes', async signInAudience => {
+    const res = await POST(makeRequest({ name: 'App', callbackUrl: 'https://example.com/callback', signInAudience }) as never);
+    expect(res.status).toBe(400);
+    expect(mockGenerateKeypair).not.toHaveBeenCalled();
+    expect(mockDbInsert).not.toHaveBeenCalled();
+  });
   it('registers cross-org template lineage without changing the app tier', async () => {
     const lineage = { sourceRepo: 'gbscontracting/website', template: 'ima-jin/imajin-app-template', templateRef: 'v1', joined: true };
     const res = await POST(makeRequest({ name: 'Website', callbackUrl: 'https://example.com/cb', ...lineage }) as never);

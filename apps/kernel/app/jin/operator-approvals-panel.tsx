@@ -663,6 +663,8 @@ function renderAppsProvisionDetail(approval: OperatorApprovalCard): ReactNode {
       ) : (
         <div className="text-xs text-gray-500"><span className="uppercase tracking-wide mr-2">Template</span><span className="font-mono">{template}</span></div>
       )}
+      <div className="text-xs text-gray-500"><span className="uppercase tracking-wide mr-2">Sign-in audience</span><span className="font-mono">{detailString(detail, 'signInAudience', 'members (default for new apps; unchanged on retries)')}</span></div>
+      <p className="text-xs text-gray-500">Independent of directory visibility. Anyone allows authenticated direct-link consent, not organization membership.</p>
       {/* #2663: the providesScopes/dependsOn list the operator is approving, read-only, before they approve it. */}
       <ProvisionDeclarationsPreview detail={detail} />
     </div>

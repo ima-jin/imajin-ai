@@ -74,6 +74,7 @@ import type { VaultAuthorization } from '@/src/lib/vault/authorization';
 import { provisionAppDomain, validateProvisionOwner } from './provision-domain';
 import { APP_VISIBILITY_ERROR, isAppVisibility, type AppVisibility } from './visibility';
 import { isRepositoryName } from './template-lineage';
+import { APP_SIGN_IN_AUDIENCE_ERROR, isAppSignInAudience, type AppSignInAudience } from './sign-in-audience';
 
 const log = createLogger('kernel:apps:provision');
 
@@ -110,6 +111,7 @@ export interface AppProvisionParams {
   authorizedBy?: VaultAuthorization;
   /** Directory visibility approved by the operator; omitted means public. */
   visibility?: AppVisibility;
+  signInAudience?: AppSignInAudience;
   /** Ownership and host are part of the operator-countersigned proposal. */
   siteOwnerDid?: string;
   domain?: string;
@@ -414,6 +416,7 @@ async function registerApp(params: {
   approvedDeclarations: ManifestDeclarations | null;
   redirects: RegistrationRedirects;
   visibility: AppVisibility;
+  signInAudience: AppSignInAudience;
   retiredLegacyAppId: string | null;
   template: string;
   sourceRepo: string;
@@ -426,6 +429,7 @@ async function registerApp(params: {
     .select({
       id: registryApps.id,
       visibility: registryApps.visibility,
+      signInAudience: registryApps.signInAudience,
       callbackUrl: registryApps.callbackUrl,
       allowedRedirectHosts: registryApps.allowedRedirectHosts,
     })
@@ -435,9 +439,10 @@ async function registerApp(params: {
 
   if (existing) {
     if (existing.visibility !== params.visibility
+      || existing.signInAudience !== params.signInAudience
       || existing.callbackUrl !== params.redirects.callbackUrl
       || JSON.stringify(existing.allowedRedirectHosts) !== JSON.stringify(params.redirects.allowedRedirectHosts)) {
-      throw new Error('apps.provision: retry cannot change the registered visibility or callback — re-propose with the existing settings');
+      throw new Error('apps.provision: retry cannot change the registered visibility, sign-in audience or callback — re-propose with the existing settings');
     }
     return { id: existing.id, allowedRedirectHosts: existing.allowedRedirectHosts, ...retirementContext(params.retiredLegacyAppId) };
   }
@@ -497,6 +502,7 @@ async function registerApp(params: {
       // Without one, preserve the node-path callback (#2746).
       ...params.redirects,
       visibility: params.visibility,
+      signInAudience: params.signInAudience,
       tier: 'third_party',
       status: 'active',
       slug,
@@ -630,6 +636,8 @@ export async function runAppProvision(params: AppProvisionParams): Promise<AppPr
   const { slug, displayName, template = DEFAULT_APP_TEMPLATE, attestationTypes = [] } = params;
   const nodeDid = getNodeSigningIdentity().senderDid;
   const existingRun = await getProvisionRow(slug);
+  const audienceError = await provisionAudienceError(params, existingRun);
+  if (audienceError) return { status: 'failed', failedStep: 'config', error: audienceError };
   const sourceRepo = params.sourceRepo ?? `${PROVISIONING_ORG}/${slug}`;
   if (invalidProvisionSource(params, existingRun, sourceRepo)) {
     return { status: 'failed', failedStep: 'repo', error: 'apps.provision: invalid sourceRepo or repository differs from the recorded provision — repository changes are not allowed on retry' };
@@ -640,6 +648,7 @@ export async function runAppProvision(params: AppProvisionParams): Promise<AppPr
   // fails closed before the repo is created or any key is minted.
   let redirects: RegistrationRedirects;
   const visibility = params.visibility ?? 'public';
+  const signInAudience = params.signInAudience ?? 'members';
   try {
     if (!isAppVisibility(visibility)) throw new Error(APP_VISIBILITY_ERROR);
     redirects = resolveRegistrationRedirects(slug, params.domain);
@@ -696,6 +705,7 @@ export async function runAppProvision(params: AppProvisionParams): Promise<AppPr
       approvedDeclarations: params.approvedDeclarations ?? null,
       redirects,
       visibility,
+      signInAudience,
       retiredLegacyAppId: existingRun?.retiredLegacyAppId ?? null,
       template,
       sourceRepo,
@@ -762,4 +772,20 @@ export async function runAppProvision(params: AppProvisionParams): Promise<AppPr
 /** Current ledger status for a slug, for `GET /api/apps/provision?slug=`. Undefined when never provisioned. */
 export async function getAppProvisionStatus(slug: string): Promise<AppProvisionRow | undefined> {
   return getProvisionRow(slug);
+}
+
+/** Live registry setting, not a proposal default or stale ledger snapshot. */
+export async function getProvisionSignInAudience(appDid: string | null): Promise<AppSignInAudience | null> {
+  if (!appDid) return null;
+  const [app] = await db.select({ signInAudience: registryApps.signInAudience })
+    .from(registryApps).where(eq(registryApps.appDid, appDid)).limit(1);
+  return app?.signInAudience ?? null;
+}
+
+async function provisionAudienceError(params: AppProvisionParams, existingRun?: AppProvisionRow): Promise<string | null> {
+  if (params.signInAudience === undefined) return null;
+  if (!isAppSignInAudience(params.signInAudience)) return APP_SIGN_IN_AUDIENCE_ERROR;
+  if (existingRun?.status !== 'succeeded') return null;
+  return await getProvisionSignInAudience(existingRun.appDid) === params.signInAudience
+    ? null : 'apps.provision: retry cannot change the registered sign-in audience; use the owner settings';
 }

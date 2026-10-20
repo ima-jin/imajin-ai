@@ -40,6 +40,24 @@ the HTTP examples below are app API examples, not monorepo startup instructions.
 
 ---
 
+## Registered app sign-in
+
+Use the [app registration contract](REGISTRATION.md) and the published
+`@ima-jin/auth-client` SDK for app-owned sessions. The developer registration and
+owner editor at `/auth/developer/apps` expose two independent controls:
+`visibility` controls discovery; `signInAudience: "members" | "anyone"` controls
+who may consent to a private app. The default `members` preserves owner/current
+member-only consent. Choose `anyone` for a private customer-facing site whose
+users must not become organization members; it stays out of the public directory.
+No group membership, extra scope or service permission is granted by that choice.
+
+The same field is accepted by `POST /api/registry/apps`, owner-only
+`PATCH /api/registry/apps/{appId}`, and operator-countersigned
+`POST /api/apps/provision`. Invalid values are rejected. Omitted PATCH preserves
+the setting; widening from `members` to `anyone` requires the owner directly
+(`403 AGENT_APPROVAL_REQUIRED` for a delegate). A claim-code reissue must omit the
+field and never changes it. See the registry and Jin OpenAPI specs for the full API.
+
 ## The 5-Minute Walkthrough
 
 Here's a complete flow: create an identity, buy an event ticket, and see .fair attribution — using nothing but `curl`.

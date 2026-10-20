@@ -39,6 +39,40 @@ const mocks = vi.hoisted(() => {
 });
 
 describe('PATCH app visibility (#2897)', () => {
+  it.each(['members', 'anyone'])('persists owner audience %s with compare-and-set', async signInAudience => {
+    expect((await patch({ signInAudience })).status).toBe(200);
+    expect(mocks.setMock).toHaveBeenCalledWith(expect.objectContaining({ signInAudience }));
+    expect(mocks.whereUpdateMock).toHaveBeenCalledWith(expect.objectContaining({
+      and: expect.arrayContaining([{ eq: ['registryApps.signInAudience', 'members'] }]),
+    }));
+  });
+  it.each([null, '', 'Anyone', 'public', true, 1, {}, ['members']])('rejects invalid audience %j atomically', async signInAudience => {
+    expect((await patch({ signInAudience, name: 'Must not write' })).status).toBe(400);
+    expect(mocks.updateMock).not.toHaveBeenCalled();
+  });
+  it('refuses non-owner audience edits', async () => {
+    mocks.requireAuthMock.mockResolvedValue({ identity: { id: 'did:imajin:outsider' } });
+    expect((await patch({ signInAudience: 'anyone' })).status).toBe(403);
+    expect(mocks.updateMock).not.toHaveBeenCalled();
+  });
+  it('reuses widening policy for delegated audience disclosure, including public apps', async () => {
+    mocks.requireAuthMock.mockResolvedValue({ identity: { id: 'did:imajin:delegate', actingFor: OWNER } });
+    const res = await patch({ signInAudience: 'anyone' });
+    expect(res.status).toBe(403);
+    expect(await res.json()).toMatchObject({ code: 'AGENT_APPROVAL_REQUIRED', resourceId: APP_ID });
+    expect(mocks.updateMock).not.toHaveBeenCalled();
+  });
+  it.each(['members', 'anyone'])('permits delegated narrowing/no-op from anyone to %s', async signInAudience => {
+    mocks.whereSelectMock.mockResolvedValue([existingRow({ signInAudience: 'anyone' })]);
+    mocks.requireAuthMock.mockResolvedValue({ identity: { id: 'did:imajin:delegate', actingFor: OWNER } });
+    expect((await patch({ signInAudience })).status).toBe(200);
+  });
+  it('preserves audience on metadata edits and reports concurrent audience changes', async () => {
+    await patch({ name: 'New' });
+    expect(mocks.setMock.mock.calls[0][0]).not.toHaveProperty('signInAudience');
+    mocks.returningMock.mockResolvedValue([]);
+    expect((await patch({ signInAudience: 'members' })).status).toBe(409);
+  });
   it.each(['public', 'unlisted', 'private', 'internal'])('persists %s for the owner and returns it', async visibility => {
     mocks.returningMock.mockResolvedValue([{ id: APP_ID, visibility }]);
     const res = await patch({ visibility });
@@ -125,6 +159,7 @@ vi.mock('@/src/db', () => ({
     providesScopes: 'registryApps.providesScopes',
     dependsOn: 'registryApps.dependsOn',
     visibility: 'registryApps.visibility',
+    signInAudience: 'registryApps.signInAudience',
   },
 }));
 vi.mock('drizzle-orm', () => ({
@@ -158,6 +193,7 @@ function existingRow(overrides: Record<string, unknown> = {}): Record<string, un
     ownerDid: OWNER,
     slug: 'dykil',
     visibility: 'public',
+    signInAudience: 'members',
     requestedScopes: ['dykil:read', 'dykil:write', 'media:read'],
     providesScopes: ['dykil:read', 'dykil:write'],
     dependsOn: [{ aud: 'jin.imajin.ai', scopes: ['media:read'] }],

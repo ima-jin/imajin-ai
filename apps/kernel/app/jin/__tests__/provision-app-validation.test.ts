@@ -84,6 +84,13 @@ describe('validateProvisionForm', () => {
 });
 
 describe('buildProvisionPayload', () => {
+  it.each(['members', 'anyone'] as const)('preserves audience %s', signInAudience => {
+    expect(buildProvisionPayload(values({ signInAudience })).signInAudience).toBe(signInAudience);
+    expect(validateProvisionForm(values({ signInAudience })).signInAudience).toBeUndefined();
+  });
+  it('refuses an invalid audience client-side', () => {
+    expect(validateProvisionForm(values({ signInAudience: 'public' as never })).signInAudience).toContain('signInAudience');
+  });
   it('preserves the exact validated repository value and omits an empty field', () => {
     expect(buildProvisionPayload(values({ sourceRepo: 'GBScontracting/Website' })).sourceRepo).toBe('GBScontracting/Website');
     expect(buildProvisionPayload(values({ sourceRepo: '' }))).not.toHaveProperty('sourceRepo');
@@ -91,6 +98,7 @@ describe('buildProvisionPayload', () => {
   it('trims fields, defaults the template and parses attestation types', () => {
     expect(buildProvisionPayload(values({ slug: ' coffee ', displayName: ' Coffee ', template: '  ', attestationTypes: 'coffee/order' }))).toEqual({
       slug: 'coffee',
+      signInAudience: 'members',
       displayName: 'Coffee',
       template: DEFAULT_APP_TEMPLATE,
       attestationTypes: ['coffee/order'],

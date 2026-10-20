@@ -4,6 +4,8 @@ import { useState, FormEvent } from 'react';
 import { SCOPES } from '@imajin/auth/scope-vocabulary';
 import { type AppVisibility } from '@/src/lib/apps/visibility';
 import VisibilitySelect from './VisibilitySelect';
+import SignInAudienceSelect from './SignInAudienceSelect';
+import type { AppSignInAudience } from '@/src/lib/apps/sign-in-audience';
 
 interface RegisteredApp {
   id: string;
@@ -24,6 +26,7 @@ export default function RegisterAppForm({ onSuccess, onCancel }: Readonly<Props>
   const [homepageUrl, setHomepageUrl] = useState('');
   const [logoUrl, setLogoUrl] = useState('');
   const [visibility, setVisibility] = useState<AppVisibility>('public');
+  const [signInAudience, setSignInAudience] = useState<AppSignInAudience>('members');
   const [selectedScopes, setSelectedScopes] = useState<string[]>([]);
   const [useOwnKey, setUseOwnKey] = useState(false);
   const [publicKey, setPublicKey] = useState('');
@@ -53,6 +56,7 @@ export default function RegisterAppForm({ onSuccess, onCancel }: Readonly<Props>
       logoUrl: logoUrl.trim() || undefined,
       requestedScopes: selectedScopes,
       visibility,
+      signInAudience,
     };
 
     if (useOwnKey && publicKey.trim()) {
@@ -249,6 +253,7 @@ export default function RegisterAppForm({ onSuccess, onCancel }: Readonly<Props>
         </div>
 
         <VisibilitySelect id="register-app-visibility" value={visibility} onChange={setVisibility} />
+        <SignInAudienceSelect id="register-app-sign-in-audience" value={signInAudience} onChange={setSignInAudience} />
 
         {/* Requested Scopes */}
         <div>
