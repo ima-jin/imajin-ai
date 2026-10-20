@@ -1,13 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 import { createCallbackHandler, createLogoutHandler, type ImajinAuthConfig } from '../src/handlers';
-import { verifySessionToken } from '../src/session';
+import { sessionCookieName, verifySessionToken } from '../src/session';
 import { forwardAuthCallback } from '../src/middleware';
 
 const origin = 'https://jin.imajin.ai';
 const query = '?attestation_id=att_123&user_did=did:imajin:alice';
 const profile = { did: 'did:imajin:alice', displayName: 'Alice', handle: 'alice' };
-const baseConfig: ImajinAuthConfig = { authUrl: origin, secret: 'test-secret-not-a-production-credential' };
+const baseConfig: ImajinAuthConfig = { authUrl: origin, appDid: 'did:imajin:coffee', secret: 'test-secret-not-a-production-credential' };
 
 beforeEach(() => {
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json(profile)));
@@ -39,7 +39,7 @@ describe.each([
     const response = await createCallbackHandler(config)(request());
     expect(response.status).toBe(307);
     expect(response.headers.get('location')).toBe(`${origin}${basePath}/`);
-    const cookie = response.cookies.get('imajin_session');
+    const cookie = response.cookies.get(sessionCookieName(config));
     expect(cookie?.value).toBeTruthy();
     expect(await verifySessionToken(cookie!.value, config)).toMatchObject({ ...profile, attestationId: 'att_123' });
   });
@@ -50,7 +50,7 @@ describe.each([
       const response = await createCallbackHandler(config)(request(search));
       expect(response.headers.get('location')).toBe(`${origin}${basePath}/?auth_error=missing_params`);
       expect(fetch).not.toHaveBeenCalled();
-      expect(response.cookies.get('imajin_session')).toBeUndefined();
+      expect(response.cookies.get(sessionCookieName(config))).toBeUndefined();
     },
   );
 
@@ -61,20 +61,20 @@ describe.each([
     vi.mocked(fetch).mockResolvedValue(new Response('unavailable', { status }));
     const response = await createCallbackHandler(config)(request());
     expect(response.headers.get('location')).toBe(`${origin}${basePath}/?auth_error=${error}`);
-    expect(response.cookies.get('imajin_session')).toBeUndefined();
+    expect(response.cookies.get(sessionCookieName(config))).toBeUndefined();
   });
 
   it('network_error returns to the app root', async () => {
     vi.mocked(fetch).mockRejectedValue(new Error('offline'));
     const response = await createCallbackHandler(config)(request());
     expect(response.headers.get('location')).toBe(`${origin}${basePath}/?auth_error=network_error`);
-    expect(response.cookies.get('imajin_session')).toBeUndefined();
+    expect(response.cookies.get(sessionCookieName(config))).toBeUndefined();
   });
 
   it('logout returns to the app root and clears the cookie', async () => {
     const response = await createLogoutHandler(config)(request());
     expect(response.headers.get('location')).toBe(`${origin}${basePath}/`);
-    expect(response.cookies.get('imajin_session')).toMatchObject({ value: '', maxAge: 0 });
+    expect(response.cookies.get(sessionCookieName(config))).toMatchObject({ value: '', maxAge: 0 });
   });
 
   it.each(['/dashboard', '/dashboard?from=login#top', 'dashboard'])(
@@ -114,7 +114,7 @@ describe('public origin and path boundaries', () => {
     });
     const response = await createCallbackHandler(config)(callbackRequest);
     expect(response.headers.get('location')).toBe(`${origin}/coffee/`);
-    expect(await verifySessionToken(response.cookies.get('imajin_session')!.value, config))
+    expect(await verifySessionToken(response.cookies.get(sessionCookieName(config))!.value, config))
       .toMatchObject({ did: profile.did, attestationId: 'att_123' });
   });
   it('shares forwarded origin resolution between handlers and middleware', async () => {

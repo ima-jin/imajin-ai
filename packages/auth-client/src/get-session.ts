@@ -1,11 +1,10 @@
 import { cookies } from 'next/headers';
-import { verifySessionToken, type SessionUser, type SessionConfig } from './session';
-
-const DEFAULT_COOKIE_NAME = 'imajin_session';
+import { sessionCookieName, verifySessionToken, type SessionUser, type SessionConfig } from './session';
 
 export async function getSession(config: SessionConfig): Promise<SessionUser | null> {
+  const name = sessionCookieName(config);
   const cookieStore = await cookies();
-  const token = cookieStore.get(config.cookieName ?? DEFAULT_COOKIE_NAME)?.value;
+  const token = cookieStore.get(name)?.value;
   if (!token) return null;
   return verifySessionToken(token, config);
 }
