@@ -484,6 +484,39 @@ upstream `usage.cost` or account balance. The existing OpenRouter-specific
 explicit-cost contract is unchanged. `/jin` Spend UI work remains #2725.
 ## Testing
 
+### Organization document agreements (#2998)
+
+On `/auth/attestations`, select the organization through the existing identity
+switcher, then create a document request. The form identifies the organization
+name/DID as **author and first signer**, separately from the authenticated human
+controller. Documents and identity signing use the canonical auth-scoped act-as
+authorization; a controller whose `allowed_services` excludes `auth` is denied,
+not silently switched to a personal identity. No grants are added by this flow.
+
+The counterparty opens the request under their own account and sees the title,
+organization, document and own-account sign controls. Once every unique party
+has signed the exact hash, the registered `agreement` appears as a document card
+in both parties' attestation history. Private signed copies remain separately
+owned. Either party can revoke the agreement; its history, timestamps, hash and
+signature records remain visible with a revoked marker rather than being deleted.
+
+**Verify a saved document** uploads a file to
+`POST /auth/api/documents/{id}/verify` as multipart `file`. The response is
+`{ valid, hashMatches, signaturesValid, revoked }`. Success requires all checks
+and no revocation. A changed file displays a plain mismatch/tamper failure.
+Node-witnessed signatures prove the node recorded an authorized action, not
+possession of the organization's or human's own DID private key. True DID-key
+signatures are a distinct supported model. Discover contracts through `/spec`
+and the auth OpenAPI document; `agreement` is included in registered types.
+
+With the development kernel running, open `/dev/agreement-preview` for real
+form/card/viewer components driven by clearly labelled fixture transport.
+Capture at desktop and 390px width. The preview offers org/counterparty accounts,
+sign/revoke controls and a matching fixture download. Upload that download to
+show success; change its bytes to show tamper failure. The fixture does not
+prove a live API or cryptographic round-trip. Both preview and fixture-document
+routes refuse non-development use, and the transport restores on unmount.
+
 - **End-to-end test cases:** `tests/HAPPY_PATH.md`
 - **Security audit checklist:** `tests/AUDIT.md`
 

@@ -9,7 +9,7 @@ interface PageProps {
   params: Promise<{ id: string }>;
 }
 
-const DOCUMENT_TYPES = ['document.created', 'document.amended'] as const;
+const DOCUMENT_TYPES = ['document.created', 'document.amended', 'agreement'] as const;
 
 export default async function DocumentDetailPage({ params }: Readonly<PageProps>) {
   const { id } = await params;
@@ -98,6 +98,7 @@ export default async function DocumentDetailPage({ params }: Readonly<PageProps>
         attestation={cardAttestation}
         signatures={signaturesWithIdentity}
         sessionDid={did}
+        actingHumanDid={sessionDid}
         defaultExpanded
       />
     </div>

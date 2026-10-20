@@ -6,7 +6,7 @@ import CopyLinkButton from './CopyLinkButton';
 
 type DocumentRoleFilter = 'created' | 'needs-signature';
 
-const DOCUMENT_TYPES = ['document.created', 'document.amended'] as const;
+const DOCUMENT_TYPES = ['document.created', 'document.amended', 'agreement'] as const;
 
 interface Props {
   sessionDid: string;

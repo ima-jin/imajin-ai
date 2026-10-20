@@ -3,9 +3,14 @@
 import { useState, useRef, useCallback } from 'react';
 import IdentityPicker from '../../components/IdentityPicker';
 import { buildDocumentSigningPayload } from '@/src/lib/auth/document-signing-payload';
+import DocumentIdentityNotice from './DocumentIdentityNotice';
 
 interface Props {
   sessionDid: string;
+  authorName?: string | null;
+  actingHumanDid?: string;
+  actingHumanName?: string | null;
+  defaultOpen?: boolean;
   onCreated?: () => void;
 }
 
@@ -15,8 +20,8 @@ interface LookupResult {
   name: string | null;
 }
 
-export default function CreateDocumentForm({ sessionDid, onCreated }: Readonly<Props>) {
-  const [open, setOpen] = useState(false);
+export default function CreateDocumentForm({ sessionDid, authorName, actingHumanDid, actingHumanName, defaultOpen = false, onCreated }: Readonly<Props>) {
+  const [open, setOpen] = useState(defaultOpen);
   const [step, setStep] = useState<'upload' | 'details' | 'preview'>('upload');
   const [file, setFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
@@ -69,7 +74,7 @@ export default function CreateDocumentForm({ sessionDid, onCreated }: Readonly<P
   }
 
   function addSigner(identity: { did: string; handle: string | null; name: string | null }) {
-    if (!identity.did || signers.some((s) => s.did === identity.did)) return;
+    if (!identity.did || identity.did === sessionDid || signers.some((s) => s.did === identity.did)) return;
     setSigners((prev) => [...prev, { did: identity.did, handle: identity.handle, name: identity.name }]);
   }
 
@@ -86,6 +91,7 @@ export default function CreateDocumentForm({ sessionDid, onCreated }: Readonly<P
     try {
       const signRes = await fetch(`/auth/api/identity/${encodeURIComponent(sessionDid)}/sign`, {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           payload: buildDocumentSigningPayload(sessionDid, assetHash),
@@ -104,6 +110,7 @@ export default function CreateDocumentForm({ sessionDid, onCreated }: Readonly<P
       }
       const res = await fetch('/auth/api/documents', {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           title: title.trim(),
@@ -130,8 +137,8 @@ export default function CreateDocumentForm({ sessionDid, onCreated }: Readonly<P
       setTitle('');
       setSigners([]);
       setExpiry('7d');
-      onCreated?.();
-      globalThis.location.reload();
+      if (onCreated) onCreated();
+      else globalThis.location.reload();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Create failed');
     } finally {
@@ -167,6 +174,8 @@ export default function CreateDocumentForm({ sessionDid, onCreated }: Readonly<P
           {error}
         </div>
       )}
+      <DocumentIdentityNotice authorDid={sessionDid} authorName={authorName}
+        actingHumanDid={actingHumanDid} actingHumanName={actingHumanName} />
 
       {step === 'upload' && (
         <div className="space-y-3">
@@ -224,11 +233,11 @@ export default function CreateDocumentForm({ sessionDid, onCreated }: Readonly<P
             {signers.length > 0 && (
               <div className="mt-2 space-y-1">
                 {signers.map((s) => (
-                  <div key={s.did} className="flex items-center gap-2 px-3 py-1.5 bg-black/40 rounded-lg">
+                  <div key={s.did} className="flex flex-wrap items-center gap-2 px-3 py-1.5 bg-black/40 rounded-lg">
                     <span className="text-sm text-zinc-300">
                       {s.handle ? `@${s.handle}` : s.name ?? s.did.slice(0, 22) + '…'}
                     </span>
-                    <span className="text-xs text-zinc-600 font-mono">{s.did}</span>
+                    <span className="text-xs text-zinc-600 font-mono break-all">{s.did}</span>
                     <button type="button"
                       onClick={() => removeSigner(s.did)}
                       className="ml-auto text-zinc-500 hover:text-red-400 text-xs"

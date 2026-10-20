@@ -5,6 +5,10 @@ import DocumentSigningCard, { type DocumentAttestation, type Signature } from '.
 import { relationshipLabelOrgDids, RELATIONSHIP_LABEL_EVENT } from '../api/attestations/relationship-label-visibility';
 
 const TYPE_BADGE: Record<string, { label: string; classes: string }> = {
+  agreement: {
+    label: 'agreement',
+    classes: 'bg-orange-900/30 text-orange-300 border-orange-800',
+  },
   'session.created': {
     label: 'session',
     classes: 'bg-blue-900/30 text-blue-400 border-blue-800',
@@ -41,7 +45,7 @@ const TYPE_BADGE: Record<string, { label: string; classes: string }> = {
 
 const ALL_TYPES = Object.keys(TYPE_BADGE);
 
-const DOCUMENT_TYPES = ['document.created', 'document.amended'];
+const DOCUMENT_TYPES = ['document.created', 'document.amended', 'agreement'];
 
 function getBadge(type: string) {
   return (
@@ -87,11 +91,15 @@ export default async function AttestationList({ sessionDid, viewerDid, searchPar
 
   // Build role condition
   const issuedByMe = eq(attestations.issuerDid, sessionDid);
-  const aboutMe = eq(attestations.subjectDid, sessionDid);
+  const signerRows = await db.select({ attestationId: attestationSignatures.attestationId })
+    .from(attestationSignatures).where(eq(attestationSignatures.signerDid, sessionDid));
+  const signerIds = signerRows.map((row) => row.attestationId);
+  const aboutMe = or(eq(attestations.subjectDid, sessionDid),
+    signerIds.length ? and(eq(attestations.type, 'agreement'), inArray(attestations.id, signerIds)) : undefined)!;
   const roleCondition =
     (() => { if (role === 'issued') { return issuedByMe; } if (role === 'subject') { return aboutMe; } return or(issuedByMe, aboutMe)!; })();
 
-  const conditions = [roleCondition, isNull(attestations.revokedAt)];
+  const conditions = [roleCondition, or(isNull(attestations.revokedAt), eq(attestations.type, 'agreement'))!];
   const allowedOrgDids = await relationshipLabelOrgDids(viewerDid, [sessionDid]);
   const notLabelEvent = ne(attestations.type, RELATIONSHIP_LABEL_EVENT);
   // Apply privacy before LIMIT/OFFSET so hidden history cannot create empty pages.
@@ -99,7 +107,7 @@ export default async function AttestationList({ sessionDid, viewerDid, searchPar
     ? or(notLabelEvent, inArray(attestations.subjectDid, allowedOrgDids))!
     : notLabelEvent);
   if (typeFilter) conditions.push(eq(attestations.type, typeFilter));
-  if (excludeDocumentTypes && !typeFilter) conditions.push(notInArray(attestations.type, DOCUMENT_TYPES));
+  if (excludeDocumentTypes && !typeFilter) conditions.push(notInArray(attestations.type, ['document.created', 'document.amended']));
 
   const rows = await db
     .select()
@@ -241,6 +249,7 @@ export default async function AttestationList({ sessionDid, viewerDid, searchPar
                   attestation={cardAttestation}
                   signatures={sigsWithIdentity}
                   sessionDid={sessionDid}
+                  actingHumanDid={viewerDid}
                 />
               );
             }

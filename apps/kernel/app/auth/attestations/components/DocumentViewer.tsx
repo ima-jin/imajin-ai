@@ -5,12 +5,13 @@ interface Props {
   mimeType: string;
   filename: string;
   hash: string;
+  previewUrl?: string;
 }
 
-export default function DocumentViewer({ assetId, mimeType, filename, hash }: Readonly<Props>) {
-  const baseUrl = typeof window === 'undefined'
+export default function DocumentViewer({ assetId, mimeType, filename, hash, previewUrl }: Readonly<Props>) {
+  const baseUrl = previewUrl ?? (typeof window === 'undefined'
     ? `/media/api/assets/${assetId}`
-    : `${globalThis.location.origin}/media/api/assets/${assetId}`;
+    : `${globalThis.location.origin}/media/api/assets/${assetId}`);
 
   const isPdf = mimeType === 'application/pdf';
   const isImage = mimeType.startsWith('image/');
