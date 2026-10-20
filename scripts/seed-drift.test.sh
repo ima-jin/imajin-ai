@@ -8,7 +8,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 IMAGE="postgres:16-bookworm@sha256:0ea6700a3b4f0ae6ce746519073558aed4d88a79d8d07622a9a644946c7319c4"
 HISTORY="$ROOT/migrations/archive/pre-kernel-baseline"
 MIGRATION="$HISTORY/0201_reconcile_seed_era_drift.sql"
-MEMBERSHIP_MIGRATION="$HISTORY/0216_restore_conversation_members_unique.sql"
+MEMBERSHIP_MIGRATION="$ROOT/migrations/0216_restore_conversation_members_unique.sql"
 TMP="$(mktemp -d)"
 CONTAINER=""
 cleanup() {
@@ -127,6 +127,8 @@ for migration in "$HISTORY"/[0-9][0-9][0-9][0-9]_*.sql; do
   fi
   count=$((count + 1))
 done
+sql seed_drift_baseline --single-transaction < "$MEMBERSHIP_MIGRATION"
+count=$((count + 1))
 sql seed_drift_baseline --single-transaction < "$ROOT/scripts/seed-drift-fixture.sql"
 assert_keys seed_drift_baseline
 snapshot seed_drift_baseline fresh

@@ -28,6 +28,92 @@
     "registry.apps",
     "usage.emitters"
   ],
+  "acceptedHistoricalChecksums": {
+    "0001_seed.sql": [
+      {
+        "checksum": "9d75ca47c372992e02a178b5d6001ee3689e77b8fa94ad14fa1cdf75843d8aea",
+        "observedIn": [
+          "dev",
+          "prod"
+        ],
+        "reason": "Existing historical ledger checksum recorded by Jin; the legacy runner warned and skipped changed files. Accept this exact observed variant without rewriting the ledger or replaying historical SQL.",
+        "evidence": "https://github.com/ima-jin/imajin-ai/pull/2886#pullrequestreview-5591517061"
+      }
+    ],
+    "0010_logs_cleanup.sql": [
+      {
+        "checksum": "455f387dd93c5f36843d5a278840e593556f5590d8973e8b9346dc2b67021a39",
+        "observedIn": [
+          "dev",
+          "prod"
+        ],
+        "reason": "Existing historical ledger checksum recorded by Jin; the legacy runner warned and skipped changed files. Accept this exact observed variant without rewriting the ledger or replaying historical SQL.",
+        "evidence": "https://github.com/ima-jin/imajin-ai/pull/2886#pullrequestreview-5591517061"
+      }
+    ],
+    "0039_seed_bus_chain_configs.sql": [
+      {
+        "checksum": "cc5ed2c9bafb8b1f2b8ab04d9149f2ede9706c3a74d8f8cc9d45cee032b28a59",
+        "observedIn": [
+          "dev",
+          "prod"
+        ],
+        "reason": "Existing historical ledger checksum recorded by Jin; the legacy runner warned and skipped changed files. Accept this exact observed variant without rewriting the ledger or replaying historical SQL.",
+        "evidence": "https://github.com/ima-jin/imajin-ai/pull/2886#pullrequestreview-5591517061"
+      }
+    ],
+    "0042_seed_calendar_chain_configs.sql": [
+      {
+        "checksum": "a17b873c79706f08e4996784f3fa18af13f6fb2744311a3516cb02374bb659dc",
+        "observedIn": [
+          "dev",
+          "prod"
+        ],
+        "reason": "Existing historical ledger checksum recorded by Jin; the legacy runner warned and skipped changed files. Accept this exact observed variant without rewriting the ledger or replaying historical SQL.",
+        "evidence": "https://github.com/ima-jin/imajin-ai/pull/2886#pullrequestreview-5591517061"
+      }
+    ],
+    "0056_consent_grants.sql": [
+      {
+        "checksum": "89e67ab66003769e9e05bd7ec2865c97a16a6573d1018647f57785433fcc1775",
+        "observedIn": [
+          "dev"
+        ],
+        "reason": "Existing historical ledger checksum recorded by Jin; the legacy runner warned and skipped changed files. Accept this exact observed variant without rewriting the ledger or replaying historical SQL.",
+        "evidence": "https://github.com/ima-jin/imajin-ai/pull/2886#pullrequestreview-5591517061"
+      }
+    ],
+    "0057_profile_field_visibility.sql": [
+      {
+        "checksum": "c1c675e6f4ea6362bcfb9dd0e805bcb458a449afc46b8fa8e9382bc5f0e7cfc7",
+        "observedIn": [
+          "dev"
+        ],
+        "reason": "Existing historical ledger checksum recorded by Jin; the legacy runner warned and skipped changed files. Accept this exact observed variant without rewriting the ledger or replaying historical SQL.",
+        "evidence": "https://github.com/ima-jin/imajin-ai/pull/2886#pullrequestreview-5591517061"
+      }
+    ],
+    "0068_inference_engine.sql": [
+      {
+        "checksum": "16edc9b984bbf7e4f512aa638ec52734a939682eb8e8ea67a2dc326aaee0d5d8",
+        "observedIn": [
+          "dev"
+        ],
+        "reason": "Existing historical ledger checksum recorded by Jin; the legacy runner warned and skipped changed files. Accept this exact observed variant without rewriting the ledger or replaying historical SQL.",
+        "evidence": "https://github.com/ima-jin/imajin-ai/pull/2886#pullrequestreview-5591517061"
+      }
+    ],
+    "0071_inference_attestation_signatures.sql": [
+      {
+        "checksum": "bdf060a42f7594f281194eebcfd03b5308116ad3440f5e296dd451caf533b43a",
+        "observedIn": [
+          "dev"
+        ],
+        "reason": "Existing historical ledger checksum recorded by Jin; the legacy runner warned and skipped changed files. Accept this exact observed variant without rewriting the ledger or replaying historical SQL.",
+        "evidence": "https://github.com/ima-jin/imajin-ai/pull/2886#pullrequestreview-5591517061"
+      }
+    ]
+  },
   "migrations": [
     {
       "filename": "0001_seed.sql",
@@ -876,10 +962,6 @@
     {
       "filename": "0215_registry_apps_sign_in_audience.sql",
       "checksum": "5ca43434e53ba26c1ba31282489d2d99abaa34aa5733456c9c8d771a6f2b73de"
-    },
-    {
-      "filename": "0216_restore_conversation_members_unique.sql",
-      "checksum": "322ec3f44f4637f92fc2b9bdc2961d795f71ae8e8f5b81f322b521d3829b64f5"
     }
   ]
 }

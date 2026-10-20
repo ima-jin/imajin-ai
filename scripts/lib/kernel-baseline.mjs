@@ -3,6 +3,11 @@ import { createHash } from 'node:crypto';
 export function migrationChecksum(content) {
   return createHash('sha256').update(content).digest('hex');
 }
+export function acceptsHistoricalChecksum(manifest, entry, checksum) {
+  if (checksum === entry.checksum) return true;
+  return (manifest.acceptedHistoricalChecksums?.[entry.filename] ?? [])
+    .some(variant => variant.checksum === checksum);
+}
 
 /** Never infer adoption from a single sentinel: partial histories must stop. */
 export function baselineAction(manifest, applied, hash, occupied, complete = occupied) {
@@ -17,7 +22,8 @@ export function baselineAction(manifest, applied, hash, occupied, complete = occ
     if (missing.length > 0) {
       throw new Error(`Incomplete pre-baseline ledger; apply missing history first: ${missing.map(entry => entry.filename).join(', ')}`);
     }
-    const changed = manifest.migrations.filter(entry => applied.get(entry.filename) !== entry.checksum);
+    const changed = manifest.migrations.filter(entry =>
+      !acceptsHistoricalChecksum(manifest, entry, applied.get(entry.filename)));
     if (changed.length > 0) {
       throw new Error(`Historical checksum mismatch: ${changed.map(entry => entry.filename).join(', ')}`);
     }
