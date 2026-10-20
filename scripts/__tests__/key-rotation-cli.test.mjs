@@ -915,8 +915,12 @@ describe('rotation operator runbook synchronization (#2987)', () => {
     const doc = await fs.readFile(docFile, 'utf8');
     expect(doc).not.toMatch(/OLD_AUTH_PRIVATE_KEY=|NEW_AUTH_PRIVATE_KEY=|KERNEL_ADMIN_COOKIE|\$EXPORT|pm2 jlist|curl /);
     const runbook = doc.split('## 4. Rotation runbook')[1].split('## 5.')[0];
-    expect(runbook).toContain('pm2 pid prod-jin');
-    expect(runbook).toContain('ps -p <PID> -o lstart=');
+    expect(runbook).toContain('processStartedAt');
+    expect(runbook).toContain('performance.timeOrigin');
+    expect(runbook).toContain('POST /api/vault/migrate-custody');
+    expect(runbook).toContain('{dryRun:true}');
+    expect(runbook).toContain('key-rotation.sealed.lock');
+    expect(runbook).toContain('pending:false');
     expect(runbook).toContain('legacy compatibility, not this operator runbook');
   });
 });

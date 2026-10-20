@@ -18,7 +18,10 @@ const payload: PublicPayload = {
   oldKeySignature: hex(64), newKeySignature: hex(64),
 };
 const pending = { pending: true, exported: 3, newPublicKey: publicKey };
-const report = { ok: true, rotations: 1, currentKid: payload.newKid, errors: [marker], unknown: marker };
+const report = {
+  ok: true, rotations: 1, currentKid: payload.newKid, errors: [marker], unknown: marker,
+  nodeDid: 'did:imajin:node-test', nodeDidSource: 'relay_config', processStartedAt: '2026-10-20T12:00:00.000Z',
+};
 const receipt = { attestationId: marker, ...payload };
 const response = (body: unknown, ok = true) => ({ ok, json: async () => body }) as Response;
 const button = (name: string) => screen.getByRole('button', { name }) as HTMLButtonElement;
@@ -27,6 +30,7 @@ function installFetch(status: unknown = { pending: false }) {
   const spy = vi.fn(async (url: string, init?: RequestInit) => {
     const body = init?.body ? JSON.parse(init.body as string) : null;
     if (url === SWEEP && !body) return response(status);
+    if (url === '/api/vault/migrate-custody') return response({ totalV1Fields: 0, candidateCount: 0, aborted: false, unknown: marker });
     if (url === SWEEP && body?.phase === 'export') return response({ exported: 3, newPublicKey: publicKey, unknown: marker });
     if (url === SWEEP && body?.phase === 'reimport') return response({ resealed: 3, unknown: marker });
     if (url.startsWith(ROTATION) && !body) return response(report);
@@ -65,6 +69,45 @@ afterEach(() => {
 });
 
 describe('public-only keys workflow', () => {
+  it('runs only a browser-session custody dry-run and renders only whitelisted public counts', async () => {
+    const spy = await ready();
+    fireEvent.click(button('Check v1 custody'));
+    await screen.findByText('Eligible v1 custody check passed. Verify excluded custody separately.');
+    expect(spy.mock.calls[1][0]).toBe('/api/vault/migrate-custody');
+    expect(JSON.parse(spy.mock.calls[1][1]!.body as string)).toEqual({ dryRun: true });
+    expect(document.body.textContent).not.toContain(marker);
+  });
+  it.each([{ totalV1Fields: 2, candidateCount: 2, aborted: false },
+    { totalV1Fields: 0, candidateCount: 0, aborted: true }])('reports STOP on nonzero or aborted custody checks', async (body) => {
+    const spy = await ready();
+    spy.mockResolvedValueOnce(response(body));
+    fireEvent.click(button('Check v1 custody'));
+    await screen.findByText('STOP: resolve custody migration before rotating.');
+  });
+  it.each([{ totalV1Fields: -1, candidateCount: 0, aborted: false },
+    { totalV1Fields: 0, candidateCount: marker, aborted: false },
+    { totalV1Fields: 0, candidateCount: 0, aborted: marker }])('rejects malformed custody data without rendering it', async (body) => {
+    const spy = await ready();
+    spy.mockResolvedValueOnce(response(body));
+    fireEvent.click(button('Check v1 custody'));
+    await screen.findByRole('alert');
+    expect(document.body.textContent).not.toContain(marker);
+  });
+  it('renders the public node source and precise signing process start time', async () => {
+    await ready();
+    fireEvent.click(button('Verify baseline'));
+    await screen.findByText('Node DID: did:imajin:node-test (source: relay_config)');
+    expect(screen.getByText('Signing process started at (UTC): 2026-10-20T12:00:00.000Z')).toBeTruthy();
+  });
+  it('refuses a mismatched reimport count rather than declaring completion', async () => {
+    const spy = await ready(pending);
+    fireEvent.click(screen.getByRole('checkbox'));
+    spy.mockResolvedValueOnce(response({ resealed: 2 }));
+    fireEvent.click(button('Reimport encrypted handoff'));
+    await screen.findByRole('alert');
+    expect(screen.queryByText(/Vault reimport complete/)).toBeNull();
+    expect(screen.getByText('Encrypted handoff pending. Exported fields: 3')).toBeTruthy();
+  });
   it('verifies baseline, exports only the public target, reimports without fields, records public JSON and verifies anchor', async () => {
     const spy = await ready();
     fireEvent.click(button('Verify baseline'));
@@ -208,7 +251,7 @@ describe('request and response failures', () => {
     expect(document.body.textContent).not.toContain(marker);
   });
 
-  it.each(['verify', 'export', 'reimport', 'record', 'refresh'])('handles %s network failure without exposing raw errors', async (operation) => {
+  it.each(['verify', 'export', 'reimport', 'record', 'refresh', 'custody'])('handles %s network failure without exposing raw errors', async (operation) => {
     const spy = await ready(operation === 'reimport' ? pending : undefined);
     if (operation === 'record') await upload();
     if (operation === 'export') change('New Ed25519 public key', publicKey);
@@ -216,7 +259,7 @@ describe('request and response failures', () => {
     spy.mockRejectedValueOnce(new Error(marker));
     const names: Record<string, string> = {
       verify: 'Verify baseline', export: 'Export encrypted handoff', reimport: 'Reimport encrypted handoff',
-      record: 'Submit key.rotated', refresh: 'Refresh handoff status',
+      record: 'Submit key.rotated', refresh: 'Refresh handoff status', custody: 'Check v1 custody',
     };
     fireEvent.click(button(names[operation]));
     await screen.findByRole('alert');
@@ -276,6 +319,9 @@ describe('request and response failures', () => {
     ['Verify baseline', { ...report, currentKid: marker }],
     ['Verify baseline', { ...report, ok: marker }],
     ['Verify baseline', { ...report, rotations: -1 }],
+    ['Verify baseline', { ...report, nodeDid: marker }],
+    ['Verify baseline', { ...report, nodeDidSource: marker }],
+    ['Verify baseline', { ...report, processStartedAt: marker }],
     ['Reimport encrypted handoff', { resealed: marker }],
     ['Submit key.rotated', { error: marker }],
   ])('rejects malformed successful response for %s %#', async (name, body) => {

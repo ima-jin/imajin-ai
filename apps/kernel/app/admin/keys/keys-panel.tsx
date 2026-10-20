@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import {
-  PUBLIC_KEY, parseExport, parseHandoff, parsePublicPayload, parseRecorded,
+  PUBLIC_KEY, parseCustody, parseExport, parseHandoff, parsePublicPayload, parseRecorded,
   parseResealed, parseVerification, type Handoff, type PublicPayload,
 } from './public-contract';
 
@@ -11,6 +11,15 @@ const ROTATION = '/api/admin/keys/rotation';
 const MAX_PUBLIC_FILE_BYTES = 16 * 1024;
 const buttonClass = 'rounded bg-orange-600 px-4 py-2 text-white disabled:opacity-50';
 const inputClass = 'block w-full mt-2 rounded border p-2 bg-white dark:bg-gray-900 font-mono text-sm';
+function VerificationResult({ report }: Readonly<{ report: ReturnType<typeof parseVerification> }>) {
+  return <div role="status">
+    <p>{report.ok ? 'Key history verified.' : 'Key history verification failed. Resolve node configuration or history before continuing.'}</p>
+    <p>Recorded rotations: {report.rotations}</p>
+    <p>Current key ID: {report.currentKid ?? 'Unavailable'}</p>
+    <p className="break-all">Node DID: {report.nodeDid ?? 'Unavailable'} (source: {report.nodeDidSource})</p>
+    <p>Signing process started at (UTC): {report.processStartedAt}</p>
+  </div>;
+}
 
 async function request(url: string, body?: object): Promise<unknown> {
   const response = await fetch(url, {
@@ -31,6 +40,8 @@ export function KeysPanel() {
   const [restarted, setRestarted] = useState(false);
   const [payload, setPayload] = useState<PublicPayload | null>(null);
   const [verification, setVerification] = useState<ReturnType<typeof parseVerification> | null>(null);
+  const [anchored, setAnchored] = useState(false);
+  const [custody, setCustody] = useState<ReturnType<typeof parseCustody> | null>(null);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const uploadVersion = useRef(0);
@@ -66,6 +77,7 @@ export function KeysPanel() {
   function verify(pinned: boolean) {
     if (pinned && !PUBLIC_KEY.test(anchor)) return;
     setVerification(null);
+    setAnchored(pinned);
     void run(async () => {
       const suffix = pinned ? `?anchor=${encodeURIComponent(anchor)}` : '';
       setVerification(parseVerification(await request(`${ROTATION}${suffix}`)));
@@ -95,18 +107,28 @@ export function KeysPanel() {
     <div className="space-y-6 text-gray-900 dark:text-gray-100">
       {error && <p role="alert" className="rounded border border-red-500 p-3">{error}</p>}
       {message && <p role="status" className="rounded border p-3">{message}</p>}
+      <section className="rounded border p-4 space-y-3" aria-labelledby="custody-title">
+        <h2 id="custody-title" className="text-lg font-semibold">0. Check v1 custody</h2>
+        <p>Read-only go/no-go check. Do not rotate with remaining v1 entries; this page never applies a custody migration.</p>
+        <button className={buttonClass} disabled={busy} onClick={() => {
+          setCustody(null);
+          void run(async () => {
+            setCustody(parseCustody(await request('/api/vault/migrate-custody', { dryRun: true })));
+          }, 'Custody check failed. Resolve custody status before rotating.');
+        }}>Check v1 custody</button>
+        {custody && <div role="status">
+          <p>Remaining eligible v1 fields: {custody.totalV1Fields}. Candidates: {custody.candidateCount}.</p>
+          <p>{custody.aborted || custody.totalV1Fields !== 0
+            ? 'STOP: resolve custody migration before rotating.'
+            : 'Eligible v1 custody check passed. Verify excluded custody separately.'}</p>
+        </div>}
+      </section>
 
       <section className="rounded border p-4 space-y-3" aria-labelledby="baseline-title">
         <h2 id="baseline-title" className="text-lg font-semibold">1. Verify baseline</h2>
         <p>Check the current signing key and recorded key history before beginning.</p>
         <button className={buttonClass} disabled={busy} onClick={() => verify(false)}>Verify baseline</button>
-        {verification && (
-          <div role="status">
-            <p>{verification.ok ? 'Key history verified.' : 'Key history verification failed. Resolve node configuration or history before continuing.'}</p>
-            <p>Recorded rotations: {verification.rotations}</p>
-            <p>Current key ID: {verification.currentKid ?? 'Unavailable'}</p>
-          </div>
-        )}
+        {verification && !anchored && <VerificationResult report={verification} />}
       </section>
 
       <section className="rounded border p-4 space-y-3" aria-labelledby="sweep-title">
@@ -126,8 +148,8 @@ export function KeysPanel() {
               setHandoff(null);
               setHandoff(parseExport(await request(SWEEP, { phase: 'export', newPublicKey: newKey }), newKey));
               setRestarted(false);
-              setMessage('Encrypted handoff prepared. Follow the offline configuration swap and restart steps, then reimport.');
-            }, 'Export could not be confirmed. Refresh handoff status before retrying; do not change keys until it is confirmed.');
+              setMessage('Encrypted handoff prepared. The new key is already installed in the env file; restart per the runbook, then reimport.');
+            }, 'Export could not be confirmed. Refresh handoff status before retrying; do not restart until it is confirmed.');
           }}>Export encrypted handoff</button>
         <button className={buttonClass} disabled={busy} onClick={() => {
           void run(async () => {
@@ -158,6 +180,7 @@ export function KeysPanel() {
             if (!handoff?.pending || !restarted) return;
             void run(async () => {
               const resealed = parseResealed(await request(SWEEP, { phase: 'reimport' }));
+              if (resealed !== handoff.exported) throw new Error('Unexpected reimport count');
               setHandoff({ pending: false });
               setRestarted(false);
               setMessage(`Vault reimport complete. Resealed fields: ${resealed}.`);
@@ -191,6 +214,7 @@ export function KeysPanel() {
         </label>
         <button className={buttonClass} disabled={busy || !PUBLIC_KEY.test(anchor)}
           onClick={() => verify(true)}>Verify anchored history</button>
+        {verification && anchored && <VerificationResult report={verification} />}
       </section>
     </div>
   );

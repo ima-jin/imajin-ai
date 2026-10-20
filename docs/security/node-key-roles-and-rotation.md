@@ -182,9 +182,10 @@ internal secrets have settled.
 ### Step 0. Go / no-go
 
 - [ ] Off-peak. Everyone is logged out at step 4 (S1) and in-flight connects fail (D4).
-- [ ] **v1 vault entries: zero.** Confirm `totalV1Fields` is 0 through approved
-      non-plaintext custody tooling before beginning; otherwise D1 destroys
-      them. If migration is required, complete its separately approved custody
+- [ ] **v1 vault entries: zero.** In `/admin/keys`, click **Check v1 custody**.
+      This calls `POST /api/vault/migrate-custody` with `{dryRun:true}` using
+      the browser session. Confirm `totalV1Fields` is 0 and the check is not
+      aborted; otherwise D1 destroys them. If migration is required, complete its separately approved custody
       procedure first; do not copy a browser cookie into the legacy migration CLI.
 - [ ] Backups: the vault file at `VAULT_PATH` (`~/.imajin/vault.prod.json`), a DB
       snapshot, and under Tier 1 `imajin vault backup` and the owner agent online.
@@ -203,7 +204,7 @@ verification **before generate**, with the old key still loaded.
 - [ ] No error about `identities.public_key`. A mismatch means the node's identity row
       never carried the key in `AUTH_PRIVATE_KEY`; resolve that first, because step 8 and
       the final verify assume it did.
-- [ ] Record the old **public** key as the verification anchor. If there is
+- [ ] Retain the old **public** key from generate's output in step 2 as the verification anchor. If there is
       already rotation history, retain the previously pinned genesis anchor
       instead: the verifier anchors the start of the whole chain, not just this
       rotation's predecessor. Only public data may be copied.
@@ -262,6 +263,35 @@ are accepted or returned. The encrypted handoff stays server-side adjacent to
 the environment-specific `VAULT_PATH`, surviving the restart. An existing
 handoff must not be overwritten; recover it before attempting another export.
 
+**Sealed handoff design and limits (#2987).** The kernel exclusively creates
+`<resolved VAULT_PATH>.key-rotation.sealed` with mode **0600**, writes only
+ciphertext plus public metadata/signature, and fsyncs it before reporting
+success. Keep the same `VAULT_PATH` on persistent, operator-controlled storage
+across restarts; changing or losing that volume loses the handoff. No database
+table or migration is needed. The maximum encoded handoff is **16 MiB**; an
+oversized export fails before writing.
+
+Encryption uses an ephemeral X25519 sender, standard Ed25519-to-X25519
+conversion of the NEW public key, a domain-separated HKDF-SHA256 key and
+AES-256-GCM. This is distinct from the vault's existing HKDF-derived X25519
+keys and does not change their roles. Authenticated metadata binds the storage
+path, old/new public keys, version, count, nonce and ephemeral public key.
+The OLD key signs that metadata and ciphertext. Reimport verifies the signature,
+requires the currently loaded key to match NEW and `AUTH_PREVIOUS_PUBLIC_KEY`
+to match OLD, and authenticates/decrypts the entire batch before writing fields.
+Wrong keys, modified files and protected custody fields fail closed. Neither
+the sealed blob nor any plaintext is returned to the browser or logged.
+
+An exclusive, empty `<resolved VAULT_PATH>.key-rotation.sealed.lock` serializes
+workers. A crash while holding it deliberately fails closed. For recovery,
+stop **all** kernel workers, inspect only file status, remove **only the empty
+lock file**, then restart and retry. Never dump env files, regenerate over a
+pending handoff, or remove ciphertext to silence an error. A partial/invalid
+handoff requires deliberate old-state recovery before step 6; after step 6
+starts, preserve recovery material and roll forward only. The containing directory
+and 0600 files must remain operator-controlled; this does not protect against a
+compromised kernel or host.
+
 The sweep aborts on unreadable eligible fields rather than silently skipping
 them. Roles covered: D1 (v2 only), D2, D3 and eligible `internal-secret:*` fields.
 **Excluded custody is not migrated:** `internal-secret:app-self:*`, pending
@@ -279,10 +309,13 @@ any pending ciphertext for deliberate recovery, not blind regeneration.
 
 ### Step 4. Restart with the fail-closed boot check (#1520)
 
-Restart per the restart rule above, then record the instant the new process began
-serving as `RESTART_AT` (UTC, ISO-8601). Use narrowly scoped process metadata,
-for example `pm2 pid prod-jin` followed by `ps -p <PID> -o lstart=` on that PID
-with a UTC timezone, and convert the reported start instant to ISO-8601.
+Restart per the restart rule above, log in again, and click **Verify baseline**
+on `/admin/keys`. Record **Signing process started at (UTC)** as `RESTART_AT`
+(ISO-8601, millisecond precision). The admin response exposes only the public
+`processStartedAt` from `performance.timeOrigin`, not the process environment.
+At this point history/identity checks may fail because steps 8–9 are not done;
+the public process timestamp is still available. Use the first new-key restart
+instant, not the second restart in step 7.
 Never request a full process/environment dump, inspect `/proc/<PID>/environ`,
 or print env files. Everything the old
 process signed happened before it; everything the new process signs happens after it.
@@ -333,8 +366,12 @@ authorization. Compare the public recipient/count to step 3. Reimport sends
 only `POST /api/vault/rotation-sweep` with `{phase:'reimport'}`: the new kernel
 opens the server-held handoff and responds only `{resealed:number}`.
 
-- [ ] `resealed` equals the step 3 count. The handoff remains available on failure
-      for a retry; success removes it. No plaintext fields travel through the
+- [ ] `resealed` equals the step 3 count and refreshed status is `pending:false`.
+      Every field must read back under the new key before success removes the
+      handoff. A partial failure retains the complete ciphertext for retry;
+      already-readable equal-value fields are not re-sealed again. Under Tier 1,
+      a pending owner-agent grant causes failure with the handoff retained:
+      wait for the authorized owner to fulfill it, then retry. No plaintext fields travel through the
       browser, shell, uploaded payload or transcript.
 
 **Roll-forward only from here.** Phase 2 has superseded the old grants.
@@ -615,7 +652,6 @@ file: ``- `path` — role``.
 - `apps/kernel/app/api/vault/grants/renewable/route.ts` — D2
 - `apps/kernel/app/api/vault/list/route.ts` — D2
 - `apps/kernel/app/api/vault/rotate/route.ts` — D2
-- `apps/kernel/app/api/vault/rotation-sweep/route.ts` — D2
 - `apps/kernel/app/api/vault/set/route.ts` — D2
 - `apps/kernel/app/api/vault/upgrade-custody/route.ts` — D2
 - `apps/kernel/src/lib/kernel/connector-device-ticket.ts` — D4

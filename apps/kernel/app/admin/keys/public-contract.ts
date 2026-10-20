@@ -64,6 +64,11 @@ export function parseExport(value: unknown, expectedKey: string): Handoff {
 export function parseResealed(value: unknown): number {
   return count(record(value).resealed);
 }
+export function parseCustody(value: unknown) {
+  const input = record(value);
+  if (typeof input.aborted !== 'boolean') throw new Error('Invalid custody verdict');
+  return { totalV1Fields: count(input.totalV1Fields), candidateCount: count(input.candidateCount), aborted: input.aborted };
+}
 
 export function parseVerification(value: unknown) {
   const input = record(value);
@@ -72,7 +77,17 @@ export function parseVerification(value: unknown) {
   if (currentKid !== null && (typeof currentKid !== 'string' || !KID.test(currentKid))) {
     throw new Error('Invalid key identifier');
   }
-  return { ok: input.ok, rotations: count(input.rotations), currentKid: currentKid as string | null };
+  const { nodeDid, nodeDidSource, processStartedAt } = input;
+  if (nodeDid !== null && (typeof nodeDid !== 'string' || !/^did:imajin:[\w.:-]{1,200}$/.test(nodeDid))) {
+    throw new Error('Invalid public node DID');
+  }
+  if (!['relay_config', 'RELAY_DID', 'none'].includes(String(nodeDidSource)) ||
+    typeof processStartedAt !== 'string' || !INSTANT.test(processStartedAt) ||
+    !Number.isFinite(Date.parse(processStartedAt))) throw new Error('Invalid process metadata');
+  return {
+    ok: input.ok, rotations: count(input.rotations), currentKid: currentKid as string | null,
+    nodeDid: nodeDid as string | null, nodeDidSource: nodeDidSource as string, processStartedAt,
+  };
 }
 
 export function parseRecorded(value: unknown): void {
