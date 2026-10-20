@@ -5,6 +5,7 @@ import { db, registryApps, attestations, oauthAuthorizationCodes, oauthRefreshTo
 import { createAppToken } from '@/src/lib/auth/jwt';
 import { createLogger } from '@imajin/logger';
 import { rateLimit, getClientIP } from '@imajin/config';
+import { canConsentToApp, PRIVATE_APP_CONSENT_ERROR } from '@/src/lib/kernel/app-consent';
 import {
   getMcpResource,
   ACCESS_TOKEN_TTL_SECONDS,
@@ -140,12 +141,20 @@ async function handleAuthorizationCode(form: FormData) {
   }
 
   const [client] = await db
-    .select({ appDid: registryApps.appDid })
+    .select({
+      appDid: registryApps.appDid,
+      visibility: registryApps.visibility,
+      ownerDid: registryApps.ownerDid,
+      signInAudience: registryApps.signInAudience,
+    })
     .from(registryApps)
     .where(and(eq(registryApps.id, record.clientId), eq(registryApps.status, 'active')))
     .limit(1);
   if (!client) {
     return tokenError('invalid_client', 401, 'client inactive');
+  }
+  if (!await canConsentToApp(client, record.userDid)) {
+    return tokenError('invalid_grant', 400, PRIVATE_APP_CONSENT_ERROR);
   }
 
   const accessToken = await mintAccessToken({
@@ -233,12 +242,22 @@ async function handleRefreshToken(form: FormData) {
   }
 
   const [client] = await db
-    .select({ appDid: registryApps.appDid, requestedScopes: registryApps.requestedScopes })
+    .select({
+      appDid: registryApps.appDid,
+      requestedScopes: registryApps.requestedScopes,
+      visibility: registryApps.visibility,
+      ownerDid: registryApps.ownerDid,
+      signInAudience: registryApps.signInAudience,
+    })
     .from(registryApps)
     .where(and(eq(registryApps.id, record.clientId), eq(registryApps.status, 'active')))
     .limit(1);
   if (!client) {
     return tokenError('invalid_client', 401, 'client inactive');
+  }
+
+  if (!await canConsentToApp(client, record.userDid)) {
+    return tokenError('invalid_grant', 400, PRIVATE_APP_CONSENT_ERROR);
   }
 
   // Re-resolve the scope from CURRENT state instead of the frozen record.scope
