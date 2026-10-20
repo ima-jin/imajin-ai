@@ -97,7 +97,7 @@ beforeEach(async () => {
   await client().query("INSERT INTO auth.identities (id, tier) VALUES ($1, 'soft'), ($2, 'established')", [REQUESTER, STRANGER]);
   vi.stubEnv('AUTH_SERVICE_URL', 'https://kernel.test');
   vi.stubEnv('AUTH_INTERNAL_API_KEY', 'test-internal-key');
-  vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true }));
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => ({ delivered: true }) }));
 });
 
 afterAll(async () => {

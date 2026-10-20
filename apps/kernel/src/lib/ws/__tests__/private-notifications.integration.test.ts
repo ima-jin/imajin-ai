@@ -3,6 +3,13 @@ import { createServer, type Server } from 'node:http';
 import { once } from 'node:events';
 import type { AddressInfo } from 'node:net';
 import type { WebSocket as Socket } from 'ws';
+vi.mock('@imajin/db', () => ({
+  getClient: () => async (strings: TemplateStringsArray) => strings.join('').includes('RETURNING seq')
+    ? [{ seq: '2979' }]
+    : [{ agent_did: 'did:imajin:agent', grant_id: 'grant_approvals', audience: { type: 'all' } }],
+}));
+
+import { deliverToSubscribers } from '../../../../../../packages/bus/src/subscriptions';
 
 const { WebSocket } = require('ws');
 const { setupWebSocket, setupBroadcastRoute } = require('../../../../ws-server');
@@ -126,6 +133,36 @@ afterEach(async () => {
 });
 
 describe('ws-server principal private notification integration', () => {
+  it('delivers approval decisions live to the existing agent socket without reconnect or catch-up (#2979)', async () => {
+    const agent = await connect(AGENT);
+    const socket = agent.ws;
+    vi.stubEnv('AUTH_SERVICE_URL', `${origin}/auth`);
+    vi.stubEnv('WS_PORT', String((server.address() as AddressInfo).port));
+    vi.stubGlobal('fetch', vi.fn((url: string, init?: RequestInit) =>
+      new URL(url).pathname === '/chat/api/internal/did-push'
+        ? networkFetch(url, init)
+        : localApi(url, init),
+    ));
+
+    await deliverToSubscribers({
+      type: 'operator.approval.decided',
+      issuer: PRINCIPAL,
+      subject: AGENT,
+      scope: 'operator',
+      payload: { proposalId: 'skill_workshop_2979', status: 'approved' },
+    });
+
+    await vi.waitFor(() => expect(agent.frames).toContainEqual(expect.objectContaining({
+      type: 'bus_event',
+      eventType: 'operator.approval.decided',
+      cursor: '2979',
+      payload: { proposalId: 'skill_workshop_2979', status: 'approved' },
+    })));
+    expect(agent.ws).toBe(socket);
+    expect(agent.ws.readyState).toBe(WebSocket.OPEN);
+    expect(agent.frames.filter((frame) => frame.type === 'connected')).toHaveLength(1);
+    expect(calls.some((call) => call.path.includes('catchup'))).toBe(false);
+  });
   it('keeps ordinary notification fanout and reports an awaited boolean response', async () => {
     const principal = await connect(PRINCIPAL);
     const delegate = await connect(AGENT);
