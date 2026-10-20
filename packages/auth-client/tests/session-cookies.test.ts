@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { NextRequest } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { CookieJar } from 'tough-cookie';
 import {
   clearCookieOptions, createSessionToken, sessionCookieName, sessionCookieOptions,
@@ -21,7 +21,10 @@ beforeEach(() => {
   vi.stubGlobal('fetch', vi.fn().mockImplementation(async () => Response.json(user)));
 });
 
-afterEach(() => { vi.unstubAllGlobals(); });
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+});
 
 describe('app cookie names', () => {
   it('derives a stable cookie-safe name from the full app DID', () => {
@@ -55,15 +58,11 @@ describe('app cookie names', () => {
     },
   );
 
-  it('rejects the kernel override in both writers and all handler factories', async () => {
+  it('rejects the kernel override in both writers and the server reader', async () => {
     const reserved = { ...config, cookieName: 'imajin_session' };
     expect(() => sessionCookieName(reserved)).toThrow('reserved for the kernel');
     expect(() => sessionCookieOptions('token', reserved)).toThrow('reserved for the kernel');
     expect(() => clearCookieOptions(reserved)).toThrow('reserved for the kernel');
-    for (const factory of [createCallbackHandler, createLogoutHandler, createSessionHandler]) {
-      expect(() => factory(reserved)).toThrow('reserved for the kernel');
-      expect(() => factory(baseConfig)).toThrow('appDid is required');
-    }
     await expect(getSession(reserved)).rejects.toThrow('reserved for the kernel');
     expect(readCookie).not.toHaveBeenCalled();
   });
@@ -83,6 +82,71 @@ describe('app cookie names', () => {
   );
 });
 
+describe('lazy handler configuration', () => {
+  const factories = [createCallbackHandler, createLogoutHandler, createSessionHandler];
+
+  it('does not read runtime config getters while constructing route exports', () => {
+    const unavailable = () => { throw new Error('runtime config unavailable during next build'); };
+    const buildConfig = {
+      get secret() { return unavailable(); },
+      get authUrl() { return unavailable(); },
+      get appDid() { return unavailable(); },
+      get cookieName() { return unavailable(); },
+    };
+    for (const factory of factories) {
+      expect(() => factory(buildConfig)).not.toThrow();
+    }
+  });
+
+  it.each([
+    { name: 'missing identity', cookieConfig: {}, error: 'appDid is required' },
+    { name: 'empty identity', cookieConfig: { appDid: '' }, error: 'appDid is required' },
+    { name: 'reserved name', cookieConfig: { cookieName: 'imajin_session' }, error: 'reserved for the kernel' },
+    { name: 'invalid name', cookieConfig: { cookieName: 'x; imajin_session' }, error: 'valid nonempty cookie name' },
+    { name: 'empty name', cookieConfig: { cookieName: '' }, error: 'valid nonempty cookie name' },
+  ])('constructs with $name but rejects every invocation before cookie I/O', async ({ cookieConfig, error }) => {
+    const invalid = { ...baseConfig, ...cookieConfig };
+    const cookiePrototype = Object.getPrototypeOf(new NextResponse().cookies) as NextResponse['cookies'];
+    const writeCookie = vi.spyOn(cookiePrototype, 'set');
+    const redirect = vi.spyOn(NextResponse, 'redirect');
+    // The query is valid, so rejection cannot be attributed to missing callback parameters.
+    const request = new NextRequest(`${origin}/api/auth/callback?attestation_id=att_123&user_did=${user.did}`);
+    for (const factory of factories) {
+      expect(() => factory(invalid)).not.toThrow();
+      await expect(factory(invalid)(request)).rejects.toThrow(error);
+    }
+    await expect(getSession(invalid)).rejects.toThrow(error);
+    expect(readCookie).not.toHaveBeenCalled();
+    expect(writeCookie).not.toHaveBeenCalled();
+    expect(redirect).not.toHaveBeenCalled();
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it('resolves identity at request time and again on each subsequent request', async () => {
+    const runtimeConfig = { ...baseConfig, appDid: undefined as string | undefined };
+    const callback = createCallbackHandler(runtimeConfig);
+    const session = createSessionHandler(runtimeConfig);
+    const logout = createLogoutHandler(runtimeConfig);
+    const request = new NextRequest(`${origin}/api/auth/callback?attestation_id=att_123&user_did=${user.did}`);
+    for (const appDid of ['did:imajin:coffee', 'did:imajin:events']) {
+      runtimeConfig.appDid = appDid;
+      const name = sessionCookieName(runtimeConfig);
+      const response = await callback(request);
+      expect(response.cookies.getAll().map((cookie) => cookie.name)).toEqual([name]);
+      readCookie.mockReturnValue(response.cookies.get(name));
+      expect(await (await session()).json()).toEqual(user);
+      expect(readCookie).toHaveBeenLastCalledWith(name);
+      expect((await logout(request)).cookies.getAll()).toEqual([
+        expect.objectContaining({ name, value: '', maxAge: 0 }),
+      ]);
+    }
+    // A config that becomes unsafe after construction must still fail closed.
+    runtimeConfig.appDid = undefined;
+    await expect(callback(request)).rejects.toThrow('appDid is required');
+    await expect(session()).rejects.toThrow('appDid is required');
+    await expect(logout(request)).rejects.toThrow('appDid is required');
+  });
+});
 describe('session readers', () => {
   it.each([config, { ...baseConfig, cookieName: 'coffee_session' }])(
     'reads only the app cookie in both server and session route APIs', async (sessionConfig) => {

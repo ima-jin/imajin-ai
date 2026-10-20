@@ -19,8 +19,8 @@ function redirectTo(path: string, req: NextRequest, config: ImajinAuthConfig) {
 
 /** Create the GET handler for /api/auth/callback */
 export function createCallbackHandler(config: ImajinAuthConfig) {
-  sessionCookieName(config);
   return async function GET(req: NextRequest) {
+    sessionCookieName(config);
     const attestationId = req.nextUrl.searchParams.get('attestation_id');
     const userDid = req.nextUrl.searchParams.get('user_did');
 
@@ -78,7 +78,6 @@ export function createCallbackHandler(config: ImajinAuthConfig) {
 
 /** Create the GET handler for /api/auth/session */
 export function createSessionHandler(config: ImajinAuthConfig) {
-  sessionCookieName(config);
   return async function GET() {
     const name = sessionCookieName(config);
     const { cookies: getCookies } = await import('next/headers');
@@ -95,10 +94,10 @@ export function createSessionHandler(config: ImajinAuthConfig) {
 
 /** Create the POST handler for /api/auth/logout */
 export function createLogoutHandler(config: ImajinAuthConfig) {
-  sessionCookieName(config);
   return function POST(req: NextRequest): Promise<NextResponse> {
     // Keep the Promise contract: a synchronous throw becomes a rejection.
     return new Promise<NextResponse>((resolve) => {
+      sessionCookieName(config);
       const res = redirectTo(config.logoutRedirect ?? '/', req, config);
       res.cookies.set(clearCookieOptions(config));
       resolve(res);
