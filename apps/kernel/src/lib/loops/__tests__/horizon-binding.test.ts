@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { projectHorizon } from '../horizon';
 import {
-  STEP_ISSUE, STEP_ISSUE_UPDATE, STEP_NOW, STEP_PRINCIPAL, STEP_REPOSITORY,
+  STEP_ISSUE, STEP_ISSUE_UPDATE, STEP_NOW, STEP_PRINCIPAL, STEP_READY, STEP_REPOSITORY,
   closureStep, deployedStep, observedStep, queuedStep, releaseStep, stepEvent,
 } from './horizon-fixtures';
 
@@ -24,10 +24,10 @@ describe('ref-only horizon issue binding', () => {
     const events = bound();
     expect(project(events.slice(0, 1)).steps[0].zone).toBe('tail');
     expect(project(events.slice(0, 2)).steps[0]).toMatchObject({
-      issue: { ref: STEP_ISSUE }, zone: 'middle', state: 'queued',
+      issue: { ref: STEP_ISSUE }, zone: 'tail', state: 'queued',
     });
     expect(project(events).steps[0]).toMatchObject({
-      state: 'finished', zone: 'middle', openExitConditions: ['closed', 'released', 'prod'],
+      state: 'finished', zone: 'tail', openExitConditions: ['closed', 'released', 'prod'],
     });
     events.push(closureStep());
     const snapshot = JSON.stringify(events);
@@ -47,7 +47,7 @@ describe('ref-only horizon issue binding', () => {
   it('does not close a ref-only binding for an unrelated issue', () => {
     const unrelated = observedStep(6, 'closed', { kind: 'issue_closed', issue: 'other/repo#1' });
     expect(project([...bound(), unrelated]).steps[0]).toMatchObject({
-      zone: 'middle', state: 'finished', openExitConditions: ['closed', 'released', 'prod'],
+      zone: 'tail', state: 'finished', openExitConditions: ['closed', 'released', 'prod'],
     });
   });
 
@@ -88,7 +88,26 @@ describe('ref-only horizon issue binding', () => {
     });
   });
 
-  it('preserves a real OUTCOME supplied after a ref-only binding', () => {
+  it('sharpens an issue with a real OUTCOME to middle', () => {
+    const update = stepEvent('step.updated', 1, { update: STEP_ISSUE_UPDATE });
+    expect(project([queuedStep(), update]).steps[0]).toMatchObject({
+      issue: STEP_ISSUE_UPDATE.issue, zone: 'middle', state: 'queued',
+    });
+  });
+
+  it.each([
+    { refs: {}, sharpenedZone: 'middle' },
+    { refs: STEP_READY, sharpenedZone: 'near' },
+  ])('keeps a ref-only step tail until a real OUTCOME promotes it to $sharpenedZone', ({ refs, sharpenedZone }) => {
+    const events = [...bound(), stepEvent('step.updated', 3, { update: { issue: { ref: STEP_ISSUE }, ...refs } })];
+    expect(project(events).steps[0]).toMatchObject({ zone: 'tail', state: 'finished' });
+    const update = stepEvent('step.updated', 4, { update: STEP_ISSUE_UPDATE });
+    expect(project([...events, update]).steps[0]).toMatchObject({
+      issue: STEP_ISSUE_UPDATE.issue, zone: sharpenedZone, state: 'finished',
+    });
+  });
+
+  it('preserves a real OUTCOME without overriding closure precedence', () => {
     const update = stepEvent('step.updated', 3, { update: STEP_ISSUE_UPDATE });
     const result = project([...bound(), update, closureStep()]);
     expect(result.steps[0]).toMatchObject({
@@ -100,9 +119,9 @@ describe('ref-only horizon issue binding', () => {
     const invalid = stepEvent('step.updated', 3, { update: { issue: {
       ref: 'other/repo#1', outcome: 'OUTCOMES do not match the required word boundary',
     } } });
-    const result = project([...bound(), invalid, closureStep()]);
+    const result = project([...bound(), invalid]);
     expect(result.steps[0]).toMatchObject({
-      issue: { ref: STEP_ISSUE }, zone: 'past', openExitConditions: ['released', 'prod'],
+      issue: { ref: STEP_ISSUE }, zone: 'tail', openExitConditions: ['closed', 'released', 'prod'],
     });
     expect(result.steps[0].issue).not.toHaveProperty('outcome');
   });

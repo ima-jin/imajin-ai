@@ -147,7 +147,7 @@ function deriveZone(step: ReplayStep, conditions: HorizonStep['conditions'], has
   if (conditions.some(condition => condition.declaration.kind === 'issue_closed' && condition.satisfied)) return 'past';
   if (hasLease) return 'head';
   const { issue, briefRef, provisionRef, designRef } = step.update;
-  if (issue && briefRef && provisionRef && designRef) return 'near';
-  if (issue) return 'middle';
+  if (issue?.outcome && briefRef && provisionRef && designRef) return 'near';
+  if (issue?.outcome) return 'middle';
   return 'tail';
 }

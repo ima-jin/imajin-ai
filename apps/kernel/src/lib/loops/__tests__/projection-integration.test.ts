@@ -56,7 +56,15 @@ describe('real loop projection SQL', () => {
       stepEvent('step.finished', 2),
       closureStep(),
     ];
-    for (const event of facts) await persist(event);
+    for (const event of facts.slice(0, 2)) await persist(event);
+    expect((await getLoopWithHistory(loopId, owner))?.horizon.steps[0]).toMatchObject({
+      issue: { ref: STEP_ISSUE }, state: 'queued', zone: 'tail',
+    });
+    await persist(facts[2]);
+    expect((await getLoopWithHistory(loopId, owner))?.horizon.steps[0]).toMatchObject({
+      issue: { ref: STEP_ISSUE }, state: 'finished', zone: 'tail', openExitConditions: ['closed', 'released', 'prod'],
+    });
+    await persist(facts[3]);
     const beforeRestart = await getLoopWithHistory(loopId, owner);
     expect(beforeRestart?.horizon).toMatchObject({ depth: 1, steps: [{
       issue: { ref: STEP_ISSUE }, state: 'finished', zone: 'past', openExitConditions: ['released', 'prod'],

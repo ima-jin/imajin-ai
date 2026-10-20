@@ -81,9 +81,11 @@ Zones are **read projection only**, in precedence order:
 2. `past`: this item's issue is closed but at least one exit remains open.
 3. `head`: `kernel.surface_lease` holds a live, unreleased `step:<stepId>`
    lease for this loop and principal.
-4. `near`: issue ref, brief, provision and settled-design refs all exist.
-5. `middle`: issue ref exists (OUTCOME is optional).
+4. `near`: issue ref + OUTCOME, brief, provision and settled-design refs all exist.
+5. `middle`: issue ref + OUTCOME exists.
 6. `tail`: one-line intention only.
+
+A ref-only binding stays `tail`, but still satisfies matching `issue_closed` (→ `past`).
 
 Input `zone`, `depth`, derived `state: "exited"` and step `output` are rejected.
 Other common-envelope state labels are observational only; they cannot override

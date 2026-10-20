@@ -439,7 +439,7 @@ components:
           type: object
           required: [ref]
           additionalProperties: false
-          description: "Ref-only binding counts for issue_closed exactly like ref+OUTCOME. A real OUTCOME is optional, retained when supplied, and never invented."
+          description: "Ref-only binding counts for issue_closed exactly like ref+OUTCOME but stays tail until closure (past) or a real OUTCOME. Middle/near sharpening requires OUTCOME, which is never invented."
           properties:
             ref: { type: string, minLength: 1, maxLength: 2000 }
             outcome: { type: string, pattern: '^OUTCOME\b', maxLength: 2000 }
@@ -553,7 +553,7 @@ components:
             repository: { type: string }
             exitConditions: { type: array, items: { $ref: "#/components/schemas/StepExitCondition" } }
             state: { type: string, enum: [queued, claimed, running, blocked, finished, exited], readOnly: true }
-            zone: { type: string, enum: [tail, middle, near, head, past, done], readOnly: true }
+            zone: { type: string, enum: [tail, middle, near, head, past, done], readOnly: true, description: "Middle requires issue ref + OUTCOME; near additionally requires brief/provision/design refs. Ref-only stays tail, but matching issue_closed gives past and all exit conditions give done; live leases give head." }
             issue: { type: object, properties: { ref: { type: string }, outcome: { type: string } } }
             briefRef: { type: string }
             provisionRef: { type: string }
