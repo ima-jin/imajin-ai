@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db, attestations, attestationSignatures } from '@/src/db';
-import { eq, and, or, desc, sql, inArray } from 'drizzle-orm';
+import { db, attestations, attestationSignatures, identityMembers, identities } from '@/src/db';
+import { eq, and, or, desc, sql, inArray, isNull, exists } from 'drizzle-orm';
 import { corsHeaders } from '@imajin/config';
-import { requireAuth } from '@/src/lib/auth/middleware';
+import { requireDocumentActor } from '@/src/lib/auth/document-authorization';
 import { createLogger } from '@imajin/logger';
 import {
   buildSignatureCountMap,
+  getCreatorDisplayName,
+  publishDocumentCreatedNotifications,
   finalizeDocumentAttestation,
   parseDocumentRequestBody,
   validateDocumentRequestInput,
@@ -13,6 +15,7 @@ import {
 import { randomUUID } from 'node:crypto';
 
 const log = createLogger('kernel:documents');
+export const dynamic = 'force-dynamic';
 
 const DOCUMENT_LIMIT_MAX = 100;
 
@@ -33,12 +36,9 @@ const EXPIRY_MAP: Record<string, number> = {
 export async function POST(request: NextRequest) {
   const cors = corsHeaders(request);
 
-  const session = await requireAuth(request);
-  if (!session) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401, headers: cors });
-  }
-
-  const callerDid = session.sub;
+  const actor = await requireDocumentActor(request, { write: true });
+  if (actor instanceof Response) return actor;
+  const callerDid = actor.effectiveDid;
   const parseResult = await parseDocumentRequestBody(request);
   if (!parseResult.ok) {
     return NextResponse.json({ error: parseResult.failure.error }, { status: parseResult.failure.status, headers: cors });
@@ -65,45 +65,64 @@ export async function POST(request: NextRequest) {
 
   const attestationId = genId('att');
 
-  // Create attestation
-  const [attestation] = await db
-    .insert(attestations)
-    .values({
-      id: attestationId,
-      issuerDid: callerDid,
-      subjectDid: callerDid, // document is "about" the creator's action
-      type: 'document.created',
-      payload: {
+  try {
+    const { attestation, allSigs } = await db.transaction(async (tx) => {
+      const [attestation] = await tx
+        .insert(attestations)
+        .values({
+          id: attestationId,
+          issuerDid: callerDid,
+          subjectDid: signerDids.length === 1 ? signerDids[0] : callerDid,
+          type: 'document.created',
+          payload: {
+            ...payload,
+            title,
+            documentHash,
+            orgDid: callerDid,
+            counterpartyDids: signerDids,
+            actingHumanDid: actor.actingHumanDid,
+            signedBy: { [callerDid]: {
+              actingHumanDid: actor.actingHumanDid,
+              signatureModel: authorJws.split('.').length === 3 ? 'did-key' : 'node-witness',
+            } },
+          },
+          signature: '', // legacy — not used for document attestations
+          authorJws,
+          attestationStatus: 'collecting',
+          documentHash,
+          documentAssetId,
+          totalSigners: 1 + signerDids.length,
+          issuedAt: new Date(),
+          expiresAt,
+        })
+        .returning();
+
+      const allSigs = await finalizeDocumentAttestation({
+        attestationId,
+        documentAssetId,
+        creatorDid: callerDid,
+        creatorJws: authorJws,
+        signerDids,
         title,
-        ...payload,
-      },
-      signature: '', // legacy — not used for document attestations
-      authorJws,
-      attestationStatus: 'collecting',
-      documentHash,
-      documentAssetId,
-      totalSigners: 1 + signerDids.length,
-      issuedAt: new Date(),
-      expiresAt,
-    })
-    .returning();
+        callerIdentity,
+        genId,
+        log,
+        store: tx,
+        notify: false,
+        documentHash,
+      });
 
-  const allSigs = await finalizeDocumentAttestation({
-    attestationId,
-    documentAssetId,
-    creatorDid: callerDid,
-    creatorJws: authorJws,
-    signerDids,
-    title,
-    callerIdentity,
-    genId,
-    log,
-  });
-
-  return NextResponse.json(
-    { attestation, signatures: allSigs },
-    { status: 201, headers: cors }
-  );
+      return { attestation, allSigs };
+    });
+    publishDocumentCreatedNotifications({
+      attestationId, documentAssetId, creatorDid: callerDid,
+      creatorName: getCreatorDisplayName(callerIdentity, callerDid), signerDids, title, log,
+    });
+    return NextResponse.json({ attestation, signatures: allSigs }, { status: 201, headers: cors });
+  } catch (error) {
+    log.error({ err: String(error) }, 'Document creation failed');
+    return NextResponse.json({ error: 'Failed to create document' }, { status: 500, headers: cors });
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -111,13 +130,9 @@ export async function POST(request: NextRequest) {
 // ---------------------------------------------------------------------------
 export async function GET(request: NextRequest) {
   const cors = corsHeaders(request);
-
-  const session = await requireAuth(request);
-  if (!session) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401, headers: cors });
-  }
-
-  const callerDid = session.sub;
+  const actor = await requireDocumentActor(request);
+  if (actor instanceof Response) return actor;
+  const callerDid = actor.effectiveDid;
   const { searchParams } = new URL(request.url);
 
   const roleFilter = searchParams.get('role'); // 'creator' | 'signer' | 'all'
@@ -125,13 +140,13 @@ export async function GET(request: NextRequest) {
   const limitParam = Number.parseInt(searchParams.get('limit') ?? '20', 10);
   const limit = Math.min(Math.max(1, Number.isNaN(limitParam) ? 20 : limitParam), DOCUMENT_LIMIT_MAX);
 
-  const documentTypes = ['document.created', 'document.amended'] as const;
+  const documentTypes = ['document.created', 'document.amended', 'agreement'] as const;
 
   try {
     const typeConditions: Array<Parameters<typeof and>[0]> = [inArray(attestations.type, [...documentTypes])];
 
     // Role filter: which attestations to show
-    const roleResult = await buildRoleCondition(roleFilter, callerDid, cors);
+    const roleResult = await buildRoleCondition(roleFilter, callerDid, cors, actor.actingHumanDid);
     if ('earlyReturn' in roleResult) return roleResult.earlyReturn;
     typeConditions.push(...roleResult.conditions);
 
@@ -188,6 +203,7 @@ async function buildRoleCondition(
   roleFilter: string | null,
   callerDid: string,
   cors: HeadersInit,
+  actingHumanDid: string,
 ): Promise<RoleResult> {
   if (roleFilter === 'creator') {
     return { conditions: [eq(attestations.issuerDid, callerDid)] };
@@ -211,6 +227,14 @@ async function buildRoleCondition(
   const orCondition = or(
     eq(attestations.issuerDid, callerDid),
     attIds.length > 0 ? inArray(attestations.id, attIds) : sql`false`,
+    exists(db.select({ did: identityMembers.identityDid }).from(identityMembers)
+      .innerJoin(identities, eq(identities.id, identityMembers.identityDid))
+      .where(and(
+        eq(identityMembers.identityDid, attestations.issuerDid),
+        eq(identityMembers.memberDid, actingHumanDid),
+        isNull(identityMembers.removedAt),
+        inArray(identities.scope, ['business', 'community', 'family']),
+      ))),
   )!;
   return { conditions: [orCondition] };
 }

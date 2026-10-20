@@ -51,6 +51,7 @@ export const ATTESTATION_TYPES = [
   'app.authorized',
   'app.revoked',
   'document.created',
+  'agreement',
   'document.signed',
   'document.executed',
   'document.declined',
