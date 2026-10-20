@@ -179,6 +179,22 @@ describe('org delegator context (#2997)', () => {
     expect(screen.getByText(actorDid)).toBeDefined();
     expect(screen.getByText(/Human actor:/)).toBeDefined();
   });
+
+  it('provisions for the selected org DID rather than the human session DID', async () => {
+    const spy = installFetch([], {}, { did: orgDid, name: 'Agrifortress', isOrganization: true, actorDid });
+    render(<AgentsPage />);
+    await screen.findByRole('region', { name: 'Grant delegator' });
+    fireEvent.click(screen.getByRole('button', { name: '+ Provision Agent' }));
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Org assistant' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Provision' }));
+    await waitFor(() => expect(spy).toHaveBeenCalledWith('/auth/api/agents/provision', expect.objectContaining({
+      method: 'POST',
+      body: JSON.stringify({
+        servingDid: orgDid, name: 'Org assistant', harness: 'nanoclaw',
+        placement: 'hosted', scopes: [], model: { provider: 'anthropic:claude' },
+      }),
+    })));
+  });
 });
 
 describe('grants-view read surface (#1887)', () => {
