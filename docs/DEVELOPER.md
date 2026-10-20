@@ -466,7 +466,10 @@ Missing terminal usage creates an unpriced line and can later be upgraded at
 its stored rate; an unknown observation never erases a known cost. The existing
 run-watch sweep replays durable terminal records to retry failed meter writes,
 then lifecycle-reads descendants of known kernel dispatches after normal
-in-flight work. Recovery follows the existing 14-day event-log retention;
+in-flight work. Root API reads stop once the root has metered credits and its
+latest terminal observation is older than 24 hours, unless newer dispatch/resume
+activity reopens it. Unpriced roots keep retrying, and terminal-record replay
+remains DB-only and unchanged. Recovery follows the existing 14-day event-log retention;
 incurred rows themselves persist independently.
 Use the canonical `adapter:warp` source/run-ID convention for any external
 Warp emitter to avoid reporting the same run twice.

@@ -85,8 +85,8 @@ export async function GET(request: NextRequest) {
       ...(costReport ? { costReport } : {}),
     });
     return NextResponse.json(summary, { headers: { ...cors, 'Cache-Control': 'no-store' } });
-  } catch {
-    log.error({ did }, 'usage summary query failed');
+  } catch (err) {
+    log.error({ did, errorType: err instanceof Error ? err.name : typeof err }, 'usage summary query failed');
     return NextResponse.json({ error: 'Usage summary unavailable' }, { status: 500, headers: cors });
   }
 }

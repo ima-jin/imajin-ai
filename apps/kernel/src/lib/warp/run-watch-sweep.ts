@@ -112,8 +112,8 @@ async function recoverIncurredUsage(): Promise<void> {
   try {
     const { sweepWarpIncurredUsage } = await import('./usage-sweep');
     await sweepWarpIncurredUsage();
-  } catch {
-    log.warn({}, 'Warp incurred recovery unavailable; lifecycle sweep continues');
+  } catch (err) {
+    log.warn({ errorType: err instanceof Error ? err.name : typeof err }, 'Warp incurred recovery unavailable; lifecycle sweep continues');
   }
 }
 
@@ -490,8 +490,8 @@ export async function sweepInFlightWarpRuns(
   let candidates: InFlightRun[];
   try {
     candidates = await listInFlightRuns();
-  } catch {
-    log.error({}, 'Warp run watch sweep: could not list in-flight runs');
+  } catch (err) {
+    log.error({ errorType: err instanceof Error ? err.name : typeof err }, 'Warp run watch sweep: could not list in-flight runs');
     await recoverIncurredUsage();
     return outcome;
   }
@@ -505,7 +505,7 @@ export async function sweepInFlightWarpRuns(
       outcome.errors += 1;
       const status = err instanceof WarpApiError ? err.status : undefined;
       log.warn(
-        { status, runId: candidate.runId, principalDid: candidate.principalDid },
+        { errorType: err instanceof Error ? err.name : typeof err, status, runId: candidate.runId, principalDid: candidate.principalDid },
         'Warp run watch sweep: could not check run',
       );
     }

@@ -155,13 +155,22 @@ beforeEach(() => {
 });
 
 describe('sweepInFlightWarpRuns', () => {
-  it('does not log provider/DB/recovery exception messages and never blocks normal watch outcomes', async () => {
+  it.each([
+    { failure: new TypeError('synthetic-private-marker'), errorType: 'TypeError' },
+    { failure: 'synthetic-private-marker', errorType: 'string' },
+  ])('retains safe $errorType diagnostics without raw provider/DB/recovery messages', async ({ failure, errorType }) => {
     seedCandidate('run-1');
-    getAgentRunMock.mockRejectedValueOnce(new FakeWarpApiErrorHoisted('synthetic-private-marker', 401));
-    usageRecovery.mockRejectedValueOnce(new Error('synthetic-private-marker'));
+    getAgentRunMock.mockRejectedValueOnce(failure);
+    usageRecovery.mockRejectedValueOnce(failure);
     expect(await sweepInFlightWarpRuns()).toMatchObject({ errors: 1, checked: 1 });
-    listingFailure.error = new Error('synthetic-private-marker');
+    expect(safeLog.warn).toHaveBeenCalledWith(
+      expect.objectContaining({ errorType, runId: 'run-1', principalDid: PRINCIPAL }),
+      'Warp run watch sweep: could not check run',
+    );
+    expect(safeLog.warn).toHaveBeenCalledWith({ errorType }, 'Warp incurred recovery unavailable; lifecycle sweep continues');
+    listingFailure.error = failure as Error;
     await sweepInFlightWarpRuns();
+    expect(safeLog.error).toHaveBeenCalledWith({ errorType }, 'Warp run watch sweep: could not list in-flight runs');
     expect(JSON.stringify([safeLog.warn.mock.calls, safeLog.error.mock.calls])).not.toContain('synthetic-private-marker');
   });
   it('is a no-op when there are no in-flight runs', async () => {

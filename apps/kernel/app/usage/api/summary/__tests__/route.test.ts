@@ -42,9 +42,21 @@ beforeEach(() => {
     rollup: null,
     currency: 'USD',
   });
+
 });
 
 describe('GET /usage/api/summary', () => {
+  it.each([
+    { failure: new TypeError('synthetic-private-marker'), errorType: 'TypeError' },
+    { failure: 'synthetic-private-marker', errorType: 'string' },
+  ])('logs only a safe $errorType discriminator for summary failures', async ({ failure, errorType }) => {
+    mocks.readUsageSummary.mockRejectedValueOnce(failure);
+    const res = await GET(makeReq('https://kernel.test/usage/api/summary'));
+    expect(res.status).toBe(500);
+    expect(await res.json()).toEqual({ error: 'Usage summary unavailable' });
+    expect(mocks.logError).toHaveBeenCalledWith({ did: OWNER_DID, errorType }, 'usage summary query failed');
+    expect(JSON.stringify(mocks.logError.mock.calls)).not.toContain('synthetic-private-marker');
+  });
   it('accepts UTC date-only ranges with future endpoints and shares captured now with budget', async () => {
     const res = await GET(makeReq('https://kernel.test/usage/api/summary?from=2026-10-01&to=2999-11-01&budgetSince=2026-01-01T00:00:00Z&budgetCap=4000USD'));
     expect(res.status).toBe(200);
@@ -179,7 +191,7 @@ describe('GET /usage/api/summary', () => {
 
     expect(res.status).toBe(500);
     expect(await res.json()).toEqual({ error: 'Usage summary unavailable' });
-    expect(mocks.logError).toHaveBeenCalledWith({ did: OWNER_DID }, 'usage summary query failed');
+    expect(mocks.logError).toHaveBeenCalledWith({ did: OWNER_DID, errorType: 'Error' }, 'usage summary query failed');
   });
 
   it('answers CORS pre-flight', async () => {

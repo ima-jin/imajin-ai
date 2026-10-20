@@ -9,7 +9,7 @@ vi.mock('@imajin/db', () => ({ getClient: () => sql }));
 vi.mock('@imajin/logger', () => ({ createLogger: () => log }));
 vi.mock('../dispatch', () => ({ getAgentRun: getRun, listAgentRuns: list }));
 vi.mock('../../usage/warp-incurred', () => ({
-  recordWarpRunUsage: meter, WARP_INCURRED_SINCE: '2026-10-19T00:00:00.000Z',
+  recordWarpRunUsage: meter, WARP_INCURRED_SOURCE: 'adapter:warp', WARP_INCURRED_SINCE: '2026-10-19T00:00:00.000Z',
 }));
 import { sweepWarpIncurredUsage } from '../usage-sweep';
 
@@ -70,6 +70,21 @@ describe('Warp incurred lifecycle recovery', () => {
     await sweepWarpIncurredUsage();
     expect(getRun).toHaveBeenCalledTimes(2);
     expect(meter).toHaveBeenCalledWith(OWNER, expect.objectContaining({ runId: 'other' }));
+    expect(JSON.stringify(log.warn.mock.calls)).not.toContain('synthetic-private-marker');
+  });
+
+  it('keeps safe error types for replay, root lookup and provider failures', async () => {
+    sql.mockRejectedValueOnce(new TypeError('synthetic-private-marker')).mockRejectedValueOnce('synthetic-private-marker');
+    await sweepWarpIncurredUsage();
+    expect(log.warn).toHaveBeenCalledWith({ errorType: 'TypeError' }, 'Warp terminal usage replay unavailable; next sweep will retry');
+    expect(log.warn).toHaveBeenCalledWith({ errorType: 'string' }, 'Warp lifecycle usage roots unavailable; next sweep will retry');
+    sql.mockRejectedValueOnce('synthetic-private-marker').mockResolvedValueOnce([{ principalDid: OWNER, runId: 'root' }]);
+    getRun.mockRejectedValueOnce('synthetic-private-marker');
+    await sweepWarpIncurredUsage();
+    expect(log.warn).toHaveBeenCalledWith(
+      { errorType: 'string', principalDid: OWNER, runId: 'root' },
+      'Warp lifecycle usage observation unavailable; next sweep will retry',
+    );
     expect(JSON.stringify(log.warn.mock.calls)).not.toContain('synthetic-private-marker');
   });
 

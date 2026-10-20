@@ -15,7 +15,7 @@ vi.mock('@imajin/logger', () => ({ createLogger: () => log }));
 vi.mock('@/src/lib/inference/usage-ledger', () => ({ publishUsageIncurred: publish }));
 vi.mock('@/src/lib/warp/dispatch', () => ({ getAgentRun: getRun, listAgentRuns: list }));
 import { recordWarpRunUsage, warpRunCredits, WARP_CREDIT_RATE_CONFIG } from '../warp-incurred';
-import { sweepWarpIncurredUsage } from '../../warp/usage-sweep';
+import { sweepWarpIncurredUsage, WARP_USAGE_SETTLE_MS } from '../../warp/usage-sweep';
 
 const OWNER = 'did:imajin:owner';
 const CREATED = '2026-10-19T12:00:00.000Z';
@@ -58,6 +58,88 @@ beforeEach(async () => {
 afterAll(async () => { await pg?.close(); });
 
 describe('Warp incurred terminal meter', () => {
+  it('fetches only the unsettled root when a thousand settled roots are retained', async () => {
+    await pg.query(`
+      INSERT INTO usage.incurred(id,principal_did,source,external_id,resource,provider,model,cost_usd,pricing)
+      SELECT 'settled-' || n, $1, 'adapter:warp', 'settled-' || n,
+             'external:warp/run', 'warp', 'model', 1, '{"credits":65}'::jsonb
+      FROM generate_series(1,1000) n
+    `, [OWNER]);
+    await pg.query(`
+      INSERT INTO kernel.event_subscription_log(subject_did,event_type,payload,occurred_at)
+      SELECT $1, 'warp.agent.dispatched', jsonb_build_object('runId','settled-' || n), '2026-10-20T00:00:00Z'::timestamptz
+      FROM generate_series(1,1000) n
+      UNION ALL
+      SELECT $1, 'warp.run.completed', jsonb_build_object('runId','settled-' || n), '2026-10-21T00:00:00Z'::timestamptz
+      FROM generate_series(1,1000) n
+    `, [OWNER]);
+    await pg.query('INSERT INTO kernel.event_subscription_log(subject_did,event_type,payload,occurred_at) VALUES($1,$2,$3,$4)', [
+      OWNER, 'warp.agent.dispatched', JSON.stringify({ runId: 'unsettled' }), '2026-10-20T00:00:00Z',
+    ]);
+    getRun.mockResolvedValue({ ...run(), runId: 'unsettled' });
+    await sweepWarpIncurredUsage(new Date('2026-10-23T12:00:00Z'));
+    expect(getRun.mock.calls).toEqual([[OWNER, 'unsettled']]);
+    expect(list.mock.calls).toEqual([[OWNER, { ancestorRunId: 'unsettled', limit: 500 }]]);
+  });
+  it.each([
+    { label: 'priced and older than 24h', credits: 6500, ageOffset: -1, refetch: false },
+    { label: 'zero-priced and older than 24h', credits: 0, ageOffset: -1, refetch: false },
+    { label: 'priced at the 24h boundary', credits: 6500, ageOffset: 0, refetch: true },
+    { label: 'priced inside the settle window', credits: 6500, ageOffset: 1, refetch: true },
+    { label: 'unpriced despite an old terminal', credits: null, ageOffset: -1, refetch: true },
+  ])('bounds root API recovery: $label', async ({ credits, ageOffset, refetch }) => {
+    const now = new Date('2026-10-23T12:00:00Z');
+    const terminalAt = new Date(now.getTime() - WARP_USAGE_SETTLE_MS + ageOffset);
+    const observed = {
+      ...run(),
+      requestUsage: credits === null ? null : { inferenceCost: credits, computeCost: 0, platformCost: 0 },
+    };
+    await recordWarpRunUsage(OWNER, observed);
+    const before = await snapshot();
+    await pg.query('INSERT INTO kernel.event_subscription_log(subject_did,event_type,payload,occurred_at) VALUES($1,$2,$3,$4),($1,$5,$6,$7)', [
+      OWNER, 'warp.agent.dispatched', JSON.stringify({ runId: 'run-a' }), '2026-10-20T00:00:00Z',
+      'warp.run.completed', JSON.stringify(observed), terminalAt.toISOString(),
+    ]);
+    await sweepWarpIncurredUsage(now);
+    expect(getRun.mock.calls).toEqual(refetch ? [[OWNER, 'run-a']] : []);
+    expect(list.mock.calls).toEqual(refetch ? [[OWNER, { ancestorRunId: 'run-a', limit: 500 }]] : []);
+    if (!refetch) expect(await snapshot()).toEqual(before);
+    if (credits === null) expect(await snapshot()).toMatchObject([{ cost_usd: '100.00000000' }]);
+  });
+
+  it.each(['warp.run.resumed', 'warp.agent.dispatched', 'warp.run.completed'])(
+    'reopens a priced, formerly settled root after newer %s activity', async (eventType) => {
+      const now = new Date('2026-10-23T12:00:00Z');
+      await recordWarpRunUsage(OWNER, run());
+      await pg.query('INSERT INTO kernel.event_subscription_log(subject_did,event_type,payload,occurred_at) VALUES($1,$2,$3,$4),($1,$5,$3,$6),($1,$7,$3,$8)', [
+        OWNER, 'warp.agent.dispatched', JSON.stringify(run()), '2026-10-20T00:00:00Z',
+        'warp.run.completed', '2026-10-21T00:00:00Z', eventType, '2026-10-23T00:00:00Z',
+      ]);
+      await sweepWarpIncurredUsage(now);
+      expect(getRun.mock.calls).toEqual([[OWNER, 'run-a']]);
+      expect(list.mock.calls).toEqual([[OWNER, { ancestorRunId: 'run-a', limit: 500 }]]);
+    },
+  );
+
+  it('still re-fetches a root with no terminal record or a legacy payload that could not be metered', async () => {
+    await pg.query('INSERT INTO kernel.event_subscription_log(subject_did,event_type,payload,occurred_at) VALUES($1,$2,$3,$4),($1,$2,$5,$4),($1,$6,$5,$7)', [
+      OWNER, 'warp.agent.dispatched', JSON.stringify({ runId: 'run-a' }), '2026-10-20T00:00:00Z',
+      JSON.stringify({ runId: 'legacy' }), 'warp.run.completed', '2026-10-21T00:00:00Z',
+    ]);
+    getRun.mockResolvedValueOnce({ ...run(), runId: 'run-a' }).mockResolvedValueOnce({ ...run(), runId: 'legacy' });
+    await sweepWarpIncurredUsage(new Date('2026-10-23T12:00:00Z'));
+    expect(getRun.mock.calls).toEqual([[OWNER, 'run-a'], [OWNER, 'legacy']]);
+  });
+
+  it('does not settle a root using a different principal’s terminal observation', async () => {
+    await recordWarpRunUsage(OWNER, run());
+    await pg.query('INSERT INTO kernel.event_subscription_log(subject_did,event_type,payload,occurred_at) VALUES($1,$2,$3,$4),($5,$6,$3,$7)', [
+      OWNER, 'warp.agent.dispatched', JSON.stringify(run()), '2026-10-20T00:00:00Z',
+      'did:other', 'warp.run.completed', '2026-10-21T00:00:00Z',
+    ]);
+    await sweepWarpIncurredUsage(new Date('2026-10-23T12:00:00Z'));
+    expect(getRun.mock.calls).toEqual([[OWNER, 'run-a']]);
+  });
   it('retries a failed meter write from a durable terminal record without any in-flight dispatch', async () => {
     getClient.mockImplementationOnce(() => { throw new Error('synthetic-private-marker'); });
     expect(await recordWarpRunUsage(OWNER, run())).toBe(false);
