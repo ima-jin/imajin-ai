@@ -38,7 +38,7 @@ describe('step wire validation', () => {
       expect(parsed.value.payload.update).toEqual({ issue: { ref: STEP_ISSUE, outcome } });
     },
   );
-  it.each(['', ' ', 'not an OUTCOME', 'outcome · wrong case', 'OUTCOMES are not the prefix', 'OUTCOME_invalid', null, 42])(
+  it.each(['', ' ', ' OUTCOME · not at the start', '\nOUTCOME · not at the start', 'not an OUTCOME', 'outcome · wrong case', 'OUTCOMES are not the prefix', 'OUTCOME_invalid', null, 42])(
     'rejects a malformed optional outcome when supplied: %j', outcome => {
       const request = wire(stepEvent('step.updated', 1, { update: { issue: { ref: STEP_ISSUE, outcome } } }));
       expect(parseLoopIngestRequest(request).ok).toBe(false);

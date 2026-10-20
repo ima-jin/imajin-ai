@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { PGlite } from '@electric-sql/pglite';
 import { canonicalize, crypto as authCrypto, SIGNED_MESSAGE_MAX_AGE, FUTURE_TOLERANCE } from '@imajin/auth';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -173,6 +174,36 @@ describe('signed envelope receipt HTTP reconciliation', () => {
     const response = await POST(http(receipt(event)));
     expect(await response.json()).toEqual({ status: 'accepted', eventId: loopObservationId(event) });
     expect((await pg.query('SELECT id FROM kernel.loop_events')).rows).toEqual([{ id: loopObservationId(event) }]);
+  });
+
+  it('accepts an independently computed client hash with normalized signature hex, not HTTP bytes', async () => {
+    const original = envelope();
+    const upper = {
+      ...original,
+      signature: { ...original.signature, keyId: original.signature.keyId.toUpperCase(), sig: original.signature.sig.toUpperCase() },
+    };
+    await ingestEvent(upper);
+    const envelopeHash = createHash('sha256').update(canonicalize(original), 'utf8').digest('hex');
+    const response = await POST(http(receipt(original, { envelopeHash })));
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ status: 'accepted', eventId: `signed-loop:${envelopeHash}` });
+    const httpHash = createHash('sha256').update(JSON.stringify(upper, null, 2)).digest('hex');
+    const absent = await POST(http(receipt(original, { envelopeHash: httpHash })));
+    expect(absent.status).toBe(404);
+    expect(await absent.json()).toEqual({ status: 'not_found' });
+  });
+
+  it('does not return orphaned history or history whose loop no longer belongs to its principal', async () => {
+    const event = envelope();
+    await ingestEvent(event);
+    await pg.query('UPDATE kernel.loops SET principal = $1 WHERE loop_id = $2', [other, event.payload.loopId]);
+    const changedOwner = await POST(http(receipt(event)));
+    expect(changedOwner.status).toBe(404);
+    expect(await changedOwner.json()).toEqual({ status: 'not_found' });
+    await pg.query('DELETE FROM kernel.loops WHERE loop_id = $1', [event.payload.loopId]);
+    const deletedOwner = await POST(http(receipt(event)));
+    expect(deletedOwner.status).toBe(404);
+    expect(await deletedOwner.json()).toEqual({ status: 'not_found' });
   });
 
   it('finds a signed surface receipt without re-acquiring or renewing its lease', async () => {
