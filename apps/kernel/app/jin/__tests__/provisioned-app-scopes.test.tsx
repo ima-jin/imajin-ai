@@ -4,6 +4,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-libra
 import { SCOPE_VOCABULARY } from '@imajin/auth/scope-vocabulary';
 import { ProvisionedAppsList } from '../provisioned-apps-list';
 import { APPROVALS_REFRESH_EVENT } from '../approval-anchor';
+vi.mock('../app-emittable-events', () => ({ AppEmittableEvents: () => null }));
 
 const APP_DID = 'did:imajin:app-learn';
 const URL = '/api/apps/service-scopes';

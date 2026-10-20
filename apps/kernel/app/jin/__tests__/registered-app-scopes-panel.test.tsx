@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { RegisteredAppScopesPanel } from '../registered-app-scopes-panel';
 import { APPROVALS_REFRESH_EVENT } from '../approval-anchor';
+vi.mock('../app-emittable-events', () => ({ AppEmittableEvents: () => null }));
 
 const URL = '/api/apps/service-scopes';
 const app = {
