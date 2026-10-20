@@ -16,7 +16,7 @@ type Operation = (authority: ZoneAuthority, body: Record<string, unknown>, param
 interface Action { capability: string; operation: Operation; envelope?: string; body?: boolean; status?: number }
 
 const actions = {
-  classification: { capability: 'cloudflare:read', envelope: 'classification', operation: classificationReport },
+  classification: { capability: 'cloudflare:read', envelope: 'classification', operation: a => classificationReport(a) },
   listDns: { capability: 'cloudflare:read', envelope: 'records', operation: listDns },
   createDns: { capability: 'cloudflare:dns', envelope: 'record', body: true, status: 201,
     operation: (a, body) => createDns(a, withoutDomain(body)) },

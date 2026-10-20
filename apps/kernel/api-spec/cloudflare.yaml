@@ -296,6 +296,10 @@ paths:
         Approval is single-use, reauthorizes the actor and verified owner at execution,
         and detects stale before-state. Denied, unsigned, expired, stale or replayed
         proposals do not execute.
+        Proxy-on changes must also match the current derived classification,
+        both when previewed/staged and immediately before approved execution.
+        Unknown, unsafe, mail and verification records cannot be enabled by a
+        manually constructed bulk request. Proxy-off remediation remains available.
       requestBody:
         required: true
         content:

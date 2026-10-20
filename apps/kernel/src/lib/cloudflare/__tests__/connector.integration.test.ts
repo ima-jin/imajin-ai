@@ -107,7 +107,12 @@ beforeEach(async () => {
   state.controls.mockImplementation(async did => did === 'did:imajin:human');
   state.session.mockResolvedValue({ identity: { id: actor.did, scope: 'actor', subtype: 'agent' } });
   state.app.mockResolvedValue({ error: 'not token', status: 401, notAppToken: true });
-  state.classify.mockResolvedValue({ domain: 'example.com', hosts: [], proxyBatches: [], cacheRules: [], warnings: [] });
+  state.classify.mockResolvedValue({
+    domain: 'example.com',
+    hosts: [{ hostname: 'www.example.com', proxied: true, records: [
+      { recordId, after: true }, { recordId: 'd'.repeat(32), after: true },
+    ] }], proxyBatches: [], cacheRules: [], warnings: [],
+  });
   vi.stubGlobal('fetch', vi.fn(providerFetch));
 });
 
@@ -165,7 +170,7 @@ describe('G owns zone Z and grants A scoped Cloudflare authority', () => {
     const result = await invoke('classification');
     expect(result.status).toBe(200);
     expect(result.headers.get('Cache-Control')).toBe('no-store');
-    expect(await result.json()).toMatchObject({ classification: { domain: 'example.com', hosts: [] } });
+    expect(await result.json()).toMatchObject({ classification: { domain: 'example.com', hosts: [{ hostname: 'www.example.com' }] } });
     expect(state.classify).toHaveBeenCalledOnce();
     expect(state.stage).not.toHaveBeenCalled();
     expect(vi.mocked(fetch).mock.calls.every(call => call[1]?.method === 'GET')).toBe(true);
@@ -238,6 +243,29 @@ describe('G owns zone Z and grants A scoped Cloudflare authority', () => {
   it('refuses out-of-zone DNS and unknown write fields without an edge mutation', async () => {
     expect((await invoke('createDns', 'POST', { type: 'A', name: 'www.evil.test', content: '192.0.2.1', ttl: 1 })).status).toBe(403);
     expect((await invoke('patchDns', 'PATCH', { proxied: true, token: 'not-allowed' })).status).toBe(400);
+    expect(vi.mocked(fetch).mock.calls.some(call => call[1]?.method === 'PATCH')).toBe(false);
+  });
+
+  it('rejects manual proxy-on plans for unknown, mail, verification or unsafe hosts', async () => {
+    state.classify.mockResolvedValue({ hosts: [{ records: [{ recordId, after: false }] }] });
+    for (const dryRun of [true, false]) {
+      expect((await invoke('bulk', 'POST', { changes: [{ recordId, proxied: true }], dryRun })).status).toBe(409);
+    }
+    expect(state.stage).not.toHaveBeenCalled();
+    expect(vi.mocked(fetch).mock.calls.some(call => call[1]?.method === 'PATCH')).toBe(false);
+    // An unavailable classifier must never prevent a DNS-only remediation.
+    state.classify.mockRejectedValue(new Error('classification unavailable'));
+    expect((await invoke('bulk', 'POST', { changes: [{ recordId, proxied: false }], dryRun: true })).status).toBe(200);
+  });
+
+  it('reclassifies before approved execution and refuses newly unsafe routes', async () => {
+    state.human.mockResolvedValue(true);
+    state.controls.mockResolvedValue(true);
+    expect((await invoke('bulk', 'POST', { changes: [{ recordId, proxied: true }], dryRun: false })).status).toBe(202);
+    const card = await approvedCard();
+    state.classify.mockResolvedValue({ hosts: [{ records: [{ recordId, after: false }] }] });
+    expect(await executeCloudflareApproval(card)).toMatchObject({ ok: false });
+    expect(proxied).toBe(false);
     expect(vi.mocked(fetch).mock.calls.some(call => call[1]?.method === 'PATCH')).toBe(false);
   });
   it.each([true, false])('refuses a direct proxy PATCH (%s) without staging or mutating', async value => {

@@ -12,6 +12,7 @@ import { authorizeZone, type ZoneAuthority } from './authority';
 import { mutation } from './audit';
 import { dnsRecord, patchDns, cacheRules } from './operations';
 import { forEachSequential, mapWithConcurrency } from '@/src/lib/async/sequential';
+import { classificationReport } from './classification';
 import {
   bulkSchema, cacheRuleOutputSchema, cacheRuleSchema, cacheSetSchema, CloudflareError,
   dnsRecordSchema, domainSchema, idSchema, parse,
@@ -51,6 +52,15 @@ async function approver(authority: ZoneAuthority): Promise<string> {
   throw new CloudflareError(409, 'human_approver_unavailable');
 }
 
+/** Human approval authorizes an intent; it cannot make an unknown origin safe. */
+async function assertProxyEligibility(authority: ZoneAuthority, changes: { recordId: string; proxied: boolean }[]) {
+  const enabled = changes.filter(change => change.proxied);
+  if (!enabled.length) return;
+  const report = await classificationReport(authority);
+  const eligible = new Set(report.hosts.flatMap(host => host.records.filter(record => record.after).map(record => record.recordId)));
+  if (enabled.some(change => !eligible.has(change.recordId))) throw new CloudflareError(409, 'proxy_classification_blocks');
+}
+
 async function stage(authority: ZoneAuthority, detail: Plan) {
   const operatorDid = await approver(authority);
   const proposalId = `cf_${randomUUID()}`;
@@ -75,6 +85,7 @@ function planContext(authority: ZoneAuthority) {
 
 export async function bulkProxy(authority: ZoneAuthority, raw: unknown) {
   const input = parse(bulkSchema, raw);
+  await assertProxyEligibility(authority, input.changes);
   const changes = await mapWithConcurrency(input.changes, 1, async change => {
     const fresh = await authorizeZone(authority.actor, authority.zoneId, authority.domain, 'cloudflare:dns');
     if (fresh.ownerDid !== authority.ownerDid) throw new CloudflareError(403, 'zone_owner_changed');
@@ -123,6 +134,8 @@ async function freshAuthority(plan: Plan, capability: string) {
 
 async function applyPlan(plan: Plan, proposalId: string, operatorDid: string) {
   if (plan.operation === 'bulk-proxy') {
+    await assertProxyEligibility(await freshAuthority(plan, 'cloudflare:dns'),
+      plan.changes.map(change => ({ recordId: change.recordId, proxied: change.after.proxied })));
     await forEachSequential(plan.changes, async change => {
       await requireExecutingClaim(proposalId);
       if (!await isImportHuman(operatorDid) || !await controlsImportOwner(operatorDid, plan.ownerDid)) throw new Error('Unavailable');
