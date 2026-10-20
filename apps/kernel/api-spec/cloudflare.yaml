@@ -7,12 +7,14 @@ info:
     Import a token through the existing /api/vault/import countersigned rail;
     never send a token to these routes. Purpose is dns.cloudflare:<zoneId>,
     credential consumer is the kernel node DID, and owner is verified binding.zoneOwner.
-    Any DID may hold an action grant. Each operation authenticates the actual DID
+    Any DID may hold an action grant. App tokens act as appDid, never userDid.
+    Each operation authenticates the actual DID
     (never an impersonated acting DID), resolves the exact canonical verified zone
     domain, and checks it against Cloudflare GET /zones/{zoneId}.name.
     Delegated capabilities are checked live with introspectGrant against audience
     did:imajin:cloudflare-<zoneId>; group membership alone grants no authority.
-    Revoke through the existing grant lifecycle /jin Grants lane; revocation
+    Manage grants on /jin Import credential zone cards, including for a group
+    owner that is not the node operator. Revoke through the existing grant lifecycle; revocation
     prevents subsequent calls and pending bulk execution. No credential is
     returned, logged, exported or placed in environment variables.
 servers:
@@ -63,9 +65,9 @@ components:
         proxied: { type: boolean }
     CacheRule:
       type: object
-      required: [description, expression, action, action_parameters, enabled]
+      required: [expression, action, action_parameters, enabled]
       properties:
-        id: { type: string }
+        ref: { type: string, maxLength: 64 }
         description: { type: string }
         expression: { type: string }
         action: { type: string, const: set_cache_settings }
@@ -210,7 +212,7 @@ paths:
           application/json:
             schema:
               type: object
-              required: [hostname]
+              required: [hostname, ssl]
               properties:
                 hostname: { type: string }
                 ssl: { type: object, properties: { method: { type: string, enum: [txt, http] }, type: { type: string, const: dv } } }
@@ -280,6 +282,9 @@ paths:
         Requires cloudflare:read. Each record discloses actor (actual caller),
         payload.onBehalfOf (verified owner), payload.zoneId, payload.operation, payload.phase, payload.before, payload.after and signature. actor is payload.actorDid; issuerDid and issuedAt identify the witness.
         Signatures attest the node's recorded intent and observed outcome, not independent provider truth.
+        A failed request records outcome unknown and the requested after-state,
+        not proof that Cloudflare applied nothing. Custom hostname IDs are UUIDs
+        (36 characters); zone and DNS record IDs are 32 lowercase hex.
       responses:
         "200": { description: "Audit envelope: { history: [...] }; no token or provider error payloads" }
         "403": { $ref: "#/components/responses/Forbidden" }

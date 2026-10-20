@@ -20,17 +20,28 @@ export function createCloudflarePreviewTransport(onProposal: (proposal: FixtureP
     enabled: true, action: 'set_cache_settings', action_parameters: { cache: true },
   }];
   let hostnames: CustomHostname[] = [{
-    id: 'f'.repeat(32), hostname: 'customer.example.net', status: 'pending',
+    id: 'ffffffff-ffff-4fff-8fff-ffffffffffff', hostname: 'customer.example.net', status: 'pending',
     ownership_verification: { type: 'txt', name: '_cf-custom-hostname.customer.example.net', value: 'fixture-ownership-proof' },
     ssl: { status: 'pending_validation', validation_records: [{ txt_name: '_acme-challenge.customer.example.net', txt_value: 'fixture-dcv-proof' }] },
   }];
   let sequence = 0;
+  let grants = [{ grantId: 'fixture-zone-grant', agentDid: 'did:imajin:fixture-agent',
+    capabilities: ['cloudflare:read', 'cloudflare:dns'], expiry: '2026-10-21T00:00:00Z', revokedAt: null as string | null }];
+  const grantRequest = (url: URL, method: string) => {
+    if (url.pathname === '/jin/api/cloudflare-grants') {
+      if (method === 'POST') grants = [...grants, { ...grants[0], grantId: `fixture-zone-grant-${++sequence}`, agentDid: 'did:imajin:fixture-member' }];
+      return json(method === 'GET' ? { grants } : { grant: grants.at(-1) });
+    }
+    if (method === 'DELETE') grants = grants.map(grant => url.pathname.endsWith(grant.grantId)
+      ? { ...grant, revokedAt: new Date().toISOString() } : grant);
+    return json({ ok: true });
+  };
   const stage = (kind: string, detail: unknown) => {
     const proposalId = `fixture-cloudflare-${++sequence}`;
     onProposal({ proposalId, kind, detail: {
       actor: { did: actor }, ownerDid: fixtureGroup, zoneId: fixtureZoneId, domain: 'example.com',
       expiresAt: new Date(Date.now() + 900_000).toISOString(),
-      operation: kind === 'cloudflare:bulk-proxy' ? 'bulk-proxy' : 'cache-set',
+      ...(kind.startsWith('cloudflare:') ? { operation: kind.slice('cloudflare:'.length) } : {}),
       ...detail as Record<string, unknown>,
     } });
     return { proposalId, status: 'pending', operatorDid: actor };
@@ -56,7 +67,7 @@ export function createCloudflarePreviewTransport(onProposal: (proposal: FixtureP
     ...(body.dryRun ? {} : { approval: stage('cloudflare:cache-set', { before: rules, rules: body.rules }) }) }, body.dryRun ? 200 : 202);
   const hostnameRequest = (resource: string, method: string, body: Record<string, unknown>) => {
     if (resource === 'custom-hostnames') {
-      if (method === 'POST') hostnames = [...hostnames, { ...hostnames[0], id: String(++sequence).padStart(32, '0'), hostname: String(body.hostname) }];
+      if (method === 'POST') hostnames = [...hostnames, { ...hostnames[0], id: `00000000-0000-4000-8000-${String(++sequence).padStart(12, '0')}`, hostname: String(body.hostname) }];
       return json(method === 'GET' ? { hostnames } : { hostname: hostnames.at(-1) });
     }
     const id = resource.slice('custom-hostnames/'.length);
@@ -74,14 +85,21 @@ export function createCloudflarePreviewTransport(onProposal: (proposal: FixtureP
     if (method !== 'GET') return json(stage('vault:import', { owner: fixtureGroup, consumer: node, purpose: `dns.cloudflare:${fixtureZoneId}` }), 202);
     return json({ ownerDid: actor, nodeDid: node,
       owners: [{ did: actor, name: 'Fixture human' }, { did: fixtureGroup, name: 'Fixture zone owners (group)' }],
-      domains: [{ domain: 'example.com', ownerDid: fixtureGroup }], cards: [] });
+      domains: [{ domain: 'example.com', ownerDid: fixtureGroup }], cards: [{
+        field: 'vault-import:fixture-zone', ownerDid: fixtureGroup, consumerDid: node,
+        purpose: `dns.cloudflare:${fixtureZoneId}`, fingerprint: 'FIXTURE_PUBLIC_FINGERPRINT',
+        grantId: 'fixture-vault-grant', provenance: 'imported', status: 'active', timeline: [],
+        cloudflare: { domain: 'example.com', zoneId: fixtureZoneId, granteeDid: 'did:imajin:fixture-agent',
+          capabilities: ['cloudflare:read', 'cloudflare:dns'] },
+      }] });
   };
   const dispatch = (resource: string, method: string, body: Record<string, unknown>) => {
     if (resource === 'dns' && method === 'GET') return json({ records });
     if (resource === 'dns' || resource.startsWith('dns/')) return dnsWrite(resource, method, body);
     if (resource === 'bulk') return bulkPlan(body);
     if (resource === 'cache-rules') return method === 'GET' ? json({ rules }) : cachePlan(body);
-    if (resource === 'settings' || resource === 'ssl') return json({ [resource]: [{ id: 'ssl', value: 'strict', editable: true }] });
+    if (resource === 'settings') return json({ settings: [{ id: 'ssl', value: 'strict', editable: true }] });
+    if (resource === 'ssl') return json({ ssl: { id: 'ssl', value: 'strict', editable: true } });
     if (resource.startsWith('custom-hostnames')) return hostnameRequest(resource, method, body);
     if (resource === 'history') return history();
     return json({ error: 'fixture_only' }, 404);
@@ -92,6 +110,9 @@ export function createCloudflarePreviewTransport(onProposal: (proposal: FixtureP
     const method = options?.method ?? (input instanceof Request ? input.method : 'GET');
     // Import values are deliberately not parsed, retained, logged or echoed.
     if (url.pathname === '/api/vault/import') return importRequest(method);
+    if (url.pathname === '/jin/api/cloudflare-grants' || url.pathname.startsWith('/auth/api/grants/fixture-zone-grant')) {
+      return grantRequest(url, method);
+    }
     const prefix = `/cloudflare/api/zones/${fixtureZoneId}/`;
     if (!url.pathname.startsWith(prefix) || url.searchParams.get('domain') !== 'example.com') return json({ error: 'fixture_only' }, 404);
     const body = typeof options?.body === 'string' ? JSON.parse(options.body) as Record<string, unknown> : {};

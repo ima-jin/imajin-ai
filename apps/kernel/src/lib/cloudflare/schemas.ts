@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { normalizeDomain } from '@/src/lib/domains/normalize';
 
 export const idSchema = z.string().regex(/^[a-f0-9]{32}$/);
+export const hostnameIdSchema = z.string().uuid();
 export const domainSchema = z.string().max(253).refine(value => {
   try { return normalizeDomain(value) === value; } catch { return false; }
 });
@@ -34,7 +35,7 @@ const verificationRecordSchema = z.object({
   http_url: z.string().max(2048).optional(), http_body: z.string().max(4096).optional(),
 }).strip();
 export const hostnameSchema = z.object({
-  id: idSchema, hostname: domainSchema, status: z.string().max(100).optional(),
+  id: hostnameIdSchema, hostname: domainSchema, status: z.string().max(100).optional(),
   ownership_verification: z.object({
     type: z.enum(['txt', 'TXT']), name: z.string().max(253), value: z.string().max(4096),
   }).strip().optional(),

@@ -2,6 +2,7 @@ import { and, eq, gt, isNull, or } from 'drizzle-orm';
 import { db, vaultDelegationGrants } from '@/src/db';
 import { fetchGrantSecret } from '@/src/lib/vault';
 import { DomainError } from '@/src/lib/domains/normalize';
+import { isCloudflarePurpose } from '@/src/lib/cloudflare/contract';
 
 /** Resolve only an unambiguous, active, subject/purpose/grantee-bound grant. */
 export async function fetchPurposeCredential(subject: string, granteeDid: string, purpose: string): Promise<string> {
@@ -20,7 +21,8 @@ export async function fetchPurposeCredential(subject: string, granteeDid: string
   if (grants.length !== 1) {
     throw new DomainError('credential_unavailable', 'No unambiguous active scoped vault grant', 403);
   }
-  const result = await fetchGrantSecret({ grantId: grants[0].id, granteeDid });
+  const result = await fetchGrantSecret({ grantId: grants[0].id, granteeDid,
+    ...(isCloudflarePurpose(purpose) ? { kernelCredentialUse: true } : {}) });
   if (result.status !== 'ok' || result.grant.subject !== subject
     || result.grant.purpose !== purpose || result.grant.grantedTo !== granteeDid) {
     throw new DomainError('credential_unavailable', 'Scoped vault grant is unavailable', 403);

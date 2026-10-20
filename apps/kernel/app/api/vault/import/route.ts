@@ -64,7 +64,7 @@ export async function POST(request: NextRequest) {
   if (!validateImportBody(raw)) return auth.fail('Invalid vault import request', 400);
   if (!auth.owners.some(owner => owner.did === raw.ownerDid)) return auth.fail('Owner not authorized', 403);
   if (isVaultTier1()) return auth.fail('Vault import requires synchronous node custody', 409);
-  const proposalId = generateId('vimport');
+  const proposalId = generateId(raw.cloudflare ? 'cfimport' : 'vimport');
   const detail: ImportDetail = {
     ownerDid: raw.ownerDid,
     consumerDid: raw.cloudflare ? getNodeSigningIdentity().senderDid : raw.consumerDid,

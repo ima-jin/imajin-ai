@@ -28,6 +28,14 @@ describe('Cloudflare fixture transport', () => {
     const metadata = await (await fetcher('/api/vault/import')).json();
     expect(metadata.domains[0].domain).toBe('example.com');
     expect(metadata.owners).toHaveLength(2);
+    expect(metadata.cards[0].cloudflare.zoneId).toBe(fixtureZoneId);
+    const grants = '/jin/api/cloudflare-grants';
+    expect((await (await fetcher(grants)).json()).grants).toHaveLength(1);
+    await fetcher(grants, { method: 'POST' });
+    expect((await (await fetcher(grants)).json()).grants).toHaveLength(2);
+    await fetcher('/auth/api/grants/fixture-zone-grant/renew', { method: 'POST' });
+    await fetcher('/auth/api/grants/fixture-zone-grant', { method: 'DELETE' });
+    expect((await (await fetcher(grants)).json()).grants[0].revokedAt).not.toBeNull();
     const response = await fetcher('/api/vault/import', { method: 'POST', body: 'FAKE_INPUT_NEVER_PARSED' });
     expect(await response.text()).not.toContain('FAKE_INPUT_NEVER_PARSED');
     expect(JSON.stringify(onProposal.mock.calls)).not.toContain('FAKE_INPUT_NEVER_PARSED');

@@ -4,7 +4,7 @@ import type { ZoneAuthority } from './authority';
 import { mutation } from './audit';
 import {
   CloudflareError, dnsCreateSchema, dnsPatchSchema, dnsRecordSchema, hostnameCreateSchema,
-  hostnameSchema, idSchema, parse, cacheRuleOutputSchema, settingsSchema,
+  hostnameSchema, hostnameIdSchema, idSchema, parse, cacheRuleOutputSchema, settingsSchema,
 } from './schemas';
 
 export function assertDnsName(name: string, domain: string): void {
@@ -55,14 +55,14 @@ export async function createHostname(authority: ZoneAuthority, raw: unknown) {
 }
 
 export async function hostname(authority: ZoneAuthority, hostnameId: string) {
-  parse(idSchema, hostnameId);
+  parse(hostnameIdSchema, hostnameId);
   return authority.client.request(`/custom_hostnames/${hostnameId}`, hostnameSchema);
 }
 
 export async function deleteHostname(authority: ZoneAuthority, hostnameId: string) {
   const before = await hostname(authority, hostnameId);
   return mutation(authority, 'custom-hostnames.delete', before, null,
-    () => authority.client.request(`/custom_hostnames/${hostnameId}`, z.object({ id: idSchema }).strip(), 'DELETE'));
+    () => authority.client.request(`/custom_hostnames/${hostnameId}`, z.object({ id: hostnameIdSchema }).strip(), 'DELETE'));
 }
 
 export async function cacheRules(authority: ZoneAuthority) {

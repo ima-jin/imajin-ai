@@ -42,7 +42,7 @@ import { countersignedMessage } from '@/src/lib/notify/operator-countersign-fiel
 
 const zoneId = 'a'.repeat(32);
 const recordId = 'b'.repeat(32);
-const hostnameId = 'c'.repeat(32);
+const hostnameId = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
 const ownerDid = 'did:imajin:G';
 const actor = { did: 'did:imajin:A', humanSession: false };
 const token = 'synthetic-key-never-return-this';
@@ -94,7 +94,7 @@ beforeEach(async () => {
     INSERT INTO auth.delegation_grants(id, agent_did, delegator_did, audience, expires_at)
       VALUES ('g', 'did:imajin:A', 'did:imajin:G', '{"type":"dids","values":["did:imajin:cloudflare-${zoneId}"]}', now() + interval '1 hour');
     INSERT INTO auth.delegation_grant_capabilities(id,grant_id,capability)
-      VALUES ('r','g','cloudflare:read'),('d','g','cloudflare:dns'),('c','g','cloudflare:cache'),('h','g','cloudflare:custom-hostnames');
+      VALUES ('r','g','cloudflare:read'),('d','g','cloudflare:dns'),('c','g','cloudflare:cache'),('h','g','cloudflare:custom-hostnames'),('s','g','cloudflare:ssl');
     INSERT INTO kernel.vault_delegation_grants VALUES
       ('sealed','did:imajin:G','did:imajin:node','dns.cloudflare:${zoneId}','active',NULL,false,NULL);`);
   await pg.query("INSERT INTO auth.identities VALUES ($1,$2,'actor','established') ON CONFLICT(id) DO UPDATE SET public_key=EXCLUDED.public_key",
@@ -162,13 +162,13 @@ describe('G owns zone Z and grants A scoped Cloudflare authority', () => {
   it('uses real introspectGrant, existing purpose credential fetch and node-only consumer', async () => {
     const authorized = await authorizeZone(actor, zoneId, 'example.com', 'cloudflare:dns');
     expect(authorized.ownerDid).toBe(ownerDid);
-    expect(state.credential).toHaveBeenCalledWith({ grantId: 'sealed', granteeDid: 'did:imajin:node' });
+    expect(state.credential).toHaveBeenCalledWith({ grantId: 'sealed', granteeDid: 'did:imajin:node', kernelCredentialUse: true });
     await expect(authorizeZone(actor, 'd'.repeat(32), 'example.com', 'cloudflare:dns')).rejects.toMatchObject({ status: 403 });
     await pg.exec("UPDATE auth.delegation_grants SET status='revoked'");
     await expect(authorizeZone(actor, zoneId, 'example.com', 'cloudflare:dns')).rejects.toMatchObject({ status: 403 });
   });
 
-  it.each(['cloudflare:read', 'cloudflare:dns', 'cloudflare:cache', 'cloudflare:custom-hostnames'])('checks %s independently on every invocation', async capability => {
+  it.each(['cloudflare:read', 'cloudflare:dns', 'cloudflare:cache', 'cloudflare:ssl', 'cloudflare:custom-hostnames'])('checks %s independently on every invocation', async capability => {
     await expect(authorizeZone(actor, zoneId, 'example.com', capability)).resolves.toMatchObject({ ownerDid });
     await pg.query('UPDATE auth.delegation_grant_capabilities SET status=$1 WHERE capability=$2', ['revoked', capability]);
     await expect(authorizeZone(actor, zoneId, 'example.com', capability)).rejects.toMatchObject({ status: 403 });
@@ -189,7 +189,7 @@ describe('G owns zone Z and grants A scoped Cloudflare authority', () => {
     state.session.mockResolvedValue({ identity: { id: actor.did, actingAs: ownerDid, actingFor: ownerDid } });
     expect(await authenticateCloudflare(new NextRequest('http://localhost'), 'cloudflare:dns')).toEqual(actor);
     state.app.mockResolvedValue({ appAuth: { userDid: actor.did, appDid: 'did:imajin:app', actingAs: ownerDid } });
-    expect(await authenticateCloudflare(new NextRequest('http://localhost', { headers: { authorization: 'Bearer synthetic' } }), 'cloudflare:dns')).toEqual(actor);
+    expect(await authenticateCloudflare(new NextRequest('http://localhost', { headers: { authorization: 'Bearer synthetic' } }), 'cloudflare:dns')).toEqual({ did: 'did:imajin:app', humanSession: false });
     state.app.mockResolvedValue({ appAuth: { userDid: '', appDid: 'did:imajin:app', isServiceToken: true } });
     expect(await authenticateCloudflare(new NextRequest('http://localhost', { headers: { authorization: 'Bearer synthetic' } }), 'cloudflare:dns'))
       .toEqual({ did: 'did:imajin:app', humanSession: false });
@@ -325,7 +325,7 @@ describe('G owns zone Z and grants A scoped Cloudflare authority', () => {
   it('denies a freshly revoked delegate at approval apply time', async () => {
     // The approver is human A, but the staged actor is an app token: owner
     // membership is not delegated authority and cannot bypass introspection.
-    state.app.mockResolvedValue({ appAuth: { userDid: actor.did, appDid: 'did:imajin:app' } });
+    state.app.mockResolvedValue({ appAuth: { userDid: ownerDid, appDid: actor.did } });
     state.human.mockResolvedValue(true);
     state.controls.mockResolvedValue(true);
     const request = new NextRequest(`http://localhost?domain=example.com`, { method: 'POST',

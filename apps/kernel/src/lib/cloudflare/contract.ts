@@ -4,6 +4,9 @@ export const CLOUDFLARE_CAPABILITIES = [
   'cloudflare:ssl', 'cloudflare:custom-hostnames',
 ] as const;
 export type CloudflareCapability = typeof CLOUDFLARE_CAPABILITIES[number];
+export function isCloudflarePurpose(value: unknown): value is string {
+  return typeof value === 'string' && (value === 'dns.cloudflare' || value.startsWith('dns.cloudflare:'));
+}
 export interface CloudflareImport {
   domain: string;
   zoneId: string;

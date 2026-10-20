@@ -3,6 +3,7 @@ import { db, attestations } from '@/src/db';
 import { prepareMechanicalAttestation } from '@/src/lib/auth/emit-mechanical-attestation';
 import type { ZoneAuthority } from './authority';
 import { cloudflareZoneDid } from './contract';
+import { getNodeDid } from '@/src/lib/kernel/node-identity';
 
 export async function auditMutation(
   authority: ZoneAuthority, operation: string, phase: 'intent' | 'success' | 'failure',
@@ -16,6 +17,7 @@ export async function auditMutation(
       actorDid: authority.actor.did, onBehalfOf: authority.ownerDid,
       zoneId: authority.zoneId, domain: authority.domain, operation, phase,
       before, after, intentId: intentId ?? null, approvalId: approvalId ?? null,
+      outcome: phase === 'failure' ? 'unknown' : phase,
     },
   });
   await db.insert(attestations).values(row);
@@ -32,7 +34,8 @@ export async function mutation<T>(
   try {
     result = await apply();
   } catch {
-    await auditMutation(authority, operation, 'failure', before, null, intent, approvalId);
+    // A timeout or lost response cannot prove that the provider did not apply it.
+    await auditMutation(authority, operation, 'failure', before, after, intent, approvalId);
     throw new Error('Cloudflare mutation failed');
   }
   await auditMutation(authority, operation, 'success', before, operation.endsWith('.delete') ? null : result, intent, approvalId);
@@ -40,12 +43,15 @@ export async function mutation<T>(
 }
 
 export async function history(authority: ZoneAuthority) {
+  const issuerDid = await getNodeDid();
+  if (!issuerDid) throw new Error('Cloudflare history witness unavailable');
   return db.select({
     id: attestations.id, issuerDid: attestations.issuerDid, subjectDid: attestations.subjectDid,
     type: attestations.type, contextId: attestations.contextId, contextType: attestations.contextType,
     payload: attestations.payload, signature: attestations.signature, cid: attestations.cid, issuedAt: attestations.issuedAt,
   }).from(attestations).where(and(
     eq(attestations.type, 'cloudflare.mutation'),
+    eq(attestations.issuerDid, issuerDid),
     eq(attestations.contextId, cloudflareZoneDid(authority.zoneId)),
     eq(attestations.subjectDid, authority.ownerDid),
   )).orderBy(desc(attestations.issuedAt)).limit(100);

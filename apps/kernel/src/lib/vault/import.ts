@@ -12,7 +12,7 @@ import { resolveVaultAuthorization, type VaultAuthorization } from './authorizat
 import { sealAndGrantStaticSecret, eraseInactiveGrantKeyMaterial, vaultService, type DbExecutor } from './index';
 import { getNodeSigningIdentity, isVaultTier1 } from './sealing';
 import { IMPORTED_KEY_NAMESPACE, isImportedKeyField, parseVaultFieldName } from './field-grammar';
-import { cloudflarePurpose, cloudflareZoneDid, isCloudflareImport, type CloudflareImport } from '@/src/lib/cloudflare/contract';
+import { cloudflarePurpose, cloudflareZoneDid, isCloudflareImport, isCloudflarePurpose, type CloudflareImport } from '@/src/lib/cloudflare/contract';
 import { requireCloudflareImportBinding, verifyCloudflareImportToken } from './cloudflare-import';
 import { issueGrant } from '@/src/lib/auth/grants';
 
@@ -38,7 +38,7 @@ function rotationProposalId(field: string): string {
 
 export function validImportMetadata(raw: Record<string, unknown>): boolean {
   return (raw.cloudflare === undefined || isCloudflareImport(raw.cloudflare))
-    && (raw.cloudflare !== undefined || !(typeof raw.purpose === 'string' && raw.purpose.trim().startsWith('dns.cloudflare:')))
+    && (raw.cloudflare !== undefined || !isCloudflarePurpose(typeof raw.purpose === 'string' ? raw.purpose.trim() : raw.purpose))
     && typeof raw.ownerDid === 'string' && DID.test(raw.ownerDid)
     && typeof raw.consumerDid === 'string' && DID.test(raw.consumerDid)
     && typeof raw.purpose === 'string' && raw.purpose.trim().length > 0 && raw.purpose.length <= 200
@@ -84,6 +84,13 @@ function readDetail(raw: Record<string, unknown> | null): ImportDetail | null {
 
 /** Rotation is restricted to a successfully imported field with the exact same owner, consumer and purpose. */
 export async function requireImportRotationTarget(detail: ImportDetail, executor: DbExecutor = db): Promise<void> {
+  if (detail.cloudflare) {
+    const current = await executor.select({ field: vaultDelegationGrants.field }).from(vaultDelegationGrants).where(and(
+      eq(vaultDelegationGrants.subject, detail.ownerDid), eq(vaultDelegationGrants.grantedTo, detail.consumerDid),
+      eq(vaultDelegationGrants.purpose, detail.purpose), eq(vaultDelegationGrants.status, 'active'),
+    ));
+    if (current.some(grant => grant.field !== detail.replacesField)) throw new Error('Explicit zone credential rotation required');
+  }
   if (!detail.replacesField) return;
   const [target] = await executor.select({ proposalId: operatorApprovals.proposalId })
     .from(operatorApprovals).where(and(
@@ -174,7 +181,7 @@ export async function executeImportApproval(card: OperatorApprovalCard): Promise
       if (stored?.status !== 'approved' || stored.contentHash !== expectedHash) throw new Error('Unavailable');
       if (!(await canExecuteImport(card.operatorDid, detail.ownerDid, tx))) throw new Error('Unavailable');
       phase = 'binding-check';
-      await requireCloudflareImportBinding(detail);
+      await requireCloudflareImportBinding(detail, tx);
       phase = 'rotation-target';
       await requireImportRotationTarget(detail, tx);
       phase = 'seal';

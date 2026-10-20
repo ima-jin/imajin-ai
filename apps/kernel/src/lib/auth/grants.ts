@@ -37,10 +37,16 @@ import {
 } from '@imajin/auth';
 import { validateAttestDelegationCapabilities } from './attest-delegation';
 import type { DbExecutor } from '@/src/lib/vault/index';
-import { controlsImportOwner } from '@/src/lib/vault/import-authority';
 import { isCloudflareZoneAudience } from '@/src/lib/cloudflare/contract';
 
 const log = createLogger('kernel');
+
+async function controlsGrantOwner(actorDid: string, ownerDid: string, audience: unknown): Promise<boolean> {
+  // Introspection must not initialize custody or operator services. Only grant
+  // management needs the current group-controller check.
+  const { controlsImportOwner } = await import('@/src/lib/vault/import-authority');
+  return controlsImportOwner(actorDid, ownerDid, db, isCloudflareZoneAudience(audience) ? 'vault' : 'auth');
+}
 
 export interface LibError {
   error: string;
@@ -242,9 +248,7 @@ async function requireGrantDelegator(params: {
     .limit(1);
 
   if (!grant) return { error: 'Grant not found', status: 404 };
-  if (grant.delegatorDid !== params.requestedBy && !(await controlsImportOwner(
-    params.requestedBy, grant.delegatorDid, db, isCloudflareZoneAudience(grant.audience) ? 'vault' : 'auth',
-  ))) {
+  if (grant.delegatorDid !== params.requestedBy && !await controlsGrantOwner(params.requestedBy, grant.delegatorDid, grant.audience)) {
     return { error: `Only the delegator may ${params.action} this grant`, status: 403 };
   }
   if (params.requireActiveError && grant.status !== 'active') {

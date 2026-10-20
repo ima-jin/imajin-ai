@@ -46,6 +46,19 @@ components:
       type: http
       scheme: bearer
   schemas:
+    CloudflareAuthority:
+      type: object
+      additionalProperties: false
+      required: [domain, zoneId, granteeDid, capabilities]
+      properties:
+        domain: { type: string, description: Exact canonical verified zone domain }
+        zoneId: { type: string, pattern: "^[a-f0-9]{32}$" }
+        granteeDid: { type: string, description: Any DID; never receives the token }
+        capabilities:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items: { type: string, enum: ["cloudflare:read", "cloudflare:dns", "cloudflare:cache", "cloudflare:ssl", "cloudflare:custom-hostnames"] }
     Error:
       type: object
       required: [error]
@@ -66,6 +79,8 @@ paths:
         is projected from the existing approval record and v2 grants, not a
         parallel credential store. Consumer fetch/ack timestamps use the
         existing #2231 delegation path.
+        Cloudflare metadata also includes verified domains, the node DID,
+        and cloudflare scope metadata on imported zone cards.
       security:
         - cookieAuth: []
         - bearerAuth: []
@@ -156,6 +171,21 @@ paths:
         Imported fields are excluded from the legacy plaintext rotation sweep;
         use this countersigned re-import rail for replacement credentials.
         Plaintext is never echoed, logged, returned, or persisted unsealed.
+
+        Cloudflare mode supplies cloudflare instead of a generic consumer and
+        purpose. The server forces consumerDid to its own node DID and purpose
+        to dns.cloudflare:<zoneId>. After countersignature the kernel verifies
+        the token against the exact verified Cloudflare zone, then atomically
+        issues a node-only credential grant and separate operation grant to
+        any grantee DID with audience did:imajin:cloudflare-<zoneId>.
+        Public vault fetch refuses this token even to a node agent; only
+        resolveDomainCredential uses it in-process. No env or shell handoff.
+        An existing active zone requires explicit replacesField rotation.
+        Manage zone grants on /jin adds, renews and revokes operation grants
+        without re-importing. Action leases default to 24 hours, maximum 30 days.
+        Cloudflare token permissions remain the outer authority bound; include
+        Zone Read, DNS Read/Edit, Zone Settings Read, Cache Rules Read/Edit and
+        SSL/Certificates permissions only as needed.
       security:
         - cookieAuth: []
         - bearerAuth: []
@@ -166,8 +196,12 @@ paths:
             schema:
               type: object
               additionalProperties: false
-              required: [ownerDid, purpose, consumerDid, secret]
+              required: [ownerDid, secret]
+              anyOf:
+                - required: [purpose, consumerDid]
+                - required: [cloudflare]
               properties:
+                cloudflare: { $ref: "#/components/schemas/CloudflareAuthority" }
                 ownerDid:
                   type: string
                   description: Identity that owns the sealed field, including an administered group DID.

@@ -178,7 +178,7 @@ describe('vault import acceptance — real SQL, signatures, encryption and grant
     expect(await fetchGrantSecret({ grantId: rawGrant.id, granteeDid: AGENT })).toEqual({ status: 'not_grantee' });
     h.identity = { id: AGENT, scope: 'actor', subtype: 'agent' };
     expect((await fetchRoute(new NextRequest('https://kernel.test/fetch', { method: 'POST' }),
-      { params: Promise.resolve({ grantId: rawGrant.id }) })).status).toBe(404);
+      { params: Promise.resolve({ grantId: rawGrant.id }) })).status).toBe(403);
     expect(await introspectGrant({ agentDid: AGENT, capability: 'cloudflare:dns', delegatorDid: ORG, targetDid: cloudflareZoneDid(ZONE) }))
       .toMatchObject({ authorized: true });
     expect(await introspectGrant({ agentDid: AGENT, capability: 'cloudflare:dns', delegatorDid: ORG, targetDid: cloudflareZoneDid('b'.repeat(32)) }))

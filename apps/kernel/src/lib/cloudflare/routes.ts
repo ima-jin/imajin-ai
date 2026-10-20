@@ -23,7 +23,7 @@ const actions = {
   deleteDns: { capability: 'cloudflare:dns', envelope: 'record',
     operation: (a, _body, params) => deleteDns(a, params.recordId!) },
   settings: { capability: 'cloudflare:read', envelope: 'settings', operation: zoneSettings },
-  ssl: { capability: 'cloudflare:read', envelope: 'ssl',
+  ssl: { capability: 'cloudflare:ssl', envelope: 'ssl',
     operation: async a => (await zoneSettings(a)).find(setting => setting.id === 'ssl') ?? null },
   cacheRules: { capability: 'cloudflare:read', envelope: 'rules', operation: cacheRules },
   setCache: { capability: 'cloudflare:cache', body: true, operation: setCache },
@@ -72,7 +72,7 @@ async function readBody(request: NextRequest): Promise<Record<string, unknown>> 
 export function cloudflareRoute(name: keyof typeof actions) {
   const action: Action = actions[name];
   return async (request: NextRequest, context: HandlerContext) => {
-    const headers = corsHeaders(request);
+    const headers = { ...corsHeaders(request), 'Cache-Control': 'no-store' };
     try {
       const params = await context.params;
       const actor = await authenticateCloudflare(request, action.capability);

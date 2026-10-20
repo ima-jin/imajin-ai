@@ -22,7 +22,7 @@ export async function authenticateCloudflare(request: NextRequest, capability: s
   if (request.headers.has('authorization') || request.headers.has('x-app-did')) {
     const app = await requireAppAuth(request, { scope: capability });
     if ('appAuth' in app) {
-      return { did: app.appAuth.isServiceToken ? app.appAuth.appDid : app.appAuth.userDid, humanSession: false };
+      return { did: app.appAuth.appDid, humanSession: false };
     }
     if (!app.notAppToken) throw new CloudflareError(app.status, 'authentication_failed');
   }

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { approvalCardAnchorId, requestApprovalsRefresh } from './approval-anchor';
 import { CLOUDFLARE_CAPABILITIES, cloudflarePurpose, isCloudflareImport, type CloudflareImport } from '@/src/lib/cloudflare/contract';
+import { CloudflareDelegations } from './cloudflare-delegations';
 
 interface VaultOwner {
   did: string;
@@ -82,10 +83,11 @@ function ImportedCredentialCard({ card, onRotate, busy }: Readonly<{
           </li>
         ))}
       </ol>
-      {card.status === 'active' && (
+      {['active', 'expired'].includes(card.status) && (
         <button type="button" disabled={busy} onClick={() => onRotate(card)}
           className="min-h-11 text-sm text-amber-300 disabled:opacity-40">Re-import to rotate</button>
       )}
+      {card.cloudflare && <CloudflareDelegations ownerDid={card.ownerDid} zone={card.cloudflare} />}
     </article>
   );
 }
@@ -289,7 +291,9 @@ export function VaultImportPanel() {
           {busy ? 'Sealing…' : submitLabel}
         </button>
       </form>
-      <p className="text-xs text-gray-500">Consumer boot: use loadFromVault with this purpose and acknowledge use. Remove the old .env.local credential line after migration; never paste it into a shell.</p>
+      <p className="text-xs text-gray-500">{cloudflare
+        ? 'Cloudflare tokens stay inside the kernel. Never use loadFromVault or an agent environment for this token. Manage zone grants below; the default action lease is 24 hours (maximum 30 days).'
+        : 'Consumer boot: use loadFromVault with this purpose and acknowledge use. Remove the old .env.local credential line after migration; never paste it into a shell.'}</p>
       <div className="grid min-w-0 gap-3 md:grid-cols-2">
         {metadata.cards.filter((card) => card.ownerDid === ownerDid).map((card) => (
           <ImportedCredentialCard key={card.field} card={card} onRotate={rotate} busy={busy} />

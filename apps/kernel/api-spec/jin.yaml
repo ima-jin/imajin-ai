@@ -855,6 +855,59 @@ components:
         errorMessage: { type: string, nullable: true }
 
 paths:
+  /api/cloudflare-grants:
+    get:
+      tags: [jin]
+      operationId: cloudflareOwnerGrants
+      summary: List the controlled verified zone's operation grants
+      description: >-
+        Real human owner or current group owner/admin with vault access only.
+        Not limited to the node operator. Acting-for agents and stale group
+        membership are refused. No token is read or returned.
+      security: [{ cookieAuth: [] }, { bearerAuth: [] }]
+      parameters:
+        - { name: ownerDid, in: query, required: true, schema: { type: string } }
+        - { name: domain, in: query, required: true, schema: { type: string } }
+        - { name: zoneId, in: query, required: true, schema: { type: string, pattern: "^[a-f0-9]{32}$" } }
+      responses:
+        "200": { description: "Metadata envelope {grants}; Cache-Control no-store" }
+        "403": { description: Current human zone owner authority required }
+        "503": { description: Metadata unavailable }
+    post:
+      tags: [jin]
+      operationId: cloudflareOwnerDelegate
+      summary: Delegate zone operations to another DID without repasting the token
+      description: >-
+        Same human and verified owner gate as GET. Reuses issueGrant, never
+        grants credential fetch access. Manage zone grants also calls existing
+        POST /auth/api/grants/{grantId}/renew and DELETE /auth/api/grants/{grantId}.
+        Both verify the real current owner/controller. Revocation prevents
+        the next operation and pending bulk execution.
+      security: [{ cookieAuth: [] }, { bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [ownerDid, domain, zoneId, granteeDid, capabilities]
+              properties:
+                ownerDid: { type: string }
+                domain: { type: string }
+                zoneId: { type: string, pattern: "^[a-f0-9]{32}$" }
+                granteeDid: { type: string }
+                capabilities:
+                  type: array
+                  minItems: 1
+                  uniqueItems: true
+                  items: { type: string, enum: ["cloudflare:read", "cloudflare:dns", "cloudflare:cache", "cloudflare:ssl", "cloudflare:custom-hostnames"] }
+                ttlMs: { type: integer, minimum: 1, maximum: 2592000000, default: 86400000 }
+      responses:
+        "201": { description: "Delegation envelope {grant}, exact zone-DID audience" }
+        "400": { description: Invalid scope or lease }
+        "403": { description: Current human zone owner authority required }
+        "503": { description: Delegation unavailable }
   /api/orgs/{ownerDid}/mail-senders:
     parameters:
       - { name: ownerDid, in: path, required: true, schema: { type: string } }

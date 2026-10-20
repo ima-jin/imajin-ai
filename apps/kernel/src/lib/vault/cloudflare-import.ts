@@ -2,15 +2,17 @@ import { normalizeDomain, resolveVerifiedDomain } from '@/src/lib/domains/servic
 import { cloudflarePurpose, isCloudflareImport } from '@/src/lib/cloudflare/contract';
 import { getNodeSigningIdentity } from './sealing';
 import type { ImportDetail } from './import-staging';
+import { db } from '@/src/db';
+import type { DbExecutor } from './index';
 
 /** Re-read current canonical ownership at proposal and execution; no provider call here. */
-export async function requireCloudflareImportBinding(detail: ImportDetail): Promise<void> {
+export async function requireCloudflareImportBinding(detail: ImportDetail, executor: DbExecutor = db): Promise<void> {
   if (!detail.cloudflare) return;
   const zone = detail.cloudflare;
   if (!isCloudflareImport(zone) || normalizeDomain(zone.domain) !== zone.domain
     || detail.consumerDid !== getNodeSigningIdentity().senderDid
     || detail.purpose !== cloudflarePurpose(zone.zoneId)) throw new Error('Cloudflare import unavailable');
-  const binding = await resolveVerifiedDomain(zone.domain);
+  const binding = await resolveVerifiedDomain(zone.domain, executor, 'update');
   if (!binding || binding.domain !== zone.domain || binding.zoneOwner !== detail.ownerDid) {
     throw new Error('Cloudflare import unavailable');
   }

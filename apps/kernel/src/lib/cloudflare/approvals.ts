@@ -132,12 +132,13 @@ async function applyPlan(plan: Plan, proposalId: string, operatorDid: string) {
     return;
   }
   await requireExecutingClaim(proposalId);
+  if (!await isImportHuman(operatorDid) || !await controlsImportOwner(operatorDid, plan.ownerDid)) throw new Error('Unavailable');
   const authority = await freshAuthority(plan, 'cloudflare:cache');
   const before = await cacheRules(authority);
   if (canonicalize(before) !== canonicalize(plan.before)) throw new Error('Stale plan');
   await mutation(authority, 'cache.set', before, plan.rules,
-    () => authority.client.request('/rulesets/phases/http_request_cache_settings/entrypoint',
-      z.object({ rules: z.array(cacheRuleOutputSchema).max(20) }).strip(), 'PUT', { rules: plan.rules }), proposalId);
+    async () => (await authority.client.request('/rulesets/phases/http_request_cache_settings/entrypoint',
+      z.object({ rules: z.array(cacheRuleOutputSchema).max(20) }).strip(), 'PUT', { rules: plan.rules })).rules, proposalId);
 }
 
 async function requireExecutingClaim(proposalId: string): Promise<void> {
@@ -170,7 +171,7 @@ export async function executeCloudflareApproval(card: OperatorApprovalCard): Pro
       plan.operation === 'bulk-proxy' ? plan.changes.map(change => change.after) : plan.rules,
       async () => {
         await applyPlan(plan, card.proposalId, card.operatorDid);
-        return { status: 'applied' };
+        return plan.operation === 'bulk-proxy' ? plan.changes.map(change => change.after) : plan.rules;
       }, card.proposalId);
     await db.update(operatorApprovals).set({
       status: 'applied', appliedAt: new Date(), outcome: { cloudflareStatus: 'success' }, updatedAt: new Date(),
