@@ -4,7 +4,6 @@ import { db, attestations } from '@/src/db';
 import { and, eq, isNull } from 'drizzle-orm';
 import { resolveCallerDid } from '../../caller-did';
 import { requireDocumentActor } from '@/src/lib/auth/document-authorization';
-import { revokeAgreement } from '@/src/lib/auth/revoke-agreement';
 
 export const dynamic = 'force-dynamic';
 
@@ -54,6 +53,7 @@ export async function POST(
   if (att.type === 'agreement') {
     const actor = await requireDocumentActor(request, { write: true });
     if (actor instanceof Response) return actor;
+    const { revokeAgreement } = await import('@/src/lib/auth/revoke-agreement');
     const result = await revokeAgreement({ attestationId, effectiveDid: actor.effectiveDid, actingHumanDid: actor.actingHumanDid });
     const { status, ...body } = result;
     return NextResponse.json(body, { status, headers: cors });

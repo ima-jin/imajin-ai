@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation';
-import { getEffectiveDid } from '@/app/auth/lib/get-effective-did';
+import { getDocumentPageActor } from '@/app/auth/lib/get-document-page-actor';
+import { canReadDocument } from '@/src/lib/auth/document-authorization';
 import Link from 'next/link';
 import { and, eq, inArray } from 'drizzle-orm';
 import { attestations, attestationSignatures, db, identities } from '@/src/db';
@@ -13,14 +14,11 @@ const DOCUMENT_TYPES = ['document.created', 'document.amended', 'agreement'] as 
 
 export default async function DocumentDetailPage({ params }: Readonly<PageProps>) {
   const { id } = await params;
-  const { sessionDid, effectiveDid } = await getEffectiveDid();
-
-  if (!sessionDid) {
+  const actor = await getDocumentPageActor();
+  if (!actor) {
     redirect('/auth');
   }
-
-  // effectiveDid is non-null whenever sessionDid is non-null
-  const did = effectiveDid ?? sessionDid!;
+  const { actingHumanDid: sessionDid, effectiveDid: did } = actor;
 
   const [attestation] = await db
     .select()
@@ -33,20 +31,7 @@ export default async function DocumentDetailPage({ params }: Readonly<PageProps>
     )
     .limit(1);
 
-  const [mySignature] = attestation
-    ? await db
-        .select({ id: attestationSignatures.id })
-        .from(attestationSignatures)
-        .where(
-          and(
-            eq(attestationSignatures.attestationId, attestation.id),
-            eq(attestationSignatures.signerDid, did)
-          )
-        )
-        .limit(1)
-    : [];
-
-  const canAccess = !!attestation && (attestation.issuerDid === did || !!mySignature);
+  const canAccess = !!attestation && await canReadDocument(attestation.id, attestation.issuerDid, actor);
 
   if (!canAccess || !attestation) {
     return (

@@ -46,7 +46,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   headers.set('Content-Disposition', `${download ? 'attachment' : 'inline'}; filename*=UTF-8''${encodeURIComponent(asset.filename)}`);
   headers.set('Cache-Control', 'private, no-store');
   headers.set('X-Content-Type-Options', 'nosniff');
-  headers.set('Content-Security-Policy', "sandbox; default-src 'none'");
+  headers.set('Content-Security-Policy', "default-src 'none'; frame-ancestors 'self'");
   headers.set('X-Document-Hash', document.documentHash);
   return new NextResponse(new Uint8Array(file), { headers });
 }

@@ -52,6 +52,7 @@ export const ATTESTATION_TYPES = [
   'app.revoked',
   'document.created',
   'agreement',
+  'agreement.revoked',
   'document.signed',
   'document.executed',
   'document.declined',
@@ -300,6 +301,7 @@ export type AttestationType = typeof ATTESTATION_TYPES[number];
  * excluded from any "pending your countersignature" view or query.
  */
 export const MECHANICAL_ATTESTATION_TYPES = [
+  'agreement.revoked',
   'connection.relationship.label.changed',
   'group.member.added',
   'group.member.removed',

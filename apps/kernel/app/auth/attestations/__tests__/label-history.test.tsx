@@ -17,7 +17,12 @@ vi.mock('@/src/db', async () => ({
   ...await import('@/src/db/schemas/auth'),
   get db() { return mocks.db; },
 }));
-vi.mock('../../lib/get-effective-did', () => ({ getEffectiveDid: mocks.getEffectiveDid }));
+vi.mock('../../lib/get-document-page-actor', () => ({
+  getDocumentPageActor: async () => {
+    const state = await mocks.getEffectiveDid();
+    return { actingHumanDid: state.sessionDid, effectiveDid: state.effectiveDid };
+  },
+}));
 vi.mock('../components/CreateDocumentForm', () => ({ default: () => null }));
 vi.mock('../components/DocumentList', () => ({ default: () => null }));
 vi.mock('../components/DocumentSigningCard', () => ({

@@ -3,7 +3,7 @@ import Link from 'next/link';
 import AttestationList from '../components/AttestationList';
 import CreateDocumentForm from './components/CreateDocumentForm';
 import DocumentList from './components/DocumentList';
-import { getEffectiveDid } from '../lib/get-effective-did';
+import { getDocumentPageActor } from '../lib/get-document-page-actor';
 import { db, identities } from '@/src/db';
 import { inArray } from 'drizzle-orm';
 
@@ -17,11 +17,11 @@ interface SearchParams {
 
 export default async function AttestationsPage(props: Readonly<{ searchParams: Promise<SearchParams> }>) {
   const resolvedSearchParams = await props.searchParams;
-  const { sessionDid, effectiveDid } = await getEffectiveDid();
-
-  if (!sessionDid || !effectiveDid) {
+  const actor = await getDocumentPageActor();
+  if (!actor) {
     redirect('/auth');
   }
+  const { actingHumanDid: sessionDid, effectiveDid } = actor;
   const view = resolvedSearchParams.view === 'documents' ? 'documents' : 'attestations';
   const documentRole = resolvedSearchParams.doc_role === 'created' ? 'created' : 'needs-signature';
   const identityRows = await db.select({ id: identities.id, name: identities.name, handle: identities.handle })

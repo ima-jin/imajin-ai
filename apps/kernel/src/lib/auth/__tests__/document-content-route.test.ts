@@ -79,7 +79,7 @@ describe('private document content invitation', () => {
         .mockReturnValueOnce(query([{ status: 'active', storagePath: '/fixture', mimeType, filename: 'file' }]));
       const response = await GET(request(), context);
       expect(response.headers.get('content-type')).toBe(expected);
-      expect(response.headers.get('content-security-policy')).toContain('sandbox');
+      expect(response.headers.get('content-security-policy')).toBe("default-src 'none'; frame-ancestors 'self'");
     },
   );
 });
