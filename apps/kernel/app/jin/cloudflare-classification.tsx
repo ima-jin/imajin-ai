@@ -8,7 +8,7 @@ import type { CloudflareModel } from './use-cloudflare';
 export function CloudflareClassification({ model }: Readonly<{ model: CloudflareModel }>) {
   const { zone, busy, edge } = model;
   const { classification, previews, complete, message, proposals, stagingStarted } = edge;
-  if (!classification || !zone) return <p role="status">Classification report unavailable. Refresh zone data to retry.</p>;
+  if (!classification || !zone) return <output>Classification report unavailable. Refresh zone data to retry.</output>;
   const plans = classificationPlans(classification);
   return <section aria-label="Edge classification report" className="min-w-0 space-y-4">
     <header className="space-y-2">
@@ -19,14 +19,14 @@ export function CloudflareClassification({ model }: Readonly<{ model: Cloudflare
     </header>
     {classification.warnings.length > 0 && <aside aria-label="Classification warnings" className="space-y-2 border border-[var(--sunset-purple)] p-3">
       <h4 className="font-mono">Review warnings</h4>
-      <ul className="list-inside list-disc text-sm">{classification.warnings.map((warning, index) => <li key={index}>{warning}</li>)}</ul>
+      <ul className="list-inside list-disc text-sm">{classification.warnings.map(warning => <li key={warning}>{warning}</li>)}</ul>
     </aside>}
     <div className="grid min-w-0 gap-3 md:grid-cols-2">{classification.hosts.map(host => <article key={host.hostname} className="min-w-0 space-y-3 border border-white/15 p-3">
       <h4 className="break-all font-mono font-bold">{host.hostname}</h4>
       <p className="font-mono text-sm">Decision: {host.proxied ? 'Proxied · route-specific cache policy' : 'DNS-only'}</p>
       <p className="break-words text-sm">{host.reason}</p>
       {host.blockingRoutes.length > 0 && <div><h5 className="font-mono text-xs">Blocking routes</h5>
-        <ul className="list-inside list-disc break-all text-sm">{host.blockingRoutes.map((route, index) => <li key={index}>{route}</li>)}</ul></div>}
+        <ul className="list-inside list-disc break-all text-sm">{host.blockingRoutes.map(route => <li key={route}>{route}</li>)}</ul></div>}
       {host.remedy && <p className="break-words text-sm">Remedy: {host.remedy}</p>}
       <ul aria-label={`Record decisions for ${host.hostname}`} className="space-y-2">{host.records.map(record => <li key={record.recordId} className="break-words border-t border-white/10 pt-2 text-xs">
         <p className="break-all font-mono">{record.type} {record.name}</p>
@@ -34,7 +34,7 @@ export function CloudflareClassification({ model }: Readonly<{ model: Cloudflare
         <p>{record.reason}</p>
       </li>)}</ul>
       <details><summary className="min-h-11 cursor-pointer py-3 font-mono text-sm">Route evidence · {host.routes.length}</summary>
-        <ul className="space-y-3">{host.routes.map((route, index) => <li key={index} className="break-words border-t border-white/10 pt-2 text-xs">
+        <ul className="space-y-3">{host.routes.map(route => <li key={`${route.method}:${route.path}:${route.source}`} className="break-words border-t border-white/10 pt-2 text-xs">
           <p className="break-all font-mono">{route.method} {route.path}</p>
           <p className="font-mono">{route.class}</p><p>{route.reason}</p>
           <p className="break-all">Source: {route.source}</p>
@@ -45,7 +45,7 @@ export function CloudflareClassification({ model }: Readonly<{ model: Cloudflare
       <h4 className="font-mono">Ordered cache rules · {classification.cacheRules.length}</h4>
       <p className="text-xs">Cache approval replaces the full ordered ruleset. Check the dry-run before/after, including existing rules.</p>
       {classification.cacheRules.length === 0 && <p className="text-sm">Empty replacement: existing cache rules will be removed only after countersignature.</p>}
-      {classification.cacheRules.map((rule, index) => <div key={index} className="min-w-0 border border-white/10 p-3">
+      {classification.cacheRules.map((rule, index) => <div key={rule.ref ?? rule.expression} className="min-w-0 border border-white/10 p-3">
         <p className="break-words text-sm">{index + 1}. {rule.description}</p><p className="break-all font-mono text-xs">{rule.expression}</p>
         <JsonView value={rule.action_parameters} />
       </div>)}
@@ -56,8 +56,8 @@ export function CloudflareClassification({ model }: Readonly<{ model: Cloudflare
       <button type="button" className={cfButton} disabled={busy || !plans.length || stagingStarted}
         onClick={() => void edge.previewClassification(zone)}>Preview all dry runs</button>
       {!plans.length && <p>No proxy or cache changes proposed.</p>}
-      <p role="status" aria-live="polite">{message || `${previews.length} / ${plans.length} dry runs previewed`}</p>
-      {previews.map((preview, index) => <details key={index}>
+      <output className="block" aria-live="polite">{message || `${previews.length} / ${plans.length} dry runs previewed`}</output>
+      {previews.map((preview, index) => <details key={JSON.stringify(plans[index])}>
         <summary className="min-h-11 cursor-pointer py-3 font-mono text-sm">Dry run {index + 1} · {plans[index]?.resource} · before / after</summary>
         <JsonView value={preview} />
       </details>)}

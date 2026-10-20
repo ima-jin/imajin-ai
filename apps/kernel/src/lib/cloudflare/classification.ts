@@ -9,6 +9,7 @@ import { dnsRecordSchema } from './schemas';
 import type { CacheRule, DnsRecord } from '../../../app/jin/cloudflare-client';
 import { loadRegistryEdgeSpec } from './edge-spec-loader';
 import { listRegisteredEdgeApps, type RegisteredEdgeApp } from './edge-registry';
+import { forEachSequential } from '../async/sequential';
 import {
   classifySpec, deduplicateRoutes, scanKernelRoutes, mergeSourceAndSpecs, specRoutePrefix,
   type ClassifiedRoute, type HostManifest, type EdgeSpecDocument,
@@ -123,11 +124,11 @@ export function buildClassificationReport(domain: string, records: readonly DnsR
   for (let offset = 0; offset < changes.length; offset += 20) proxyBatches.push(changes.slice(offset, offset + 20));
   const reportWarnings = [...warnings];
   const cacheRules = buildCacheRules(hosts, reportWarnings);
-  return { domain, hosts, proxyBatches, cacheRules, warnings: [...new Set(reportWarnings)].sort() };
+  return { domain, hosts, proxyBatches, cacheRules, warnings: [...new Set(reportWarnings)].sort((a, b) => a.localeCompare(b)) };
 }
 
 function hostReason(hostname: string, routes: number, blockers: number, restrictions: string[], records: number): string {
-  if (restrictions.length) return [...new Set(restrictions)].sort().join('; ');
+  if (restrictions.length) return [...new Set(restrictions)].sort((a, b) => a.localeCompare(b)).join('; ');
   if (!routes) return 'No trusted source/spec manifest for this host; keep DNS-only';
   if (blockers) return 'One or more unsafe, never-proxied or unclassified routes blocks the entire host';
   if (!literalHost(hostname)) return 'Wildcard/invalid hostname cannot be proven safe';
@@ -144,7 +145,7 @@ export function buildCacheRules(hosts: readonly ClassifiedHost[], warnings: stri
   for (const host of hosts.filter(host => host.proxied && literalHost(host.hostname))) {
     const paths = host.routes.filter(route => route.class === 'cacheable' && route.method === 'GET' && literalPath(route.path)
       && !host.routes.some(other => other.path === route.path && other.class !== 'cacheable')).map(route => route.path);
-    for (const path of [...new Set(paths)].sort()) {
+    for (const path of [...new Set(paths)].sort((a, b) => a.localeCompare(b))) {
       // Leave one final rule for credentials, and stay within connector bounds.
       if (rules.length >= 19) { warnings.push('Cache rule limit reached; remaining static paths safely retain default bypass'); break; }
       rules.push({
@@ -218,40 +219,40 @@ function localSpecInventory(): { documents: EdgeSpecDocument[]; routes: Classifi
 async function serviceManifests(kernelHost: string, origin: string | null, options: ClassificationOptions) {
   const manifests: HostManifest[] = [];
   const warnings: string[] = [];
-  for (const service of SERVICES) {
-    if (!service.devPort || service.externalUrl || service.wwwPath || service.name === 'kernel') continue;
-    if (options.registeredApps?.some(app => app.slug === service.name)) continue;
+  await forEachSequential(SERVICES, async service => {
+    if (!service.devPort || service.externalUrl || service.wwwPath || service.name === 'kernel') return;
+    if (options.registeredApps?.some(app => app.slug === service.name)) return;
     const configured = buildPublicUrl(service.name);
     const url = new URL(configured || '/', `https://${kernelHost}`);
     const host = url.hostname;
     const sameNode = host === kernelHost && service.devPort === 3000;
-    if (sameNode) continue;
-    const specOptions = !origin && !/^https:\/\//.test(configured) ? { ...options, loadExternalSpec: undefined } : options;
+    if (sameNode) return;
+    const specOptions = !origin && !configured.startsWith('https://') ? { ...options, loadExternalSpec: undefined } : options;
     const { document, source } = await serviceSpec(service, url, specOptions, warnings);
     if (!sameNode && !document) warnings.push(`Missing trusted spec for ${service.name}; host remains DNS-only`);
     const routes = classifySpec(document, source, url.pathname.replace(/\/$/, ''));
     manifests.push({ hostname: host, routes });
-  }
+  });
   return { manifests, warnings };
 }
 
 async function registeredManifests(domain: string, kernelHost: string, origin: string | null, options: ClassificationOptions) {
   const manifests: HostManifest[] = [];
   const warnings: string[] = [];
-  for (const app of options.registeredApps ?? []) {
+  await forEachSequential(options.registeredApps ?? [], async app => {
     if (!app.baseUrl || !origin) {
       manifests.push({ hostname: kernelHost, routes: [{ path: `/${app.slug}`, method: '*', class: 'unclassified', reason: 'Active registered app has no trusted API base or node origin', source: `registry.apps/${app.slug}` }] });
-      continue;
+      return;
     }
     const base = new URL(app.baseUrl, origin);
-    if (!inZone(base.hostname, domain)) continue;
-    if (base.origin === new URL(origin).origin && base.pathname === '/') continue;
+    if (!inZone(base.hostname, domain)) return;
+    if (base.origin === new URL(origin).origin && base.pathname === '/') return;
     const source = `${base.href.replace(/\/$/, '')}/api/spec`;
     let document: unknown;
     try { document = await options.loadExternalSpec?.(source); }
     catch { warnings.push(`Registered app spec unavailable: ${app.slug}; host remains DNS-only`); }
     manifests.push({ hostname: base.hostname, routes: classifySpec(document, source, base.pathname.replace(/\/$/, '')) });
-  }
+  });
   return { manifests, warnings };
 }
 

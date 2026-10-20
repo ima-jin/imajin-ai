@@ -167,7 +167,7 @@ function filesBelow(dir: string): string[] {
     if (['.git', '.next', 'node_modules', '__tests__'].includes(entry.name)) return [];
     const path = join(dir, entry.name);
     return entry.isDirectory() ? filesBelow(path) : [path];
-  }).sort();
+  }).sort((a, b) => a.localeCompare(b));
 }
 
 function routePath(app: string, filename: string): string {
@@ -290,9 +290,9 @@ function addReexportMethods(node: ts.ExportDeclaration, names: Set<string>, meth
 }
 
 function classifyTraits(traits: Facts, entry: SourceEntry, page: boolean): Pick<ClassifiedRoute, 'class' | 'reason'> {
-  if (traits.missing.size) return { class: 'unclassified', reason: [...traits.missing].sort().join('; ') };
-  if ([...traits.reasons].some(reason => reason.startsWith('TLS-ALPN'))) return { class: 'never-proxied', reason: [...traits.reasons].sort().join('; ') };
-  if (traits.reasons.size) return { class: 'proxy-unsafe', reason: [...traits.reasons].sort().join('; ') };
+  if (traits.missing.size) return { class: 'unclassified', reason: [...traits.missing].sort((a, b) => a.localeCompare(b)).join('; ') };
+  if ([...traits.reasons].some(reason => reason.startsWith('TLS-ALPN'))) return { class: 'never-proxied', reason: [...traits.reasons].sort((a, b) => a.localeCompare(b)).join('; ') };
+  if (traits.reasons.size) return { class: 'proxy-unsafe', reason: [...traits.reasons].sort((a, b) => a.localeCompare(b)).join('; ') };
   if (!page) return { class: 'proxy-bypass', reason: 'All API operations bypass cache, including unauthenticated/public APIs' };
   if (traits.calls || traits.session || entry.imports.length) return { class: 'proxy-bypass', reason: 'Page may inherit session/layout/client state; bypass cache' };
   return { class: 'cacheable', reason: 'Literal public page without session or executable dependencies' };
@@ -322,7 +322,7 @@ function classifyRouteFile(kernel: string, filename: string, graph: SourceGraph)
   const result = classifyTraits(traits, entry, page);
   const overrideAllowed = result.class === 'unclassified' && !traits.reasons.size
     && [...traits.missing].every(reason => reason.startsWith('Non-literal maxDuration') || reason.startsWith('Computed module loading'));
-  return [...methods].sort().map(method => ({ path: routePath(app, filename), method, ...result,
+  return [...methods].sort((a, b) => a.localeCompare(b)).map(method => ({ path: routePath(app, filename), method, ...result,
     ...(overrideAllowed ? { overrideAllowed: true } : {}), source: relative(kernel, filename) }));
 }
 
@@ -350,7 +350,7 @@ function customServerRoutes(kernel: string, graph: SourceGraph): ClassifiedRoute
     if (!traits.reasons.size && !traits.missing.size) continue;
     routes.push(...upgradePaths(entry.file).map(path => ({ path, method: 'UPGRADE',
       class: traits.missing.size ? 'unclassified' as const : 'proxy-unsafe' as const,
-      reason: [...traits.missing, ...traits.reasons].sort().join('; '), source: relative(kernel, filename) })));
+      reason: [...traits.missing, ...traits.reasons].sort((a, b) => a.localeCompare(b)).join('; '), source: relative(kernel, filename) })));
   }
   for (const filename of filesBelow(join(kernel, 'public'))) {
     routes.push({ path: '/' + relative(join(kernel, 'public'), filename).replaceAll('\\', '/'), method: 'GET', class: 'cacheable',
