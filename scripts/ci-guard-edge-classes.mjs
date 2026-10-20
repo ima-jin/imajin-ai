@@ -46,7 +46,9 @@ export function checkEdgeClasses(kernel = resolve(root, 'apps/kernel'), { proxie
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
-  const { routes, failures } = checkEdgeClasses(process.argv[2] ? resolve(process.argv[2]) : undefined);
+  // CLI always inspects this checkout. Only unit tests inject temporary roots
+  // through the exported function; CLI arguments never reach file I/O.
+  const { routes, failures } = checkEdgeClasses();
   for (const route of failures) console.error(`${route.source}: ${route.method} ${route.path}: ${route.reason}. Fix source evidence or set x-edge-class with x-edge-reason on the matching OpenAPI operation; unsafe hosts must stay DNS-only or be carved out.`);
   console.log(`Edge classification: ${routes.length} derived operations/assets, ${failures.length} unresolved`);
   process.exitCode = failures.length ? 1 : 0;
