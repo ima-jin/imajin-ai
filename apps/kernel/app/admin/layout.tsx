@@ -15,6 +15,7 @@ const NAV_ITEMS = [
   { label: 'Federation', href: '/admin/federation', icon: '🌐' },
   { label: 'Storage', href: '/admin/storage', icon: '💾' },
   { label: 'Vault', href: '/admin/vault', icon: '🔐' },
+  { label: 'Keys', href: '/admin/keys', icon: '🔑' },
   { label: 'Config', href: '/admin/config', icon: '🔧' },
   { label: 'Moderation', href: '/admin/moderation', icon: '🛡️' },
   { label: 'Events', href: '/admin/events', icon: '🔔' },

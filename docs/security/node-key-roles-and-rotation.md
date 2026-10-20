@@ -122,7 +122,7 @@ key. If the node DID resolves through that fallback, node-issued attestations ca
 relay DID and the step 8 `UPDATE auth.identities` would rewrite the **relay identity's**
 key, contradicting §2.4. So:
 
-- `GET /api/admin/keys/rotation` (and `key-rotation.mjs verify`) prints `node DID` with
+- `GET /api/admin/keys/rotation` (shown on `/admin/keys`) reports `node DID` with
   its **source** and **fails** unless the source is `relay_config`.
 - `POST /api/admin/keys/rotation` (`submit`) refuses with 409 under the same condition.
 - Take `NODE_DID` for step 8 from that output, never from `RELAY_DID`.
@@ -159,14 +159,17 @@ any past instant.
 
 ## 4. Rotation runbook
 
-Roles are rotated in dependency order. Steps 2 and 6 are the two-phase vault sweep
+Roles are rotated in dependency order. Steps 3 and 6 are the two-phase vault sweep
 (#1400); step 4 is the fail-closed boot gate (#1520); step 7 is the second restart that
 settles the internal secrets (§2.4).
 
-Conventions: `OLD_*` / `NEW_*` keys come from your secret manager into shell
-variables and are never echoed, written to a file, or put on a command line you
-paste into chat. `KERNEL_ADMIN_COOKIE` is the full `Cookie` header of a logged-in
-admin session (same as `scripts/migrate-vault-custody.mjs`).
+Conventions: private keys stay in the operator-controlled env file and its
+0600 rollback backup; the CLI reads both **in-process**. Never copy keys,
+cookies, process environments or vault plaintext into shell variables, command
+lines, logs or transcripts. Use `/admin/keys` in a normal same-origin browser
+session for all admin requests; log in again after restart if needed. Do not
+extract a cookie or widen authorization. The CLI's environment-key and
+cookie-based modes remain for legacy compatibility, not this operator runbook.
 
 **Restart rule for steps 4 and 7.** Restart `prod-jin` from the ecosystem file with
 `./scripts/pm2-reconcile.sh "$ECOSYSTEM_FILE" prod-jin`. Do **not** use
@@ -179,77 +182,36 @@ internal secrets have settled.
 ### Step 0. Go / no-go
 
 - [ ] Off-peak. Everyone is logged out at step 4 (S1) and in-flight connects fail (D4).
-- [ ] **v1 vault entries: zero.** Dry-run `node scripts/migrate-vault-custody.mjs`
-      and confirm `totalV1Fields` is 0, otherwise D1 destroys them.
+- [ ] **v1 vault entries: zero.** In `/admin/keys`, click **Check v1 custody**.
+      This calls `POST /api/vault/migrate-custody` with `{dryRun:true}` using
+      the browser session. Confirm `totalV1Fields` is 0 and the check is not
+      aborted; otherwise D1 destroys them. If migration is required, complete its separately approved custody
+      procedure first; do not copy a browser cookie into the legacy migration CLI.
 - [ ] Backups: the vault file at `VAULT_PATH` (`~/.imajin/vault.prod.json`), a DB
       snapshot, and under Tier 1 `imajin vault backup` and the owner agent online.
-- [ ] The **old** key is available to you (needed in steps 2 and 5) and stays
-      available until step 12.
+- [ ] The current env file is readable by the operator; generation retains its
+      **old** key in the adjacent rollback backup until step 12.
 - [ ] You know whether the node has a DFOS identity chain (S7).
 
-### Step 1. Preflight and baseline (machine-checked)
+### Step 1. Browser baseline before generation
 
-```bash
-OLD_AUTH_PRIVATE_KEY="$OLD" NEW_AUTH_PRIVATE_KEY="$NEW" \
-  node scripts/key-rotation.mjs preflight --grace-hours 48
-```
+Open `/admin/keys` in the kernel origin's browser session and run baseline
+verification **before generate**, with the old key still loaded.
 
-Fails (exit 1) on a missing or malformed key, an identical pair, or the
-publicly-known dev fallback key (#1520). Prints both kids and public keys and the
-three `AUTH_PREVIOUS_PUBLIC_KEY*` values to set in step 3. Warns if the grace window
-is under 24 h.
-
-Then baseline the **old** state, with the old key still loaded:
-
-```bash
-KERNEL_ADMIN_COOKIE="$KERNEL_ADMIN_COOKIE" KERNEL_BASE_URL="$KERNEL_BASE_URL" \
-  node scripts/key-rotation.mjs verify
-```
-
-- [ ] `node DID` is printed with `source: relay_config` (§2.5). Record that DID as
+- [ ] `node DID` is shown with `source: relay_config` (§2.5). Record that DID as
       `NODE_DID`. A `RELAY_DID` source fails the check: fix
       `relay.relay_config.imajin_did` before going further.
 - [ ] No error about `identities.public_key`. A mismatch means the node's identity row
       never carried the key in `AUTH_PRIVATE_KEY`; resolve that first, because step 8 and
       the final verify assume it did.
+- [ ] Retain the old **public** key from generate's output in step 2 as the verification anchor. If there is
+      already rotation history, retain the previously pinned genesis anchor
+      instead: the verifier anchors the start of the whole chain, not just this
+      rotation's predecessor. Only public data may be copied.
 
-### Step 2. Phase 1 sweep: export (OLD key still loaded)
+### Step 2. Generate and install the new env key (OLD process still running)
 
-```bash
-EXPORT=$(curl -sS -X POST "$KERNEL_BASE_URL/api/vault/rotation-sweep" \
-  -H "Cookie: $KERNEL_ADMIN_COOKIE" -H 'Content-Type: application/json' \
-  -d '{"phase":"export"}')
-printf '%s' "$EXPORT" | jq '.fields | length'    # record this number; never print the fields
-```
-
-Plaintext secrets are in `$EXPORT`: keep it in that shell variable only, never in a
-file. The route aborts (500) if any field cannot be unsealed, so a short count means
-stop and investigate. Roles covered: D1 (v2 only), D2, D3, and the `internal-secret:*`
-fields.
-**App-secret exclusion (#2821).** The plaintext sweep deliberately excludes
-`internal-secret:app-self:*`, including pending operator input, and refuses those
-fields on reimport. It must never become a reveal/export path for app credentials.
-The count above therefore does **not** prove app-secret custody has been carried
-forward. Do not destroy the old node key until app-secret custody has been
-preserved through separately approved, non-plaintext tool steps; this legacy
-sweep is not an app-secret migration tool. Pending inputs can be submitted again
-through `/jin` after the identity change.
-
-**Imported credential exclusion (#2260).** The sweep also excludes
-`vault-imported-key:*` from export and rejects those fields on reimport.
-These credentials retain identity-owned, purpose-bound custody through the
-countersigned `/jin` import rail; the legacy sweep must not reveal their bytes
-or replace an org/agent grant with node-only ownership. Preserve their custody
-through separately approved non-plaintext tooling before destroying an old node
-key, or re-import a replacement credential through `/jin`.
-
-**Rollback boundary.** Until step 6 completes, rolling back is "restore the old key and
-restart": the old vault entries, grants and provisions rows (all keyed by the old node
-DID) are untouched by anything the new key does in steps 4-5.
-
-### Step 3. Generate and install the new key
-
-On the node host, with workspace packages built, run:
+On the node host, with workspace packages built, run **before seal export**:
 
 ```bash
 node -- scripts/key-rotation.mjs generate --env-file apps/kernel/.env.local --grace-hours 48
@@ -276,13 +238,86 @@ prevent cleanup, the leftover backup may be incomplete and is not safe rollback.
 Before step 6, rollback is restoring this backup as `.env.local` and restarting
 per the restart rule; neither key needs to enter a shell variable. Retain the
 backup until the handover has been signed and all destruction gates in step 12
-have passed.
+have passed. **Do not restart yet**: the running old kernel must seal the handoff
+to the newly generated public key first.
+
+Optional offline pair check (new key from the file, old key from its backup):
+
+```bash
+node -- scripts/key-rotation.mjs preflight --env-file apps/kernel/.env.local --grace-hours 48
+```
+
+Both file-mode commands fail closed on missing or malformed keys, duplicates,
+unsafe files and crypto/filesystem failures without echoing inputs. Preflight
+checks the pair only; it does not rewrite or extend the installed grace window.
+
+### Step 3. Phase 1 sweep: seal export to the NEW public key
+
+Copy only the **new public key** from generate's output into `/admin/keys`.
+While the **old kernel is still running**, request export. The browser sends
+`POST /api/vault/rotation-sweep` with
+`{phase:'export',newPublicKey:<64 hex Ed25519 pub>}`.
+The response is only `{exported:number,newPublicKey:string}`: record the count
+and confirm the recipient equals generate's public key. No fields or plaintext
+are accepted or returned. The encrypted handoff stays server-side adjacent to
+the environment-specific `VAULT_PATH`, surviving the restart. An existing
+handoff must not be overwritten; recover it before attempting another export.
+
+**Sealed handoff design and limits (#2987).** The kernel exclusively creates
+`<resolved VAULT_PATH>.key-rotation.sealed` with mode **0600**, writes only
+ciphertext plus public metadata/signature, and fsyncs it before reporting
+success. Keep the same `VAULT_PATH` on persistent, operator-controlled storage
+across restarts; changing or losing that volume loses the handoff. No database
+table or migration is needed. The maximum encoded handoff is **16 MiB**; an
+oversized export fails before writing.
+
+Encryption uses an ephemeral X25519 sender, standard Ed25519-to-X25519
+conversion of the NEW public key, a domain-separated HKDF-SHA256 key and
+AES-256-GCM. This is distinct from the vault's existing HKDF-derived X25519
+keys and does not change their roles. Authenticated metadata binds the storage
+path, old/new public keys, version, count, nonce and ephemeral public key.
+The OLD key signs that metadata and ciphertext. Reimport verifies the signature,
+requires the currently loaded key to match NEW and `AUTH_PREVIOUS_PUBLIC_KEY`
+to match OLD, and authenticates/decrypts the entire batch before writing fields.
+Wrong keys, modified files and protected custody fields fail closed. Neither
+the sealed blob nor any plaintext is returned to the browser or logged.
+
+An exclusive, empty `<resolved VAULT_PATH>.key-rotation.sealed.lock` serializes
+workers. A crash while holding it deliberately fails closed. For recovery,
+stop **all** kernel workers, inspect only file status, remove **only the empty
+lock file**, then restart and retry. Never dump env files, regenerate over a
+pending handoff, or remove ciphertext to silence an error. A partial/invalid
+handoff requires deliberate old-state recovery before step 6; after step 6
+starts, preserve recovery material and roll forward only. The containing directory
+and 0600 files must remain operator-controlled; this does not protect against a
+compromised kernel or host.
+
+The sweep aborts on unreadable eligible fields rather than silently skipping
+them. Roles covered: D1 (v2 only), D2, D3 and eligible `internal-secret:*` fields.
+**Excluded custody is not migrated:** `internal-secret:app-self:*`, pending
+app-secret input, `vault-imported-key:*` and `vault-group-key:*` are not a reveal
+or migration path through this sweep. Preserve their independently authorized
+custody through approved non-plaintext tooling before retiring the old key.
+Pending app inputs can be submitted again through `/jin`. Imported credentials
+use the countersigned import rail; group keys follow the revocation/fresh
+custody procedure in §2.1. Do not replace independent ownership with node-only
+ownership or invent replacement secrets.
+
+**Rollback boundary.** Before step 6 begins, restore the old env backup and
+restart per the restart rule. The old custody remains authoritative; preserve
+any pending ciphertext for deliberate recovery, not blind regeneration.
 
 ### Step 4. Restart with the fail-closed boot check (#1520)
 
-Restart per the restart rule above, then record the instant the new process began
-serving as `RESTART_AT` (UTC, ISO-8601): the process start time from
-`pm2 jlist` (`pm2_env.pm_uptime`, epoch ms) is the right source. Everything the old
+Restart per the restart rule above, log in again, and click **Verify baseline**
+on `/admin/keys`. Record **Signing process started at (UTC)** as `RESTART_AT`
+(ISO-8601, millisecond precision). The admin response exposes only the public
+`processStartedAt` from `performance.timeOrigin`, not the process environment.
+At this point history/identity checks may fail because steps 8–9 are not done;
+the public process timestamp is still available. Use the first new-key restart
+instant, not the second restart in step 7.
+Never request a full process/environment dump, inspect `/proc/<PID>/environ`,
+or print env files. Everything the old
 process signed happened before it; everything the new process signs happens after it.
 
 What the boot check does and does not give you: in production the kernel throws
@@ -306,8 +341,8 @@ per the restart rule).
 ### Step 5. Sign the handover offline, at the restart instant
 
 ```bash
-OLD_AUTH_PRIVATE_KEY="$OLD" NEW_AUTH_PRIVATE_KEY="$NEW" \
-  node scripts/key-rotation.mjs sign --effective-at "$RESTART_AT" > key-rotated.json
+node -- scripts/key-rotation.mjs sign --env-file apps/kernel/.env.local \
+  --effective-at "$RESTART_AT" > key-rotated.json
 ```
 
 `--effective-at` is **required** (there is no "now" default): it must be the step 4
@@ -317,20 +352,27 @@ those would later verify as invalid. Signing later is fine as long as `--effecti
 is `RESTART_AT`.
 
 The script runs the same preflight, signs the rotation statement with **both** keys, and
-prints the public payload (nothing secret); the kernel never receives a private key. The
-kernel rejects an `effectiveAt` in the future.
+prints only the public payload to stdout (status goes to stderr). It reads NEW
+from the env file and OLD from `<env-file>.key-rotation.bak` through the same
+hardened reader as generate, ignoring legacy shell keys in this mode. The
+kernel never receives a private key and rejects an `effectiveAt` in the future.
 
 ### Step 6. Phase 2 sweep: reimport (NEW key loaded)
 
-```bash
-curl -sS -X POST "$KERNEL_BASE_URL/api/vault/rotation-sweep" \
-  -H "Cookie: $KERNEL_ADMIN_COOKIE" -H 'Content-Type: application/json' \
-  -d "$(printf '%s' "$EXPORT" | jq -c '{phase:"reimport", fields: .fields}')"
-unset EXPORT
-```
+Reopen `/admin/keys` and log in normally after restart. The page recovers the
+pending operation with `GET /api/vault/rotation-sweep`, returning
+`{pending:boolean,exported?:number,newPublicKey?:string}` under the same admin
+authorization. Compare the public recipient/count to step 3. Reimport sends
+only `POST /api/vault/rotation-sweep` with `{phase:'reimport'}`: the new kernel
+opens the server-held handoff and responds only `{resealed:number}`.
 
-- [ ] `resealed` equals the step 2 count. The route fails loudly on any field and never
-      skips, and is safe to re-run in full after a crash.
+- [ ] `resealed` equals the step 3 count and refreshed status is `pending:false`.
+      Every field must read back under the new key before success removes the
+      handoff. A partial failure retains the complete ciphertext for retry;
+      already-readable equal-value fields are not re-sealed again. Under Tier 1,
+      a pending owner-agent grant causes failure with the handoff retained:
+      wait for the authorized owner to fulfill it, then retry. No plaintext fields travel through the
+      browser, shell, uploaded payload or transcript.
 
 **Roll-forward only from here.** Phase 2 has superseded the old grants.
 
@@ -345,7 +387,8 @@ reimported field:
       **no** ERROR containing `nothing readable left`. That ERROR means a fresh secret
       was generated over unreadable material: stop, the named grantees hold a stale key.
 - [ ] No further `vault.secret.generated` attestation is minted by this restart.
-- [ ] Spot-read one secret per consumer, and confirm an internal call that depends on
+- [ ] Exercise a custody-backed operation for each consumer without revealing
+      its secret, and confirm an internal call that depends on
       `ATTESTATION_INTERNAL_API_KEY` works (a userspace service can emit an attestation).
 
 Now provisioning is safe. Run it (idempotent), or run the deploy
@@ -381,10 +424,9 @@ exactly one boot. Confirm a corpus read succeeds.
 
 ### Step 9. Record the handover: `key.rotated` (machine-checked)
 
-```bash
-KERNEL_ADMIN_COOKIE="$KERNEL_ADMIN_COOKIE" KERNEL_BASE_URL="$KERNEL_BASE_URL" \
-  node scripts/key-rotation.mjs submit --payload key-rotated.json
-```
+In `/admin/keys`, upload the public `key-rotated.json` created in step 5 and
+submit the handover after reimport and the identity-row update. Authentication
+uses the normal same-origin browser session, not a copied cookie.
 
 `POST /api/admin/keys/rotation` re-verifies both signatures, requires `newKid` to be the
 key the node is signing with right now (so a wrong-key boot fails here), requires the node
@@ -394,13 +436,11 @@ files the node-issued attestation. `key.rotated` can be filed **only** here: bot
 
 ### Step 10. Verify the whole chain (machine-checked)
 
-```bash
-KERNEL_ADMIN_COOKIE="$KERNEL_ADMIN_COOKIE" KERNEL_BASE_URL="$KERNEL_BASE_URL" \
-  node scripts/key-rotation.mjs verify --anchor <OLD_PUBLIC_KEY_HEX>
-```
+In `/admin/keys`, enter the pinned **public** anchor from step 1 and verify.
+The browser requests `GET /api/admin/keys/rotation?anchor=<PUBLIC_KEY_HEX>`.
 
-`GET /api/admin/keys/rotation` (exit 1 on failure) verifies every `key.rotated` this node
-issued (both signatures each, one linear chain), that the chain starts at the anchor and
+`GET /api/admin/keys/rotation` reports whether every `key.rotated` this node
+issued verifies (both signatures each, one linear chain), that the chain starts at the anchor and
 ends at the loaded key, that the node DID source is `relay_config`, and that
 `identities.public_key` for the node DID equals the loaded key.
 
@@ -431,8 +471,9 @@ or echoing private material. Keep the old **public** key: it is the anchor for
 
 | Gate | Check | Failure means |
 |---|---|---|
-| Step 1 | `key-rotation.mjs preflight`; baseline `verify` | unusable pair; node DID from the `RELAY_DID` fallback; identity row never matched the key |
-| Step 2 | export count; route aborts on any unseal failure | vault is not readable with the old key |
+| Step 1 | browser baseline before generate | node DID from the `RELAY_DID` fallback; identity row never matched the key |
+| Step 2 | `generate --env-file`; optional `preflight --env-file` | unusable pair, unsafe file or existing rollback backup |
+| Step 3 | browser export count and new public recipient; fail on any unseal error | vault is not readable with the old key; wrong recipient |
 | Step 4 | `senderDid` changed + `devFallback:false`, well-known `current`, login | wrong or missing key; roll back |
 | Step 5 | `sign` requires `--effective-at` and runs preflight | stale or missing instant; unusable pair |
 | Step 6 | `resealed == exported` | vault not fully carried over |
@@ -458,8 +499,8 @@ or echoing private material. Keep the old **public** key: it is the anchor for
    whatever the cadence; it is a reason to finish §7, not a reason to run the log key
    on a different schedule from the identity key.
 3. **The expensive role is neither of them.** Identity/session rotation costs a
-   global logout; witness/log costs one attestation; the vault sweep (D1–D3, plaintext
-   export and reimport) is what makes rotation heavy. A split motivated by cadence
+   global logout; witness/log costs one attestation; the vault sweep (D1–D3, sealed
+   handoff and reimport) is what makes rotation heavy. A split motivated by cadence
    would split the *vault derivation root* from the signing key first.
 4. **A split is not free.** The vault signing DID is a function of the public key
    (S5/D2), the node DID row carries one key, and every verifier resolves one key.
@@ -583,6 +624,7 @@ file: ``- `path` — role``.
 - `scripts/demo/vault-client.ts` — D1 (demo only)
 - `scripts/demo/tripian-shadow-walkthrough.ts` — D1 (demo only)
 - `apps/kernel/src/lib/vault/sealing.ts` — D1/D2/D3
+- `apps/kernel/src/lib/vault/rotation-handoff.ts` — D2/D3 (AUTH_PRIVATE_KEY consumer; server-side handoff encryption and recipient-bound reimport)
 - `apps/kernel/src/lib/vault/index.ts` — D1/D2/D3
 - `apps/kernel/src/lib/vault/grant.ts` — D2
 - `apps/kernel/src/lib/vault/field-status.ts` — D2
@@ -610,7 +652,6 @@ file: ``- `path` — role``.
 - `apps/kernel/app/api/vault/grants/renewable/route.ts` — D2
 - `apps/kernel/app/api/vault/list/route.ts` — D2
 - `apps/kernel/app/api/vault/rotate/route.ts` — D2
-- `apps/kernel/app/api/vault/rotation-sweep/route.ts` — D2
 - `apps/kernel/app/api/vault/set/route.ts` — D2
 - `apps/kernel/app/api/vault/upgrade-custody/route.ts` — D2
 - `apps/kernel/src/lib/kernel/connector-device-ticket.ts` — D4

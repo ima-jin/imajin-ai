@@ -29,10 +29,11 @@ const USAGE = [
   'Usage: node scripts/key-rotation.mjs <generate|destroy|preflight|sign|submit|verify> [options]',
   '  generate   --env-file <file> [--grace-hours N]  mint and install; exclusive <file>.key-rotation.bak rollback backup',
   '  destroy    --env-file <file>            remove the rotation backup after verification',
-  '  preflight  [--grace-hours N]            needs OLD_AUTH_PRIVATE_KEY, NEW_AUTH_PRIVATE_KEY',
-  '  sign       --effective-at ISO-8601      the instant the new key began signing; needs OLD_AUTH_PRIVATE_KEY, NEW_AUTH_PRIVATE_KEY; payload JSON on stdout',
-  '  submit     --payload <file>             needs KERNEL_ADMIN_COOKIE; KERNEL_BASE_URL (default http://localhost:3000)',
-  '  verify     [--anchor PUBLIC_KEY_HEX]    needs KERNEL_ADMIN_COOKIE; exits 1 if the history check fails',
+  '  preflight  [--env-file <file>] [--grace-hours N]  check installed new key and adjacent rollback backup',
+  '  sign       [--env-file <file>] --effective-at ISO-8601  restart instant; public payload JSON on stdout',
+  '  Without --env-file, preflight/sign retain legacy OLD_AUTH_PRIVATE_KEY, NEW_AUTH_PRIVATE_KEY mode (not the operator runbook path).',
+  '  submit     --payload <file>             legacy cookie mode; use /admin/keys in the browser instead',
+  '  verify     [--anchor PUBLIC_KEY_HEX]    legacy cookie mode; use /admin/keys in the browser instead',
 ].join('\n');
 
 const DEFAULT_BASE_URL = 'http://localhost:3000';
@@ -40,8 +41,8 @@ const ROTATION_PATH = '/api/admin/keys/rotation';
 const FLAGS_BY_COMMAND = {
   generate: ['env-file', 'grace-hours'],
   destroy: ['env-file'],
-  preflight: ['grace-hours'],
-  sign: ['effective-at'],
+  preflight: ['env-file', 'grace-hours'],
+  sign: ['env-file', 'effective-at'],
   submit: ['payload'],
   verify: ['anchor'],
 };
@@ -239,14 +240,15 @@ function parseFlags(command, args) {
     const equals = arg.indexOf('=');
     const name = (equals === -1 ? arg : arg.slice(0, equals)).replace(/^--/, '');
     if (!arg.startsWith('--') || !allowed.includes(name)) {
-      return { error: ['generate', 'destroy'].includes(command) ? 'Unexpected argument' : `Unexpected argument '${sanitizeForLog(arg)}'` };
+      return { error: 'Unexpected argument' };
     }
     let value = arg.slice(equals + 1);
     if (equals === -1) {
       value = args[i];
       i += 1;
     }
-    if (value === undefined || value === '') return { error: `--${name} needs a value` };
+    if (value === undefined || value === '' || value.startsWith('--')) return { error: `--${name} needs a value` };
+    if (Object.hasOwn(flags, name)) return { error: 'Duplicate argument' };
     flags[name] = value;
   }
   return { flags };
@@ -267,11 +269,27 @@ function rotationUrl(env, query = '') {
   return `${base}${ROTATION_PATH}${query}`;
 }
 
-function preflight({ keyRotation, env, out }, flags) {
+/** File mode never falls back to shell keys, even if reading either file fails. */
+async function rotationKeyPair({ env, fileSystem = fs }, flags) {
+  if (flags['env-file'] === undefined) {
+    return { oldPrivateKey: env.OLD_AUTH_PRIVATE_KEY, newPrivateKey: env.NEW_AUTH_PRIVATE_KEY };
+  }
+  const filename = path.resolve(flags['env-file']);
+  const current = await readRegularEnv(fileSystem, filename);
+  const backup = await readRegularEnv(fileSystem, `${filename}${BACKUP_SUFFIX}`);
+  const keyFrom = (text) => {
+    const { assignments } = envAssignments(text);
+    if (!assignments.has(PRIVATE_KEY_NAME)) throw new Error('Missing key assignment');
+    return parseEnv(text)[PRIVATE_KEY_NAME];
+  };
+  return { oldPrivateKey: keyFrom(backup.text), newPrivateKey: keyFrom(current.text) };
+}
+
+async function preflight(deps, flags) {
+  const { keyRotation, out } = deps;
   const graceHours = flags['grace-hours'] === undefined ? keyRotation.DEFAULT_GRACE_HOURS : Number(flags['grace-hours']);
   const result = keyRotation.evaluateKeyRotationPreflight({
-    oldPrivateKey: env.OLD_AUTH_PRIVATE_KEY,
-    newPrivateKey: env.NEW_AUTH_PRIVATE_KEY,
+    ...await rotationKeyPair(deps, flags),
     graceHours,
   });
 
@@ -291,7 +309,8 @@ function preflight({ keyRotation, env, out }, flags) {
   return 0;
 }
 
-function sign({ keyRotation, env, out }, flags) {
+async function sign(deps, flags) {
+  const { keyRotation, out } = deps;
   // `effectiveAt` is the instant the NEW key began signing, i.e. when the restarted kernel came
   // up. There is deliberately no default: "now" at signing time is wrong whenever signing and
   // the swap are not the same moment, and anything the old key signed after `effectiveAt` would
@@ -306,10 +325,8 @@ function sign({ keyRotation, env, out }, flags) {
     return 2;
   }
 
-  const check = keyRotation.evaluateKeyRotationPreflight({
-    oldPrivateKey: env.OLD_AUTH_PRIVATE_KEY,
-    newPrivateKey: env.NEW_AUTH_PRIVATE_KEY,
-  });
+  const pair = await rotationKeyPair(deps, flags);
+  const check = keyRotation.evaluateKeyRotationPreflight(pair);
   if (!check.ok) {
     for (const error of check.errors) out.error(`ERROR: ${error}`);
     out.error('FAIL: refusing to sign — fix the key pair first (run `preflight`)');
@@ -317,15 +334,14 @@ function sign({ keyRotation, env, out }, flags) {
   }
 
   const payload = keyRotation.createKeyRotatedPayload({
-    oldPrivateKey: env.OLD_AUTH_PRIVATE_KEY,
-    newPrivateKey: env.NEW_AUTH_PRIVATE_KEY,
+    ...pair,
     effectiveAt,
   });
   // The payload (public keys + two signatures) goes to stdout so it can be redirected to a file;
   // everything human-readable goes to stderr.
   out.log(JSON.stringify(payload, null, 2));
   out.error(`signed ${payload.oldKid} -> ${payload.newKid} effective ${payload.effectiveAt}`);
-  out.error('Next: `submit` this payload (after the Phase 2 sweep and the identity-row update), then destroy the old private key.');
+  out.error('Next: upload this public payload in /admin/keys after reimport and the identity-row update; verify before destroying the backup.');
   return 0;
 }
 
@@ -337,8 +353,8 @@ async function submit({ env, fetchImpl, readFile, out }, flags) {
   let body;
   try {
     body = JSON.stringify(JSON.parse(await readFile(flags.payload, 'utf8')));
-  } catch (err) {
-    out.error(`FAIL: could not read a JSON payload from ${sanitizeForLog(flags.payload)}: ${sanitizeForLog(err.message)}`);
+  } catch {
+    out.error('FAIL: could not read a JSON payload; check file access and format');
     return 1;
   }
 
@@ -404,7 +420,7 @@ const COMMANDS = { generate, destroy, preflight, sign, submit, verify };
 export async function runKeyRotationCli(argv, deps) {
   const [command, ...args] = argv;
   if (!Object.hasOwn(COMMANDS, command ?? '')) {
-    deps.out.error(`Unknown or missing subcommand '${sanitizeForLog(command ?? '')}'\n${USAGE}`);
+    deps.out.error(`Unknown or missing subcommand\n${USAGE}`);
     return 2;
   }
 
@@ -413,5 +429,11 @@ export async function runKeyRotationCli(argv, deps) {
     deps.out.error(`${parsed.error}\n${USAGE}`);
     return 2;
   }
-  return COMMANDS[command](deps, parsed.flags);
+  try {
+    return await COMMANDS[command](deps, parsed.flags);
+  } catch {
+    // Crypto, filesystem and transport exceptions can contain private inputs.
+    deps.out.error('FAIL: rotation command failed; check file access, key format and service availability without printing secret material');
+    return 1;
+  }
 }

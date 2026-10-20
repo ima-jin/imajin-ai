@@ -65,7 +65,6 @@ const EXPECTED_FIELD_ROUTES = [
   'app/api/vault/history/[field]/route.ts',
   'app/api/vault/migrate-custody/route.ts',
   'app/api/vault/rotate/route.ts',
-  'app/api/vault/rotation-sweep/route.ts',
   'app/api/vault/set/route.ts',
   'app/api/vault/upgrade-custody/route.ts',
 ];

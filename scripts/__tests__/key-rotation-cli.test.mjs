@@ -396,12 +396,12 @@ describe('destroy', () => {
 
 describe('usage', () => {
   it.each([
-    [[], /Unknown or missing subcommand ''/],
-    [['bogus'], /Unknown or missing subcommand 'bogus'/],
-    [['preflight', '--bogus', 'x'], /Unexpected argument '--bogus'/],
-    [['preflight', 'stray'], /Unexpected argument 'stray'/],
+    [[], /Unknown or missing subcommand/],
+    [['bogus'], /Unknown or missing subcommand/],
+    [['preflight', '--bogus', 'x'], /Unexpected argument/],
+    [['preflight', 'stray'], /Unexpected argument/],
     [['preflight', '--grace-hours'], /--grace-hours needs a value/],
-    [['verify', '--effective-at', 'x'], /Unexpected argument '--effective-at'/],
+    [['verify', '--effective-at', 'x'], /Unexpected argument/],
     [['sign'], /--effective-at is required/],
   ])('rejects %j with exit 2', async (argv, message) => {
     const { deps, stderr } = makeDeps();
@@ -526,6 +526,142 @@ describe('sign', () => {
   });
 });
 
+describe('file-backed signing and preflight (#2987)', () => {
+  const instant = '2026-10-06T12:00:00.000Z';
+  const args = (f, command = 'sign') => [
+    command, '--env-file', f.filename,
+    ...(command === 'sign' ? ['--effective-at', instant] : []),
+  ];
+
+  async function installedFixture() {
+    const f = await rotationFixture();
+    await fs.writeFile(f.backup, f.original, { mode: 0o600 });
+    await fs.writeFile(f.filename, `AUTH_PRIVATE_KEY=${f.newKey.privateKey}\n`);
+    // Contradictory legacy keys must never override file mode.
+    f.deps.env = { OLD_AUTH_PRIVATE_KEY: f.newKey.privateKey, NEW_AUTH_PRIVATE_KEY: f.oldKey.privateKey };
+    return f;
+  }
+
+  it('reads NEW from the file and OLD from its backup, emitting only a public dual-signed JSON payload', async () => {
+    const f = await installedFixture();
+    const before = await fs.readFile(f.filename, 'utf8');
+    expect(await runKeyRotationCli(args(f), f.deps)).toBe(0);
+    const payload = JSON.parse(f.stdout());
+    expect(keyRotation.verifyKeyRotatedPayload(payload).ok).toBe(true);
+    expect(payload.oldPublicKey).toBe(f.oldKey.publicKey);
+    expect(payload.newPublicKey).toBe(f.newKey.publicKey);
+    expect(payload.effectiveAt).toBe(instant);
+    expect(Object.keys(payload).sort()).toEqual([
+      'effectiveAt', 'newKeySignature', 'newKid', 'newPublicKey',
+      'oldKeySignature', 'oldKid', 'oldPublicKey',
+    ]);
+    expect((await fs.readFile(f.filename, 'utf8')) === before).toBe(true);
+    expect((await fs.readFile(f.backup, 'utf8')) === f.original).toBe(true);
+    expect(f.deps.fetchImpl).not.toHaveBeenCalled();
+    expectSafeCapture(f);
+  });
+
+  it('supports offline file-mode preflight without reading legacy shell keys', async () => {
+    const f = await installedFixture();
+    f.deps.env = {};
+    expect(await runKeyRotationCli(args(f, 'preflight'), f.deps)).toBe(0);
+    expect(f.stdout()).toContain(f.oldKey.publicKey);
+    expect(f.stdout()).toContain(f.newKey.publicKey);
+    expectSafeCapture(f);
+  });
+
+  it.each(['sign', 'preflight'])('accepts quoted PKCS#8 file keys for %s', async (command) => {
+    const f = await installedFixture();
+    const prefix = '302e020100300506032b657004220420';
+    await fs.writeFile(f.filename, `export AUTH_PRIVATE_KEY='${prefix}${f.newKey.privateKey}'\n`);
+    await fs.writeFile(f.backup, `AUTH_PRIVATE_KEY="${prefix}${f.oldKey.privateKey}"\n`);
+    expect(await runKeyRotationCli(args(f, command), f.deps)).toBe(0);
+    expectSafeCapture(f);
+  });
+
+  it('requires an explicit restart instant before file access', async () => {
+    const f = await installedFixture();
+    f.deps.fileSystem = { open: vi.fn() };
+    expect(await runKeyRotationCli(['sign', '--env-file', f.filename], f.deps)).toBe(2);
+    expect(await runKeyRotationCli([...args(f).slice(0, -1), 'not-an-instant'], f.deps)).toBe(2);
+    expect(f.deps.fileSystem.open).not.toHaveBeenCalled();
+    expectSafeCapture(f);
+  });
+
+  for (const command of ['sign', 'preflight']) {
+    for (const target of ['current', 'backup']) {
+      it.each(['missing', 'directory', 'symlink', 'hardlink', 'unreadable', 'invalid UTF-8', 'missing key', 'duplicate key', 'malformed key', 'unterminated quote'])(
+        `${command} refuses unsafe ${target} file: %s without falling back or exposing inputs`,
+        async (kind) => {
+          const f = await installedFixture();
+          const filename = target === 'current' ? f.filename : f.backup;
+          if (kind === 'missing') await fs.unlink(filename);
+          if (kind === 'directory') { await fs.unlink(filename); await fs.mkdir(filename); }
+          if (kind === 'symlink') { await fs.rename(filename, join(f.directory, 'real')); await fs.symlink(join(f.directory, 'real'), filename); }
+          if (kind === 'hardlink') await fs.link(filename, join(f.directory, 'alias'));
+          if (kind === 'unreadable') await fs.chmod(filename, 0o000);
+          if (kind === 'invalid UTF-8') await fs.writeFile(filename, Buffer.from([0xff]));
+          if (kind === 'missing key') await fs.writeFile(filename, 'OTHER=keep\n');
+          if (kind === 'duplicate key') await fs.appendFile(filename, `AUTH_PRIVATE_KEY=${f.newKey.privateKey}\n`);
+          if (kind === 'malformed key') await fs.writeFile(filename, `AUTH_PRIVATE_KEY=invalid-${f.newKey.privateKey}\n`);
+          if (kind === 'unterminated quote') await fs.writeFile(filename, `OTHER="never closes\nAUTH_PRIVATE_KEY=${f.newKey.privateKey}\n`);
+          expect(await runKeyRotationCli(args(f, command), f.deps)).toBe(1);
+          if (command === 'sign') expect(f.stdout()).toBe('');
+          expectSafeCapture(f);
+        },
+      );
+    }
+  }
+
+  it.each(['read', 'stat', 'close', 'preflight', 'sign'])('sanitizes %s exceptions that contain random private material', async (failure) => {
+    const f = await installedFixture();
+    const fail = () => { throw new Error(f.oldKey.privateKey + f.newKey.privateKey); };
+    if (failure === 'read') f.deps.fileSystem = { ...fs, open: fail };
+    if (failure === 'stat' || failure === 'close') {
+      f.deps.fileSystem = {
+        ...fs,
+        open: async (...params) => {
+          const handle = await fs.open(...params);
+          return overrideHandle(handle, {
+            [failure]: failure === 'close' ? async () => { await handle.close(); fail(); } : fail,
+          });
+        },
+      };
+    }
+    if (failure === 'preflight') f.deps.keyRotation = { ...keyRotation, evaluateKeyRotationPreflight: fail };
+    if (failure === 'sign') f.deps.keyRotation = { ...keyRotation, createKeyRotatedPayload: fail };
+    expect(await runKeyRotationCli(args(f), f.deps)).toBe(1);
+    expect(f.stdout()).toBe('');
+    expectSafeCapture(f);
+  });
+
+  it('never reflects unknown subcommands, flags, values or secret-bearing paths', async () => {
+    const f = await installedFixture();
+    for (const argv of [
+      [f.oldKey.privateKey],
+      ['sign', '--bogus=' + f.oldKey.privateKey],
+      ['preflight', f.newKey.privateKey],
+      ['verify', '--bogus', f.oldKey.privateKey],
+      ['submit', '--payload', join(f.directory, f.oldKey.privateKey)],
+      ['sign', '--env-file', f.oldKey.privateKey, '--effective-at', instant],
+    ]) {
+      expect(await runKeyRotationCli(argv, f.deps)).not.toBe(0);
+    }
+    expectSafeCapture(f);
+  });
+
+  it('rejects duplicate flags and missing flag values without reading a file', async () => {
+    const f = await installedFixture();
+    f.deps.fileSystem = { open: vi.fn() };
+    for (const argv of [
+      ['sign', '--env-file', '--effective-at', instant],
+      ['sign', '--env-file', f.filename, '--env-file', f.backup],
+    ]) expect(await runKeyRotationCli(argv, f.deps)).toBe(2);
+    expect(f.deps.fileSystem.open).not.toHaveBeenCalled();
+    expectSafeCapture(f);
+  });
+});
+
 describe('submit', () => {
   const payload = { oldKid: 'a', newKid: 'b' };
 
@@ -611,7 +747,7 @@ describe('submit', () => {
       readFile: vi.fn().mockRejectedValue(new Error('ENOENT')),
     });
     expect(await runKeyRotationCli(['submit', '--payload', 'missing.json'], unreadable.deps)).toBe(1);
-    expect(unreadable.stderr()).toMatch(/could not read a JSON payload from missing\.json: ENOENT/);
+    expect(unreadable.stderr()).toMatch(/could not read a JSON payload; check file access and format/);
 
     const garbage = makeDeps({ env: { KERNEL_ADMIN_COOKIE: 'c' }, readFile: vi.fn().mockResolvedValue('{nope') });
     expect(await runKeyRotationCli(['submit', '--payload', 'bad.json'], garbage.deps)).toBe(1);
@@ -713,6 +849,82 @@ describe('verify', () => {
   });
 });
 
+describe('rotation operator runbook synchronization (#2987)', () => {
+  const docFile = resolve(dirname(fileURLToPath(import.meta.url)), '../../docs/security/node-key-roles-and-rotation.md');
+
+  it('executes documented offline commands with generated temporary material, never a real env', async () => {
+    const doc = await fs.readFile(docFile, 'utf8');
+    const runbook = doc.split('## 4. Rotation runbook')[1].split('## 5.')[0];
+    const blocks = [...runbook.matchAll(/```bash\n([\s\S]*?)```/g)].map((match) => match[1]);
+    const commands = blocks.filter((block) => block.includes('scripts/key-rotation.mjs'));
+    expect(commands.length).toBe(4);
+    const f = await rotationFixture();
+    for (const text of commands) {
+      const command = text.replace(/\\\n\s*/g, ' ').trim();
+      expect(command.startsWith('node -- scripts/key-rotation.mjs ')).toBe(true);
+      const argv = command
+        .replace('node -- scripts/key-rotation.mjs ', '')
+        .replace('apps/kernel/.env.local', f.filename)
+        .replace('"$RESTART_AT"', '2026-10-06T12:00:00.000Z')
+        .replace(' > key-rotated.json', '')
+        .split(/\s+/);
+      const capture = makeDeps();
+      expect(await runKeyRotationCli(argv, capture.deps)).toBe(0);
+      const current = parseEnv(await fs.readFile(f.filename, 'utf8')).AUTH_PRIVATE_KEY;
+      expectNoPrivateMaterial(capture.stdout() + capture.stderr(), f.oldKey.privateKey, current);
+      if (argv[0] === 'sign') {
+        expect(keyRotation.verifyKeyRotatedPayload(JSON.parse(capture.stdout())).ok).toBe(true);
+      }
+    }
+    expect(existsSync(f.backup)).toBe(false);
+  });
+
+  it('orders browser baseline, generation, sealed export, restart, file sign, reimport and upload/anchored verify', async () => {
+    const doc = await fs.readFile(docFile, 'utf8');
+    const headings = [
+      '### Step 1. Browser baseline before generation',
+      '### Step 2. Generate and install the new env key',
+      '### Step 3. Phase 1 sweep: seal export to the NEW public key',
+      '### Step 4. Restart',
+      '### Step 5. Sign the handover offline',
+      '### Step 6. Phase 2 sweep: reimport',
+      '### Step 9. Record the handover',
+      '### Step 10. Verify the whole chain',
+    ];
+    let previous = -1;
+    for (const heading of headings) {
+      const index = doc.indexOf(heading);
+      expect(index).toBeGreaterThan(previous);
+      previous = index;
+    }
+    for (const contract of [
+      "{phase:'export',newPublicKey:<64 hex Ed25519 pub>}",
+      '{exported:number,newPublicKey:string}',
+      "{phase:'reimport'}",
+      '{resealed:number}',
+      '{pending:boolean,exported?:number,newPublicKey?:string}',
+      'GET /api/vault/rotation-sweep',
+      'normal same-origin browser',
+      'upload the public `key-rotated.json`',
+      'pinned **public** anchor',
+      'apps/kernel/src/lib/vault/rotation-handoff.ts',
+    ]) expect(doc).toContain(contract);
+  });
+
+  it('contains no shell key/cookie/plaintext transport or full process dumps', async () => {
+    const doc = await fs.readFile(docFile, 'utf8');
+    expect(doc).not.toMatch(/OLD_AUTH_PRIVATE_KEY=|NEW_AUTH_PRIVATE_KEY=|KERNEL_ADMIN_COOKIE|\$EXPORT|pm2 jlist|curl /);
+    const runbook = doc.split('## 4. Rotation runbook')[1].split('## 5.')[0];
+    expect(runbook).toContain('processStartedAt');
+    expect(runbook).toContain('performance.timeOrigin');
+    expect(runbook).toContain('POST /api/vault/migrate-custody');
+    expect(runbook).toContain('{dryRun:true}');
+    expect(runbook).toContain('key-rotation.sealed.lock');
+    expect(runbook).toContain('pending:false');
+    expect(runbook).toContain('legacy compatibility, not this operator runbook');
+  });
+});
+
 // The real entrypoint needs @imajin/auth built (deploy builds packages first).
 // Locally this runs once `pnpm --filter "@imajin/auth..." build` has.
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -734,6 +946,18 @@ describe.skipIf(!built)('key-rotation.mjs entrypoint', () => {
     const generatedPublic = authCrypto.getPublicKey(generated);
     expect(result.stdout).toContain(generatedPublic);
     expectNoPrivateMaterial(result.stdout + result.stderr, f.oldKey.privateKey, generated);
+    const signed = spawnSync(process.execPath, [
+      '--', entrypoint, 'sign', '--env-file', f.filename, '--effective-at', '2026-10-06T12:00:00.000Z',
+    ], { cwd: repoRoot, encoding: 'utf8', env: {} });
+    expect(signed.status).toBe(0);
+    expectNoPrivateMaterial(signed.stdout + signed.stderr, f.oldKey.privateKey, generated);
+    const payload = JSON.parse(signed.stdout);
+    expect(keyRotation.verifyKeyRotatedPayload(payload).ok).toBe(true);
+    expect(payload.oldPublicKey).toBe(f.oldKey.publicKey);
+    expect(payload.newPublicKey).toBe(generatedPublic);
+    const preflight = run('preflight');
+    expect(preflight.status).toBe(0);
+    expectNoPrivateMaterial(preflight.stdout + preflight.stderr, f.oldKey.privateKey, generated);
     for (const filename of [f.filename, join(f.directory, 'missing')]) {
       const failure = run('generate', filename);
       // Some Node versions consume --env-file before the script, returning 9
