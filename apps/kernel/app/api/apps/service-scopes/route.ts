@@ -21,9 +21,11 @@
  *
  * GET /api/apps/service-scopes?appDid= — the app's requested and approved sets +
  * the approval id/timestamp of the last change (same owner/operator gate).
+ * Without appDid, list registry apps for the node operator, 50 at a time.
+ * Continue with the opaque nextCursor in ?cursor=; no provisioning is required.
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { eq } from 'drizzle-orm';
+import { asc, eq, gt } from 'drizzle-orm';
 import { requireAuth, resolveActingDid, validateScopes, type Identity } from '@imajin/auth';
 import { createLogger } from '@imajin/logger';
 import { db, registryApps } from '@/src/db';
@@ -44,6 +46,59 @@ import {
 const log = createLogger('kernel:apps-service-scopes-route');
 
 export const dynamic = 'force-dynamic';
+const DISCOVERY_PAGE_SIZE = 50;
+
+function decodeCursor(cursor: string | null): string | null {
+  if (cursor === null) return null;
+  if (!/^[A-Za-z0-9_-]{1,2048}$/.test(cursor)) throw new Error('Invalid cursor');
+  const decoded: unknown = JSON.parse(Buffer.from(cursor, 'base64url').toString('utf8'));
+  if (typeof decoded !== 'string' || !decoded.startsWith('did:imajin:') || decoded.length > 512) {
+    throw new Error('Invalid cursor');
+  }
+  if (Buffer.from(JSON.stringify(decoded)).toString('base64url') !== cursor) throw new Error('Invalid cursor');
+  return decoded;
+}
+
+async function discoverApps(identity: Identity, params: URLSearchParams, headers: Record<string, string>) {
+  const operatorDid = await getOperatorDid();
+  if (!operatorDid || !isOperatorIdentity(identity, operatorDid)) {
+    return NextResponse.json({ error: 'Only the node operator may list registered apps' }, { status: 403, headers });
+  }
+  let cursor: string | null;
+  try {
+    cursor = decodeCursor(params.get('cursor'));
+  } catch {
+    return NextResponse.json({ error: 'Invalid cursor' }, { status: 400, headers });
+  }
+  try {
+    const rows = await db.select({
+      appDid: registryApps.appDid,
+      name: registryApps.name,
+      status: registryApps.status,
+      requested: registryApps.requestedScopes,
+      approved: registryApps.approvedServiceScopes,
+      approvalId: registryApps.serviceScopesApprovalId,
+      approvedAt: registryApps.serviceScopesApprovedAt,
+    }).from(registryApps)
+      .where(cursor ? gt(registryApps.appDid, cursor) : undefined)
+      .orderBy(asc(registryApps.appDid))
+      .limit(DISCOVERY_PAGE_SIZE + 1);
+    const page = rows.slice(0, DISCOVERY_PAGE_SIZE);
+    return NextResponse.json({
+      apps: page.map(({ requested, approved, ...app }) => ({
+        ...app,
+        requestedScopes: normalizeScopes(parseScopeList(requested) ?? []),
+        approvedServiceScopes: normalizeScopes(parseScopeList(approved) ?? []),
+      })),
+      nextCursor: rows.length > DISCOVERY_PAGE_SIZE
+        ? Buffer.from(JSON.stringify(page[page.length - 1].appDid)).toString('base64url')
+        : null,
+    }, { headers });
+  } catch (err) {
+    log.error({ err: String(err) }, 'Failed to list registered app service scopes');
+    return NextResponse.json({ error: 'Registered app service scopes are unavailable' }, { status: 503, headers });
+  }
+}
 
 interface ProposalBody {
   appDid?: unknown;
@@ -187,16 +242,17 @@ export async function POST(request: NextRequest) {
 }
 
 export async function GET(request: NextRequest) {
-  const cors = corsHeaders(request);
+  const cors = { ...corsHeaders(request), 'Cache-Control': 'no-store' };
 
   const authResult = await requireAuth(request);
   if ('error' in authResult) {
     return NextResponse.json({ error: authResult.error }, { status: authResult.status, headers: cors });
   }
 
-  const appDid = new URL(request.url).searchParams.get('appDid');
+  const params = new URL(request.url).searchParams;
+  const appDid = params.get('appDid');
   if (!appDid) {
-    return NextResponse.json({ error: 'appDid query parameter is required' }, { status: 400, headers: cors });
+    return discoverApps(authResult.identity, params, cors);
   }
 
   const [app] = await db

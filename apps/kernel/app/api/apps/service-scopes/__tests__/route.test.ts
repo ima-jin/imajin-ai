@@ -15,12 +15,16 @@ const {
   recordApprovalRequestedMock,
   findPendingMock,
   selectWhereMock,
+  selectLimitMock,
+  selectOrderByMock,
 } = vi.hoisted(() => ({
   requireAuthMock: vi.fn(),
   getOperatorDidMock: vi.fn(),
   recordApprovalRequestedMock: vi.fn(),
   findPendingMock: vi.fn(),
   selectWhereMock: vi.fn(),
+  selectLimitMock: vi.fn(),
+  selectOrderByMock: vi.fn(),
 }));
 
 vi.mock('@imajin/logger', () => ({
@@ -32,7 +36,11 @@ vi.mock('@imajin/auth', async () => {
   return { ...actual, requireAuth: requireAuthMock };
 });
 
-vi.mock('drizzle-orm', () => ({ eq: (...args: unknown[]) => ({ eq: args }) }));
+vi.mock('drizzle-orm', () => ({
+  eq: (...args: unknown[]) => ({ eq: args }),
+  gt: (...args: unknown[]) => ({ gt: args }),
+  asc: (...args: unknown[]) => ({ asc: args }),
+}));
 
 vi.mock('@/src/db', () => ({
   db: { select: () => ({ from: () => ({ where: selectWhereMock }) }) },
@@ -72,6 +80,7 @@ vi.mock('@/src/lib/apps/service-scopes', () => {
 });
 
 import { POST, GET } from '../route';
+const get = (qs: string) => new Request(`https://kernel.test/api/apps/service-scopes${qs}`);
 
 function post(body: unknown): Request {
   return new Request('https://kernel.test/api/apps/service-scopes', {
@@ -92,6 +101,8 @@ beforeEach(() => {
   findPendingMock.mockResolvedValue(undefined);
   recordApprovalRequestedMock.mockResolvedValue(undefined);
   selectWhereMock.mockResolvedValue([app()]);
+  selectOrderByMock.mockReturnValue({ limit: selectLimitMock });
+  selectLimitMock.mockResolvedValue([]);
 });
 
 describe('POST /api/apps/service-scopes', () => {
@@ -198,10 +209,70 @@ describe('POST /api/apps/service-scopes', () => {
     expect(res.status).toBe(409);
     expect(recordApprovalRequestedMock).not.toHaveBeenCalled();
   });
+
+  function asOperator() {
+    requireAuthMock.mockResolvedValue({ identity: { id: OPERATOR, scope: 'actor', subtype: 'human' } });
+    selectWhereMock.mockReturnValue({ orderBy: selectOrderByMock });
+  }
+
+  it('discovers self-registered apps with normalized scopes and no secret fields', async () => {
+    asOperator();
+    selectLimitMock.mockResolvedValue([{
+      appDid: APP_DID, name: 'Tripian', status: 'active',
+      requested: ['identity:write', 'identity:read', 'identity:read'],
+      approved: null, approvalId: null, approvedAt: null,
+    }]);
+    const res = await GET(get('') as never);
+    expect(res.status).toBe(200);
+    expect(res.headers.get('Cache-Control')).toBe('no-store');
+    expect(await res.json()).toEqual({ apps: [{
+      appDid: APP_DID, name: 'Tripian', status: 'active',
+      requestedScopes: ['identity:read', 'identity:write'],
+      approvedServiceScopes: [], approvalId: null, approvedAt: null,
+    }], nextCursor: null });
+    expect(selectLimitMock).toHaveBeenCalledWith(51);
+  });
+
+  it('bounds discovery and resumes after the last returned DID', async () => {
+    asOperator();
+    selectLimitMock.mockResolvedValue(Array.from({ length: 51 }, (_, n) => ({
+      appDid: `did:imajin:app-${String(n).padStart(3, '0')}`,
+      name: `App ${n}`, status: 'active', requested: [], approved: [], approvalId: null, approvedAt: null,
+    })));
+    const first = await (await GET(get('') as never)).json();
+    expect(first.apps).toHaveLength(50);
+    expect(first.nextCursor).toEqual(expect.any(String));
+    selectLimitMock.mockResolvedValue([]);
+    const next = await GET(get(`?cursor=${encodeURIComponent(first.nextCursor)}`) as never);
+    expect(await next.json()).toEqual({ apps: [], nextCursor: null });
+    expect(selectWhereMock).toHaveBeenLastCalledWith({ gt: [undefined, first.apps[49].appDid] });
+  });
+
+  it.each(['', 'not-a-cursor', Buffer.from(JSON.stringify(123)).toString('base64url')])('rejects malformed discovery cursor %j', async (cursor) => {
+    asOperator();
+    expect((await GET(get(`?cursor=${cursor}`) as never)).status).toBe(400);
+    expect(selectLimitMock).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { id: OWNER, scope: 'actor', subtype: 'human' },
+    { id: OPERATOR, scope: 'actor', subtype: 'human', actingFor: OWNER },
+  ])('rejects non-operator discovery before querying registry', async (identity) => {
+    requireAuthMock.mockResolvedValue({ identity });
+    expect((await GET(get('') as never)).status).toBe(403);
+    expect(selectWhereMock).not.toHaveBeenCalled();
+  });
+
+  it('fails explicitly rather than representing a failed registry read as an empty list', async () => {
+    asOperator();
+    selectLimitMock.mockRejectedValue(new Error('database unavailable'));
+    const res = await GET(get('') as never);
+    expect(res.status).toBe(503);
+    expect(res.headers.get('Cache-Control')).toBe('no-store');
+  });
 });
 
 describe('GET /api/apps/service-scopes', () => {
-  const get = (qs: string) => new Request(`https://kernel.test/api/apps/service-scopes${qs}`);
   it('lets the operator read platform-owned requested scopes', async () => {
     requireAuthMock.mockResolvedValue({ identity: { id: OPERATOR, scope: 'actor', subtype: 'human' } });
     selectWhereMock.mockResolvedValue([app({ ownerDid: 'did:imajin:platform', requested: ['pay:settle'] })]);
@@ -230,8 +301,8 @@ describe('GET /api/apps/service-scopes', () => {
     });
   });
 
-  it('400s without appDid, 404s an unknown app, 403s a stranger, 401s unauthenticated', async () => {
-    expect((await GET(get('') as never)).status).toBe(400);
+  it('403s discovery for an owner, 404s an unknown app, 403s a stranger, 401s unauthenticated', async () => {
+    expect((await GET(get('') as never)).status).toBe(403);
 
     selectWhereMock.mockResolvedValue([]);
     expect((await GET(get(`?appDid=${APP_DID}`) as never)).status).toBe(404);
