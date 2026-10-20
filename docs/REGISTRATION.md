@@ -29,8 +29,9 @@ registration/provisioning uses `members`; existing rows also default to `members
 Null, unknown strings, arrays and other invalid values are rejected, not coerced.
 
 - **`visibility: "private", signInAudience: "members"`**: only the owning
-  identity and its current members may consent. An outsider receives
-  `access_denied`; the app is not disclosed through the directory.
+  identity and its current members may consent. Both authorize POST routes
+  return `403` with clear members-only copy; OAuth also returns
+  `access_denied`. No grant, authorization code or app-list addition is made.
 - **`visibility: "private", signInAudience: "anyone"`**: any authenticated person
   may consent when arriving through the app's direct sign-in link. It remains
   hidden from public discovery. This is useful for a customer-facing site owned
