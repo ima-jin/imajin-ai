@@ -1,0 +1,286 @@
+openapi: "3.1.0"
+info:
+  title: imajin cloudflare
+  version: "1.0.0"
+  description: >-
+    Verified-zone Cloudflare operations with kernel-only credential custody.
+    Import a token through the existing /api/vault/import countersigned rail;
+    never send a token to these routes. Purpose is dns.cloudflare:<zoneId>,
+    credential consumer is the kernel node DID, and owner is verified binding.zoneOwner.
+    Any DID may hold an action grant. Each operation authenticates the actual DID
+    (never an impersonated acting DID), resolves the exact canonical verified zone
+    domain, and checks it against Cloudflare GET /zones/{zoneId}.name.
+    Delegated capabilities are checked live with introspectGrant against audience
+    did:imajin:cloudflare-<zoneId>; group membership alone grants no authority.
+    Revoke through the existing grant lifecycle /jin Grants lane; revocation
+    prevents subsequent calls and pending bulk execution. No credential is
+    returned, logged, exported or placed in environment variables.
+servers:
+  - url: /cloudflare
+security:
+  - cookieAuth: []
+components:
+  securitySchemes:
+    cookieAuth: { type: apiKey, in: cookie, name: imajin_session }
+  parameters:
+    zoneId:
+      name: zoneId
+      in: path
+      required: true
+      schema: { type: string, pattern: "^[a-f0-9]{32}$" }
+    domain:
+      name: domain
+      in: query
+      required: true
+      schema: { type: string, example: example.com }
+      description: Exact lowercase canonical verified zone domain, not an arbitrary subdomain.
+    id:
+      name: id
+      in: path
+      required: true
+      schema: { type: string }
+  responses:
+    Forbidden:
+      description: Missing live zone-scoped action capability, wrong zone binding, or actor not permitted. No membership fallback.
+    Conflict:
+      description: Sealed credential unavailable, zone mismatch, stale before-state, expired, unsigned or replayed bulk approval.
+    BadRequest:
+      description: Invalid domain, zone ID or operation payload.
+  schemas:
+    DnsInput:
+      type: object
+      properties:
+        type: { type: string, example: A }
+        name: { type: string }
+        content: { type: string }
+        ttl: { type: integer, minimum: 1, description: 1 means automatic }
+        proxied: { type: boolean }
+    ProxyChange:
+      type: object
+      required: [recordId, proxied]
+      properties:
+        recordId: { type: string }
+        proxied: { type: boolean }
+    CacheRule:
+      type: object
+      required: [description, expression, action, action_parameters, enabled]
+      properties:
+        id: { type: string }
+        description: { type: string }
+        expression: { type: string }
+        action: { type: string, const: set_cache_settings }
+        enabled: { type: boolean }
+        action_parameters:
+          type: object
+          properties:
+            cache: { type: boolean }
+            edge_ttl:
+              type: object
+              properties:
+                mode: { type: string, const: override_origin }
+                default: { type: integer, minimum: 1 }
+paths:
+  /api/zones/{zoneId}/dns:
+    parameters:
+      - $ref: "#/components/parameters/zoneId"
+      - $ref: "#/components/parameters/domain"
+    get:
+      operationId: cloudflareDnsList
+      summary: List zone DNS records
+      description: Requires cloudflare:read scoped to this zone.
+      responses:
+        "200": { description: "DNS records envelope: { records: [...] }" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+    post:
+      operationId: cloudflareDnsCreate
+      summary: Create a DNS record
+      description: Requires cloudflare:dns scoped to this zone. Node-signed intent and outcome are recorded.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/DnsInput" }
+      responses:
+        "201": { description: Record created with signed audit outcome }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+  /api/zones/{zoneId}/dns/{id}:
+    parameters:
+      - $ref: "#/components/parameters/zoneId"
+      - $ref: "#/components/parameters/domain"
+      - $ref: "#/components/parameters/id"
+    patch:
+      operationId: cloudflareDnsUpdate
+      summary: Edit DNS record or toggle its proxy
+      description: Requires cloudflare:dns and a record belonging to this zone.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/DnsInput" }
+      responses:
+        "200": { description: Updated record and signed audit outcome }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+    delete:
+      operationId: cloudflareDnsDelete
+      summary: Delete a zone DNS record
+      description: Requires cloudflare:dns.
+      responses:
+        "200": { description: Deleted with signed audit outcome }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+  /api/zones/{zoneId}/settings:
+    parameters:
+      - $ref: "#/components/parameters/zoneId"
+      - $ref: "#/components/parameters/domain"
+    get:
+      operationId: cloudflareSettingsRead
+      summary: Read zone settings including SSL
+      description: Requires cloudflare:read. No settings mutation is exposed.
+      responses:
+        "200": { description: Zone settings and SSL state }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+  /api/zones/{zoneId}/ssl:
+    parameters:
+      - $ref: "#/components/parameters/zoneId"
+      - $ref: "#/components/parameters/domain"
+    get:
+      operationId: cloudflareSslRead
+      summary: Read SSL settings with a dedicated SSL capability
+      description: Requires cloudflare:ssl. Does not allow arbitrary settings writes.
+      responses:
+        "200": { description: SSL mode and TLS settings }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+  /api/zones/{zoneId}/cache-rules:
+    parameters:
+      - $ref: "#/components/parameters/zoneId"
+      - $ref: "#/components/parameters/domain"
+    get:
+      operationId: cloudflareCacheRulesList
+      summary: List cache rules in evaluation order
+      description: Requires cloudflare:read.
+      responses:
+        "200": { description: "Rules envelope: { rules: [...] }" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+    put:
+      operationId: cloudflareCacheRulesReplace
+      summary: Preview or request approval to replace ordered cache rules
+      description: Requires cloudflare:cache. dryRun=true previews; dryRun=false stages a countersigned single-use approval. Never directly applies. Node signs mutation intent and outcome.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [domain, rules, dryRun]
+              properties:
+                domain: { type: string }
+                dryRun: { type: boolean }
+                rules: { type: array, maxItems: 20, items: { $ref: "#/components/schemas/CacheRule" } }
+      responses:
+        "200": { description: Dry-run before and proposed rules }
+        "202": { description: "Pending approval: { approval: { proposalId: string } }; no change applied" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+  /api/zones/{zoneId}/custom-hostnames:
+    parameters:
+      - $ref: "#/components/parameters/zoneId"
+      - $ref: "#/components/parameters/domain"
+    get:
+      operationId: cloudflareCustomHostnamesList
+      summary: List custom hostnames and SSL status
+      description: Requires cloudflare:read.
+      responses:
+        "200": { description: "Hostnames envelope: { hostnames: [...] }" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+    post:
+      operationId: cloudflareCustomHostnameCreate
+      summary: Create a custom hostname
+      description: Requires cloudflare:custom-hostnames.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [hostname]
+              properties:
+                hostname: { type: string }
+                ssl: { type: object, properties: { method: { type: string, enum: [txt, http] }, type: { type: string, const: dv } } }
+      responses:
+        "201": { description: Created with signed audit outcome }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+  /api/zones/{zoneId}/custom-hostnames/{id}:
+    parameters:
+      - $ref: "#/components/parameters/zoneId"
+      - $ref: "#/components/parameters/domain"
+      - $ref: "#/components/parameters/id"
+    get:
+      operationId: cloudflareCustomHostnameStatus
+      summary: Refresh a custom hostname status
+      description: Requires cloudflare:read and hostname belonging to this zone.
+      responses:
+        "200": { description: "Hostname envelope: { hostname: {...} }" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+    delete:
+      operationId: cloudflareCustomHostnameDelete
+      summary: Delete a custom hostname
+      description: Requires cloudflare:custom-hostnames.
+      responses:
+        "200": { description: Deleted with signed audit outcome }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+  /api/zones/{zoneId}/bulk:
+    parameters:
+      - $ref: "#/components/parameters/zoneId"
+      - $ref: "#/components/parameters/domain"
+    post:
+      operationId: cloudflareBulkProxyPlan
+      summary: Preview or request approval for bulk DNS proxy changes
+      description: >-
+        Requires cloudflare:dns. dryRun=true only previews captured before/after
+        records. dryRun=false stages a proposal on the existing /jin approval rail,
+        never directly applies changes. A real human countersignature is required.
+        Approval is single-use, reauthorizes the actor and verified owner at execution,
+        and detects stale before-state. Denied, unsigned, expired, stale or replayed
+        proposals do not execute.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [domain, changes, dryRun]
+              properties:
+                domain: { type: string }
+                dryRun: { type: boolean }
+                changes: { type: array, minItems: 1, maxItems: 20, items: { $ref: "#/components/schemas/ProxyChange" } }
+      responses:
+        "200": { description: Dry-run before/after preview only }
+        "202": { description: "Pending approval: { approval: { proposalId: string } }; no change applied" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+  /api/zones/{zoneId}/history:
+    parameters:
+      - $ref: "#/components/parameters/zoneId"
+      - $ref: "#/components/parameters/domain"
+    get:
+      operationId: cloudflareSignedHistory
+      summary: Read durable node-signed zone mutation history
+      description: >-
+        Requires cloudflare:read. Each record discloses actor (actual caller),
+        payload.onBehalfOf (verified owner), payload.zoneId, payload.operation, payload.phase, payload.before, payload.after and signature. actor is payload.actorDid; issuerDid and issuedAt identify the witness.
+        Signatures attest the node's recorded intent and observed outcome, not independent provider truth.
+      responses:
+        "200": { description: "Audit envelope: { history: [...] }; no token or provider error payloads" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
