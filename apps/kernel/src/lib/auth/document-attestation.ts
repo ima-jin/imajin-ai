@@ -3,6 +3,7 @@ import type { Logger } from '@imajin/logger';
 import { db, assets, identities, attestationSignatures, type NewAttestationSignature } from '@/src/db';
 import { eq } from 'drizzle-orm';
 import { verifyDocumentSignatureToken } from '@/src/lib/auth/document-signatures';
+// Document agreements retain the issuing DID separately from the acting human.
 
 interface ValidationFailure {
   status: number;
