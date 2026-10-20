@@ -1,12 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createSessionToken, sessionCookieOptions, clearCookieOptions, type SessionConfig } from './session';
+import { createSessionToken, sessionCookieName, sessionCookieOptions, clearCookieOptions, type SessionConfig } from './session';
 import { appRedirectUrl } from './redirect-url';
 
 export interface ImajinAuthConfig extends SessionConfig {
   /** Imajin auth/kernel base URL (e.g. https://jin.imajin.ai) */
   authUrl: string;
-  /** App DID for X-App-DID header */
-  appDid?: string;
   /** Public URL of this app (for redirects behind reverse proxy) */
   publicUrl?: string;
   /** Where to redirect after login (default: '/') */
@@ -22,6 +20,7 @@ function redirectTo(path: string, req: NextRequest, config: ImajinAuthConfig) {
 /** Create the GET handler for /api/auth/callback */
 export function createCallbackHandler(config: ImajinAuthConfig) {
   return async function GET(req: NextRequest) {
+    sessionCookieName(config);
     const attestationId = req.nextUrl.searchParams.get('attestation_id');
     const userDid = req.nextUrl.searchParams.get('user_did');
 
@@ -80,9 +79,10 @@ export function createCallbackHandler(config: ImajinAuthConfig) {
 /** Create the GET handler for /api/auth/session */
 export function createSessionHandler(config: ImajinAuthConfig) {
   return async function GET() {
+    const name = sessionCookieName(config);
     const { cookies: getCookies } = await import('next/headers');
     const cookieStore = await getCookies();
-    const token = cookieStore.get(config.cookieName ?? 'imajin_session')?.value;
+    const token = cookieStore.get(name)?.value;
     if (!token) {
       return NextResponse.json(null);
     }
@@ -97,6 +97,7 @@ export function createLogoutHandler(config: ImajinAuthConfig) {
   return function POST(req: NextRequest): Promise<NextResponse> {
     // Keep the Promise contract: a synchronous throw becomes a rejection.
     return new Promise<NextResponse>((resolve) => {
+      sessionCookieName(config);
       const res = redirectTo(config.logoutRedirect ?? '/', req, config);
       res.cookies.set(clearCookieOptions(config));
       resolve(res);

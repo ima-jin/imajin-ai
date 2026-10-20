@@ -20,11 +20,32 @@ import type { ImajinAuthConfig } from '@ima-jin/auth-client';
 export const authConfig: ImajinAuthConfig = {
   secret: process.env.SESSION_SECRET!,
   authUrl: process.env.IMAJIN_AUTH_URL!,
-  appDid: process.env.IMAJIN_APP_DID,
+  appDid: process.env.IMAJIN_APP_DID!,
   publicUrl: process.env.NEXT_PUBLIC_APP_URL,
   loginRedirect: '/dashboard',
 };
 ```
+
+### App session cookie isolation
+
+Configure the same stable `appDid` for every session reader and handler. The
+default cookie name is `imajin_app_session_` followed by the SHA-256 hex digest
+of the full app DID (UTF-8). Different app DIDs get distinct cookie names,
+including when apps share the kernel host and use `path=/`. The cookie stays
+host-only, HttpOnly and SameSite=Lax.
+
+An explicit `cookieName` still overrides derivation and can be used without
+`appDid`; choose a valid, unique cookie name for each app on a shared host.
+Cookie names are resolved lazily on each request, never at handler creation.
+Route modules can construct handlers during `next build` without runtime app
+identity or secrets. At request time, `imajin_session` (reserved for the kernel),
+an invalid cookie name, or missing app identity without an override rejects
+before any cookie is read or written, rather than falling back to a shared cookie.
+
+Upgrading from the old default signs users out of each app once. The SDK
+does **not** read, migrate or clear the old `imajin_session` cookie, since it
+may now contain the kernel session. Signing back into an app writes only
+that app's cookie; app logout clears only that same cookie.
 
 ### 2. Create route handlers
 
