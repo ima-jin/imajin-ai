@@ -27,6 +27,7 @@ SEEDS = [
     "notify.templates", "registry.apps", "usage.emitters",
 ]
 BASELINE = "0001_kernel_baseline.sql"
+MANIFEST = "kernel-baseline.json"
 CUT_THROUGH = "0215_registry_apps_sign_in_audience.sql"
 EXTENSIONS = "SELECT extname,extversion,n.nspname FROM pg_extension e JOIN pg_namespace n ON n.oid=e.extnamespace ORDER BY extname"
 DOCKER = shutil.which("docker") or "/usr/bin/docker"
@@ -153,7 +154,7 @@ def validate_variant(variant, canonical):
 
 
 def accepted_checksums(files):
-    existing = json.loads((MIGRATIONS / "kernel-baseline.json").read_text())
+    existing = json.loads((MIGRATIONS / MANIFEST).read_text())
     accepted = existing.get("acceptedHistoricalChecksums", {})
     canonical = {file.name: hashlib.sha256(file.read_bytes()).hexdigest() for file in files}
     if set(accepted) - set(canonical):
@@ -180,7 +181,7 @@ def generate(scratch, files, check):
     }
     outputs = {
         MIGRATIONS / BASELINE: content,
-        MIGRATIONS / "kernel-baseline.json": json.dumps(manifest, indent=2) + "\n",
+        MIGRATIONS / MANIFEST: json.dumps(manifest, indent=2) + "\n",
     }
     for path, expected in outputs.items():
         if check:
@@ -233,7 +234,7 @@ def install_runner(scratch):
     for name in ("kernel-baseline.mjs", "migrate-owner-filter.mjs", "migration-schema-scan.mjs",
                  "migration-ownership-parser.mjs", "sequential.mjs"):
         run(DOCKER, "cp", str(ROOT / "scripts/lib" / name), f"{scratch.container}:/verify/scripts/lib/{name}")
-    for name in (BASELINE, "kernel-baseline.json", *[file.name for file in post_cut_files()]):
+    for name in (BASELINE, MANIFEST, *[file.name for file in post_cut_files()]):
         run(DOCKER, "cp", str(MIGRATIONS / name), f"{scratch.container}:/verify/migrations/{name}")
     dependency = (ROOT / "node_modules/postgres").resolve(strict=True)
     run(DOCKER, "cp", str(dependency), f"{scratch.container}:/verify/node_modules/postgres")
@@ -301,7 +302,7 @@ def verify_adoption(scratch, db):
 
 
 def recorded_ledger_checks(scratch):
-    manifest = json.loads((MIGRATIONS / "kernel-baseline.json").read_text())
+    manifest = json.loads((MIGRATIONS / MANIFEST).read_text())
     variants = manifest["acceptedHistoricalChecksums"]
     for environment in ("dev", "prod"):
         overrides = {name: variant["checksum"] for name, entries in variants.items()
