@@ -6,9 +6,9 @@
  *
  * This is deliberately the same transaction shape `apps/kernel/app/auth/api/agents/route.ts`
  * always had: generate an Ed25519 keypair server-side, insert the `identities`
- * row, and insert both `identity_members` rows (owner + reverse role='agent')
- * atomically — if any step fails, the whole creation rolls back rather than
- * leaving an orphaned identity row with no owning membership link.
+ * row, and, for personal principals only, insert both `identity_members`
+ * rows (owner + reverse role='agent') atomically. Organization agents have
+ * no membership links in either direction: their authority is only a grant.
  */
 import { db, identities, identityMembers } from '@/src/db';
 import { eq } from 'drizzle-orm';
@@ -21,7 +21,7 @@ export interface MintAgentIdentityInput {
   handle: string;
   displayName?: string | null;
   bio?: string | null;
-  /** The DID that will own the new agent (identity_members 'owner' row + reverse 'agent' row). */
+  /** Serving principal. Stored organization scope suppresses both legacy membership links. */
   actingDid: string;
 }
 
@@ -55,7 +55,7 @@ export function validateHandle(handle: unknown): asserts handle is string {
 }
 
 /**
- * Mint a brand-new agent identity owned by `actingDid`. Throws
+ * Mint a brand-new agent identity serving `actingDid`. Throws
  * `MintAgentIdentityError` (with an HTTP-shaped `status`) for validation and
  * conflict failures; callers translate that into their own response shape.
  */
@@ -72,6 +72,18 @@ export async function mintAgentIdentity(input: MintAgentIdentityInput): Promise<
   if (existing.length > 0) {
     throw new MintAgentIdentityError('Handle already taken', 409);
   }
+  // Resolve scope from storage, never a caller-provided flag. This primitive
+  // is shared by provisioning and direct creation, so neither path can mint
+  // an organization-wide controller through legacy membership authority.
+  const [servingIdentity] = await db
+    .select({ scope: identities.scope })
+    .from(identities)
+    .where(eq(identities.id, input.actingDid))
+    .limit(1);
+  if (!servingIdentity) {
+    throw new MintAgentIdentityError('Serving identity not found', 404);
+  }
+  const isOrganization = ['business', 'community', 'family'].includes(servingIdentity.scope);
 
   const { privateKey, publicKey } = generateKeypair();
   const agentDid = didFromPublicKey(publicKey);
@@ -92,6 +104,8 @@ export async function mintAgentIdentity(input: MintAgentIdentityInput): Promise<
       tier: 'preliminary',
       metadata: Object.keys(metadata).length > 0 ? metadata : {},
     });
+
+    if (isOrganization) return;
 
     await tx.insert(identityMembers).values({
       identityDid: agentDid,
