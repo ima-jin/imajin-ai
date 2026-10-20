@@ -8,6 +8,7 @@ import {
 } from './operations';
 import { bulkProxy, setCache } from './approvals';
 import { history } from './audit';
+import { classificationReport } from './classification';
 
 type Params = { zoneId: string; recordId?: string; hostnameId?: string };
 type HandlerContext = { params: Promise<Params> };
@@ -15,6 +16,7 @@ type Operation = (authority: ZoneAuthority, body: Record<string, unknown>, param
 interface Action { capability: string; operation: Operation; envelope?: string; body?: boolean; status?: number }
 
 const actions = {
+  classification: { capability: 'cloudflare:read', envelope: 'classification', operation: classificationReport },
   listDns: { capability: 'cloudflare:read', envelope: 'records', operation: listDns },
   createDns: { capability: 'cloudflare:dns', envelope: 'record', body: true, status: 201,
     operation: (a, body) => createDns(a, withoutDomain(body)) },

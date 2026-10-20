@@ -21,14 +21,23 @@ export async function dnsRecord(authority: ZoneAuthority, recordId: string) {
 export async function createDns(authority: ZoneAuthority, raw: unknown) {
   const input = parse(dnsCreateSchema, raw);
   assertDnsName(input.name, authority.domain);
-  return mutation(authority, 'dns.create', null, input,
-    () => authority.client.request('/dns_records', dnsRecordSchema, 'POST', input));
+  if (input.proxied) throw new CloudflareError(409, 'proxy_approval_required');
+  // Explicitly DNS-only: do not depend on provider defaults when creating records.
+  const after = { ...input, proxied: false };
+  return mutation(authority, 'dns.create', null, after,
+    () => authority.client.request('/dns_records', dnsRecordSchema, 'POST', after));
 }
 
 export async function patchDns(authority: ZoneAuthority, recordId: string, raw: unknown, approvalId?: string, expectedBefore?: unknown) {
   const input = parse(dnsPatchSchema, raw);
+  if (input.proxied !== undefined && !approvalId) throw new CloudflareError(409, 'proxy_approval_required');
   if (input.name) assertDnsName(input.name, authority.domain);
   const before = await dnsRecord(authority, recordId);
+  // A rename, type or target change must not move an already-proxied record to
+  // an unclassified origin. Disable its proxy through approval before editing.
+  if (before.proxied && ['name', 'type', 'content'].some(key => key in input)) {
+    throw new CloudflareError(409, 'disable_proxy_before_edit');
+  }
   if (expectedBefore !== undefined && canonicalize(before) !== canonicalize(expectedBefore)) {
     throw new CloudflareError(409, 'stale_plan');
   }

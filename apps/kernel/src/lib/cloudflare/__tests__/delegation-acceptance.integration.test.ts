@@ -161,7 +161,7 @@ beforeEach(async () => {
     if (suffix === `/dns_records/${RECORD}`) {
       if (init?.method === 'PATCH') {
         providerWrites++;
-        proxied = JSON.parse(init.body as string).proxied;
+        proxied = JSON.parse(init.body as string).proxied ?? proxied;
       }
       return Response.json({ success: true, result: {
         id: RECORD, type: 'A', name: 'www.example.com', content: '192.0.2.1', ttl: 1, proxied, proxiable: true,
@@ -217,7 +217,7 @@ async function sealForAgent() {
 async function edit(zoneId = ZONE, domain = 'example.com') {
   const response = await patchRecord(new NextRequest(
     `https://kernel.test/cloudflare/api/zones/${zoneId}/dns/${RECORD}?domain=${domain}`, {
-      method: 'PATCH', body: JSON.stringify({ proxied: true }), headers: { 'Content-Type': 'application/json' },
+      method: 'PATCH', body: JSON.stringify({ ttl: 300 }), headers: { 'Content-Type': 'application/json' },
     },
   ), { params: Promise.resolve({ zoneId, recordId: RECORD }) });
   visible.push(await response.json());
@@ -268,7 +268,7 @@ describe('issue #2995 operator acceptance across real import, vault and delegati
     const grant = await sealForAgent();
     expect(await edit()).toBe(200);
     expect(providerWrites).toBe(1);
-    expect(proxied).toBe(true);
+    expect(proxied).toBe(false);
     expect(await edit(OTHER_ZONE, 'example.net')).toBe(403);
     expect(providerWrites).toBe(1);
     expect(await revokeGrant({ grantId: grant.id, requestedBy: GROUP })).toMatchObject({ revoked: true });
