@@ -26,6 +26,7 @@ import { revokeAttestationOnce } from '@/src/lib/auth/revoke-attestation';
 import { projectAppAuthorizationGrant } from '@/src/lib/auth/app-authorization-grant';
 import { addConsentedApp } from '@/src/lib/kernel/app-membership';
 import { isLiveAppAuthorization } from '@/src/lib/auth/live-app-authorization';
+import { canConsentToApp, PRIVATE_APP_CONSENT_ERROR } from '@/src/lib/kernel/app-consent';
 
 function sameScopeSet(a: string[], b: string[]): boolean {
   if (a.length !== b.length) return false;
@@ -73,6 +74,9 @@ export const POST = withLogger('kernel', async (request: NextRequest) => {
       callbackUrl: registryApps.callbackUrl,
       name: registryApps.name,
       logoUrl: registryApps.logoUrl,
+      visibility: registryApps.visibility,
+      ownerDid: registryApps.ownerDid,
+      signInAudience: registryApps.signInAudience,
     })
     .from(registryApps)
     .where(eq(registryApps.id, appId));
@@ -82,6 +86,9 @@ export const POST = withLogger('kernel', async (request: NextRequest) => {
   }
   if (app.status !== 'active') {
     return NextResponse.json({ error: 'App is revoked' }, { status: 403 });
+  }
+  if (!await canConsentToApp(app, identity.id)) {
+    return NextResponse.json({ error: PRIVATE_APP_CONSENT_ERROR }, { status: 403 });
   }
 
   // Validate requested scopes against app's registered scopes

@@ -22,6 +22,7 @@ import { toOrigin } from '@/src/lib/http/public-origin';
 import { projectConsentedScopes } from '@/src/lib/kernel/consent-scope-projection';
 import { addConsentedApp } from '@/src/lib/kernel/app-membership';
 import { isLiveAppAuthorization } from '@/src/lib/auth/live-app-authorization';
+import { canConsentToApp, PRIVATE_APP_CONSENT_ERROR } from '@/src/lib/kernel/app-consent';
 
 const log = createLogger('kernel');
 export const dynamic = 'force-dynamic';
@@ -212,6 +213,9 @@ export async function GET(request: NextRequest) {
  * to the client with ?code&state.
  */
 type ConsentClient = {
+  visibility: string;
+  ownerDid: string;
+  signInAudience: string;
   id: string;
   slug: string | null;
   appDid: string;
@@ -275,6 +279,9 @@ async function validateConsentRequest(
       name: registryApps.name,
       logoUrl: registryApps.logoUrl,
       redirectUris: registryApps.redirectUris,
+      visibility: registryApps.visibility,
+      ownerDid: registryApps.ownerDid,
+      signInAudience: registryApps.signInAudience,
     })
     .from(registryApps)
     .where(and(eq(registryApps.id, clientId), eq(registryApps.status, 'active')))
@@ -328,6 +335,9 @@ export async function POST(request: NextRequest) {
   const { sessionDid } = await getEffectiveDid();
   if (!sessionDid) {
     return NextResponse.json({ error: 'login_required' }, { status: 401 });
+  }
+  if (!await canConsentToApp(client, sessionDid)) {
+    return NextResponse.json({ error: 'access_denied', error_description: PRIVATE_APP_CONSENT_ERROR }, { status: 403 });
   }
 
   const privateKey = process.env.AUTH_PRIVATE_KEY;
