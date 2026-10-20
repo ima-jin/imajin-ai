@@ -190,6 +190,8 @@ beforeEach(() => {
 
 describe('POST /auth/api/agents (#1717)', () => {
   it('owns the new agent under the raw session DID when not acting for anyone', async () => {
+    pushSelectResult([]);
+    pushSelectResult([{ scope: 'actor' }]);
     const res = await POST(makePostRequest({ handle: 'my-bot' }));
 
     expect(res.status).toBe(201);
@@ -201,21 +203,21 @@ describe('POST /auth/api/agents (#1717)', () => {
     expect(reverseRow.identityDid).toBe(PERSONAL_DID);
   });
 
-  it('owns the new agent under the acting-for DID, not the caller personal DID', async () => {
+  it('creates an org-serving identity without either membership link', async () => {
     mockRequireAuth.mockResolvedValue({ identity: { id: PERSONAL_DID, actingFor: BUSINESS_DID } });
+    pushSelectResult([]);
+    pushSelectResult([{ scope: 'business' }]);
 
     const res = await POST(makePostRequest({ handle: 'business-bot' }));
 
     expect(res.status).toBe(201);
-    const ownerRow = mockTxInsertValues.mock.calls[1][0] as Record<string, unknown>;
-    expect(ownerRow.memberDid).toBe(BUSINESS_DID);
-    expect(ownerRow.addedBy).toBe(BUSINESS_DID);
-    const reverseRow = mockTxInsertValues.mock.calls[2][0] as Record<string, unknown>;
-    expect(reverseRow.identityDid).toBe(BUSINESS_DID);
-    expect(reverseRow.memberDid).toMatch(/^did:imajin:/);
+    expect(mockTxInsertValues).toHaveBeenCalledOnce();
+    expect(mockTxInsertValues.mock.calls[0][0]).toMatchObject({ subtype: 'agent', scope: 'actor' });
   });
 
   it('reports a transaction failure instead of claiming a partial creation succeeded', async () => {
+    pushSelectResult([]);
+    pushSelectResult([{ scope: 'actor' }]);
     mockTxInsertValues
       .mockResolvedValueOnce(undefined)
       .mockRejectedValueOnce(new Error('membership insert failed'));
