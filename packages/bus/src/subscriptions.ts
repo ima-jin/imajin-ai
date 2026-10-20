@@ -200,12 +200,12 @@ async function pushToRecipients(
   }
   if (byAgent.size === 0) return;
 
-  const authServiceUrl = process.env.AUTH_SERVICE_URL;
+  const wsPort = process.env.WS_PORT || process.env.PORT || '3000';
   const internalKey = process.env.AUTH_INTERNAL_API_KEY;
-  if (!authServiceUrl || !internalKey) {
+  if (!internalKey) {
     log.warn(
       { event: event.type },
-      'AUTH_SERVICE_URL/AUTH_INTERNAL_API_KEY not set — subscribers will only see this event via catch-up',
+      'AUTH_INTERNAL_API_KEY not set — subscribers will only see this event via catch-up',
     );
     return;
   }
@@ -225,10 +225,25 @@ async function pushToRecipients(
         occurredAt: occurredAt.toISOString(),
         grantId,
       };
-      return fetch(`${authServiceUrl}/chat/api/internal/did-push`, {
+      return fetch(`http://localhost:${wsPort}/chat/api/internal/did-push`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-internal-key': internalKey },
         body: JSON.stringify({ targetDid: agentDid, event: frame }),
+      }).then(async (response) => {
+        if (!response.ok) {
+          log.warn(
+            { agentDid, event: event.type, status: response.status },
+            'Live event-subscription push rejected (agent will catch up via cursor)',
+          );
+          return;
+        }
+        const data = await response.json();
+        if (data.delivered === false) {
+          log.warn(
+            { agentDid, event: event.type, delivered: false },
+            'Live event-subscription push found no connected socket (agent will catch up via cursor)',
+          );
+        }
       }).catch((err: unknown) => {
         log.error(
           { err: String(err), agentDid, event: event.type },

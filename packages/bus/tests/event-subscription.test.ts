@@ -21,11 +21,13 @@ const { calls, fakeSql, queueResult, queueError } = vi.hoisted(() => {
 });
 
 vi.mock('@imajin/db', () => ({ getClient: () => fakeSql }));
+const { warn, error } = vi.hoisted(() => ({ warn: vi.fn(), error: vi.fn() }));
+vi.mock('@imajin/logger', () => ({ createLogger: () => ({ warn, error }) }));
 
 import { deliverToSubscribers, _resetCapabilitiesByEventTypeCacheForTests } from '../src/subscriptions';
 import type { BusEvent } from '../src/types';
 
-const AUTH_URL = 'http://kernel.internal.test';
+const AUTH_URL = 'http://localhost:7000/auth';
 const INTERNAL_KEY = 'test-internal-key';
 const AGENT = 'did:imajin:matchmaker-agent';
 const OTHER_AGENT = 'did:imajin:other-agent';
@@ -55,18 +57,20 @@ function grantRow(overrides: Partial<{ agent_did: string; grant_id: string; audi
 let fetchMock: ReturnType<typeof vi.fn>;
 
 beforeEach(() => {
+  vi.clearAllMocks();
   calls.length = 0;
   _resetCapabilitiesByEventTypeCacheForTests();
   fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ delivered: true }) });
   vi.stubGlobal('fetch', fetchMock);
-  process.env.AUTH_SERVICE_URL = AUTH_URL;
-  process.env.AUTH_INTERNAL_API_KEY = INTERNAL_KEY;
+  vi.stubEnv('AUTH_SERVICE_URL', AUTH_URL);
+  vi.stubEnv('AUTH_INTERNAL_API_KEY', INTERNAL_KEY);
+  vi.stubEnv('WS_PORT', '');
+  vi.stubEnv('PORT', '');
 });
 
 afterEach(() => {
   vi.unstubAllGlobals();
-  delete process.env.AUTH_SERVICE_URL;
-  delete process.env.AUTH_INTERNAL_API_KEY;
+  vi.unstubAllEnvs();
 });
 
 describe('deliverToSubscribers — fast path', () => {
@@ -74,6 +78,65 @@ describe('deliverToSubscribers — fast path', () => {
     await deliverToSubscribers(makeEvent({ type: 'ticket.purchased' }));
     expect(calls).toHaveLength(0);
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('deliverToSubscribers — local WS delivery (#2979)', () => {
+  it.each([
+    { wsPort: '7001', port: '7000', expected: '7001' },
+    { wsPort: '', port: '7000', expected: '7000' },
+    { wsPort: '', port: '', expected: '3000' },
+  ])('uses localhost:$expected without the auth service prefix', async ({ wsPort, port, expected }) => {
+    vi.stubEnv('WS_PORT', wsPort);
+    vi.stubEnv('PORT', port);
+    queueResult([{ seq: '16' }]);
+    queueResult([grantRow()]);
+
+    await deliverToSubscribers(makeEvent());
+    expect(fetchMock).toHaveBeenCalledWith(
+      `http://localhost:${expected}/chat/api/internal/did-push`, expect.any(Object),
+    );
+  });
+
+  it.each([401, 404, 500])('warns on HTTP %s without trying to parse an error body', async (status) => {
+    queueResult([{ seq: '17' }]);
+    queueResult([grantRow()]);
+    const json = vi.fn();
+    fetchMock.mockResolvedValueOnce({ ok: false, status, json });
+
+    await expect(deliverToSubscribers(makeEvent())).resolves.toBeUndefined();
+
+    expect(warn).toHaveBeenCalledWith(
+      { agentDid: AGENT, event: 'availability.match.surfaced', status },
+      expect.stringContaining('agent will catch up via cursor'),
+    );
+    expect(json).not.toHaveBeenCalled();
+  });
+
+  it('warns when the WS server reports delivered:false', async () => {
+    queueResult([{ seq: '18' }]);
+    queueResult([grantRow()]);
+    fetchMock.mockResolvedValueOnce(Response.json({ delivered: false }));
+
+    await expect(deliverToSubscribers(makeEvent())).resolves.toBeUndefined();
+
+    expect(warn).toHaveBeenCalledWith(
+      { agentDid: AGENT, event: 'availability.match.surfaced', delivered: false },
+      expect.stringContaining('agent will catch up via cursor'),
+    );
+  });
+
+  it('logs malformed success responses without failing the durable delivery', async () => {
+    queueResult([{ seq: '19' }]);
+    queueResult([grantRow()]);
+    fetchMock.mockResolvedValueOnce(new Response('not json'));
+
+    await expect(deliverToSubscribers(makeEvent())).resolves.toBeUndefined();
+
+    expect(error).toHaveBeenCalledWith(
+      expect.objectContaining({ agentDid: AGENT, event: 'availability.match.surfaced' }),
+      expect.stringContaining('agent will catch up via cursor'),
+    );
   });
 });
 
@@ -113,7 +176,7 @@ describe('deliverToSubscribers — entitlement + audience filtering', () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [url, init] = fetchMock.mock.calls[0];
-    expect(url).toBe(`${AUTH_URL}/chat/api/internal/did-push`);
+    expect(url).toBe('http://localhost:3000/chat/api/internal/did-push');
     expect(init.headers['x-internal-key']).toBe(INTERNAL_KEY);
     const body = JSON.parse(init.body as string);
     expect(body.targetDid).toBe(AGENT);
@@ -126,6 +189,8 @@ describe('deliverToSubscribers — entitlement + audience filtering', () => {
       grantId: 'grant_1',
     });
     expect(body.event.id).toEqual(expect.any(String));
+    expect(warn).not.toHaveBeenCalled();
+    expect(error).not.toHaveBeenCalled();
   });
 
   it('does not deliver to a grant whose audience excludes the event subject', async () => {
@@ -188,18 +253,19 @@ describe('deliverToSubscribers — entitlement + audience filtering', () => {
 });
 
 describe('deliverToSubscribers — missing delivery configuration', () => {
-  it('skips live delivery (but keeps the durable row) when AUTH_SERVICE_URL is unset', async () => {
-    delete process.env.AUTH_SERVICE_URL;
+  it('still delivers when AUTH_SERVICE_URL is unset', async () => {
+    vi.stubEnv('AUTH_SERVICE_URL', undefined);
     queueResult([{ seq: '14' }]);
     queueResult([grantRow()]);
 
     await deliverToSubscribers(makeEvent());
-
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://localhost:3000/chat/api/internal/did-push', expect.any(Object),
+    );
   });
 
   it('skips live delivery when AUTH_INTERNAL_API_KEY is unset', async () => {
-    delete process.env.AUTH_INTERNAL_API_KEY;
+    vi.stubEnv('AUTH_INTERNAL_API_KEY', undefined);
     queueResult([{ seq: '15' }]);
     queueResult([grantRow()]);
 
