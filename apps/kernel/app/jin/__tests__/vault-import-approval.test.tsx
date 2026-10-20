@@ -6,6 +6,14 @@ import { VaultImportApproval } from '../vault-import-approval';
 afterEach(cleanup);
 
 describe('VaultImportApproval', () => {
+  it('makes the approved zone, grantee and capabilities visible without a token dump', () => {
+    render(<VaultImportApproval detail={{
+      cloudflare: { domain: 'example.com', zoneId: 'a'.repeat(32), granteeDid: 'did:web:external.example', capabilities: ['cloudflare:dns'] },
+    }} />);
+    expect(screen.getByText('Verified zone: example.com')).toBeDefined();
+    expect(screen.getByText('Capability grantee: did:web:external.example')).toBeDefined();
+    expect(screen.getByText('Capabilities: cloudflare:dns')).toBeDefined();
+  });
   it('shows only explicit metadata and rotation semantics, never unknown fields', () => {
     const { container } = render(<VaultImportApproval detail={{
       ownerDid: 'did:imajin:test-org', consumerDid: 'did:imajin:test-agent', purpose: 'analysis',

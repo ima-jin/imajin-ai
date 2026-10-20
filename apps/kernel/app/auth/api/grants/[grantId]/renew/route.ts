@@ -19,7 +19,8 @@ export async function POST(request: Request, props: { params: Promise<{ grantId:
   if ('error' in authResult) {
     return authErrorResponse(authResult);
   }
-  const requestedBy = authResult.identity.actingAs ?? authResult.identity.id;
+  if (authResult.identity.actingFor) return NextResponse.json({ error: 'Direct principal required' }, { status: 403 });
+  const requestedBy = authResult.identity.id;
 
   let ttlMs: number | undefined;
   try {

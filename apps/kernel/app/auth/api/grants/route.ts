@@ -27,10 +27,15 @@
  * Returns: { grant: DelegationGrant, introAttributionTerms?: IntroAttributionTermsRecord }
  */
 import { NextResponse } from 'next/server';
-import { requireAuth, authErrorResponse, agentCardUrl } from '@imajin/auth';
+import { requireAuth, authErrorResponse, agentCardUrl, type Identity } from '@imajin/auth';
 import { issueGrant, listGrantsForDelegator } from '@/src/lib/auth/grants';
 import { recordIntroAttributionTerms } from '@/src/lib/fair/intro-attribution';
 import { validateIntroAttributionSplitBps, type IntroAttributionSplitBps } from '@imajin/fair';
+import { controlsImportOwner } from '@/src/lib/vault/import-authority';
+async function mayIssueCloudflareGrant(identity: Identity, delegatorDid: string, capabilities: string[]): Promise<boolean> {
+  if (!capabilities.some(capability => capability.startsWith('cloudflare:')) || delegatorDid === identity.id) return true;
+  return controlsImportOwner(identity.id, delegatorDid);
+}
 
 export async function POST(request: Request) {
   const authResult = await requireAuth(request);
@@ -78,6 +83,9 @@ export async function POST(request: Request) {
   if (!Array.isArray(capabilities) || !capabilities.every((c) => typeof c === 'string')) {
     return NextResponse.json({ error: 'capabilities must be an array of strings' }, { status: 400 });
   }
+  if (!(await mayIssueCloudflareGrant(identity, delegatorDid, capabilities))) {
+    return NextResponse.json({ error: 'Current zone owner authority required' }, { status: 403 });
+  }
 
   // Validate the intro-attribution split BEFORE issuing the grant (#1886): a
   // malformed offer must never leave a grant behind with no way to declare
@@ -91,6 +99,7 @@ export async function POST(request: Request) {
 
   const result = await issueGrant({
     delegatorDid,
+    actorDid: identity.id,
     agentDid,
     capabilities,
     audience,

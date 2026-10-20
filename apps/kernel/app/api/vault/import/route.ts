@@ -10,6 +10,10 @@ import { importProposer, listImportOwners, canExecuteImport } from '@/src/lib/va
 import { listImportedKeyCards, requireImportRotationTarget, validateImportBody } from '@/src/lib/vault/import';
 import { stageImport, importFingerprint, discardImportForProposal, type ImportDetail } from '@/src/lib/vault/import-staging';
 import { isVaultTier1 } from '@/src/lib/vault/sealing';
+import { getNodeSigningIdentity } from '@/src/lib/vault/sealing';
+import { cloudflarePurpose } from '@/src/lib/cloudflare/contract';
+import { requireCloudflareImportBinding } from '@/src/lib/vault/cloudflare-import';
+import { listDomains } from '@/src/lib/domains/service';
 
 export const dynamic = 'force-dynamic';
 
@@ -39,7 +43,14 @@ export async function GET(request: NextRequest) {
   if (selected && !auth.owners.some(owner => owner.did === selected)) return auth.fail('Owner not authorized', 403);
   try {
     const cards = await listImportedKeyCards(selected ? [selected] : auth.owners.map(owner => owner.did));
-    return NextResponse.json({ ownerDid: selected ?? auth.ownerDid, owners: auth.owners, cards }, { headers: auth.headers });
+    const domains = (await Promise.all(auth.owners.map(async owner =>
+      (await listDomains(owner.did, true)).filter(binding => binding.zoneOwner === owner.did)
+        .map(binding => ({ domain: binding.domain, ownerDid: binding.zoneOwner })),
+    ))).flat();
+    return NextResponse.json({
+      ownerDid: selected ?? auth.ownerDid, owners: auth.owners, cards, domains,
+      nodeDid: getNodeSigningIdentity().senderDid,
+    }, { headers: auth.headers });
   } catch {
     return auth.fail('Import metadata unavailable', 503);
   }
@@ -55,14 +66,18 @@ export async function POST(request: NextRequest) {
   if (isVaultTier1()) return auth.fail('Vault import requires synchronous node custody', 409);
   const proposalId = generateId('vimport');
   const detail: ImportDetail = {
-    ownerDid: raw.ownerDid, consumerDid: raw.consumerDid, purpose: raw.purpose.trim(),
+    ownerDid: raw.ownerDid,
+    consumerDid: raw.cloudflare ? getNodeSigningIdentity().senderDid : raw.consumerDid,
+    purpose: raw.cloudflare ? cloudflarePurpose(raw.cloudflare.zoneId) : raw.purpose.trim(),
     fingerprint: importFingerprint(raw.secret), label: raw.label ?? null,
     expiresAt: raw.expiresAt ? new Date(raw.expiresAt).toISOString() : null,
     replacesField: raw.replacesField ?? null,
+    ...(raw.cloudflare ? { cloudflare: raw.cloudflare } : {}),
   };
   let stagingRef: string | undefined;
   try {
     if (!(await canExecuteImport(auth.approverDid, detail.ownerDid))) return auth.fail('Approver cannot authorize this owner', 403);
+    try { await requireCloudflareImportBinding(detail); } catch { return auth.fail('Verified zone binding unavailable', 403); }
     try { await requireImportRotationTarget(detail); } catch { return auth.fail('Import rotation target unavailable', 409); }
     stagingRef = await stageImport(proposalId, auth.approverDid, detail, raw.secret);
     const proposalDetail = { ...detail, stagingRef };

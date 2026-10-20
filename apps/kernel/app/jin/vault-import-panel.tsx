@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { approvalCardAnchorId, requestApprovalsRefresh } from './approval-anchor';
+import { CLOUDFLARE_CAPABILITIES, cloudflarePurpose, isCloudflareImport, type CloudflareImport } from '@/src/lib/cloudflare/contract';
 
 interface VaultOwner {
   did: string;
@@ -19,12 +20,15 @@ interface ImportCard {
   provenance: 'imported';
   status: string;
   timeline: { type: string; at: string; alert?: boolean }[];
+  cloudflare?: CloudflareImport;
 }
 
 interface ImportMetadata {
   ownerDid: string;
   owners: VaultOwner[];
   cards: ImportCard[];
+  domains?: { domain: string; ownerDid: string }[];
+  nodeDid?: string;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -36,6 +40,7 @@ function isImportCard(value: unknown): value is ImportCard {
   return ['field', 'ownerDid', 'consumerDid', 'purpose', 'fingerprint', 'status']
     .every((key) => typeof value[key] === 'string')
     && value.provenance === 'imported'
+    && (value.cloudflare === undefined || isCloudflareImport(value.cloudflare))
     && (value.label === undefined || value.label === null || typeof value.label === 'string')
     && (value.grantId === null || typeof value.grantId === 'string')
     && Array.isArray(value.timeline)
@@ -45,6 +50,9 @@ function isImportCard(value: unknown): value is ImportCard {
 function isImportMetadata(value: unknown): value is ImportMetadata {
   if (!isRecord(value) || typeof value.ownerDid !== 'string') return false;
   return Array.isArray(value.owners) && value.owners.length > 0
+    && (value.nodeDid === undefined || typeof value.nodeDid === 'string')
+    && (value.domains === undefined || (Array.isArray(value.domains) && value.domains.every(domain =>
+      isRecord(domain) && typeof domain.domain === 'string' && typeof domain.ownerDid === 'string')))
     && value.owners.every((owner) => isRecord(owner) && typeof owner.did === 'string' && typeof owner.name === 'string')
     && value.owners.some((owner) => owner.did === value.ownerDid)
     && Array.isArray(value.cards) && value.cards.every(isImportCard);
@@ -84,6 +92,7 @@ function ImportedCredentialCard({ card, onRotate, busy }: Readonly<{
 
 /** Plaintext stays in an uncontrolled masked field, never React state or the approval record. */
 export function VaultImportPanel() {
+  const [cloudflare, setCloudflare] = useState(false);
   const [metadata, setMetadata] = useState<ImportMetadata | null>(null);
   const [ownerDid, setOwnerDid] = useState('');
   const [replacement, setReplacement] = useState<ImportCard | null>(null);
@@ -115,6 +124,7 @@ export function VaultImportPanel() {
   }, [ownerDid]);
 
   const rotate = (card: ImportCard) => {
+    setCloudflare(!!card.cloudflare);
     setOwnerDid(card.ownerDid);
     setReplacement(card);
     setProposalId('');
@@ -124,6 +134,14 @@ export function VaultImportPanel() {
     (form.elements.namedItem('purpose') as HTMLInputElement).value = card.purpose;
     (form.elements.namedItem('consumerDid') as HTMLInputElement).value = card.consumerDid;
     (form.elements.namedItem('label') as HTMLInputElement).value = card.label ?? '';
+    if (card.cloudflare) {
+      (form.elements.namedItem('domain') as HTMLSelectElement).value = card.cloudflare.domain;
+      (form.elements.namedItem('zoneId') as HTMLInputElement).value = card.cloudflare.zoneId;
+      (form.elements.namedItem('granteeDid') as HTMLInputElement).value = card.cloudflare.granteeDid;
+      form.querySelectorAll<HTMLInputElement>('input[name="capabilities"]').forEach(input => {
+        input.checked = card.cloudflare!.capabilities.includes(input.value as typeof CLOUDFLARE_CAPABILITIES[number]);
+      });
+    }
     const input = form.elements.namedItem('secret') as HTMLInputElement;
     input.value = '';
     input.focus();
@@ -144,7 +162,14 @@ export function VaultImportPanel() {
       const response = await fetch('/api/vault/import', {
         method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          ownerDid, purpose: values.get('purpose'), consumerDid: values.get('consumerDid'), secret,
+          ownerDid, secret,
+          ...(cloudflare ? {
+            purpose: cloudflarePurpose(String(values.get('zoneId'))), consumerDid: metadata?.nodeDid,
+            cloudflare: {
+              domain: values.get('domain'), zoneId: values.get('zoneId'),
+              granteeDid: values.get('granteeDid'), capabilities: values.getAll('capabilities'),
+            },
+          } : { purpose: values.get('purpose'), consumerDid: values.get('consumerDid') }),
           ...(values.get('label') ? { label: values.get('label') } : {}),
           ...(expiry ? { expiresAt: new Date(expiry).toISOString() } : {}),
           ...(replacement ? { replacesField: replacement.field } : {}),
@@ -181,6 +206,17 @@ export function VaultImportPanel() {
       )}</output>}
       <form ref={formRef} onSubmit={(event) => void submit(event)}
         className="min-w-0 rounded-lg border border-gray-800 p-3 space-y-3">
+        <label className="block text-xs text-gray-300">Import mode
+          <select aria-label="Import mode" value={cloudflare ? 'cloudflare' : 'generic'} disabled={busy || replacement !== null}
+            className={`${inputClass} mt-1`} onChange={event => {
+              setCloudflare(event.target.value === 'cloudflare');
+              const input = formRef.current?.elements.namedItem('secret') as HTMLInputElement | null;
+              if (input) input.value = '';
+            }}>
+            <option value="generic">Generic credential</option>
+            <option value="cloudflare">Cloudflare zone authority</option>
+          </select>
+        </label>
         <label className="block text-xs text-gray-300"><span>Owning identity</span>
           <select aria-label="Owning identity" value={ownerDid} disabled={busy || replacement !== null}
             onChange={(event) => {
@@ -191,6 +227,31 @@ export function VaultImportPanel() {
             {metadata.owners.map((entry) => <option key={entry.did} value={entry.did}>{entry.name} — {entry.did}</option>)}
           </select>
         </label>
+        <fieldset hidden={!cloudflare} disabled={busy || !cloudflare} className="space-y-3">
+          <legend className="text-xs text-gray-300">Cloudflare zone authority</legend>
+          <p className="text-xs text-amber-200">Only the kernel node receives the sealed token. The grantee gets revocable zone operations, never credential access.</p>
+          <label className="block text-xs text-gray-300">Verified zone domain
+            <select name="domain" aria-label="Verified zone domain" required={cloudflare} className={`${inputClass} mt-1`}>
+              <option value="">Select a verified zone</option>
+              {(metadata.domains ?? []).filter(domain => domain.ownerDid === ownerDid).map(domain =>
+                <option key={domain.domain} value={domain.domain}>{domain.domain}</option>)}
+            </select>
+          </label>
+          <label className="block text-xs text-gray-300">Cloudflare zone ID
+            <input name="zoneId" aria-label="Cloudflare zone ID" required={cloudflare} pattern="[a-f0-9]{32}" maxLength={32}
+              autoCapitalize="none" spellCheck={false} className={`${inputClass} mt-1`} />
+          </label>
+          <label className="block text-xs text-gray-300">Capability grantee DID
+            <input name="granteeDid" aria-label="Capability grantee DID" required={cloudflare}
+              placeholder="did:imajin:…" autoCapitalize="none" spellCheck={false} className={`${inputClass} mt-1`} />
+          </label>
+          <div className="flex flex-wrap gap-3">
+            {CLOUDFLARE_CAPABILITIES.map(capability => <label key={capability} className="text-xs text-gray-300 min-h-11 flex items-center gap-2">
+              <input type="checkbox" name="capabilities" value={capability} defaultChecked={capability === 'cloudflare:read'} />
+              {capability}
+            </label>)}
+          </div>
+        </fieldset>
         <p className="rounded border border-amber-800/60 bg-amber-950/20 p-2 text-xs text-amber-200 break-all"
           data-testid="import-owner">Secret owner before sealing: {owner?.name} · {ownerDid}</p>
         {replacement && <div className="text-xs text-amber-300 break-all">
@@ -202,14 +263,16 @@ export function VaultImportPanel() {
             if (input) input.value = '';
           }} className="ml-2 underline min-h-11">Cancel rotation</button>
         </div>}
+        <div hidden={cloudflare}>
         <label className="block text-xs text-gray-300"><span>Purpose</span>
-          <input name="purpose" aria-label="Purpose" required maxLength={200} disabled={busy}
+          <input name="purpose" aria-label="Purpose" required={!cloudflare} maxLength={200} disabled={busy || cloudflare}
             placeholder="e.g. SonarCloud analysis" className={`${inputClass} mt-1`} />
         </label>
         <label className="block text-xs text-gray-300"><span>Consumer agent or service DID</span>
-          <input name="consumerDid" aria-label="Consumer agent or service DID" required disabled={busy}
+          <input name="consumerDid" aria-label="Consumer agent or service DID" required={!cloudflare} disabled={busy || cloudflare}
             placeholder="did:imajin:…" autoCapitalize="none" spellCheck={false} className={`${inputClass} mt-1`} />
         </label>
+        </div>
         <label className="block text-xs text-gray-300"><span>Label (optional)</span>
           <input name="label" aria-label="Label (optional)" maxLength={200} disabled={busy} className={`${inputClass} mt-1`} />
         </label>

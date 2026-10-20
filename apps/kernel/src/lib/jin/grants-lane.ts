@@ -56,6 +56,8 @@ import { listGrantDetailsForDelegator } from '@/src/lib/auth/grants';
 import { listVaultKeyCards } from '@/src/lib/vault';
 import { mintedKeyField } from '@/src/lib/vault/mint';
 import { listDelegateGrantBearersForPrincipal } from '@/src/lib/access/delegate-grant';
+import { listImportOwners } from '@/src/lib/vault/import-authority';
+import { isCloudflareZoneAudience } from '@/src/lib/cloudflare/contract';
 
 export type GrantSourceKind =
   | 'auth-grant'
@@ -318,7 +320,11 @@ function normalizeAppAuthorizations(apps: AppAuthorizationSummary[]): GrantCard[
  */
 export async function listGrantsForOperator(operatorDid: string): Promise<GrantCard[]> {
   const [authGrants, legacyMemberships, vaultKeyCards, accessBearers, appAuthorizations] = await Promise.all([
-    listGrantDetailsForDelegator(operatorDid),
+    listImportOwners(operatorDid).then(owners =>
+      Promise.all(owners.map(async owner => {
+        const grants = await listGrantDetailsForDelegator(owner.did);
+        return owner.did === operatorDid ? grants : grants.filter(grant => isCloudflareZoneAudience(grant.audience));
+      })).then(grants => grants.flat())),
     listLegacyAgentMemberships(operatorDid),
     listVaultKeyCards(),
     listDelegateGrantBearersForPrincipal(operatorDid),

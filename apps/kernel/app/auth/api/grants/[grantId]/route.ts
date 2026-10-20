@@ -15,7 +15,8 @@ export async function DELETE(request: Request, props: { params: Promise<{ grantI
   if ('error' in authResult) {
     return authErrorResponse(authResult);
   }
-  const requestedBy = authResult.identity.actingAs ?? authResult.identity.id;
+  if (authResult.identity.actingFor) return NextResponse.json({ error: 'Direct principal required' }, { status: 403 });
+  const requestedBy = authResult.identity.id;
 
   const result = await revokeGrant({ grantId, requestedBy });
   if ('error' in result) {

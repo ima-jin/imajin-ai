@@ -169,6 +169,7 @@ vi.mock('@/src/lib/kernel/id', () => {
 });
 
 vi.mock('@imajin/logger', () => ({ createLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }) }));
+vi.mock('@/src/lib/vault/import-authority', () => ({ controlsImportOwner: vi.fn().mockResolvedValue(false) }));
 
 // #2394 — attest:<appId>:<type> validation is DB-heavy (app registry +
 // attestation-type vocabulary) and already covered end-to-end in
@@ -196,6 +197,17 @@ const DELEGATOR = 'did:imajin:ryan';
 const AGENT = 'did:imajin:matchmaker-agent';
 const OTHER_AGENT = 'did:imajin:other-agent';
 const TARGET = 'did:imajin:contact-x';
+
+describe('Cloudflare grant audiences', () => {
+  it('refuses all-zone or person-targeted audiences and refuses adding Cloudflare to an unbounded grant', async () => {
+    for (const audience of [{ type: 'all' }, { type: 'dids', values: [TARGET] }]) {
+      expect(await issueGrant({ delegatorDid: DELEGATOR, agentDid: AGENT, capabilities: ['cloudflare:dns'], audience })).toMatchObject({ status: 400 });
+    }
+    const created = await issueGrant({ delegatorDid: DELEGATOR, agentDid: AGENT, capabilities: ['messages:read'], audience: { type: 'all' } });
+    if ('error' in created) throw new Error('Expected a normal grant');
+    expect(await addGrantCapability({ grantId: created.grant.grantId, capability: 'cloudflare:dns', requestedBy: DELEGATOR })).toMatchObject({ status: 400 });
+  });
+});
 
 beforeEach(() => {
   grantsStore.clear();

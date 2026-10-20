@@ -69,6 +69,9 @@ vi.mock('@/src/db', () => ({
   },
   registryApps: { appDid: 'registryApps.appDid', name: 'registryApps.name' },
 }));
+vi.mock('@/src/lib/vault/import-authority', () => ({
+  listImportOwners: vi.fn(async (did: string) => [{ did, name: did }]),
+}));
 
 vi.mock('drizzle-orm', () => ({
   and: (...args: unknown[]) => ({ and: args }),
@@ -100,6 +103,7 @@ import {
   listAppAuthorizationsForOwner,
   listGrantsForOperator,
 } from '../grants-lane';
+import { listImportOwners } from '@/src/lib/vault/import-authority';
 
 const OPERATOR_DID = 'did:imajin:operator';
 
@@ -177,6 +181,23 @@ describe('listAppAuthorizationsForOwner', () => {
 });
 
 describe('listGrantsForOperator', () => {
+  it('shows group zone grants through the existing revoke lane, but not unrelated group grants', async () => {
+    vi.mocked(listImportOwners).mockResolvedValueOnce([
+      { did: OPERATOR_DID, name: 'Operator' }, { did: 'did:imajin:group', name: 'Group' },
+    ]);
+    mockListGrantDetailsForDelegator.mockImplementation(async (did: string) => did === OPERATOR_DID ? [] : [
+      { grantId: 'zone-grant', agentDid: 'did:web:external.example', capabilities: [{ capability: 'cloudflare:dns', status: 'active' }],
+        audience: { type: 'dids', values: [`did:imajin:cloudflare-${'a'.repeat(32)}`] }, issuedAt: '2026-10-20T00:00:00Z', status: 'active' },
+      { grantId: 'other-grant', agentDid: 'did:imajin:other', capabilities: [{ capability: 'messages:read', status: 'active' }],
+        audience: { type: 'all' }, issuedAt: '2026-10-20T00:00:00Z', status: 'active' },
+    ]);
+    const cards = await listGrantsForOperator(OPERATOR_DID);
+    expect(cards).toHaveLength(1);
+    expect(cards[0]).toMatchObject({
+      grantee: 'did:web:external.example', capabilities: ['cloudflare:dns'],
+      revoke: { method: 'DELETE', path: '/auth/api/grants/zone-grant' },
+    });
+  });
   it('normalizes every source into one sorted GrantCard list', async () => {
     mockListGrantDetailsForDelegator.mockResolvedValue([
       {

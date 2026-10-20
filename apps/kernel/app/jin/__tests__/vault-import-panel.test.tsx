@@ -33,6 +33,57 @@ async function fillImport() {
 }
 
 describe('VaultImportPanel', () => {
+  it('rotates an existing Cloudflare import through the same zone-bound masked form', async () => {
+    const cloudflare = { domain: 'example.com', zoneId: 'a'.repeat(32), granteeDid: consumer, capabilities: ['cloudflare:read', 'cloudflare:dns'] };
+    const cloudflareMetadata = {
+      ...metadata, nodeDid: 'did:imajin:node', domains: [{ domain: cloudflare.domain, ownerDid: org }],
+      cards: [{ ...metadata.cards[0], consumerDid: 'did:imajin:node', purpose: `dns.cloudflare:${cloudflare.zoneId}`, cloudflare }],
+    };
+    const fetchMock = vi.fn().mockResolvedValueOnce(Response.json(cloudflareMetadata))
+      .mockResolvedValueOnce(Response.json({ proposalId: 'cloudflare-rotation' }))
+      .mockResolvedValue(Response.json(cloudflareMetadata));
+    vi.stubGlobal('fetch', fetchMock);
+    render(<VaultImportPanel />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Re-import to rotate' }));
+    expect((screen.getByLabelText('Import mode') as HTMLSelectElement).value).toBe('cloudflare');
+    expect((screen.getByLabelText('Verified zone domain') as HTMLSelectElement).value).toBe('example.com');
+    expect((screen.getByLabelText('Cloudflare zone ID') as HTMLInputElement).value).toBe(cloudflare.zoneId);
+    expect((screen.getByLabelText('Capability grantee DID') as HTMLInputElement).value).toBe(consumer);
+    fireEvent.change(screen.getByLabelText('Credential'), { target: { value: 'FAKE_ROTATION_INPUT_ONLY' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Seal replacement and propose rotation' }));
+    await screen.findByRole('link', { name: 'Review import proposal' });
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toMatchObject({ cloudflare, replacesField: metadata.cards[0].field });
+  });
+  it('uses one masked import form for a verified group Cloudflare zone and arbitrary DID grantee', async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(Response.json({
+      ...metadata, nodeDid: 'did:imajin:node', domains: [
+        { domain: 'example.com', ownerDid: org }, { domain: 'personal.example', ownerDid: person },
+      ],
+    })).mockResolvedValueOnce(Response.json({ proposalId: 'cloudflare-proposal' }))
+      .mockResolvedValue(Response.json(metadata));
+    vi.stubGlobal('fetch', fetchMock);
+    const { container } = render(<VaultImportPanel />);
+    const secret = await fillImport();
+    fireEvent.change(screen.getByLabelText('Import mode'), { target: { value: 'cloudflare' } });
+    expect(secret.value).toBe('');
+    expect(container.querySelectorAll('input[type="password"]')).toHaveLength(1);
+    const domain = screen.getByLabelText('Verified zone domain') as HTMLSelectElement;
+    expect([...domain.options].map(option => option.value)).toEqual(['', 'example.com']);
+    fireEvent.change(domain, { target: { value: 'example.com' } });
+    fireEvent.change(screen.getByLabelText('Cloudflare zone ID'), { target: { value: 'a'.repeat(32) } });
+    fireEvent.change(screen.getByLabelText('Capability grantee DID'), { target: { value: 'did:web:external.example' } });
+    fireEvent.click(screen.getByRole('checkbox', { name: 'cloudflare:dns' }));
+    fireEvent.change(secret, { target: { value: 'FAKE_CLOUDFLARE_INPUT_ONLY' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Seal and propose import' }));
+    expect(secret.value).toBe('');
+    await screen.findByRole('link', { name: 'Review import proposal' });
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toEqual({
+      ownerDid: org, consumerDid: 'did:imajin:node', purpose: `dns.cloudflare:${'a'.repeat(32)}`,
+      secret: 'FAKE_CLOUDFLARE_INPUT_ONLY',
+      cloudflare: { domain: 'example.com', zoneId: 'a'.repeat(32), granteeDid: 'did:web:external.example', capabilities: ['cloudflare:read', 'cloudflare:dns'] },
+    });
+    expect(container.innerHTML).not.toContain('FAKE_CLOUDFLARE_INPUT_ONLY');
+  });
   it('shows the group owner before sealing and clears the masked field synchronously', async () => {
     let complete!: (response: Response) => void;
     const fetchMock = vi.fn().mockResolvedValueOnce(Response.json(metadata))

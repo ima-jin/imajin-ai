@@ -2,7 +2,7 @@ import { and, desc, eq, inArray, isNotNull, sql } from 'drizzle-orm';
 import { emitAttestation } from '@imajin/auth';
 import { publish } from '@imajin/bus';
 import { createLogger } from '@imajin/logger';
-import { db, operatorApprovals, vaultDelegationGrants } from '@/src/db';
+import { db, operatorApprovals, vaultDelegationGrants, delegationGrants, delegationGrantEvents } from '@/src/db';
 import { computeApprovalContentHash } from '@/src/lib/notify/operator-approvals';
 import type { OperatorApprovalCard } from '@/src/lib/notify/operator-approvals-service';
 import { isAppSecretValue } from '@/src/lib/apps/secret-staging';
@@ -12,14 +12,22 @@ import { resolveVaultAuthorization, type VaultAuthorization } from './authorizat
 import { sealAndGrantStaticSecret, eraseInactiveGrantKeyMaterial, vaultService, type DbExecutor } from './index';
 import { getNodeSigningIdentity, isVaultTier1 } from './sealing';
 import { IMPORTED_KEY_NAMESPACE, isImportedKeyField, parseVaultFieldName } from './field-grammar';
+import { cloudflarePurpose, cloudflareZoneDid, isCloudflareImport, type CloudflareImport } from '@/src/lib/cloudflare/contract';
+import { requireCloudflareImportBinding, verifyCloudflareImportToken } from './cloudflare-import';
+import { issueGrant } from '@/src/lib/auth/grants';
 
 const log = createLogger('kernel:vault:import');
 const DID = /^did:[a-z0-9]+:[A-Za-z0-9._:%-]+$/;
-const METADATA_KEYS = ['ownerDid', 'consumerDid', 'purpose', 'fingerprint', 'label', 'expiresAt', 'replacesField'];
+const METADATA_KEYS = ['ownerDid', 'consumerDid', 'purpose', 'fingerprint', 'label', 'expiresAt', 'replacesField', 'cloudflare'];
 
 export function importedKeyField(proposalId: string): string {
   if (!/^[A-Za-z0-9_-]+$/.test(proposalId)) throw new Error('Invalid import proposal');
   return `${IMPORTED_KEY_NAMESPACE}:${proposalId}`;
+}
+
+export function importCapabilityGrantId(proposalId: string): string {
+  importedKeyField(proposalId);
+  return `grant_${proposalId}`;
 }
 
 function rotationProposalId(field: string): string {
@@ -29,7 +37,9 @@ function rotationProposalId(field: string): string {
 }
 
 export function validImportMetadata(raw: Record<string, unknown>): boolean {
-  return typeof raw.ownerDid === 'string' && DID.test(raw.ownerDid)
+  return (raw.cloudflare === undefined || isCloudflareImport(raw.cloudflare))
+    && (raw.cloudflare !== undefined || !(typeof raw.purpose === 'string' && raw.purpose.trim().startsWith('dns.cloudflare:')))
+    && typeof raw.ownerDid === 'string' && DID.test(raw.ownerDid)
     && typeof raw.consumerDid === 'string' && DID.test(raw.consumerDid)
     && typeof raw.purpose === 'string' && raw.purpose.trim().length > 0 && raw.purpose.length <= 200
     && (raw.label === null || (typeof raw.label === 'string' && raw.label.length <= 200))
@@ -39,14 +49,27 @@ export function validImportMetadata(raw: Record<string, unknown>): boolean {
 
 /** Failures never interpolate input, parser exceptions, or provider diagnostics. */
 export function validateImportBody(raw: unknown): raw is {
-  ownerDid: string; consumerDid: string; purpose: string; secret: string;
+  ownerDid: string; secret: string;
   label?: string; expiresAt?: string | null; replacesField?: string;
-} {
+} & (
+  { cloudflare: CloudflareImport; consumerDid?: string; purpose?: string }
+  | { cloudflare?: undefined; consumerDid: string; purpose: string }
+) {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return false;
   const body = raw as Record<string, unknown>;
-  if (Object.keys(body).some(key => !['ownerDid', 'consumerDid', 'purpose', 'secret', 'label', 'expiresAt', 'replacesField'].includes(key))) return false;
+  if (Object.keys(body).some(key => !['ownerDid', 'consumerDid', 'purpose', 'secret', 'label', 'expiresAt', 'replacesField', 'cloudflare'].includes(key))) return false;
   if (!isAppSecretValue(body.secret)) return false;
-  if (!validImportMetadata({ ...body, label: body.label ?? null, expiresAt: body.expiresAt ?? null, replacesField: body.replacesField ?? null })) return false;
+  if (body.cloudflare !== undefined && (
+    (body.consumerDid !== undefined && typeof body.consumerDid !== 'string')
+    || (body.purpose !== undefined && typeof body.purpose !== 'string')
+  )) return false;
+  if (!validImportMetadata({
+    ...body,
+    ...(isCloudflareImport(body.cloudflare) ? {
+      consumerDid: getNodeSigningIdentity().senderDid, purpose: cloudflarePurpose(body.cloudflare.zoneId),
+    } : {}),
+    label: body.label ?? null, expiresAt: body.expiresAt ?? null, replacesField: body.replacesField ?? null,
+  })) return false;
   return body.expiresAt == null || Date.parse(body.expiresAt as string) > Date.now();
 }
 
@@ -82,7 +105,7 @@ export async function requireImportRotationTarget(detail: ImportDetail, executor
   if (!grant) throw new Error('Invalid import rotation target');
 }
 
-async function revokeImportTarget(detail: ImportDetail, executor: DbExecutor): Promise<void> {
+async function revokeImportTarget(detail: ImportDetail, executor: DbExecutor, actorDid: string): Promise<void> {
   if (!detail.replacesField) return;
   const revoked = await executor.update(vaultDelegationGrants).set({ status: 'revoked', revokedAt: new Date() })
     .where(and(
@@ -92,6 +115,15 @@ async function revokeImportTarget(detail: ImportDetail, executor: DbExecutor): P
     )).returning({ id: vaultDelegationGrants.id, field: vaultDelegationGrants.field, keyId: vaultDelegationGrants.keyId });
   if (!revoked.length) throw new Error('Import rotation target no longer active');
   await eraseInactiveGrantKeyMaterial(revoked, executor);
+  if (detail.cloudflare) {
+    const grantId = importCapabilityGrantId(rotationProposalId(detail.replacesField));
+    const previous = await executor.update(delegationGrants).set({ status: 'revoked', revokedAt: new Date() })
+      .where(and(eq(delegationGrants.id, grantId), eq(delegationGrants.delegatorDid, detail.ownerDid),
+        eq(delegationGrants.status, 'active'))).returning({ id: delegationGrants.id });
+    if (previous.length) await executor.insert(delegationGrantEvents).values({
+      id: `gevt_${crypto.randomUUID()}`, grantId, event: 'revoked', actorDid, createdAt: new Date(),
+    });
+  }
 }
 
 function emitImported(detail: ImportDetail, field: string, grantId: string, authorizedBy: VaultAuthorization): void {
@@ -110,6 +142,7 @@ function emitImported(detail: ImportDetail, field: string, grantId: string, auth
 
 /** Grant/revoke are atomic database writes; only a unique NEW ciphertext field is persisted last. */
 export async function executeImportApproval(card: OperatorApprovalCard): Promise<{ ok: boolean; error?: string }> {
+  let phase = 'authorization';
   try {
     const authorization = resolveVaultAuthorization(card);
     const detail = readDetail(card.detail);
@@ -121,23 +154,49 @@ export async function executeImportApproval(card: OperatorApprovalCard): Promise
       summary: card.summary, keysTouched: card.keysTouched, detail: card.detail,
     });
     if (expectedHash !== card.contentHash || !(await canExecuteImport(card.operatorDid, detail.ownerDid))) throw new Error('Unavailable');
+    await requireCloudflareImportBinding(detail);
+    if (detail.cloudflare) {
+      const [current] = await db.select({ status: operatorApprovals.status, contentHash: operatorApprovals.contentHash })
+        .from(operatorApprovals).where(eq(operatorApprovals.proposalId, card.proposalId)).limit(1);
+      if (current?.status !== 'approved' || current.contentHash !== expectedHash) throw new Error('Unavailable');
+    }
     const field = importedKeyField(card.proposalId);
     // The existing cross-process single-use claim elects one reader. A failed
     // execution intentionally requires a fresh paste rather than caching bytes.
     const value = await consumeImport(card, detail);
+    phase = 'zone-verification';
+    await verifyCloudflareImportToken(detail, value);
     const grantId = await db.transaction(async tx => {
+      phase = 'proposal-check';
       // Serializes executor retries and withdrawals on the proposal's existing row.
       const [stored] = await tx.select({ status: operatorApprovals.status, contentHash: operatorApprovals.contentHash })
         .from(operatorApprovals).where(eq(operatorApprovals.proposalId, card.proposalId)).for('update');
       if (stored?.status !== 'approved' || stored.contentHash !== expectedHash) throw new Error('Unavailable');
       if (!(await canExecuteImport(card.operatorDid, detail.ownerDid, tx))) throw new Error('Unavailable');
+      phase = 'binding-check';
+      await requireCloudflareImportBinding(detail);
+      phase = 'rotation-target';
       await requireImportRotationTarget(detail, tx);
+      phase = 'seal';
       const sealed = await sealAndGrantStaticSecret(field, value, {
         principalDid: detail.ownerDid, granteeDid: detail.consumerDid, purpose: detail.purpose,
         expiresAt: detail.expiresAt ? new Date(detail.expiresAt) : null, oneTime: false, tx,
       });
       if (!sealed.grantId) throw new Error('Unavailable');
-      await revokeImportTarget(detail, tx);
+      if (detail.cloudflare) {
+        phase = 'capability-grant';
+        const delegated = await issueGrant({
+          grantId: importCapabilityGrantId(card.proposalId),
+          actorDid: card.operatorDid,
+          delegatorDid: detail.ownerDid, agentDid: detail.cloudflare.granteeDid,
+          capabilities: detail.cloudflare.capabilities,
+          audience: { type: 'dids', values: [cloudflareZoneDid(detail.cloudflare.zoneId)] },
+          ...(detail.expiresAt ? { ttlMs: Date.parse(detail.expiresAt) - Date.now() } : {}),
+        }, tx);
+        if ('error' in delegated) throw new Error('Unavailable');
+      }
+      await revokeImportTarget(detail, tx, card.operatorDid);
+      phase = 'persistence';
       await tx.update(operatorApprovals).set({ status: 'applied', appliedAt: new Date(), updatedAt: new Date() })
         .where(eq(operatorApprovals.proposalId, card.proposalId));
       await vaultService.set(sealed.entry);
@@ -146,7 +205,7 @@ export async function executeImportApproval(card: OperatorApprovalCard): Promise
     emitImported(detail, field, grantId, authorization);
     return { ok: true };
   } catch {
-    log.error({ proposalId: card.proposalId }, 'Vault import execution unavailable');
+    log.error({ proposalId: card.proposalId, phase }, 'Vault import execution unavailable');
     return { ok: false, error: 'Vault import execution unavailable; submit a new import proposal' };
   }
 }
@@ -155,6 +214,7 @@ export interface ImportedKeyCard {
   field: string; ownerDid: string; consumerDid: string; purpose: string; label?: string;
   fingerprint: string; grantId: string | null; provenance: 'imported'; status: string;
   timeline: Array<{ type: string; at: string; alert?: boolean }>;
+  cloudflare?: CloudflareImport;
 }
 
 /** Reads metadata only. Neither ciphertext nor wrapped keys are selected. */
@@ -182,7 +242,7 @@ export async function listImportedKeyCards(ownerDids: string[]): Promise<Importe
   )).orderBy(desc(vaultDelegationGrants.createdAt));
   return proposals.flatMap(row => {
     const detail = row.detail as ImportDetail;
-    if (!row.appliedAt || !detail || !ownerDids.includes(detail.ownerDid)) return [];
+    if (!row.appliedAt || !detail || !validImportMetadata(detail) || !ownerDids.includes(detail.ownerDid)) return [];
     const field = importedKeyField(row.proposalId);
     const candidates = grants.filter(g => g.field === field && g.subject === detail.ownerDid && g.grantedTo === detail.consumerDid);
     const grant = candidates.find(g => g.status === 'active') ?? candidates[0];
@@ -199,6 +259,7 @@ export async function listImportedKeyCards(ownerDids: string[]): Promise<Importe
       field, ownerDid: detail.ownerDid, consumerDid: detail.consumerDid, purpose: detail.purpose,
       ...(detail.label ? { label: detail.label } : {}), fingerprint: detail.fingerprint,
       grantId: grant?.id ?? null, provenance: 'imported' as const, status,
+      ...(detail.cloudflare ? { cloudflare: detail.cloudflare } : {}),
       timeline,
     }];
   });

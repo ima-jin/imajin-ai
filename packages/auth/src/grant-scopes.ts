@@ -76,6 +76,11 @@ export const GRANT_SCOPE_REGISTRY = [
   // active grant with this capability from that exact principal. No event
   // feed: this gates a write, not a subscription.
   { scope: 'evidence:publish', origin: 'kernel', eventTypes: [] },
+  { scope: 'cloudflare:read', origin: 'kernel', eventTypes: [] },
+  { scope: 'cloudflare:dns', origin: 'kernel', eventTypes: [] },
+  { scope: 'cloudflare:cache', origin: 'kernel', eventTypes: [] },
+  { scope: 'cloudflare:ssl', origin: 'kernel', eventTypes: [] },
+  { scope: 'cloudflare:custom-hostnames', origin: 'kernel', eventTypes: [] },
 ] as const satisfies readonly {
   scope: string;
   origin: 'mcp' | 'kernel';
