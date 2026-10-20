@@ -17,6 +17,7 @@ const {
   selectWhereMock,
   selectLimitMock,
   selectOrderByMock,
+  readEventDeclarationsMock,
 } = vi.hoisted(() => ({
   requireAuthMock: vi.fn(),
   getOperatorDidMock: vi.fn(),
@@ -25,6 +26,7 @@ const {
   selectWhereMock: vi.fn(),
   selectLimitMock: vi.fn(),
   selectOrderByMock: vi.fn(),
+  readEventDeclarationsMock: vi.fn(),
 }));
 
 vi.mock('@imajin/logger', () => ({
@@ -66,6 +68,7 @@ vi.mock('@/src/lib/notify/operator-approvals-service', () => ({
 }));
 
 vi.mock('@/src/lib/apps/approvals-execution', () => ({ APPS_SOURCE: 'apps' }));
+vi.mock('@/src/lib/apps/event-declarations', () => ({ readEventDeclarations: readEventDeclarationsMock }));
 
 // Pure helpers are re-declared so this test never loads the DB-backed module.
 vi.mock('@/src/lib/apps/service-scopes', () => {
@@ -103,6 +106,7 @@ beforeEach(() => {
   selectWhereMock.mockResolvedValue([app()]);
   selectOrderByMock.mockReturnValue({ limit: selectLimitMock });
   selectLimitMock.mockResolvedValue([]);
+  readEventDeclarationsMock.mockResolvedValue({ declaredEmittableEvents: ['tip.requested'] });
 });
 
 describe('POST /api/apps/service-scopes', () => {
@@ -214,6 +218,63 @@ describe('POST /api/apps/service-scopes', () => {
 });
 
 describe('GET /api/apps/service-scopes', () => {
+  it.each(['', '&includeEvents=false', '&includeEvents=1', '&includeEvents=True'])('keeps the legacy per-app response without explicit opt-in %s', async (query) => {
+    selectWhereMock.mockResolvedValue([app({
+      appId: 'app_coffee', slug: 'coffee', sourceRepo: null, emittableEvents: ['tip.sent'],
+      requested: [], approvalId: null, approvedAt: null,
+    })]);
+    const response = await GET(get(`?appDid=${APP_DID}${query}`) as never);
+    expect(await response.json()).toEqual({
+      appDid: APP_DID, requestedScopes: [], approvedServiceScopes: [], approvalId: null, approvedAt: null,
+    });
+    expect(readEventDeclarationsMock).not.toHaveBeenCalled();
+  });
+
+  it.each([OWNER, OPERATOR])('returns flat metadata for an authorized opted-in caller %s, keeping approved and requested distinct', async (id) => {
+    requireAuthMock.mockResolvedValue({ identity: { id, scope: 'actor', subtype: 'human' } });
+    selectWhereMock.mockResolvedValue([app({
+      appId: 'app_coffee', slug: 'coffee', sourceRepo: 'other-owner/coffee',
+      requested: ['identity:read'], emittableEvents: ['tip.sent', 'tip.granted', 'tip.sent'],
+      approvalId: null, approvedAt: null,
+    })]);
+    const response = await GET(get(`?appDid=${APP_DID}&includeEvents=true`) as never);
+    expect(response.status).toBe(200);
+    expect(response.headers.get('Cache-Control')).toBe('no-store');
+    expect(await response.json()).toEqual({
+      appDid: APP_DID, appId: 'app_coffee', requestedScopes: ['identity:read'], approvedServiceScopes: [],
+      approvalId: null, approvedAt: null,
+      approvedEmittableEvents: ['tip.granted', 'tip.sent'], declaredEmittableEvents: ['tip.requested'],
+    });
+    expect(readEventDeclarationsMock).toHaveBeenCalledTimes(1);
+    expect(readEventDeclarationsMock).toHaveBeenCalledWith({ slug: 'coffee', sourceRepo: 'other-owner/coffee' });
+  });
+
+  it.each([{ emittableEvents: [] }, { emittableEvents: null }, { emittableEvents: 'invalid' }])('returns an empty approved set independently of the manifest: %j', async ({ emittableEvents }) => {
+    selectWhereMock.mockResolvedValue([app({ appId: 'app_coffee', slug: 'coffee', sourceRepo: null, emittableEvents })]);
+    const response = await GET(get(`?appDid=${APP_DID}&includeEvents=true`) as never);
+    expect(await response.json()).toMatchObject({ approvedEmittableEvents: [], declaredEmittableEvents: ['tip.requested'] });
+  });
+
+  it.each([
+    { declaredEmittableEvents: [] },
+    { declaredEmittableEvents: null, eventDeclarationError: 'App manifest could not be read' },
+    { declaredEmittableEvents: null, eventDeclarationError: 'App manifest event declarations are invalid' },
+  ])('preserves existing approvals for empty/unavailable declarations: %j', async (declarations) => {
+    selectWhereMock.mockResolvedValue([app({ appId: 'app_coffee', slug: null, sourceRepo: null, emittableEvents: ['tip.sent'] })]);
+    readEventDeclarationsMock.mockResolvedValue(declarations);
+    const response = await GET(get(`?appDid=${APP_DID}&includeEvents=true`) as never);
+    expect(await response.json()).toMatchObject({ approvedEmittableEvents: ['tip.sent'], ...declarations });
+  });
+
+  it('refuses unauthorized, unknown, and unauthenticated opt-in reads before manifest access', async () => {
+    requireAuthMock.mockResolvedValue({ identity: { id: 'did:imajin:stranger', scope: 'actor', subtype: 'human' } });
+    expect((await GET(get(`?appDid=${APP_DID}&includeEvents=true`) as never)).status).toBe(403);
+    selectWhereMock.mockResolvedValue([]);
+    expect((await GET(get(`?appDid=${APP_DID}&includeEvents=true`) as never)).status).toBe(404);
+    requireAuthMock.mockResolvedValue({ error: 'Unauthorized', status: 401 });
+    expect((await GET(get(`?appDid=${APP_DID}&includeEvents=true`) as never)).status).toBe(401);
+    expect(readEventDeclarationsMock).not.toHaveBeenCalled();
+  });
   function asOperator() {
     requireAuthMock.mockResolvedValue({ identity: { id: OPERATOR, scope: 'actor', subtype: 'human' } });
     selectWhereMock.mockReturnValue({ orderBy: selectOrderByMock });
@@ -226,7 +287,7 @@ describe('GET /api/apps/service-scopes', () => {
       requested: ['identity:write', 'identity:read', 'identity:read'],
       approved: null, approvalId: null, approvedAt: null,
     }]);
-    const res = await GET(get('') as never);
+    const res = await GET(get('?includeEvents=true') as never);
     expect(res.status).toBe(200);
     expect(res.headers.get('Cache-Control')).toBe('no-store');
     expect(await res.json()).toEqual({ apps: [{
@@ -235,6 +296,7 @@ describe('GET /api/apps/service-scopes', () => {
       approvedServiceScopes: [], approvalId: null, approvedAt: null,
     }], nextCursor: null });
     expect(selectLimitMock).toHaveBeenCalledWith(51);
+    expect(readEventDeclarationsMock).not.toHaveBeenCalled();
   });
 
   it('bounds discovery and resumes after the last returned DID', async () => {

@@ -62,14 +62,14 @@ beforeEach(() => {
 });
 
 describe('PATCH /api/admin/registry/apps/:appId — admin gate', () => {
-  it('returns the 401 from the admin gate for a non-admin caller, touching nothing', async () => {
+  it.each([401, 403])('returns %s from the admin gate for a non-admin caller, touching nothing', async (status) => {
     mocks.requireAdminSessionMock.mockResolvedValue({
-      error: new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 }),
+      error: new Response(JSON.stringify({ error: 'Unauthorized' }), { status }),
     });
 
     const res = await patch({ emittableEvents: ['tip.granted'] });
 
-    expect(res.status).toBe(401);
+    expect(res.status).toBe(status);
     expect(mocks.selectMock).not.toHaveBeenCalled();
     expect(mocks.updateMock).not.toHaveBeenCalled();
     expect(mocks.emitAttestationMock).not.toHaveBeenCalled();
@@ -202,6 +202,10 @@ describe('PATCH /api/admin/registry/apps/:appId — refusals', () => {
     ['a kernel-owned payment_request type', ['payment_request.paid']],
     ['a kernel-owned loop type', ['tip.granted', 'loop.completed']],
     ['a kernel-owned attestation type', ['attestation.created']],
+    ['a kernel-owned registry type', ['registry.app.updated']],
+    ['a kernel-owned auth type', ['auth.session.created']],
+    ['an overlong type', [`tip.${'a'.repeat(100)}`]],
+    ['too many unique events', Array.from({ length: 51 }, (_, i) => `tip.event_${i}`)],
   ])('returns 400 for %s, writing nothing', async (_label, emittableEvents) => {
     const res = await patch({ emittableEvents });
 

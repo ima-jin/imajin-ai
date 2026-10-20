@@ -21,6 +21,8 @@
  *
  * GET /api/apps/service-scopes?appDid= — the app's requested and approved sets +
  * the approval id/timestamp of the last change (same owner/operator gate).
+ * Add includeEvents=true for the registry app id, approved emit list and current
+ * manifest event requests (null + a safe error when the manifest is unavailable).
  * Without appDid, list registry apps for the node operator, 50 at a time.
  * Continue with the opaque nextCursor in ?cursor=; no provisioning is required.
  */
@@ -35,6 +37,8 @@ import { getOperatorDid, isOperatorIdentity, computeApprovalContentHash } from '
 import { recordApprovalRequested } from '@/src/lib/notify/operator-approvals-service';
 import { APPS_SOURCE } from '@/src/lib/apps/approvals-execution';
 import { APPS_SERVICE_SCOPES_KIND } from '@/src/lib/apps/service-scopes-kind';
+import { readEventDeclarations } from '@/src/lib/apps/event-declarations';
+import { readEmittableEvents } from '@/src/lib/kernel/emittable-events';
 import {
   MAX_SERVICE_SCOPES_PER_PROPOSAL,
   findPendingServiceScopesProposal,
@@ -257,6 +261,10 @@ export async function GET(request: NextRequest) {
 
   const [app] = await db
     .select({
+      appId: registryApps.id,
+      slug: registryApps.slug,
+      sourceRepo: registryApps.sourceRepo,
+      emittableEvents: registryApps.emittableEvents,
       ownerDid: registryApps.ownerDid,
       requested: registryApps.requestedScopes,
       approved: registryApps.approvedServiceScopes,
@@ -270,6 +278,13 @@ export async function GET(request: NextRequest) {
   }
   const denied = await authorizeForApp(authResult.identity, app.ownerDid, cors);
   if (denied) return denied;
+  const events = params.get('includeEvents') === 'true'
+    ? {
+      appId: app.appId,
+      approvedEmittableEvents: normalizeScopes(readEmittableEvents(app.emittableEvents)),
+      ...await readEventDeclarations({ slug: app.slug, sourceRepo: app.sourceRepo }),
+    }
+    : {};
 
   return NextResponse.json(
     {
@@ -278,6 +293,7 @@ export async function GET(request: NextRequest) {
       approvedServiceScopes: normalizeScopes(parseScopeList(app.approved) ?? []),
       approvalId: app.approvalId,
       approvedAt: app.approvedAt,
+      ...events,
     },
     { headers: cors },
   );
