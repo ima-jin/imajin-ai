@@ -22,7 +22,7 @@ vi.mock('@/src/lib/vault/sealing', () => ({
 }));
 vi.mock('@/src/lib/auth/grants', () => ({ introspectGrant: grant }));
 vi.mock('@/src/lib/kernel/cors', () => ({
-  corsHeaders: () => new Headers({ 'access-control-allow-origin': '*' }),
+  corsHeaders: () => ({ 'access-control-allow-origin': '*' }),
   corsOptions: () => new Response(null, { status: 204 }),
 }));
 
@@ -124,6 +124,7 @@ describe('signed envelope receipt HTTP reconciliation', () => {
     const recovered: LoopIngestRequest = JSON.parse(exactOutbox);
     const response = await POST(http(receipt(recovered)));
     expect(response.status).toBe(200);
+    expect(response.headers.get('cache-control')).toBe('private, no-store');
     expect(await response.json()).toEqual({ status: 'accepted', eventId: loopObservationId(event) });
     expect((await ingest(http(recovered, ''))).status).toBe(400);
     expect(JSON.stringify(recovered)).toBe(exactOutbox);
@@ -217,7 +218,7 @@ describe('signed envelope receipt HTTP reconciliation', () => {
     const response = await POST(http(receipt(envelope())));
     expect(response.status).toBe(500);
     expect(await response.json()).toEqual({ error: 'Failed to look up loop receipt' });
-    expect(logger.error).toHaveBeenCalledWith('loop receipt lookup failed');
+    expect(logger.error).toHaveBeenCalledWith({}, 'loop receipt lookup failed');
   });
 
   it('fails closed without exposing authorization storage failures', async () => {

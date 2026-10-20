@@ -32,7 +32,7 @@ export async function lookupLoopReceipt(request: LoopReceiptRequest): Promise<Lo
     return rows[0] ? { status: 'accepted', eventId: rows[0].id as string } : { status: 'not_found' };
   } catch {
     // Never expose SQL parameters or the underlying driver's error.
-    log.error('loop receipt lookup failed');
+    log.error({}, 'loop receipt lookup failed');
     return { status: 'error', error: 'Failed to look up loop receipt', httpStatus: 500 };
   }
 }

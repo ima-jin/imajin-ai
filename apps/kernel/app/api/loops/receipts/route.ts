@@ -7,7 +7,7 @@ import { lookupLoopReceipt } from '@/src/lib/loops/receipts';
 export const dynamic = 'force-dynamic';
 
 export async function POST(request: NextRequest) {
-  const cors = corsHeaders(request);
+  const cors = { ...corsHeaders(request), 'Cache-Control': 'private, no-store' };
   const body = await readLoopRequest(request);
   if (!body.ok) return NextResponse.json({ error: body.error }, { status: body.status, headers: cors });
   const parsed = parseLoopReceiptRequest(body.body);
