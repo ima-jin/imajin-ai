@@ -2,10 +2,13 @@ import { existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { parse as parseYaml } from 'yaml';
 import { SERVICES, buildPublicUrl, type ServiceDefinition } from '@imajin/config';
+import { configuredNodeUrl } from '../http/node-url';
 import { listApiSpecServices, readApiSpec } from '../kernel/api-specs';
 import type { ZoneAuthority } from './authority';
 import { dnsRecordSchema } from './schemas';
 import type { CacheRule, DnsRecord } from '../../../app/jin/cloudflare-client';
+import { loadRegistryEdgeSpec } from './edge-spec-loader';
+import { listRegisteredEdgeApps, type RegisteredEdgeApp } from './edge-registry';
 import {
   classifySpec, deduplicateRoutes, scanKernelRoutes,
   type ClassifiedRoute, type HostManifest,
@@ -34,6 +37,7 @@ export interface ClassificationOptions {
   loadExternalSpec?: (url: string) => Promise<unknown>;
   /** Observed/trusted origin TLS configuration, never inferred from DNS names. */
   tlsAlpnHosts?: readonly string[];
+  registeredApps?: readonly RegisteredEdgeApp[];
 }
 const WEB_TYPES = new Set(['A', 'AAAA', 'CNAME']);
 const BLOCKING = new Set(['proxy-unsafe', 'never-proxied', 'unclassified']);
@@ -165,13 +169,11 @@ function kernelDirectory(): string {
 }
 
 /**
- * Registry URLs are topology, not DNS record contents. External specs have no
- * default fetcher: the caller must supply a registry-trusting, SSRF-safe loader.
+ * Registry URLs are topology, not DNS record contents. Local kernel specs are
+ * read in process; standalone app specs use the bounded, DNS-pinned loader.
  */
 export async function deriveHostManifests(domain: string, options: ClassificationOptions = {}): Promise<{ manifests: HostManifest[]; warnings: string[] }> {
-  const configuredKernel = buildPublicUrl('kernel');
-  const origin = options.kernelOrigin ?? (/^https?:\/\//.test(configuredKernel) ? configuredKernel : undefined)
-    ?? process.env.NEXT_PUBLIC_BASE_URL;
+  const origin = options.kernelOrigin ?? configuredNodeUrl();
   const kernelHost = origin ? new URL(origin).hostname : domain;
   const manifests: HostManifest[] = [{ hostname: kernelHost, routes: scanKernelRoutes(options.kernelDirectory ?? kernelDirectory()) }];
   const warnings: string[] = [];
@@ -183,38 +185,84 @@ export async function deriveHostManifests(domain: string, options: Classificatio
     manifests.push({ hostname, routes: [{ path: '/.well-known/acme-challenge/{token}', method: '*', class: 'never-proxied',
       reason: 'Caddy TLS-ALPN validation needs direct origin TLS; HTTP cache bypass cannot preserve the ALPN handshake', source: 'trusted TLS configuration' }] });
   }
-  const available = new Set(listApiSpecServices());
+  manifests[0].routes.push(...localSpecRoutes());
+  const services = await serviceManifests(kernelHost, origin, options);
+  const apps = await registeredManifests(domain, kernelHost, origin, options);
+  manifests.push(...services.manifests, ...apps.manifests);
+  warnings.push(...services.warnings, ...apps.warnings);
+  return { manifests, warnings };
+}
+
+/** Enumerate all local specs, including connectors absent from SERVICES. */
+function localSpecRoutes(): ClassifiedRoute[] {
+  const routes: ClassifiedRoute[] = [];
+  for (const service of listApiSpecServices()) {
+    const raw = readApiSpec(service);
+    if (!raw || raw.truncated) {
+      routes.push({ path: `/${service}`, method: '*', class: 'unclassified', reason: 'Kernel spec is missing or truncated', source: `api-spec/${service}.yaml` });
+      continue;
+    }
+    try {
+      const document = parseYaml(raw.content);
+      routes.push(...classifySpec(document, `api-spec/${service}.yaml`, localSpecPrefix(document, service)));
+    } catch {
+      routes.push({ path: `/${service}`, method: '*', class: 'unclassified', reason: 'Kernel spec cannot be parsed', source: `api-spec/${service}.yaml` });
+    }
+  }
+  return routes;
+}
+
+async function serviceManifests(kernelHost: string, origin: string | null, options: ClassificationOptions) {
+  const manifests: HostManifest[] = [];
+  const warnings: string[] = [];
   for (const service of SERVICES) {
     if (!service.devPort || service.externalUrl || service.wwwPath || service.name === 'kernel') continue;
+    if (options.registeredApps?.some(app => app.slug === service.name)) continue;
     const configured = buildPublicUrl(service.name);
     const url = new URL(configured || '/', `https://${kernelHost}`);
     const host = url.hostname;
     const sameNode = host === kernelHost && service.devPort === 3000;
-    const { document, source } = await serviceSpec(service, url, kernelHost, available, options, warnings);
+    if (sameNode) continue;
+    const specOptions = !origin && !/^https:\/\//.test(configured) ? { ...options, loadExternalSpec: undefined } : options;
+    const { document, source } = await serviceSpec(service, url, specOptions, warnings);
     if (!sameNode && !document) warnings.push(`Missing trusted spec for ${service.name}; host remains DNS-only`);
     const routes = classifySpec(document, source, url.pathname.replace(/\/$/, ''));
-    const existing = manifests.find(manifest => manifest.hostname === host);
-    if (sameNode && existing) {
-      // Code has authoritative transport evidence where the spec is incomplete.
-      const keys = new Set(existing.routes.map(route => `${route.method} ${route.path}`));
-      existing.routes.push(...routes.filter(route => !keys.has(`${route.method} ${route.path}`)));
-    } else {
-      manifests.push({ hostname: host, routes });
-    }
+    manifests.push({ hostname: host, routes });
   }
   return { manifests, warnings };
 }
 
-async function serviceSpec(service: ServiceDefinition, url: URL, kernelHost: string, available: Set<string>, options: ClassificationOptions, warnings: string[]): Promise<{ document: unknown; source: string }> {
+async function registeredManifests(domain: string, kernelHost: string, origin: string | null, options: ClassificationOptions) {
+  const manifests: HostManifest[] = [];
+  const warnings: string[] = [];
+  for (const app of options.registeredApps ?? []) {
+    if (!app.baseUrl || !origin) {
+      manifests.push({ hostname: kernelHost, routes: [{ path: `/${app.slug}`, method: '*', class: 'unclassified', reason: 'Active registered app has no trusted API base or node origin', source: `registry.apps/${app.slug}` }] });
+      continue;
+    }
+    const base = new URL(app.baseUrl, origin);
+    if (!inZone(base.hostname, domain)) continue;
+    if (base.origin === new URL(origin).origin && base.pathname === '/') continue;
+    const source = `${base.href.replace(/\/$/, '')}/api/spec`;
+    let document: unknown;
+    try { document = await options.loadExternalSpec?.(source); }
+    catch { warnings.push(`Registered app spec unavailable: ${app.slug}; host remains DNS-only`); }
+    manifests.push({ hostname: base.hostname, routes: classifySpec(document, source, base.pathname.replace(/\/$/, '')) });
+  }
+  return { manifests, warnings };
+}
+
+function localSpecPrefix(document: unknown, service: string): string {
+  const spec = document as { servers?: { url?: string }[] } | null;
+  const server = spec?.servers?.[0]?.url;
+  if (!server) return `/${service}`;
+  return new URL(server, 'https://spec.invalid').pathname.replace(/\/$/, '');
+}
+
+async function serviceSpec(service: ServiceDefinition, url: URL, options: ClassificationOptions, warnings: string[]): Promise<{ document: unknown; source: string }> {
   let document: unknown;
   let source = `api-spec/${service.name}.yaml`;
-  const sameNode = url.hostname === kernelHost && service.devPort === 3000;
-  if (sameNode && available.has(service.name)) {
-    const raw = readApiSpec(service.name);
-    if (raw && !raw.truncated) {
-      try { document = parseYaml(raw.content); } catch { warnings.push(`Invalid local spec: ${service.name}`); }
-    }
-  } else if (url.hostname !== kernelHost && /^https:\/\//.test(buildPublicUrl(service.name)) && options.loadExternalSpec) {
+  if (options.loadExternalSpec) {
     source = `${url.href.replace(/\/$/, '')}/api/spec`;
     try { document = await options.loadExternalSpec(source); } catch { warnings.push(`Trusted registry spec unavailable: ${service.name}`); }
   }
@@ -224,6 +272,9 @@ async function serviceSpec(service: ServiceDefinition, url: URL, kernelHost: str
 /** Authorized read-only GET dependency; never fetches specs from this node. */
 export async function classificationReport(authority: ZoneAuthority, options: ClassificationOptions = {}): Promise<ClassificationReport> {
   const records = await authority.client.list('/dns_records', dnsRecordSchema);
-  const { manifests, warnings } = await deriveHostManifests(authority.domain, options);
+  const registeredApps = options.registeredApps ?? await listRegisteredEdgeApps();
+  const { manifests, warnings } = await deriveHostManifests(authority.domain, {
+    ...options, registeredApps, loadExternalSpec: options.loadExternalSpec ?? loadRegistryEdgeSpec,
+  });
   return buildClassificationReport(authority.domain, records, manifests, warnings);
 }

@@ -11,6 +11,8 @@ vi.mock('../../kernel/api-specs', () => ({
   listApiSpecServices: () => ['auth'],
   readApiSpec: () => ({ content: 'openapi: "3.1.0"\npaths:\n  /api/public:\n    get:\n      responses: {}', truncated: false }),
 }));
+vi.mock('../edge-registry', () => ({ listRegisteredEdgeApps: vi.fn().mockResolvedValue([]) }));
+vi.mock('../edge-spec-loader', () => ({ loadRegistryEdgeSpec: vi.fn().mockRejectedValue(new Error('fixture unavailable')) }));
 
 const record = (name = 'example.com', patch: Partial<DnsRecord> = {}): DnsRecord => ({
   id: 'a'.repeat(32), type: 'A', name, content: '192.0.2.1', ttl: 1, proxied: false, ...patch,
@@ -227,11 +229,12 @@ describe('read-only runtime and trusted registry loading', () => {
     expect(result.warnings.join(' ')).toContain('Trusted kernel origin');
   });
 
-  it('never self-calls even when a standalone service has an absolute node URL', async () => {
+  it('reads kernel specs in process and loads standalone app paths through registry topology', async () => {
     const dir = fixture({ 'app/api/route.ts': 'export function GET(){return Response.json({})}' });
     vi.stubEnv('NEXT_PUBLIC_EVENTS_URL', 'https://example.com/events');
     const loader = vi.fn();
     await deriveHostManifests('example.com', { kernelDirectory: dir, kernelOrigin: 'https://example.com', loadExternalSpec: loader });
-    expect(loader).not.toHaveBeenCalled();
+    expect(loader).toHaveBeenCalledWith('https://example.com/events/api/spec');
+    expect(loader).not.toHaveBeenCalledWith('https://example.com/auth/api/spec');
   });
 });
