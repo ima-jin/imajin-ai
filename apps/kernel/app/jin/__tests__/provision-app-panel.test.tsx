@@ -184,6 +184,15 @@ describe('ProvisionAppPanel validation', () => {
 });
 
 describe('ProvisionAppPanel submit', () => {
+  it('defaults to members and submits selected anyone audience', async () => {
+    const { spy } = installFetch();
+    await renderVisible();
+    const select = screen.getByRole('combobox', { name: 'Sign-in audience' }) as HTMLSelectElement;
+    expect(select.value).toBe('members');
+    fireEvent.change(select, { target: { value: 'anyone' } });
+    await proposeCoffee();
+    expect(JSON.parse((postCalls(spy)[0][1] as RequestInit).body as string).signInAudience).toBe('anyone');
+  });
   it('includes an entered existing repository in the proposal request', async () => {
     const { spy } = installFetch();
     await renderVisible();
@@ -206,6 +215,7 @@ describe('ProvisionAppPanel submit', () => {
     expect(init.credentials).toBe('include');
     expect(JSON.parse(init.body as string)).toEqual({
       slug: 'coffee',
+      signInAudience: 'members',
       displayName: 'Coffee',
       template: 'ima-jin/imajin-app-template',
       attestationTypes: ['coffee/order', 'coffee/review'],

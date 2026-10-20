@@ -377,6 +377,8 @@ export const registryApps = registrySchema.table('apps', {
   featured: boolean('featured').notNull().default(false),
   /** Discovery/addition only; never a public-page or API access gate (#2897). */
   visibility: text('visibility').$type<'public' | 'unlisted' | 'private' | 'internal'>().notNull().default('public'),
+  /** Private-app consent eligibility, independent of discovery (#2957). */
+  signInAudience: text('sign_in_audience').$type<'members' | 'anyone'>().notNull().default('members'),
   /**
    * Scopes this app defines and enforces itself (#2663,
    * 0176_registry_apps_provides_scopes_depends_on.sql) — e.g. `dykil:read`.
@@ -423,6 +425,7 @@ export const registryApps = registrySchema.table('apps', {
   templateIdx: index('idx_registry_apps_template').on(table.template),
   slugUniq: uniqueIndex('uniq_registry_apps_slug').on(table.slug).where(sql`${table.slug} IS NOT NULL`),
   visibilityCheck: check('registry_apps_visibility_check', sql`${table.visibility} IN ('public', 'unlisted', 'private', 'internal')`),
+  signInAudienceCheck: check('registry_apps_sign_in_audience_check', sql`${table.signInAudience} IN ('members', 'anyone')`),
 }));
 
 export type RegistryApp = typeof registryApps.$inferSelect;

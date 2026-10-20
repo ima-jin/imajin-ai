@@ -29,6 +29,15 @@ beforeEach(() => {
   h.ownerDids.mockResolvedValue(new Set(['person']));
 });
 describe('registry app detail visibility', () => {
+  it('permits authenticated direct-link private anyone detail without directory membership', async () => {
+    h.rows[0].signInAudience = 'anyone';
+    expect((await GET(request, context)).status).toBe(404);
+    h.auth.mockResolvedValue({ identity: { id: 'person' } });
+    const response = await GET(request, context);
+    expect(response.status).toBe(200);
+    expect(await response.json()).toHaveProperty('signInAudience', 'anyone');
+    expect(h.ownerDids).not.toHaveBeenCalled();
+  });
   it.each(['public', 'unlisted'])('allows direct anonymous %s detail without an auth requirement', async (visibility) => {
     h.rows[0].visibility = visibility;
     expect((await GET(request, context)).status).toBe(200);

@@ -22,6 +22,54 @@ not an ima-jin extraction) uses that template's own self-service `docs/REGISTRAT
 holds their own keypair rather than the kernel minting and sealing it. Do not confuse the two:
 `apps.provision` is for apps the kernel itself is extracting/deploying.
 
+## Discovery and sign-in are independent (#2957)
+
+`registry.apps.signInAudience` is `members` (default) or `anyone`. Omission on
+registration/provisioning uses `members`; existing rows also default to `members`.
+Null, unknown strings, arrays and other invalid values are rejected, not coerced.
+
+- **`visibility: "private", signInAudience: "members"`**: only the owning
+  identity and its current members may consent. Both authorize POST routes
+  return `403` with clear members-only copy; OAuth also returns
+  `access_denied`. No grant, authorization code or app-list addition is made.
+- **`visibility: "private", signInAudience: "anyone"`**: any authenticated person
+  may consent when arriving through the app's direct sign-in link. It remains
+  hidden from public discovery. This is useful for a customer-facing site owned
+  by a memberless organization stub: customers need not join that organization.
+- Public/unlisted apps keep their existing consent behavior. Internal apps do
+  not acquire a sign-in surface. Public web pages are unaffected by either setting.
+
+This setting grants neither organization membership nor extra scopes, tokens,
+service authority or automatic installation. Redirect URI, PKCE, scope, active
+registration and consent checks still apply. Both native and OAuth authorize
+routes use the same audience rule. The direct registration-id detail endpoint
+(`GET /api/registry/apps/{appId}`) permits authenticated private/anyone reads so
+the consent screen can load; the directory listing stays private.
+
+Developers choose **Sign-in audience** in `/auth/developer/apps` registration and
+the owner's app detail editor, or supply `signInAudience` to
+`POST /api/registry/apps` / owner-only `PATCH /api/registry/apps/{appId}`. List,
+detail and successful write responses return the stored setting. An omitted PATCH
+field is preserved. Changing `members` to `anyone` reuses the visibility-widening
+delegation policy: the owner's own session/countersign is required; a delegate
+receives `403 AGENT_APPROVAL_REQUIRED`. Narrowing/no-op edits remain delegable with
+an active grant. Concurrent audience/ownership changes produce `409`; reload first.
+
+`POST /api/apps/provision` and the `/jin` **Provision app** form accept the same
+setting. Fresh proposals show it in the summary and read-only detail; it is part
+of the content hash the operator countersigns and is persisted during registration,
+without a follow-up PATCH. For example, propose
+`{"slug":"gbs","displayName":"GBS","visibility":"private","signInAudience":"anyone"}`.
+Manifest contents cannot override the approved setting.
+
+A pending proposal with a different audience returns `409`, rather than silently
+reusing the wrong card. Retry after registration must use the recorded audience;
+conflicting retries fail without editing the registry or issuing a claim code.
+For an already-succeeded run, omitted audience preserves the live setting and an
+explicit different audience is refused (use owner settings to change it).
+`reissueClaim: true` must omit `signInAudience` entirely: reissue cannot reset or
+change it, even to its default. Existing keys, identity and audience survive reissue.
+
 ## Operator setup (one-time, per node) — optional for an app whose repo already exists
 
 `apps.provision` acts as a **GitHub App installation**, not a personal access token — ruled

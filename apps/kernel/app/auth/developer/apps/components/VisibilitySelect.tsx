@@ -34,7 +34,7 @@ export default function VisibilitySelect({ id, value, onChange }: Readonly<{
       </select>
       <p id={`${id}-description`} className="mt-2 text-xs text-zinc-400">{APP_VISIBILITY_DESCRIPTIONS[value]}</p>
       <p id={`${id}-web`} className="mt-1 text-xs text-zinc-400">
-        This controls finding and adding your app, not web access. Public web pages remain public.
+        This controls discovery, not sign-in audience or web access. Public web pages remain public.
       </p>
     </div>
   );

@@ -6,6 +6,7 @@
  */
 
 import { isRepositoryName } from '@/src/lib/apps/template-lineage';
+import { APP_SIGN_IN_AUDIENCE_ERROR, isAppSignInAudience, type AppSignInAudience } from '@/src/lib/apps/sign-in-audience';
 
 export const DEFAULT_APP_TEMPLATE = 'ima-jin/imajin-app-template';
 
@@ -20,11 +21,13 @@ export interface ProvisionFormValues {
   displayName: string;
   template: string;
   sourceRepo?: string;
+  signInAudience?: AppSignInAudience;
   /** Raw textarea/input text — comma- or whitespace-separated `<slug>/<type>` entries. */
   attestationTypes: string;
 }
 
 export interface ProvisionFormErrors {
+  signInAudience?: string;
   slug?: string;
   displayName?: string;
   template?: string;
@@ -33,6 +36,7 @@ export interface ProvisionFormErrors {
 }
 
 export interface ProvisionPayload {
+  signInAudience: AppSignInAudience;
   slug: string;
   displayName: string;
   template: string;
@@ -64,6 +68,7 @@ function attestationTypesError(types: readonly string[], slug: string, slugValid
 
 export function validateProvisionForm(values: ProvisionFormValues): ProvisionFormErrors {
   const errors: ProvisionFormErrors = {};
+  if (values.signInAudience !== undefined && !isAppSignInAudience(values.signInAudience)) errors.signInAudience = APP_SIGN_IN_AUDIENCE_ERROR;
   const slug = values.slug.trim();
   const displayName = values.displayName.trim();
   const template = values.template.trim();
@@ -98,6 +103,7 @@ export function hasProvisionErrors(errors: ProvisionFormErrors): boolean {
 export function buildProvisionPayload(values: ProvisionFormValues): ProvisionPayload {
   return {
     slug: values.slug.trim(),
+    signInAudience: values.signInAudience ?? 'members',
     displayName: values.displayName.trim(),
     template: values.template.trim() || DEFAULT_APP_TEMPLATE,
     attestationTypes: parseAttestationTypes(values.attestationTypes),

@@ -722,6 +722,21 @@ components:
           example: dykil
           description: "Short, URL/repo-safe identifier. Unless sourceRepo is set, the repo is created as ima-jin/<slug>; the idempotency key this whole call is keyed on."
         displayName: { type: string, maxLength: 200, example: dykil }
+        signInAudience:
+          type: string
+          enum: [members, anyone]
+          default: members
+          description: |
+            Private-app sign-in eligibility, independent of directory visibility.
+            members permits only the owner/current members; anyone permits any
+            authenticated direct-link consent without membership or discovery.
+            Fresh proposals bind this setting (including the default) into the
+            summary, detail and operator-countersigned hash. Registration persists
+            exactly the approved value. Invalid/null values are rejected.
+            A pending proposal with a different audience returns 409.
+            Retries cannot change the registered audience. Omission on a succeeded
+            run preserves the live value; an explicit different value returns 409.
+            Must be omitted entirely on claim reissue, which never resets it.
         visibility:
           type: string
           enum: [public, unlisted, private, internal]
@@ -789,7 +804,7 @@ components:
         reissueClaim:
           type: boolean
           default: false
-          description: Reissue a claim code for an already-succeeded app only; preserves ownership, visibility, callback URL, redirect hosts, source repository and domain bindings. Any provided sourceRepo is refused.
+          description: Reissue a claim code for an already-succeeded app only; preserves ownership, visibility, sign-in audience, callback URL, redirect hosts, source repository and domain bindings. Any provided sourceRepo or signInAudience is refused.
     AppServiceScopesRequest:
       type: object
       description: >-

@@ -1286,6 +1286,16 @@ describe('per-source renderer registry — github', () => {
 // alongside the app's own `/claim` page URL (#2427) so the operator can
 // paste the code there instead of ssh-ing in to edit an env file.
 describe('per-source renderer registry — apps', () => {
+  it('shows the signed anyone audience independently of private visibility before approval', async () => {
+    installFetch([{ isOperator: true, approvals: [appsApproval({
+      detail: { slug: 'gbs', displayName: 'GBS', visibility: 'private', signInAudience: 'anyone' },
+    })] }]);
+    render(<OperatorApprovalsPanel />);
+    expect(await screen.findByText('Sign-in audience')).toBeDefined();
+    expect(screen.getByText('anyone')).toBeDefined();
+    expect(screen.getByText(/Independent of directory visibility/)).toBeDefined();
+    expect(screen.getByRole('button', { name: 'Approve & provision' })).toBeDefined();
+  });
   it('shows the signed visibility, site owner and approved host before the operator approves', async () => {
     const summary = "Provision app 'gbs' (GBS). Visibility: private. Site owner: did:imajin:gbs; issue dev-gbs.imajin.ai from Imajin's organization.";
     installFetch([{ isOperator: true, approvals: [appsApproval({

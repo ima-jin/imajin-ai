@@ -321,6 +321,33 @@ beforeEach(() => {
 });
 
 describe('runAppProvision — verified domain issuance', () => {
+  it.each([undefined, 'members', 'anyone'] as const)('persists audience %s without a follow-up owner PATCH', async signInAudience => {
+    expect((await runAppProvision({ slug: 'gbs', displayName: 'GBS', visibility: 'private', signInAudience })).status).toBe('succeeded');
+    expect([...registryAppsStore.values()][0]).toMatchObject({ visibility: 'private', signInAudience: signInAudience ?? 'members' });
+  });
+  it.each([null, '', 'Anyone', true, {}])('rejects invalid audience %j before external work', async signInAudience => {
+    expect(await runAppProvision({ slug: 'gbs', displayName: 'GBS', signInAudience } as never)).toMatchObject({ status: 'failed', failedStep: 'config' });
+    expect(ensureRepoFromTemplateMock).not.toHaveBeenCalled();
+    expect(mintKeypairMock).not.toHaveBeenCalled();
+  });
+  it('preserves anyone across failed and succeeded retries and claim reissues; conflicting retries fail before claims', async () => {
+    const params = { slug: 'gbs', displayName: 'GBS', signInAudience: 'anyone' as const };
+    ensureRepoFromTemplateMock.mockResolvedValue({ repoUrl: 'https://github.com/ima-jin/gbs', created: true });
+    issueSigningKeyClaimMock.mockRejectedValueOnce(new Error('temporary claim failure'));
+    expect(await runAppProvision(params)).toMatchObject({ status: 'failed', failedStep: 'app-signing-key-grant' });
+    const registered = structuredClone([...registryAppsStore.values()][0]);
+    getMintedKeyByDidMock.mockResolvedValue({ status: 'active', publicKey: 'freshly-minted-public-key' });
+    expect(await runAppProvision({ ...params, signInAudience: 'members' })).toMatchObject({ status: 'failed', failedStep: 'register' });
+    expect(issueSigningKeyClaimMock).toHaveBeenCalledTimes(1);
+    expect((await runAppProvision(params)).status).toBe('succeeded');
+    expect((await runAppProvision({ slug: 'gbs', displayName: 'GBS' })).status).toBe('succeeded');
+    expect((await runAppProvision(params)).status).toBe('succeeded');
+    const claimsBeforeConflict = issueSigningKeyClaimMock.mock.calls.length;
+    expect(await runAppProvision({ ...params, signInAudience: 'members' })).toMatchObject({ status: 'failed', failedStep: 'config' });
+    expect(issueSigningKeyClaimMock).toHaveBeenCalledTimes(claimsBeforeConflict);
+    expect([...registryAppsStore.values()]).toEqual([registered]);
+    expect(mintKeypairMock).toHaveBeenCalledTimes(1);
+  });
   it.each([undefined, 'public', 'unlisted', 'private', 'internal'] as const)('registers visibility %s without a follow-up PATCH', async (visibility) => {
     expect((await runAppProvision({ slug: 'gbs', displayName: 'GBS', visibility })).status).toBe('succeeded');
     expect([...registryAppsStore.values()][0].visibility).toBe(visibility ?? 'public');
@@ -1837,6 +1864,7 @@ describe('runAppProvision — fail-closed mid-step', () => {
       id: 'app_existing',
       appDid: MINTED_DID,
       visibility: 'public',
+      signInAudience: 'members',
       callbackUrl: 'https://jin.imajin.ai/dykil',
       allowedRedirectHosts: ['dykil'],
       publicKey: 'already-minted-public-key',

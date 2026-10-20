@@ -9,10 +9,18 @@ import { EMITTABLE_EVENTS_OPERATOR_ONLY_ERROR } from '@/src/lib/kernel/emittable
 import { withLogger } from '@imajin/logger';
 import { validateTemplateLineage, type TemplateLineage } from '@/src/lib/apps/template-lineage';
 import { isAppVisibility, APP_VISIBILITY_ERROR, type AppVisibility } from '@/src/lib/apps/visibility';
+import { isAppSignInAudience, APP_SIGN_IN_AUDIENCE_ERROR, type AppSignInAudience } from '@/src/lib/apps/sign-in-audience';
 
-function registrationVisibility(value: unknown): AppVisibility | null {
-  if (value === undefined) return 'public';
-  return isAppVisibility(value) ? value : null;
+function registrationSettings(body: Record<string, unknown>): { visibility: AppVisibility; signInAudience: AppSignInAudience } | { error: string } {
+  const visibility = body.visibility === undefined ? 'public' : body.visibility;
+  if (!isAppVisibility(visibility)) return { error: APP_VISIBILITY_ERROR };
+  const signInAudience = body.signInAudience === undefined ? 'members' : body.signInAudience;
+  if (!isAppSignInAudience(signInAudience)) return { error: APP_SIGN_IN_AUDIENCE_ERROR };
+  return { visibility, signInAudience };
+}
+
+function isRegistrationBody(body: unknown): body is Record<string, unknown> {
+  return !!body && typeof body === 'object' && !Array.isArray(body);
 }
 async function registrationDeclarations(
   body: Record<string, unknown>,
@@ -65,13 +73,11 @@ export const POST = withLogger('kernel', async (request: NextRequest) => {
   } catch {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
   }
-  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+  if (!isRegistrationBody(body)) {
     return NextResponse.json({ error: 'Expected a JSON object' }, { status: 400 });
   }
-  const visibility = registrationVisibility(body.visibility);
-  if (!visibility) {
-    return NextResponse.json({ error: APP_VISIBILITY_ERROR }, { status: 400 });
-  }
+  const settings = registrationSettings(body);
+  if ('error' in settings) return NextResponse.json({ error: settings.error }, { status: 400 });
 
   // #2663: `dependsOn` grants an app's tokens another service's audience (e.g.
   // kernel media), so only an operator path may write it — the admin route, or
@@ -132,7 +138,7 @@ export const POST = withLogger('kernel', async (request: NextRequest) => {
   const [app] = await db.insert(registryApps).values({
     id: `app_${nanoid(16)}`,
     ownerDid: resolveActingDid(identity),
-    visibility,
+    ...settings,
     name: name.trim(),
     description: typeof description === 'string' ? description.trim() || null : null,
     appDid,
@@ -187,6 +193,7 @@ export const GET = withLogger('kernel', async (request: NextRequest) => {
       id: registryApps.id,
       ownerDid: registryApps.ownerDid,
       visibility: registryApps.visibility,
+      signInAudience: registryApps.signInAudience,
       name: registryApps.name,
       description: registryApps.description,
       appDid: registryApps.appDid,

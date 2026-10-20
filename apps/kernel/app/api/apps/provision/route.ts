@@ -43,11 +43,12 @@ import { getOperatorDid, isOperatorIdentity, computeApprovalContentHash } from '
 import { recordApprovalRequested } from '@/src/lib/notify/operator-approvals-service';
 import { findPendingAppsProvisionProposal } from '@/src/lib/apps/provision-proposals';
 import { APPS_SOURCE, APPS_PROVISION_KIND } from '@/src/lib/apps/approvals-execution';
-import { getAppProvisionStatus } from '@/src/lib/apps/provision';
+import { getAppProvisionStatus, getProvisionSignInAudience } from '@/src/lib/apps/provision';
 import { listSucceededAppProvisions } from '@/src/lib/apps/provision-list';
 import { previewManifestDeclarations } from '@/src/lib/apps/manifest-preview';
 import { APP_VISIBILITY_ERROR, isAppVisibility } from '@/src/lib/apps/visibility';
 import { isRepositoryName } from '@/src/lib/apps/template-lineage';
+import { APP_SIGN_IN_AUDIENCE_ERROR, isAppSignInAudience } from '@/src/lib/apps/sign-in-audience';
 
 const log = createLogger('kernel:apps-provision-route');
 
@@ -59,6 +60,7 @@ const MAX_TEMPLATE_LENGTH = 200;
 const MAX_ATTESTATION_TYPES = 20;
 
 interface ProvisionRequestBody {
+  signInAudience?: unknown;
   visibility?: unknown;
   siteOwnerDid?: unknown;
   domain?: unknown;
@@ -76,6 +78,31 @@ interface ProvisionRequestBody {
    * signing-key claim code without re-minting anything.
    */
   reissueClaim?: unknown;
+}
+
+async function succeededChoiceError(existingRun: Awaited<ReturnType<typeof getAppProvisionStatus>>, body: ProvisionRequestBody, sourceRepo?: string): Promise<string | null> {
+  if (changesSucceededSource(existingRun, sourceRepo)) return 'An already-provisioned app cannot change sourceRepo';
+  if (existingRun?.status !== 'succeeded' || body.signInAudience === undefined) return null;
+  return await getProvisionSignInAudience(existingRun.appDid) === body.signInAudience
+    ? null : 'An already-provisioned app cannot change signInAudience through provisioning; use the owner settings';
+}
+
+function isProvisionBody(body: unknown): body is ProvisionRequestBody {
+  return !!body && typeof body === 'object' && !Array.isArray(body);
+}
+
+function withProvisionAudience(body: ProvisionRequestBody, status?: string): ProvisionRequestBody {
+  if (status === 'succeeded') return body;
+  return { ...body, signInAudience: body.signInAudience === undefined ? 'members' : body.signInAudience };
+}
+
+async function pendingProvisionResponse(slug: string, body: ProvisionRequestBody, reissueClaim: boolean, retryDomain: boolean, cors: Record<string, string>): Promise<Response | null> {
+  const pending = await findPendingAppsProvisionProposal(slug);
+  if (!pending) return null;
+  if (!reissueClaim && !retryDomain && (pending.detail?.signInAudience ?? 'members') !== body.signInAudience) {
+    return NextResponse.json({ error: 'A pending provision has a different signInAudience; withdraw it before re-proposing' }, { status: 409, headers: cors });
+  }
+  return NextResponse.json({ status: 'pending', proposalId: pending.proposalId }, { headers: cors });
 }
 
 type ValidatedBody = { slug: string; displayName: string; template: string | null; sourceRepo?: string; attestationTypes: string[]; reissueClaim: boolean };
@@ -112,7 +139,15 @@ function validateBody(body: ProvisionRequestBody): { ok: true; value: ValidatedB
   };
 }
 
+function validateAudienceChoice(body: ProvisionRequestBody): string | null {
+  if (body.signInAudience !== undefined && !isAppSignInAudience(body.signInAudience)) return APP_SIGN_IN_AUDIENCE_ERROR;
+  if (body.reissueClaim === true && Object.hasOwn(body, 'signInAudience')) return 'Reissuing a claim cannot change signInAudience';
+  return null;
+}
+
 function validateDomainChoice(body: ProvisionRequestBody): string | null {
+  const audienceError = validateAudienceChoice(body);
+  if (audienceError) return audienceError;
   if (body.visibility !== undefined && !isAppVisibility(body.visibility)) return APP_VISIBILITY_ERROR;
   if (body.reissueClaim === true && Object.hasOwn(body, 'sourceRepo')) {
     return 'Reissuing a claim cannot change sourceRepo';
@@ -142,7 +177,10 @@ function provisionDetail(
   if (body.domain) detail.domain = body.domain;
   if (isRepositoryName(body.sourceRepo)) detail.sourceRepo = body.sourceRepo;
   if (reissueClaim) detail.reissueClaim = true;
-  else detail.visibility = body.visibility ?? 'public';
+  else {
+    detail.visibility = body.visibility ?? 'public';
+    if (body.signInAudience !== undefined) detail.signInAudience = body.signInAudience;
+  }
   return detail;
 }
 
@@ -168,13 +206,14 @@ function provisionSummary(body: ProvisionRequestBody, slug: string, displayName:
   const siteOwnerDid = typeof body.siteOwnerDid === 'string' ? body.siteOwnerDid : operatorDid;
   const domain = typeof body.domain === 'string' ? body.domain : `${slug}.imajin.ai`;
   const visibility = isAppVisibility(body.visibility) ? body.visibility : 'public';
+  const signInAudience = isAppSignInAudience(body.signInAudience) ? body.signInAudience : 'members';
   if (retryAppDid) {
     return `Retry domain issuance for existing app '${slug}' (${retryAppDid}) at ${domain} using its recorded registry owner, then reissue its claim code. No repo, keypair or owner is re-created or changed.`;
   }
   const repositoryAction = isRepositoryName(body.sourceRepo)
     ? `use existing repository ${body.sourceRepo} (no repository is created), register it, and seal its credential`
     : `create ima-jin/${slug} from template, register it, and seal its credential`;
-  return `Provision app '${slug}' (${displayName}): ${repositoryAction}. Visibility: ${visibility}. Site owner: ${siteOwnerDid}; issue ${domain} from Imajin's organization. Will retire app_first_party_${slug} if it holds the slug or active audience; no app schema/data is changed.`;
+  return `Provision app '${slug}' (${displayName}): ${repositoryAction}. Visibility: ${visibility}. Sign-in audience: ${signInAudience}. Site owner: ${siteOwnerDid}; issue ${domain} from Imajin's organization. Will retire app_first_party_${slug} if it holds the slug or active audience; no app schema/data is changed.`;
 }
 export async function POST(request: NextRequest) {
   const cors = corsHeaders(request);
@@ -191,7 +230,7 @@ export async function POST(request: NextRequest) {
   } catch {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400, headers: cors });
   }
-  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+  if (!isProvisionBody(body)) {
     return NextResponse.json({ error: 'Body must be an object' }, { status: 400, headers: cors });
   }
 
@@ -209,9 +248,11 @@ export async function POST(request: NextRequest) {
   // (#2411), in which case a fresh proposal is raised anyway so the
   // operator's approval mints a new one-time code.
   const existingRun = await getAppProvisionStatus(slug);
-  if (changesSucceededSource(existingRun, sourceRepo)) {
-    return NextResponse.json({ error: 'An already-provisioned app cannot change sourceRepo' }, { status: 409, headers: cors });
-  }
+  const choiceError = await succeededChoiceError(existingRun, body, sourceRepo);
+  if (choiceError) return NextResponse.json({ error: choiceError }, { status: 409, headers: cors });
+  // Fresh provisions bind the safe default into the card hash. Reissues and
+  // succeeded-run retries omit it, so they cannot silently reset live settings.
+  body = withProvisionAudience(body, existingRun?.status);
   // #2745: a reissue only makes sense for an app that was actually provisioned. Refuse before
   // anything else (no pending-proposal reuse, no manifest read, no proposal row) so it can never
   // turn into a fresh provision.
@@ -233,10 +274,8 @@ export async function POST(request: NextRequest) {
   }
 
   // Reuse an already-pending proposal for the same slug rather than raising a duplicate card.
-  const pending = await findPendingAppsProvisionProposal(slug);
-  if (pending) {
-    return NextResponse.json({ status: 'pending', proposalId: pending.proposalId }, { headers: cors });
-  }
+  const pendingResponse = await pendingProvisionResponse(slug, body, reissueClaim, retryDomain, cors);
+  if (pendingResponse) return pendingResponse;
 
   const operatorDid = await getOperatorDid();
   if (!operatorDid) {

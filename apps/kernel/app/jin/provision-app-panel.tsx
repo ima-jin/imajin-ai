@@ -33,6 +33,7 @@ import {
   type ProvisionFormValues,
 } from './provision-app-validation';
 import { useFlashNotice } from './use-flash-notice';
+import SignInAudienceSelect from '../auth/developer/apps/components/SignInAudienceSelect';
 
 const POLL_INTERVAL_MS = 5000;
 /** Provision proposals live on the `apps` source — scope the poll to it. */
@@ -95,6 +96,7 @@ const EMPTY_VALUES: ProvisionFormValues = {
   displayName: '',
   template: DEFAULT_APP_TEMPLATE,
   sourceRepo: '',
+  signInAudience: 'members',
   attestationTypes: '',
 };
 
@@ -545,6 +547,8 @@ export function ProvisionAppPanel() {
           hint="Optional — comma-separated, each as <slug>/<type>."
           disabled={busy}
         />
+        <SignInAudienceSelect id="provision-app-sign-in-audience" value={values.signInAudience ?? 'members'} onChange={setField('signInAudience')} disabled={busy} />
+        <FieldError id="provision-app-sign-in-audience-error" message={errors.signInAudience} />
         <button
           type="submit"
           disabled={busy}

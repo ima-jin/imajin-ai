@@ -12,6 +12,7 @@ const {
   recordApprovalRequestedMock,
   findPendingAppsProvisionProposalMock,
   getAppProvisionStatusMock,
+  getProvisionSignInAudienceMock,
   previewManifestDeclarationsMock,
   isOperatorIdentityMock,
   listSucceededAppProvisionsMock,
@@ -23,6 +24,7 @@ const {
   recordApprovalRequestedMock: vi.fn(),
   findPendingAppsProvisionProposalMock: vi.fn(),
   getAppProvisionStatusMock: vi.fn(),
+  getProvisionSignInAudienceMock: vi.fn(),
   previewManifestDeclarationsMock: vi.fn(),
   isOperatorIdentityMock: vi.fn(),
   listSucceededAppProvisionsMock: vi.fn(),
@@ -67,6 +69,7 @@ vi.mock('@/src/lib/apps/approvals-execution', () => ({
 
 vi.mock('@/src/lib/apps/provision', () => ({
   getAppProvisionStatus: getAppProvisionStatusMock,
+  getProvisionSignInAudience: getProvisionSignInAudienceMock,
 }));
 
 vi.mock('@/src/lib/apps/provision-list', () => ({
@@ -99,6 +102,7 @@ beforeEach(() => {
   listSucceededAppProvisionsMock.mockResolvedValue([]);
   computeApprovalContentHashMock.mockReturnValue('a'.repeat(64));
   getAppProvisionStatusMock.mockResolvedValue(undefined);
+  getProvisionSignInAudienceMock.mockResolvedValue('members');
   findPendingAppsProvisionProposalMock.mockResolvedValue(undefined);
   recordApprovalRequestedMock.mockResolvedValue(undefined);
   // Default: a readable manifest declaring nothing.
@@ -106,6 +110,26 @@ beforeEach(() => {
 });
 
 describe('POST /api/apps/provision — auth + validation', () => {
+  it.each([undefined, 'members', 'anyone'])('covers audience %s in the summary and content hash', async signInAudience => {
+    const response = await POST(postRequest({ slug: 'gbs', displayName: 'GBS', visibility: 'private', signInAudience }) as never);
+    expect(response.status).toBe(201);
+    const recorded = recordApprovalRequestedMock.mock.calls[0][0];
+    expect(recorded.detail.signInAudience).toBe(signInAudience ?? 'members');
+    expect(recorded.summary).toContain(`Sign-in audience: ${signInAudience ?? 'members'}`);
+    expect(computeApprovalContentHashMock).toHaveBeenCalledWith(expect.objectContaining({
+      detail: expect.objectContaining({ signInAudience: signInAudience ?? 'members' }),
+      summary: recorded.summary,
+    }));
+  });
+  it.each([null, '', 'Anyone', true, {}, []])('rejects malformed audience %j before manifest reads', async signInAudience => {
+    expect((await POST(postRequest({ slug: 'gbs', displayName: 'GBS', signInAudience }) as never)).status).toBe(400);
+    expect(previewManifestDeclarationsMock).not.toHaveBeenCalled();
+    expect(recordApprovalRequestedMock).not.toHaveBeenCalled();
+  });
+  it.each(['members', 'anyone'])('refuses audience %s on a claim reissue', async signInAudience => {
+    expect((await POST(postRequest({ slug: 'gbs', displayName: 'GBS', signInAudience, reissueClaim: true }) as never)).status).toBe(400);
+    expect(getAppProvisionStatusMock).not.toHaveBeenCalled();
+  });
   it.each([undefined, 'public', 'unlisted', 'private', 'internal'])('countersigns and discloses visibility %s', async (visibility) => {
     const response = await POST(postRequest({ slug: 'gbs', displayName: 'GBS', visibility }) as never);
     expect(response.status).toBe(201);
@@ -240,6 +264,17 @@ describe('OPTIONS /api/apps/provision', () => {
 });
 
 describe('POST /api/apps/provision — idempotency', () => {
+  it('does not silently reuse a pending card with a different audience', async () => {
+    findPendingAppsProvisionProposalMock.mockResolvedValue({ proposalId: 'existing', detail: { signInAudience: 'members' } });
+    expect((await POST(postRequest({ slug: 'gbs', displayName: 'GBS', signInAudience: 'anyone' }) as never)).status).toBe(409);
+    expect(recordApprovalRequestedMock).not.toHaveBeenCalled();
+  });
+  it.each([undefined, 'dev-gbs.imajin.ai'])('refuses audience changes on succeeded runs, domain=%j', async domain => {
+    getAppProvisionStatusMock.mockResolvedValue({ status: 'succeeded', appDid: 'did:imajin:gbs' });
+    getProvisionSignInAudienceMock.mockResolvedValue('anyone');
+    expect((await POST(postRequest({ slug: 'gbs', displayName: 'GBS', signInAudience: 'members', domain }) as never)).status).toBe(409);
+    expect(recordApprovalRequestedMock).not.toHaveBeenCalled();
+  });
   it.each([undefined, 'dev-gbs.imajin.ai'])('refuses a source change for an already-succeeded app, domain=%j', async (domain) => {
     getAppProvisionStatusMock.mockResolvedValue({
       slug: 'gbs', status: 'succeeded', repoUrl: 'https://github.com/gbscontracting/website',
@@ -348,6 +383,7 @@ describe('POST /api/apps/provision — idempotency', () => {
     const recorded = recordApprovalRequestedMock.mock.calls[0][0] as { summary: string; detail: Record<string, unknown> };
     expect(recorded.detail).toMatchObject({ slug: 'dykil', displayName: 'Dykil', reissueClaim: true, manifestDeclarations: null });
     expect(recorded.detail).not.toHaveProperty('visibility');
+    expect(recorded.detail).not.toHaveProperty('signInAudience');
     expect(recorded.summary).toMatch(/^Reissue the claim code for app 'dykil'/);
     expect(recorded.summary).not.toContain('Will retire');
     // The same detail is what the content hash covers, so the operator signs "reissue" and nothing else.
