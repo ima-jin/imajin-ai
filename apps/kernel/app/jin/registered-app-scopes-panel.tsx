@@ -11,6 +11,26 @@ interface RegisteredApp extends ScopeState {
   approvalId: string | null;
   approvedAt: string | null;
 }
+async function readAppPage(cursor?: string): Promise<AppPage | null> {
+  const query = cursor ? `?cursor=${encodeURIComponent(cursor)}` : '';
+  const response = await fetch(`/api/apps/service-scopes${query}`, { credentials: 'include' });
+  if (response.status === 401 || response.status === 403) return null;
+  if (!response.ok) throw new Error('Registered apps unavailable');
+  const body: unknown = await response.json();
+  if (!isAppPage(body)) throw new Error('Invalid registered apps response');
+  return body;
+}
+
+async function readLoadedPages(pageCount: number): Promise<AppPage | null> {
+  let page = await readAppPage();
+  if (!page) return null;
+  for (let index = 1; index < pageCount && page.nextCursor; index++) {
+    const next = await readAppPage(page.nextCursor);
+    if (!next) return null;
+    page = { apps: appendApps(page.apps, next.apps), nextCursor: next.nextCursor };
+  }
+  return page;
+}
 function appendApps(previous: RegisteredApp[], next: RegisteredApp[]): RegisteredApp[] {
   const nextDids = new Set(next.map((app) => app.appDid));
   return [...previous.filter((app) => !nextDids.has(app.appDid)), ...next];
@@ -44,6 +64,7 @@ export function RegisteredAppScopesPanel() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(false);
   const generation = useRef(0);
+  const loadedPageCount = useRef(1);
   const cancelLoad = useCallback(() => { generation.current++; }, []);
 
   const load = useCallback(async (cursor?: string) => {
@@ -51,19 +72,15 @@ export function RegisteredAppScopesPanel() {
     setBusy(true);
     setError(false);
     try {
-      const query = cursor ? `?cursor=${encodeURIComponent(cursor)}` : '';
-      const response = await fetch(`/api/apps/service-scopes${query}`, { credentials: 'include' });
+      const body = cursor ? await readAppPage(cursor) : await readLoadedPages(loadedPageCount.current);
       if (current !== generation.current) return;
-      if (response.status === 401 || response.status === 403) {
+      if (!body) {
         setVisible(false);
         setApps([]);
         setNextCursor(null);
         return;
       }
-      if (!response.ok) throw new Error('Registered apps unavailable');
-      const body: unknown = await response.json();
-      if (current !== generation.current) return;
-      if (!isAppPage(body)) throw new Error('Invalid registered apps response');
+      if (cursor) loadedPageCount.current++;
       setVisible(true);
       setApps((previous) => cursor ? appendApps(previous, body.apps) : body.apps);
       setNextCursor(body.nextCursor);

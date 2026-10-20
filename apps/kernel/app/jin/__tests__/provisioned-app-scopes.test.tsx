@@ -41,12 +41,43 @@ afterEach(() => {
 });
 
 describe('provisioned app row service scopes', () => {
+  it('disables an open picker and submission if the refreshed scope read fails', async () => {
+    const spy = installFetch();
+    renderRow();
+    await openPicker();
+    spy.mockResolvedValue(response({}, 503));
+    act(() => globalThis.dispatchEvent(new Event(APPROVALS_REFRESH_EVENT)));
+    await screen.findByRole('alert');
+    expect((screen.getByRole('button', { name: 'Submit scope proposal' }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: 'Submit scope proposal' }));
+    expect(spy.mock.calls.every(([, init]) => init?.method !== 'POST')).toBe(true);
+    expect(screen.getByText('Approved service scopes:').textContent).toContain('Unavailable');
+  });
   it('reads requested and approved scopes through the existing gated GET', async () => {
     const spy = installFetch();
     renderRow();
     await waitFor(() => expect(screen.getByTestId('provisioned-app').textContent).toContain('pay:settle, identity:read, unknown:legacy'));
     expect(screen.getByText('Approved service scopes:').textContent).toBe('Approved service scopes: identity:read');
     expect(spy).toHaveBeenCalledWith(`${URL}?appDid=${encodeURIComponent(APP_DID)}`, { credentials: 'include' });
+  });
+
+  it('retries failed scope reads without treating the failure as no grants', async () => {
+    const spy = vi.fn().mockResolvedValueOnce(response({}, 503)).mockResolvedValue(response(scopes));
+    vi.stubGlobal('fetch', spy);
+    renderRow();
+    fireEvent.click(await screen.findByRole('button', { name: 'Retry scope read' }));
+    await waitFor(() => expect(screen.getByText('Approved service scopes:').textContent).toContain('identity:read'));
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
+  it('refreshes provisioned scope metadata after the existing signed decision event', async () => {
+    const spy = installFetch();
+    renderRow();
+    await openPicker();
+    spy.mockResolvedValue(response({ requestedScopes: ['pay:settle'], approvedServiceScopes: ['identity:read', 'pay:settle'] }));
+    act(() => globalThis.dispatchEvent(new Event(APPROVALS_REFRESH_EVENT)));
+    await waitFor(() => expect(screen.getByText('Approved service scopes:').textContent).toContain('identity:read, pay:settle'));
+    expect((screen.getByRole('checkbox', { name: /^pay:settle / }) as HTMLInputElement).disabled).toBe(true);
   });
 
   it('offers only vocabulary scopes, preselects unapproved requests, and disables approved grants', async () => {
@@ -118,7 +149,7 @@ describe('provisioned app row service scopes', () => {
     expect((await screen.findByRole('alert')).textContent).toContain('Network error');
   });
 
-  it.each(['refused', 'offline', 'malformed', 'missing'])('degrades a %s scope read to empty scopes', async (failure) => {
+  it.each(['refused', 'offline', 'malformed', 'missing'])('marks a %s scope read unavailable and disables proposals', async (failure) => {
     vi.stubGlobal('fetch', vi.fn(async () => {
       if (failure === 'offline') throw new Error('offline');
       if (failure === 'refused') return response({}, 403);
@@ -126,9 +157,10 @@ describe('provisioned app row service scopes', () => {
       return response({});
     }));
     renderRow();
-    await openPicker();
-    expect(screen.getByText('Requested scopes:').textContent).toBe('Requested scopes: None');
-    expect(screen.getByText('Approved service scopes:').textContent).toBe('Approved service scopes: None');
+    expect((await screen.findByRole('alert')).textContent).toContain('Service scopes unavailable');
+    expect(screen.getByText('Requested scopes:').textContent).toBe('Requested scopes: Unavailable');
+    expect(screen.getByText('Approved service scopes:').textContent).toBe('Approved service scopes: Unavailable');
+    expect((screen.getByRole('button', { name: 'Propose scopes' }) as HTMLButtonElement).disabled).toBe(true);
   });
 
   it('ignores a scope read completed after unmount', async () => {

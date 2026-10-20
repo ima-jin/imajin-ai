@@ -128,7 +128,7 @@ export function ProvisionedAppScopes({ appDid, initialScopes }: Readonly<{ appDi
               </label>
             ))}
           </fieldset>
-          <button type="button" disabled={busy || selected.length === 0} onClick={() => void submit()}
+          <button type="button" disabled={busy || !loaded || selected.length === 0} onClick={() => void submit()}
             className="rounded bg-amber-800/60 px-2.5 py-1 text-amber-100 disabled:opacity-40">
             {busy ? 'Proposing…' : 'Submit scope proposal'}
           </button>
