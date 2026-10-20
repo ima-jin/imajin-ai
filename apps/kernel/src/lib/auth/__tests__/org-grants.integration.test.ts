@@ -234,6 +234,23 @@ describe('organization grant acceptance (#2997)', () => {
     expect(await harness.snapshot()).toEqual(before);
   });
 
+  it('replays multiple pending revocations exactly once under concurrent retry workers', async () => {
+    const grant = await issuedGrant();
+    vi.stubEnv('AUTH_PRIVATE_KEY', '');
+    expect((await mutate('remove', grant.grantId)).status).toBe(200);
+    expect((await mutate('revoke', grant.grantId)).status).toBe(200);
+    const queued = await harness.client.query<{ pending_revocation_audits: unknown[] }>(
+      'SELECT pending_revocation_audits FROM auth.delegation_grants WHERE id = $1', [grant.grantId],
+    );
+    expect(queued.rows[0].pending_revocation_audits).toHaveLength(2);
+    vi.stubEnv('AUTH_PRIVATE_KEY', keys.privateKey);
+    await Promise.all([retryGrantRevocationAudits(), retryGrantRevocationAudits()]);
+    await assertSignedEvent(grant.grantId, 'capability_revoked', 'evidence:publish');
+    await assertSignedEvent(grant.grantId, 'revoked');
+    expect(await retryGrantRevocationAudits()).toEqual({ attempted: 0, delivered: 0, failed: 0 });
+    expect(await authorizeEvidencePublisher(AGENT, ORG)).toEqual({ authorized: false });
+  });
+
   it('returns a retryable cron error when the pending scan is unavailable', async () => {
     const select = vi.spyOn(harness.db, 'select').mockImplementationOnce(() => { throw new Error('fixture unavailable'); });
     try {

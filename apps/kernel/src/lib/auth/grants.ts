@@ -154,12 +154,14 @@ export async function deliverGrantRevocationAudits(grantId: string): Promise<boo
         .from(delegationGrants).where(eq(delegationGrants.id, grantId)).limit(1).for('update');
       const pending = grant?.pending ?? [];
       if (pending.length === 0) return;
-      for (const audit of pending) {
-        await recordGrantEvent(tx, {
+      // Preserve event order within this grant's transaction.
+      await pending.reduce(
+        (delivery, audit) => delivery.then(() => recordGrantEvent(tx, {
           grantId: audit.grantId, event: audit.event, delegatorDid: audit.delegatorDid,
           actorDid: audit.actorDid, ...(audit.capability ? { capability: audit.capability } : {}),
-        }, audit);
-      }
+        }, audit)),
+        Promise.resolve(),
+      );
       await tx.update(delegationGrants).set({ pendingRevocationAudits: [] })
         .where(eq(delegationGrants.id, grantId));
     });
@@ -174,10 +176,8 @@ export async function deliverGrantRevocationAudits(grantId: string): Promise<boo
 export async function retryGrantRevocationAudits() {
   const rows = await db.select({ id: delegationGrants.id }).from(delegationGrants)
     .where(sql`${delegationGrants.pendingRevocationAudits} <> '[]'::jsonb`).limit(100);
-  let delivered = 0;
-  for (const row of rows) {
-    if (await deliverGrantRevocationAudits(row.id)) delivered += 1;
-  }
+  const outcomes = await Promise.all(rows.map(row => deliverGrantRevocationAudits(row.id)));
+  const delivered = outcomes.filter(Boolean).length;
   return { attempted: rows.length, delivered, failed: rows.length - delivered };
 }
 
