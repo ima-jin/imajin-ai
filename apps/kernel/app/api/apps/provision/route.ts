@@ -206,13 +206,14 @@ function provisionSummary(body: ProvisionRequestBody, slug: string, displayName:
   const siteOwnerDid = typeof body.siteOwnerDid === 'string' ? body.siteOwnerDid : operatorDid;
   const domain = typeof body.domain === 'string' ? body.domain : `${slug}.imajin.ai`;
   const visibility = isAppVisibility(body.visibility) ? body.visibility : 'public';
+  const signInAudience = isAppSignInAudience(body.signInAudience) ? body.signInAudience : 'members';
   if (retryAppDid) {
     return `Retry domain issuance for existing app '${slug}' (${retryAppDid}) at ${domain} using its recorded registry owner, then reissue its claim code. No repo, keypair or owner is re-created or changed.`;
   }
   const repositoryAction = isRepositoryName(body.sourceRepo)
     ? `use existing repository ${body.sourceRepo} (no repository is created), register it, and seal its credential`
     : `create ima-jin/${slug} from template, register it, and seal its credential`;
-  return `Provision app '${slug}' (${displayName}): ${repositoryAction}. Visibility: ${visibility}. Sign-in audience: ${body.signInAudience ?? 'members'}. Site owner: ${siteOwnerDid}; issue ${domain} from Imajin's organization. Will retire app_first_party_${slug} if it holds the slug or active audience; no app schema/data is changed.`;
+  return `Provision app '${slug}' (${displayName}): ${repositoryAction}. Visibility: ${visibility}. Sign-in audience: ${signInAudience}. Site owner: ${siteOwnerDid}; issue ${domain} from Imajin's organization. Will retire app_first_party_${slug} if it holds the slug or active audience; no app schema/data is changed.`;
 }
 export async function POST(request: NextRequest) {
   const cors = corsHeaders(request);
