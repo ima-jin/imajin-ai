@@ -12,7 +12,7 @@ export function CloudflarePreview() {
   const [ready, setReady] = useState(false);
   const [proposals, setProposals] = useState<FixtureProposal[]>([]);
   useEffect(() => {
-    const dispose = installCloudflarePreview((proposal) => setProposals((current) => [...current, proposal]));
+    const dispose = installCloudflarePreview((proposal) => setProposals((current) => [...current, proposal]), 'imajin.ai');
     setReady(true);
     return dispose;
   }, []);
@@ -20,10 +20,11 @@ export function CloudflarePreview() {
     <h1 className="font-mono text-xl">Cloudflare · development fixture</h1>
     <p className="my-3 text-sm">Real import and operations panels, entirely mocked transport. Use fake credential text only.
       No live Cloudflare, vault writes, signatures or approved execution. Authentication on real API routes is unchanged.</p>
-    <p className="break-all font-mono text-sm">Domain: example.com · Zone ID: {fixtureZoneId}</p>
+    <p className="break-all font-mono text-sm">Domain: imajin.ai · Zone ID: {fixtureZoneId}</p>
     <p className="text-sm">Select the fixture group owner and Cloudflare import mode. Use any fake DID as grantee.
-      Preview proxy/cache changes, request approval, check hostname validation records and inspect signed-history shape.</p>
-    {ready && <><VaultImportPanel /><CloudflarePanel /></>}
+      Select Edge classification as the initial zone view for the illustrative kernel, app, third-party, mail and verification report.
+      Preview all dry runs, request approval, check hostname validation records and inspect signed-history shape.</p>
+    {ready && <><VaultImportPanel /><CloudflarePanel initialZone={{ domain: 'imajin.ai', zoneId: fixtureZoneId }} initialSection="Edge classification" /></>}
     <section className="mt-6 space-y-3">
       <h2 className="font-mono">Fixture pending proposals · no execution</h2>
       {proposals.map((proposal) => <article key={proposal.proposalId} id={approvalCardAnchorId(proposal.proposalId)}

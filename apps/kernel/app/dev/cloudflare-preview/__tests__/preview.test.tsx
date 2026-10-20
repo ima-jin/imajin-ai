@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, within, waitFor } from '@testing-library/react';
 import { CloudflarePreview } from '../cloudflare-preview';
 import CloudflarePreviewPage from '../page';
 import { fixtureGroup, fixtureZoneId } from '../transport';
@@ -27,16 +27,21 @@ describe('Cloudflare development preview', () => {
     await screen.findByRole('link', { name: 'Review import proposal' });
     expect(document.body.textContent).not.toContain('FAKE_FIXTURE_INPUT');
     const panel = within(screen.getByTestId('cloudflare-panel'));
-    fireEvent.change(panel.getByLabelText('Verified zone domain'), { target: { value: 'example.com' } });
+    fireEvent.change(panel.getByLabelText('Verified zone domain'), { target: { value: 'imajin.ai' } });
     fireEvent.change(panel.getByLabelText('Cloudflare zone ID'), { target: { value: fixtureZoneId } });
+    fireEvent.change(panel.getByLabelText('Initial zone view'), { target: { value: 'Edge classification' } });
     fireEvent.click(panel.getByRole('button', { name: 'Load zone' }));
-    fireEvent.click(await panel.findByRole('checkbox', { name: 'Select www.example.com' }));
-    fireEvent.click(panel.getByRole('button', { name: 'Preview bulk changes' }));
-    fireEvent.click(await panel.findByRole('button', { name: 'Request bulk approval' }));
-    const link = await panel.findByRole('link', { name: 'Review Cloudflare proposal' });
+    fireEvent.click(await panel.findByRole('button', { name: 'Preview all dry runs' }));
+    const request = panel.getByRole('button', { name: 'Request approval' }) as HTMLButtonElement;
+    await waitFor(() => expect(request.disabled).toBe(false));
+    fireEvent.click(request);
+    const link = await panel.findByRole('link', { name: /Review proposal 1:/ });
     const id = link.getAttribute('href')!.slice(1);
     expect(document.getElementById(id)?.textContent).toContain('cloudflare:bulk-proxy');
-    expect(panel.getByRole('checkbox', { name: 'Proxy www.example.com through Cloudflare' }).getAttribute('checked')).toBeNull();
+    await panel.findByRole('link', { name: /Review proposal 2:/ });
+    expect(panel.queryByRole('button', { name: /execute/i })).toBeNull();
+    expect(panel.getByRole('heading', { name: 'kernel.imajin.ai' })).toBeDefined();
+    expect(panel.getByRole('heading', { name: '_verification.imajin.ai' })).toBeDefined();
     expect(screen.getByRole('heading', { name: 'Fixture pending proposals · no execution' })).toBeDefined();
   });
 });

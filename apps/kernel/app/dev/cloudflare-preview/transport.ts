@@ -1,4 +1,5 @@
 import type { CacheRule, CustomHostname, DnsRecord } from '../../jin/cloudflare-client';
+import { imajinClassificationFixture, imajinFixtureRecords } from './classification-fixture';
 
 export const fixtureZoneId = 'a'.repeat(32);
 export const fixtureGroup = 'did:imajin:fixture-zone-owners';
@@ -8,13 +9,14 @@ export interface FixtureProposal { proposalId: string; kind: string; detail: unk
 const json = (value: unknown, status = 200) => Response.json(value, { status });
 
 /** Intercepts every request; unknown URLs never fall through to a real API. */
-export function createCloudflarePreviewTransport(onProposal: (proposal: FixtureProposal) => void = () => undefined) {
+export function createCloudflarePreviewTransport(onProposal: (proposal: FixtureProposal) => void = () => undefined, domain = 'example.com') {
   if (process.env.NODE_ENV !== 'development') throw new Error('Development fixture only');
   let records: DnsRecord[] = [
     { id: 'b'.repeat(32), type: 'A', name: 'www.example.com', content: '192.0.2.10', ttl: 1, proxied: false, proxiable: true },
     { id: 'c'.repeat(32), type: 'CNAME', name: 'assets.example.com', content: 'www.example.com', ttl: 1, proxied: true, proxiable: true },
     { id: 'd'.repeat(32), type: 'TXT', name: 'example.com', content: 'fixture-verification-only', ttl: 300, proxied: false, proxiable: false },
   ];
+  if (domain === 'imajin.ai') records = imajinFixtureRecords.map(record => ({ ...record }));
   const rules: CacheRule[] = [{
     id: 'e'.repeat(32), description: 'Static assets', expression: 'http.host eq "assets.example.com"',
     enabled: true, action: 'set_cache_settings', action_parameters: { cache: true },
@@ -39,7 +41,7 @@ export function createCloudflarePreviewTransport(onProposal: (proposal: FixtureP
   const stage = (kind: string, detail: unknown) => {
     const proposalId = `fixture-cloudflare-${++sequence}`;
     onProposal({ proposalId, kind, detail: {
-      actor: { did: actor }, ownerDid: fixtureGroup, zoneId: fixtureZoneId, domain: 'example.com',
+      actor: { did: actor }, ownerDid: fixtureGroup, zoneId: fixtureZoneId, domain,
       expiresAt: new Date(Date.now() + 900_000).toISOString(),
       ...(kind.startsWith('cloudflare:') ? { operation: kind.slice('cloudflare:'.length) } : {}),
       ...detail as Record<string, unknown>,
@@ -47,8 +49,9 @@ export function createCloudflarePreviewTransport(onProposal: (proposal: FixtureP
     return { proposalId, status: 'pending', operatorDid: actor };
   };
   const dnsWrite = (resource: string, method: string, body: Record<string, unknown>) => {
+    if ('proxied' in body) return json({ error: 'proxy_approval_required' }, 400);
     if (resource === 'dns') {
-      records = [...records, { ...body, id: String(++sequence).padStart(32, '0'), proxiable: ['A', 'AAAA', 'CNAME'].includes(String(body.type)) } as unknown as DnsRecord];
+      records = [...records, { ...body, proxied: false, id: String(++sequence).padStart(32, '0'), proxiable: ['A', 'AAAA', 'CNAME'].includes(String(body.type)) } as unknown as DnsRecord];
       return json({ record: records.at(-1) }, 201);
     }
     const id = resource.slice(4);
@@ -85,15 +88,16 @@ export function createCloudflarePreviewTransport(onProposal: (proposal: FixtureP
     if (method !== 'GET') return json(stage('vault:import', { owner: fixtureGroup, consumer: node, purpose: `dns.cloudflare:${fixtureZoneId}` }), 202);
     return json({ ownerDid: actor, nodeDid: node,
       owners: [{ did: actor, name: 'Fixture human' }, { did: fixtureGroup, name: 'Fixture zone owners (group)' }],
-      domains: [{ domain: 'example.com', ownerDid: fixtureGroup }], cards: [{
+      domains: [{ domain, ownerDid: fixtureGroup }], cards: [{
         field: 'vault-import:fixture-zone', ownerDid: fixtureGroup, consumerDid: node,
         purpose: `dns.cloudflare:${fixtureZoneId}`, fingerprint: 'FIXTURE_PUBLIC_FINGERPRINT',
         grantId: 'fixture-vault-grant', provenance: 'imported', status: 'active', timeline: [],
-        cloudflare: { domain: 'example.com', zoneId: fixtureZoneId, granteeDid: 'did:imajin:fixture-agent',
+        cloudflare: { domain, zoneId: fixtureZoneId, granteeDid: 'did:imajin:fixture-agent',
           capabilities: ['cloudflare:read', 'cloudflare:dns'] },
       }] });
   };
   const dispatch = (resource: string, method: string, body: Record<string, unknown>) => {
+    if (resource === 'classification' && method === 'GET' && domain === 'imajin.ai') return json({ classification: imajinClassificationFixture });
     if (resource === 'dns' && method === 'GET') return json({ records });
     if (resource === 'dns' || resource.startsWith('dns/')) return dnsWrite(resource, method, body);
     if (resource === 'bulk') return bulkPlan(body);
@@ -114,7 +118,7 @@ export function createCloudflarePreviewTransport(onProposal: (proposal: FixtureP
       return grantRequest(url, method);
     }
     const prefix = `/cloudflare/api/zones/${fixtureZoneId}/`;
-    if (!url.pathname.startsWith(prefix) || url.searchParams.get('domain') !== 'example.com') return json({ error: 'fixture_only' }, 404);
+    if (!url.pathname.startsWith(prefix) || url.searchParams.get('domain') !== domain) return json({ error: 'fixture_only' }, 404);
     const text = await previewPayload(input, options, method);
     const body = text ? JSON.parse(text) as Record<string, unknown> : {};
     return dispatch(url.pathname.slice(prefix.length), method, body);
@@ -122,8 +126,8 @@ export function createCloudflarePreviewTransport(onProposal: (proposal: FixtureP
   return { fetcher };
 }
 
-export function installCloudflarePreview(onProposal: (proposal: FixtureProposal) => void) {
-  const fixture = createCloudflarePreviewTransport(onProposal);
+export function installCloudflarePreview(onProposal: (proposal: FixtureProposal) => void, domain = 'example.com') {
+  const fixture = createCloudflarePreviewTransport(onProposal, domain);
   const previous = globalThis.fetch;
   globalThis.fetch = fixture.fetcher;
   return () => { globalThis.fetch = previous; };
