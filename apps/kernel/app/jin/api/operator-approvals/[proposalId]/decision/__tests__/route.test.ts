@@ -73,6 +73,38 @@ vi.mock('@/src/lib/vault/approvals-execution', () => ({
   executeVaultApproval: mockExecuteVaultApproval,
 }));
 
+const mockExecuteCloudflareApproval = vi.hoisted(() => vi.fn());
+vi.mock('@/src/lib/cloudflare/approvals', () => ({
+  executeCloudflareApproval: mockExecuteCloudflareApproval,
+}));
+
+describe('Cloudflare approval execution bridge', () => {
+  it('dispatches an approved plan and never reveals credential or execution data', async () => {
+    mockDecide.mockResolvedValueOnce({ ok: true, card: pendingApprovalCard({
+      source: 'cloudflare', kind: 'cloudflare:bulk-proxy', status: 'approved',
+    }) });
+    mockExecuteCloudflareApproval.mockResolvedValueOnce({ ok: true });
+    const response = await POST(makeReq({ decision: 'approve' }) as Parameters<typeof POST>[0], paramsFor(PROPOSAL_ID));
+    expect(mockExecuteCloudflareApproval).toHaveBeenCalledTimes(1);
+    expect((await response.json()).data).toBeUndefined();
+  });
+  it.each(['reject', 'withdrawn'])('never executes a %s decision', async decision => {
+    mockDecide.mockResolvedValueOnce({ ok: true, card: pendingApprovalCard({
+      source: 'cloudflare', kind: 'cloudflare:bulk-proxy',
+    }) });
+    await POST(makeReq({ decision }) as Parameters<typeof POST>[0], paramsFor(PROPOSAL_ID));
+    expect(mockExecuteCloudflareApproval).not.toHaveBeenCalled();
+  });
+  it('reports a sanitized execution refusal without changing the recorded decision', async () => {
+    mockDecide.mockResolvedValueOnce({ ok: true, card: pendingApprovalCard({
+      source: 'cloudflare', kind: 'cloudflare:cache-set', status: 'approved',
+    }) });
+    mockExecuteCloudflareApproval.mockResolvedValueOnce({ ok: false, error: 'Plan unavailable' });
+    const response = await POST(makeReq({ decision: 'approve' }) as Parameters<typeof POST>[0], paramsFor(PROPOSAL_ID));
+    expect(await response.json()).toMatchObject({ executionError: 'Plan unavailable', approval: { status: 'approved' } });
+  });
+});
+
 vi.mock('@/src/lib/access/approvals-execution', () => ({
   executeAccessApproval: mockExecuteAccessApproval,
 }));
