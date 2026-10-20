@@ -13,7 +13,7 @@ set -e
 BASE_REF="${1:-origin/main}"
 
 # Files that count as schema changes
-SCHEMA_PATTERN='(apps/.*/src/db/schema\.ts|packages/db/src/.*\.ts)$'
+SCHEMA_PATTERN='(apps/.*/src/db/(schema\.ts|schemas/[^/]+\.ts)|packages/db/src/.*\.ts)$'
 
 CHANGED_SCHEMA=$(git diff --name-only "$BASE_REF"...HEAD 2>/dev/null \
   | grep -E "$SCHEMA_PATTERN" || true)

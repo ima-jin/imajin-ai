@@ -79,6 +79,29 @@ function flushMicrotasks(): Promise<void> {
 }
 
 describe('recordInferenceUsage', () => {
+  it('meters Moonshot tokens with our rate card as incurred, never a billed statement', async () => {
+    await recordInferenceUsage({
+      principalDid: OWNER,
+      provider: 'moonshot',
+      model: 'kimi-k2-0711-preview',
+      tokensIn: 1_000_000,
+      tokensOut: 1_000_000,
+      externalId: 'moonshot-completion',
+    });
+    const usage = insertCalls.find((call) => call.table === 'usageIncurred')?.values;
+    expect(usage).toMatchObject({
+      principalDid: OWNER, provider: 'moonshot', source: 'inference-passthrough',
+      resource: 'model:moonshot/kimi-k2-0711-preview', costUsd: '3.10000000',
+      tokensIn: 1_000_000, tokensOut: 1_000_000, externalId: 'moonshot-completion',
+    });
+    expect(insertCalls.map((call) => call.table)).toEqual(['transactions', 'balanceRollups', 'usageIncurred']);
+  });
+
+  it('keeps missing Moonshot token usage unpriced rather than inventing a zero cost', async () => {
+    await recordInferenceUsage({ principalDid: OWNER, provider: 'moonshot', model: 'kimi-k2-0711-preview' });
+    expect(insertCalls).toHaveLength(1);
+    expect(insertCalls[0].values).toMatchObject({ provider: 'moonshot', costUsd: null, tokensIn: null, tokensOut: null });
+  });
   it('writes a usage.incurred row with computed cost, tokens, a linked transaction id, and the #1147 emitter/resource discriminators', async () => {
     await recordInferenceUsage({
       sessionId: 'sess_1',

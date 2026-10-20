@@ -65,6 +65,119 @@ components:
         drift: { type: number, description: "USD; sum of lib/usage/reconciliation's driftUsd for the same window" }
         rollup: { $ref: "#/components/schemas/UsageRollupPointer" }
         currency: { type: string, default: USD }
+        budget: { $ref: "#/components/schemas/UsageBudget" }
+        costReport: { $ref: "#/components/schemas/CostReport" }
+    MeterTotals:
+      type: object
+      required: [total, byProvider, rowCount, unpricedCount]
+      description: |
+        OUR meter estimates from usage.incurred, never invoices or balances.
+        Only priced non-error observations contribute to USD totals. rowCount
+        counts included non-error observations; unpricedCount counts their null
+        costUsd values. Zero totals with unpriced rows are not complete zero spend.
+        Even unpricedCount=0 does not prove unobserved provider activity is covered.
+      properties:
+        total: { type: number, description: "Estimated USD, retaining ledger precision" }
+        byProvider:
+          type: object
+          additionalProperties: { type: number }
+          description: "Estimated USD keyed by provider; includes warp, anthropic and moonshot even at zero"
+        rowCount: { type: integer, minimum: 0 }
+        unpricedCount: { type: integer, minimum: 0 }
+    CostReport:
+      allOf:
+        - $ref: "#/components/schemas/MeterTotals"
+        - type: object
+          required: [from, to, asOf, currency, basis]
+          properties:
+            from: { type: string, format: date-time, description: "Inclusive createdAt bound" }
+            to: { type: string, format: date-time, description: "Exclusive createdAt bound" }
+            asOf: { type: string, format: date-time, description: "Captured observation instant; only createdAt < min(to, asOf) is counted" }
+            currency: { type: string, const: USD }
+            basis: { type: string, const: meter-estimate }
+      description: |
+        Optional independent date-range cost report from usage.incurred only.
+        Does not read provider billing APIs or include manual bills, top-ups,
+        invoices or balances. status=error rows are excluded; unknown costs
+        remain visible through unpricedCount. This does not alter the normal
+        window's legacy incurred/billed/drift/rollup fields or the budget period.
+        Future requested endpoints are allowed for open calendar periods; only
+        observations before min(to, asOf) count, never future completeness.
+    UsageBudget:
+      type: object
+      description: |
+        Present only with paired budgetSince/budgetCap. OUR meter estimates,
+        never billed actuals: reads usage.incurred createdAt in [since, asOf),
+        independently of the normal window and optional cost-report interval.
+        asOf is a single captured server instant. No proration: each observation
+        belongs to its ledger createdAt (Warp preserves original run creation).
+        status=error rows are excluded; unknown costs count as unpriced, not
+        priced zero. The budget does not establish account-wide provider coverage.
+      required: [since, asOf, currency, basis, cap, incurred, remaining, weeks, sources, projection]
+      properties:
+        since: { type: string, format: date-time }
+        asOf: { type: string, format: date-time }
+        currency: { type: string, const: USD }
+        basis: { type: string, const: meter-estimate }
+        cap:
+          type: object
+          description: "Money: integer USD cents; 4000USD becomes amount=400000"
+          required: [amount, currency]
+          properties:
+            amount: { type: integer, minimum: 1, maximum: 9007199254740991 }
+            currency: { type: string, const: USD }
+        incurred: { $ref: "#/components/schemas/MeterTotals" }
+        remaining: { type: number, description: "USD cap minus priced incurred estimate; negative indicates estimated overspend; unpriced observations are additional uncertainty" }
+        weeks:
+          type: array
+          description: "Every UTC Monday ISO week intersecting [since, asOf), including zero weeks; first/last bounds clipped"
+          items:
+            type: object
+            required: [week, from, to, incurred, cumulative]
+            properties:
+              week: { type: string, pattern: '^\d{4}-W\d{2}$', description: "ISO week-year, not calendar year" }
+              from: { type: string, format: date-time, description: "Inclusive" }
+              to: { type: string, format: date-time, description: "Exclusive" }
+              incurred: { $ref: "#/components/schemas/MeterTotals" }
+              cumulative: { $ref: "#/components/schemas/MeterTotals" }
+        sources:
+          type: object
+          description: |
+            Meter capabilities, not grant status or completeness: Warp uses
+            kernel-observed own run-watch usage, never an account billing API;
+            Anthropic and Moonshot use observed inference tokens times kernel
+            rate cards. Unknown prices are surfaced; no invoice or balance
+            fallback and no billing grants are required by these read views.
+          additionalProperties:
+            type: object
+            required: [meter, note]
+            properties:
+              meter: { type: string, enum: [own-run-watch, tokens-times-rate-card] }
+              note: { type: string }
+        projection:
+          type: object
+          description: |
+            Straight-line estimate from priced incurred observations in
+            [max(since, asOf - 7 days), asOf), divided by exactly seven days
+            even for a newer budget. Does not extrapolate unpriced or missing
+            activity. next7Days = dailyRate * 7; projectedTotalIn7Days adds it
+            to cumulative priced incurred. projectedCapDate = asOf +
+            remaining/dailyRate days only for positive remaining and rate;
+            otherwise null, including unrepresentable dates. capReached=true
+            means priced estimates already meet/exceed cap. Always consider
+            incurred.unpricedCount before interpreting the projection.
+          required: [basis, from, to, denominatorDays, incurred, dailyRate, next7Days, projectedTotalIn7Days, projectedCapDate, capReached]
+          properties:
+            basis: { type: string, const: trailing-7-days }
+            from: { type: string, format: date-time }
+            to: { type: string, format: date-time }
+            denominatorDays: { type: integer, const: 7 }
+            incurred: { $ref: "#/components/schemas/MeterTotals" }
+            dailyRate: { type: number, description: "Estimated USD/day" }
+            next7Days: { type: number, description: "Projected additional estimated USD over the next seven days" }
+            projectedTotalIn7Days: { type: number, description: "Estimated cumulative USD plus next7Days" }
+            projectedCapDate: { type: [string, "null"], format: date-time }
+            capReached: { type: boolean }
     UsageRollupAttestation:
       type: object
       description: |
@@ -255,6 +368,24 @@ paths:
           in: query
           schema: { type: string }
           description: "YYYY-MM or YYYY-MM-DD..YYYY-MM-DD (UTC); defaults to the current UTC month"
+        - name: budgetSince
+          in: query
+          schema: { type: string, format: date-time }
+          example: "2026-10-19T16:13:00Z"
+          description: "Optional, paired with budgetCap exactly once each. Valid past ISO timestamp with seconds, optional 1-3 fractional digits, and explicit Z or timezone offset. No calendar normalization or future/equal-now timestamp."
+        - name: budgetCap
+          in: query
+          schema: { type: string, pattern: '^(?:0|[1-9]\d*)(?:\.\d{1,2})?USD$' }
+          example: "4000USD"
+          description: "Optional, paired with budgetSince. Positive USD decimal followed immediately by USD, at most two decimals, no whitespace/sign/exponent/leading zeros; integer cents must fit Number.MAX_SAFE_INTEGER. No non-USD or overprecision rounding."
+        - name: from
+          in: query
+          schema: { type: string, format: date-time }
+          description: "Optional cost report, paired exactly once with to. Inclusive incurred createdAt bound; strict YYYY-MM-DD (UTC midnight) or ISO timestamp with seconds, optional 1-3 fractional digits and Z or offset. Must be < to. Independent of window/budget."
+        - name: to
+          in: query
+          schema: { type: string, format: date-time }
+          description: "Exclusive requested incurred createdAt bound; paired with from. Future period endpoints allowed. Same strict date/timestamp syntax; no normalized impossible dates. Actual observations clipped at min(to, asOf)."
       responses:
         "200":
           description: Usage summary
@@ -262,7 +393,7 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/UsageSummary" }
         "400":
-          description: Malformed window
+          description: Malformed window or invalid/unpaired/repeated budget or cost-report inputs
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }

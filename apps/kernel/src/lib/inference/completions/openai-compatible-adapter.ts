@@ -218,7 +218,9 @@ async function recordOpenAiCompatibleUsage(rawBody: string, brain: ResolvedBrain
       model: brain.modelId,
       tokensIn: parsed?.usage?.prompt_tokens,
       tokensOut: parsed?.usage?.completion_tokens,
-      explicitCostUsd: parsed?.usage?.cost,
+      // Only OpenRouter has an explicit upstream-cost contract (#2188).
+      // Moonshot and the other direct providers use OUR token rate card.
+      explicitCostUsd: brain.connector === 'openrouter' ? parsed?.usage?.cost : undefined,
       // #2204: the upstream response id, for the auditor chain view.
       externalId: parsed?.id,
       ...(upstreamOk ? {} : { status: 'error' }),
@@ -260,6 +262,8 @@ async function drainMeterStream(body: ReadableStream<Uint8Array>): Promise<Strea
     for (const line of lines) mergeMeterableLine(parseSseUsageLine(line), acc);
   }
 
+  // Flush the meter's own trailing frame; client-facing bytes are untouched.
+  mergeMeterableLine(parseSseUsageLine(buffer + decoder.decode()), acc);
   return acc;
 }
 
@@ -289,7 +293,7 @@ function meterStreamForUsage(
       model: brain.modelId,
       tokensIn: usage?.prompt_tokens,
       tokensOut: usage?.completion_tokens,
-      explicitCostUsd: usage?.cost,
+      explicitCostUsd: brain.connector === 'openrouter' ? usage?.cost : undefined,
       externalId,
       ...(upstreamOk ? {} : { status: 'error' }),
     });

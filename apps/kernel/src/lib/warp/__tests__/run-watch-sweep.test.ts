@@ -27,6 +27,8 @@ const {
   priorResumeCounts,
   listingFailure,
   FakeWarpApiErrorHoisted,
+  usageRecovery,
+  safeLog,
 } = vi.hoisted(() => ({
   getAgentRunMock: vi.fn(),
   publishTerminalRunOutcomeMock: vi.fn().mockResolvedValue(undefined),
@@ -49,6 +51,8 @@ const {
   // keyed by runId; defaults to 0 for any runId not seeded.
   priorResumeCounts: new Map<string, number>(),
   listingFailure: { error: null as Error | null },
+  usageRecovery: vi.fn(),
+  safeLog: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
   FakeWarpApiErrorHoisted: class extends Error {
     status: number;
     constructor(message: string, status: number) {
@@ -59,8 +63,9 @@ const {
 }));
 
 vi.mock('@imajin/logger', () => ({
-  createLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }),
+  createLogger: () => safeLog,
 }));
+vi.mock('../usage-sweep', () => ({ sweepWarpIncurredUsage: usageRecovery }));
 
 vi.mock('@imajin/db', () => {
   const sql = (strings: TemplateStringsArray, ...values: unknown[]) => {
@@ -143,12 +148,31 @@ beforeEach(() => {
   priorResumeCounts.clear();
   listingFailure.error = null;
   getAgentRunMock.mockReset();
+  usageRecovery.mockReset().mockResolvedValue(undefined);
   publishTerminalRunOutcomeMock.mockReset().mockResolvedValue(undefined);
   publishBlockedRunOutcomeMock.mockReset().mockResolvedValue(undefined);
   publishTimeoutRunOutcomeMock.mockReset().mockResolvedValue(undefined);
 });
 
 describe('sweepInFlightWarpRuns', () => {
+  it.each([
+    { failure: new TypeError('synthetic-private-marker'), errorType: 'TypeError' },
+    { failure: 'synthetic-private-marker', errorType: 'string' },
+  ])('retains safe $errorType diagnostics without raw provider/DB/recovery messages', async ({ failure, errorType }) => {
+    seedCandidate('run-1');
+    getAgentRunMock.mockRejectedValueOnce(failure);
+    usageRecovery.mockRejectedValueOnce(failure);
+    expect(await sweepInFlightWarpRuns()).toMatchObject({ errors: 1, checked: 1 });
+    expect(safeLog.warn).toHaveBeenCalledWith(
+      expect.objectContaining({ errorType, runId: 'run-1', principalDid: PRINCIPAL }),
+      'Warp run watch sweep: could not check run',
+    );
+    expect(safeLog.warn).toHaveBeenCalledWith({ errorType }, 'Warp incurred recovery unavailable; lifecycle sweep continues');
+    listingFailure.error = failure as Error;
+    await sweepInFlightWarpRuns();
+    expect(safeLog.error).toHaveBeenCalledWith({ errorType }, 'Warp run watch sweep: could not list in-flight runs');
+    expect(JSON.stringify([safeLog.warn.mock.calls, safeLog.error.mock.calls])).not.toContain('synthetic-private-marker');
+  });
   it('is a no-op when there are no in-flight runs', async () => {
     const outcome = await sweepInFlightWarpRuns();
 
@@ -163,6 +187,7 @@ describe('sweepInFlightWarpRuns', () => {
       errors: 0,
     });
     expect(getAgentRunMock).not.toHaveBeenCalled();
+    expect(usageRecovery).toHaveBeenCalledOnce();
   });
 
   it('publishes the terminal outcome and counts SUCCEEDED as completed, with no resume context', async () => {
@@ -179,6 +204,7 @@ describe('sweepInFlightWarpRuns', () => {
       undefined,
     );
     expect(outcome).toMatchObject({ checked: 1, completed: 1, failed: 0, stillInFlight: 0 });
+    expect(publishTerminalRunOutcomeMock.mock.invocationCallOrder[0]).toBeLessThan(usageRecovery.mock.invocationCallOrder[0]);
   });
 
   it('counts CANCELLED as completed too, same as the in-request watch', async () => {

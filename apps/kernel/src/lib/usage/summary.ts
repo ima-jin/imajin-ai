@@ -9,15 +9,18 @@
  * two routes can never disagree about what "drift" means for the same
  * window (#2030 acceptance criterion).
  */
-import { and, desc, eq, gte, isNull, lt, sql } from 'drizzle-orm';
+import { and, desc, eq, gte, isNull, lt, ne, or, sql } from 'drizzle-orm';
 import { db, usageIncurred, usageBilled, attestations } from '@/src/db';
 import { readReconciliation } from './reconciliation';
+import { buildUsageBudget, buildCostReport, type BudgetQuery, type MeterRow, type UsageBudgetResult, type CostReportQuery } from './budget';
 
 export interface UsageSummaryQuery {
   principalDid: string;
   from: Date;
   to: Date;
   windowLabel: string;
+  budget?: BudgetQuery;
+  costReport?: CostReportQuery;
 }
 
 export interface UsageSummaryResult {
@@ -28,6 +31,8 @@ export interface UsageSummaryResult {
   drift: number;
   rollup: { attestationId: string; signedAt: string } | null;
   currency: string;
+  budget?: UsageBudgetResult;
+  costReport?: ReturnType<typeof buildCostReport>;
 }
 
 function toNumber(value: string | number | null): number {
@@ -70,15 +75,20 @@ async function readBilledByProviderAndSource(principalDid: string, from: Date, t
     .groupBy(usageBilled.provider, usageBilled.source, usageBilled.granularity);
 }
 
-/**
- * `source = 'api'` rows are pulled at both 'day' (settled) and 'month'
- * (moving month-to-date) granularity for the SAME days — see
- * `billed/ingest-job.ts`. Summing both would double-count; only the 'day'
- * rows are counted for api-sourced totals. Manual/document rows have no
- * such duplicate bucket, so every one of them counts once, unconditionally.
- */
-function countsTowardBilledTotal(row: BilledRow): boolean {
-  return row.source !== 'api' || row.granularity === 'day';
+/** Independent OUR-meter view, excluding failed attempts but retaining unpriced rows. */
+async function readMeterRows(principalDid: string, from: Date, to: Date): Promise<MeterRow[]> {
+  return await db
+    .select({
+      provider: usageIncurred.provider,
+      costUsd: usageIncurred.costUsd,
+      createdAt: usageIncurred.createdAt,
+      status: usageIncurred.status,
+    })
+    .from(usageIncurred)
+    .where(and(
+      eq(usageIncurred.principalDid, principalDid), gte(usageIncurred.createdAt, from), lt(usageIncurred.createdAt, to),
+      or(isNull(usageIncurred.status), ne(usageIncurred.status, 'error')),
+    ));
 }
 
 interface RollupPointer {
@@ -110,11 +120,13 @@ async function readLatestRollup(principalDid: string, from: Date, to: Date): Pro
 export async function readUsageSummary(query: UsageSummaryQuery): Promise<UsageSummaryResult> {
   const { principalDid, from, to, windowLabel } = query;
 
-  const [incurredRows, billedRows, reconciliation, rollup] = await Promise.all([
+  const [incurredRows, billedRows, reconciliation, rollup, budgetRows, reportRows] = await Promise.all([
     readIncurredByProvider(principalDid, from, to),
     readBilledByProviderAndSource(principalDid, from, to),
     readReconciliation({ principalDid, from, to }),
     readLatestRollup(principalDid, from, to),
+    query.budget ? readMeterRows(principalDid, query.budget.since, query.budget.now) : Promise.resolve([]),
+    query.costReport ? readMeterRows(principalDid, query.costReport.from, new Date(Math.min(query.costReport.to.getTime(), query.costReport.asOf.getTime()))) : Promise.resolve([]),
   ]);
 
   const byProvider: Record<string, number> = {};
@@ -129,7 +141,8 @@ export async function readUsageSummary(query: UsageSummaryQuery): Promise<UsageS
   const bySource: Record<string, number> = {};
   let billedTotal = 0;
   for (const row of billedRows) {
-    if (!countsTowardBilledTotal(row)) continue;
+    // Legacy billed API day buckets only; month-to-date buckets overlap.
+    if (row.source === 'api' && row.granularity !== 'day') continue;
     const amount = toNumber(row.billedUsd);
     byVendor[row.provider] = (byVendor[row.provider] ?? 0) + amount;
     bySource[row.source] = (bySource[row.source] ?? 0) + amount;
@@ -148,5 +161,7 @@ export async function readUsageSummary(query: UsageSummaryQuery): Promise<UsageS
     // USD-only (packages/money FX, #1950, is out of scope) — every figure
     // above is already summed from USD-denominated columns.
     currency: 'USD',
+    ...(query.budget ? { budget: buildUsageBudget(query.budget, budgetRows) } : {}),
+    ...(query.costReport ? { costReport: buildCostReport(query.costReport, reportRows) } : {}),
   };
 }

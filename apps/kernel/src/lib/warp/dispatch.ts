@@ -833,6 +833,12 @@ function toStatusMessage(value: unknown): WarpRunStatusMessage | null {
 function toUsage(value: unknown): WarpRunUsage | null {
   const body = objectOrNull(value);
   if (body === null) return null;
+  // Missing/null components are legitimate (e.g. inference-only children).
+  // Malformed non-null components make the whole statement unknown: coercing
+  // them to null would let billing silently charge an incomplete total.
+  const components = [body.inference_cost, body.compute_cost, body.platform_cost];
+  if (components.some(cost => cost !== null && cost !== undefined
+    && (typeof cost !== 'number' || !Number.isFinite(cost) || cost < 0))) return null;
 
   return {
     inferenceCost: numberOrNull(body.inference_cost),
@@ -2228,6 +2234,9 @@ async function publishRunCompleted(
       sessionLink: run.sessionLink,
       principalDid,
       completedAt,
+      createdAt: run.createdAt,
+      modelId: run.modelId,
+      parentRunId: run.parentRunId,
       ...(resumeContext === undefined
         ? {}
         : { resumedFrom: resumeContext.resumedFrom, segment: resumeContext.segment }),
@@ -2296,6 +2305,9 @@ async function publishRunFailed(
       sessionLink: run.sessionLink,
       principalDid,
       failedAt,
+      createdAt: run.createdAt,
+      modelId: run.modelId,
+      parentRunId: run.parentRunId,
       ...(resumeContext === undefined
         ? {}
         : { resumedFrom: resumeContext.resumedFrom, segment: resumeContext.segment }),
@@ -2375,9 +2387,17 @@ export async function publishTerminalRunOutcome(
 ): Promise<void> {
   if (state === 'FAILED') {
     await publishRunFailed(principalDid, run, resumeContext);
-    return;
+  } else {
+    await publishRunCompleted(principalDid, run, state, resumeContext);
   }
-  await publishRunCompleted(principalDid, run, state, resumeContext);
+  // Metering is fail-open and independently retried from durable terminal
+  // records/known-root lifecycle observations, not the publish-claim gate.
+  try {
+    const { recordWarpRunUsage } = await import('../usage/warp-incurred');
+    await recordWarpRunUsage(principalDid, run);
+  } catch {
+    log.warn({ principalDid, runId: run.runId }, 'Warp incurred meter unavailable; completion preserved');
+  }
 }
 
 /**

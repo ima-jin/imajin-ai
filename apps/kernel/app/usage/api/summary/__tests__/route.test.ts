@@ -4,6 +4,7 @@ import { NextRequest } from 'next/server';
 const mocks = vi.hoisted(() => ({
   requireAuth: vi.fn(),
   readUsageSummary: vi.fn(),
+  logError: vi.fn(),
 }));
 
 vi.mock('@imajin/auth', () => ({
@@ -11,7 +12,7 @@ vi.mock('@imajin/auth', () => ({
   resolveActingDid: (identity: { actingFor?: string; id: string }) => identity.actingFor ?? identity.id,
 }));
 
-vi.mock('@imajin/logger', () => ({ createLogger: () => ({ error: vi.fn(), info: vi.fn(), warn: vi.fn() }) }));
+vi.mock('@imajin/logger', () => ({ createLogger: () => ({ error: mocks.logError, info: vi.fn(), warn: vi.fn() }) }));
 
 vi.mock('@/src/lib/kernel/cors', () => ({
   corsHeaders: () => ({ 'Access-Control-Allow-Origin': 'https://example.test' }),
@@ -41,9 +42,74 @@ beforeEach(() => {
     rollup: null,
     currency: 'USD',
   });
+
 });
 
 describe('GET /usage/api/summary', () => {
+  it.each([
+    { failure: new TypeError('synthetic-private-marker'), errorType: 'TypeError' },
+    { failure: 'synthetic-private-marker', errorType: 'string' },
+  ])('logs only a safe $errorType discriminator for summary failures', async ({ failure, errorType }) => {
+    mocks.readUsageSummary.mockRejectedValueOnce(failure);
+    const res = await GET(makeReq('https://kernel.test/usage/api/summary'));
+    expect(res.status).toBe(500);
+    expect(await res.json()).toEqual({ error: 'Usage summary unavailable' });
+    expect(mocks.logError).toHaveBeenCalledWith({ did: OWNER_DID, errorType }, 'usage summary query failed');
+    expect(JSON.stringify(mocks.logError.mock.calls)).not.toContain('synthetic-private-marker');
+  });
+  it('accepts UTC date-only ranges with future endpoints and shares captured now with budget', async () => {
+    const res = await GET(makeReq('https://kernel.test/usage/api/summary?from=2026-10-01&to=2999-11-01&budgetSince=2026-01-01T00:00:00Z&budgetCap=4000USD'));
+    expect(res.status).toBe(200);
+    const call = mocks.readUsageSummary.mock.calls[0][0];
+    expect(call.costReport.from).toEqual(new Date('2026-10-01T00:00:00Z'));
+    expect(call.costReport.to).toEqual(new Date('2999-11-01T00:00:00Z'));
+    expect(call.costReport.asOf).toBe(call.budget.now);
+  });
+  it('passes a cost-report interval independently of window and budget', async () => {
+    const res = await GET(makeReq('https://kernel.test/usage/api/summary?window=2026-08&budgetSince=2026-01-01T16:13:00Z&budgetCap=4000USD&from=2026-02-01T00:00:00Z&to=2026-02-02T00:00:00Z'));
+    expect(res.status).toBe(200);
+    expect(mocks.readUsageSummary).toHaveBeenCalledWith(expect.objectContaining({
+      windowLabel: '2026-08',
+      budget: expect.objectContaining({ since: new Date('2026-01-01T16:13:00Z') }),
+      costReport: { from: new Date('2026-02-01T00:00:00Z'), to: new Date('2026-02-02T00:00:00Z'), asOf: expect.any(Date) },
+    }));
+  });
+
+  it.each([
+    'from=2026-01-01T00:00:00Z', 'to=2026-01-02T00:00:00Z',
+    'from=2026-01-02T00:00:00Z&to=2026-01-01T00:00:00Z',
+    'from=2026-01-02T00:00:00Z&to=2026-01-02T00:00:00Z',
+    'from=2026-01-02T00:00&to=2999-01-02T00:00:00Z',
+    'from=2026-02-30T00:00:00Z&to=2026-03-02T00:00:00Z',
+    'from=2026-02-30&to=2026-03-02',
+    'from=2026-01-01T00:00:00Z&from=2026-01-02T00:00:00Z&to=2026-01-03T00:00:00Z',
+    'from=2026-01-01T00:00:00Z&to=2026-01-02T00:00:00Z&to=2026-01-03T00:00:00Z',
+  ])('rejects invalid report pair without reading the ledger (%s)', async query => {
+    const res = await GET(makeReq(`https://kernel.test/usage/api/summary?${query}`));
+    expect(res.status).toBe(400);
+    expect(mocks.readUsageSummary).not.toHaveBeenCalled();
+  });
+  it('passes paired budget inputs as USD Money independent of the normal window', async () => {
+    const res = await GET(makeReq('https://kernel.test/usage/api/summary?window=2026-08&budgetSince=2026-01-01T16:13:00Z&budgetCap=4000USD'));
+    expect(res.status).toBe(200);
+    expect(mocks.readUsageSummary).toHaveBeenCalledWith(expect.objectContaining({
+      windowLabel: '2026-08',
+      budget: { since: new Date('2026-01-01T16:13:00Z'), cap: { amount: 400000, currency: 'USD' }, now: expect.any(Date) },
+    }));
+  });
+
+  it.each([
+    'budgetSince=2026-01-01T00:00:00Z', 'budgetCap=4000USD',
+    'budgetSince=invalid&budgetCap=4000USD', 'budgetSince=2026-02-30T00:00:00Z&budgetCap=4000USD',
+    'budgetSince=2026-01-01T00:00:00Z&budgetCap=4000CAD',
+    'budgetSince=2026-01-01T00:00:00Z&budgetCap=0USD',
+    'budgetSince=2026-01-01T00:00:00Z&budgetCap=4000USD&budgetCap=1USD',
+  ])('rejects invalid budget query without reading the ledger (%s)', async query => {
+    const res = await GET(makeReq(`https://kernel.test/usage/api/summary?${query}`));
+    expect(res.status).toBe(400);
+    expect(res.headers.get('Access-Control-Allow-Origin')).toBe('https://example.test');
+    expect(mocks.readUsageSummary).not.toHaveBeenCalled();
+  });
   it('fails closed on auth failure', async () => {
     mocks.requireAuth.mockResolvedValueOnce({ error: 'Unauthorized', status: 401 });
 
@@ -119,12 +185,13 @@ describe('GET /usage/api/summary', () => {
   });
 
   it('returns 500 without leaking the underlying failure when the query throws', async () => {
-    mocks.readUsageSummary.mockRejectedValueOnce(new Error('db down'));
+    mocks.readUsageSummary.mockRejectedValueOnce(new Error('sensitive provider failure'));
 
     const res = await GET(makeReq('https://kernel.test/usage/api/summary'));
 
     expect(res.status).toBe(500);
     expect(await res.json()).toEqual({ error: 'Usage summary unavailable' });
+    expect(mocks.logError).toHaveBeenCalledWith({ did: OWNER_DID, errorType: 'Error' }, 'usage summary query failed');
   });
 
   it('answers CORS pre-flight', async () => {

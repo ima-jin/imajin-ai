@@ -426,6 +426,62 @@ See [the signed loop output contract](guide/loop-output.md) for the eight
 artifact retrieval used by the plugin and `/jin` Runs. This uses the existing
 database and auth configuration; no new environment variables are required.
 
+## Incurred-only cost reports (#2972)
+
+The cost report is **our meter**, not an invoice reader. Ryan's 2026-10-19 ruling
+keeps `usage.incurred` separate from `usage.billed`: this feature adds no billed
+readers, balance polling, receipt ingestion or changes to `usage-billed-ingest`.
+Compare the meter report with vendor invoices by hand for the same UTC period.
+Discover the contract at `/usage/api/spec` (`apps/kernel/api-spec/usage.yaml`).
+
+The existing authenticated `GET /usage/api/summary` accepts:
+- Paired `budgetSince` and `budgetCap`, for example
+  `?budgetSince=2026-10-19T16:13:00Z&budgetCap=4000USD`, for weekly incurred
+  totals by provider, cumulative spend, remaining cap and a straight-line
+  trailing-seven-day projection.
+- Paired `from` and `to` UTC dates (`YYYY-MM-DD`) or timezone-bearing timestamps
+  for an independent date-range cost report: `from` is inclusive and `to`
+  exclusive. An open period may end in the future; `asOf` makes the current
+  observation cutoff explicit. These bounds do not change the legacy `window`
+  summary or the budget's own interval.
+
+Both new views use `usage.incurred.created_at` and `cost_usd`, exclude failed
+upstream attempts, and expose unpriced-row counts. Missing cost is not proof
+of free usage; calls made outside kernel-observed/metered paths are not captured.
+The cap is USD-only. The legacy incurred/billed/drift response remains separate
+and backwards-compatible; neither new view imports invoices into the meter.
+
+**Warp:** the existing run-watch lifecycle meters terminal run observations,
+including orchestration children without environments. It tabulates reported
+inference, compute and platform credits using the existing admin config key
+`usage.warp.credit-rate`, default `{ "usd": 100, "credits": 6500 }`.
+The original conversion rate is stored in each incurred line's `pricing.creditRate`;
+`pricing.credits` retains exact cumulative credits beyond the quantity column's
+six-decimal precision. Re-observation
+is idempotent by run ID; resumed cumulative growth updates the same line at
+its original rate and creation timestamp. Pre-2026-10-19 run backfill remains
+out of scope. It uses the existing run authority
+and records, not a new billing credential or a key-wide vendor billing pull.
+Missing terminal usage creates an unpriced line and can later be upgraded at
+its stored rate; an unknown observation never erases a known cost. The existing
+run-watch sweep replays durable terminal records to retry failed meter writes,
+then lifecycle-reads descendants of known kernel dispatches after normal
+in-flight work. Root API reads stop once the root has metered credits and its
+latest terminal observation is older than 24 hours, unless newer dispatch/resume
+activity reopens it. Unpriced roots keep retrying, and terminal-record replay
+remains DB-only and unchanged. Recovery follows the existing 14-day event-log retention;
+incurred rows themselves persist independently.
+Use the canonical `adapter:warp` source/run-ID convention for any external
+Warp emitter to avoid reporting the same run twice.
+
+**Anthropic and Kimi/Moonshot:** the existing inference passthrough records
+tokens and computes cost from `src/lib/inference/pricing.ts`. The principal's
+normal sealed inference connector and `anthropic:infer` / `moonshot:infer`
+grant are sufficient; no billing/admin grant is required for this report.
+Unknown models use the explicitly estimated connector fallback rate; missing
+token counts stay unpriced. Moonshot JSON and SSE use our rate card, never an
+upstream `usage.cost` or account balance. The existing OpenRouter-specific
+explicit-cost contract is unchanged. `/jin` Spend UI work remains #2725.
 ## Testing
 
 - **End-to-end test cases:** `tests/HAPPY_PATH.md`
