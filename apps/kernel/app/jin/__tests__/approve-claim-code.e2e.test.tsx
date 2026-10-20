@@ -17,13 +17,14 @@ import { OPERATOR_DID, operatorIdentity, pendingApprovalCard } from '@/src/lib/n
 import { computeApprovalContentHash, type OperatorCountersignature } from '@/src/lib/notify/operator-approvals';
 import { countersignedMessage } from '@/src/lib/notify/operator-countersign-fields';
 
-const { mockRequireAuth, mockGetOperatorDid, mockDecide, mockRecordRequested, mockRunAppProvision, mockGetStatus, mockListSucceeded, logSpies } = vi.hoisted(() => ({
+const { mockRequireAuth, mockGetOperatorDid, mockDecide, mockRecordRequested, mockRunAppProvision, mockGetStatus, mockGetSignInAudience, mockListSucceeded, logSpies } = vi.hoisted(() => ({
   mockRequireAuth: vi.fn(),
   mockGetOperatorDid: vi.fn(),
   mockDecide: vi.fn(),
   mockRecordRequested: vi.fn(),
   mockRunAppProvision: vi.fn(),
   mockGetStatus: vi.fn(),
+  mockGetSignInAudience: vi.fn(),
   mockListSucceeded: vi.fn(),
   logSpies: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
@@ -53,7 +54,11 @@ vi.mock('@/src/lib/notify/operator-approvals-service', () => ({
   decideOperatorApproval: mockDecide,
   recordApprovalRequested: mockRecordRequested,
 }));
-vi.mock('@/src/lib/apps/provision', () => ({ runAppProvision: mockRunAppProvision, getAppProvisionStatus: mockGetStatus }));
+vi.mock('@/src/lib/apps/provision', () => ({
+  runAppProvision: mockRunAppProvision,
+  getAppProvisionStatus: mockGetStatus,
+  getProvisionSignInAudience: mockGetSignInAudience,
+}));
 vi.mock('@/src/lib/apps/provision-proposals', () => ({ findPendingAppsProvisionProposal: vi.fn(async () => undefined) }));
 vi.mock('@/src/lib/apps/provision-list', () => ({ listSucceededAppProvisions: mockListSucceeded }));
 vi.mock('@/src/lib/apps/manifest-preview', () => ({ previewManifestDeclarations: vi.fn(async () => ({ ok: null })) }));
@@ -162,7 +167,7 @@ beforeEach(() => {
   vi.useRealTimers();
   for (const mock of [
     mockRequireAuth, mockGetOperatorDid, mockDecide, mockRecordRequested,
-    mockRunAppProvision, mockGetStatus, mockListSucceeded, ...Object.values(logSpies),
+    mockRunAppProvision, mockGetStatus, mockGetSignInAudience, mockListSucceeded, ...Object.values(logSpies),
   ]) mock.mockReset();
   localStorage.clear();
   sessionStorage.clear();
@@ -175,6 +180,7 @@ beforeEach(() => {
   mockGetOperatorDid.mockResolvedValue(OPERATOR_DID);
   mockRequireAuth.mockResolvedValue({ identity: operatorIdentity() });
   mockGetStatus.mockResolvedValue(undefined);
+  mockGetSignInAudience.mockResolvedValue('members');
   mockListSucceeded.mockResolvedValue([]);
   mockRecordRequested.mockImplementation(async (params: Record<string, unknown>) => {
     cards.push(
@@ -233,7 +239,7 @@ function seedPendingProvision() {
 }
 
 describe('approve → claim-code banner (#2707)', () => {
-  it('countersigns the visible external source and forwards it unchanged before revealing the claim code (#2932)', async () => {
+  it('countersigns the visible external source and audience, rejecting signature tampering before revealing the claim code (#2932, #2957)', async () => {
     const sourceRepo = 'GBScontracting/Website';
     mockRunAppProvision.mockResolvedValue({
       ...succeededOutcome(CLAIM_CODE), repoUrl: `https://github.com/${sourceRepo}`,
@@ -244,6 +250,7 @@ describe('approve → claim-code banner (#2707)', () => {
     fireEvent.change(screen.getByLabelText(/Slug/), { target: { value: 'gbs-contracting' } });
     fireEvent.change(screen.getByLabelText(/Display name/), { target: { value: 'GBS Contracting' } });
     fireEvent.change(screen.getByLabelText(/Source repository/), { target: { value: sourceRepo } });
+    fireEvent.change(screen.getByRole('combobox', { name: 'Sign-in audience' }), { target: { value: 'anyone' } });
     fireEvent.click(screen.getByRole('button', { name: 'Propose provision' }));
     await screen.findByTestId('provision-proposal-id');
     render(<OperatorApprovalsPanel />);
@@ -251,9 +258,12 @@ describe('approve → claim-code banner (#2707)', () => {
     const approve = await screen.findByRole('button', { name: 'Approve & provision' });
     expect(screen.getByText(sourceRepo)).toBeDefined();
     expect(screen.getByText(/No repository is created/)).toBeDefined();
+    expect(screen.getByText('anyone')).toBeDefined();
     expect(mockRunAppProvision).not.toHaveBeenCalled();
     const proposed = mockRecordRequested.mock.calls[0][0];
     expect(proposed.detail.sourceRepo).toBe(sourceRepo);
+    expect(proposed.detail.signInAudience).toBe('anyone');
+    expect(proposed.summary).toContain('Sign-in audience: anyone');
     const hashFields = {
       proposalId: proposed.proposalId, source: proposed.source, kind: proposed.kind,
       summary: proposed.summary, keysTouched: proposed.keysTouched, detail: proposed.detail,
@@ -263,6 +273,10 @@ describe('approve → claim-code banner (#2707)', () => {
       ...hashFields, detail: { ...proposed.detail, sourceRepo: 'other/website' },
     });
     expect(changedSourceHash).not.toBe(proposed.contentHash);
+    const changedAudienceHash = computeApprovalContentHash({
+      ...hashFields, detail: { ...proposed.detail, signInAudience: 'members' },
+    });
+    expect(changedAudienceHash).not.toBe(proposed.contentHash);
 
     await approveDecision(approve);
     const decision = mockDecide.mock.calls[0][0] as {
@@ -277,8 +291,11 @@ describe('approve → claim-code banner (#2707)', () => {
     expect(authCrypto.verifySync(signature.sig, countersignedMessage({
       ...signedFields, contentHash: changedSourceHash,
     }), signature.keyId)).toBe(false);
+    expect(authCrypto.verifySync(signature.sig, countersignedMessage({
+      ...signedFields, contentHash: changedAudienceHash,
+    }), signature.keyId)).toBe(false);
     expect(mockRunAppProvision).toHaveBeenCalledWith(expect.objectContaining({
-      slug: 'gbs-contracting', sourceRepo,
+      slug: 'gbs-contracting', sourceRepo, signInAudience: 'anyone',
       authorizedBy: expect.objectContaining({
         approvalId: proposed.proposalId, operatorDid: OPERATOR_DID, contentHash: proposed.contentHash,
       }),
@@ -415,6 +432,7 @@ describe('reissue claim code from /jin (#2707)', () => {
     fireEvent.change(screen.getByLabelText(/Display name/), { target: { value: 'Dykil' } });
     fireEvent.click(screen.getByRole('button', { name: 'Propose provision' }));
     expect(await screen.findByText('Already provisioned')).toBeDefined();
+    expect(mockGetSignInAudience).toHaveBeenCalledWith('did:imajin:dykil-app');
 
     fireEvent.click(screen.getByTestId('provision-reissue'));
 
@@ -422,6 +440,7 @@ describe('reissue claim code from /jin (#2707)', () => {
     expect(screen.getByText(/Reissue the claim code for/)).toBeDefined();
     const reissuePost = spy.mock.calls.filter(([url, init]) => url === '/api/apps/provision' && init?.method === 'POST').at(-1)!;
     expect(JSON.parse((reissuePost[1] as RequestInit).body as string)).toMatchObject({ slug: 'dykil', reissueClaim: true });
+    expect(JSON.parse((reissuePost[1] as RequestInit).body as string)).not.toHaveProperty('signInAudience');
 
     await approveDecision(approve);
     const box = await screen.findByTestId('revealed-claim-code');
