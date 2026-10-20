@@ -112,7 +112,13 @@ describe('app row emittable-event approvals', () => {
     expect(screen.getAllByRole('checkbox')).toHaveLength(2);
   });
 
-  it.each([401, 403, 400, 500, 502])('shows PATCH %s errors without claiming approval', async (status) => {
+  it.each([
+    [401, 'Not authorized'],
+    [403, 'Not authorized'],
+    [400, 'Rejected by validator'],
+    [500, 'Event approval failed (500)'],
+    [502, 'Rejected by validator'],
+  ] as const)('shows PATCH %s errors without claiming approval', async (status, expected) => {
     const spy = installFetch();
     spy.mockImplementation(async (_url, init) => init?.method === 'PATCH'
       ? response(status === 500 ? {} : { error: 'Rejected by validator' }, status)
@@ -120,7 +126,7 @@ describe('app row emittable-event approvals', () => {
     render(<AppEmittableEvents appDid={APP_DID} />);
     await openPicker();
     await save();
-    expect((await screen.findByRole('alert')).textContent).toContain(status < 404 ? (status === 400 ? 'Rejected by validator' : 'Not authorized') : status === 500 ? 'Event approval failed (500)' : 'Rejected by validator');
+    expect((await screen.findByRole('alert')).textContent).toContain(expected);
     expect(approvedText()).toContain('legacy.sent');
     expect(screen.queryByRole('status')).toBeNull();
     expect((screen.getByRole('button', { name: 'Save event approvals' }) as HTMLButtonElement).disabled).toBe(false);

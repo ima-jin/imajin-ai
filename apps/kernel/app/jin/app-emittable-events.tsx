@@ -40,10 +40,10 @@ async function saveEvents(appId: string, selected: string[]): Promise<string[]> 
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ emittableEvents: selected }),
   });
-  const body = await response.json().catch(() => ({})) as { error?: unknown; app?: { id?: unknown; emittableEvents?: unknown } };
+  const body = await response.json().catch(() => ({})) as { error?: unknown; app?: { id?: unknown; emittableEvents?: unknown } } | null;
   if (response.status === 401 || response.status === 403) throw new Error('Not authorized to approve events. Sign in as the node operator.');
-  if (!response.ok) throw new Error(typeof body.error === 'string' ? body.error : `Event approval failed (${response.status}).`);
-  if (body.app?.id !== appId || !isStringList(body.app.emittableEvents)) throw new Error('Invalid event approval response. Refresh to verify the saved list.');
+  if (!response.ok) throw new Error(typeof body?.error === 'string' ? body.error : `Event approval failed (${response.status}).`);
+  if (body?.app?.id !== appId || !isStringList(body.app.emittableEvents)) throw new Error('Invalid event approval response. Refresh to verify the saved list.');
   return body.app.emittableEvents;
 }
 
