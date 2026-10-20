@@ -38,10 +38,8 @@ import {
 import { validateAttestDelegationCapabilities } from './attest-delegation';
 import type { DbExecutor } from '@/src/lib/vault/index';
 import { isCloudflareZoneAudience } from '@/src/lib/cloudflare/contract';
-import { prepareMechanicalAttestation } from './emit-mechanical-attestation';
 
 const log = createLogger('kernel');
-type GrantTransaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
 async function controlsGrantOwner(actorDid: string, ownerDid: string, audience: unknown): Promise<boolean> {
   // Introspection must not initialize custody or operator services. Only grant
@@ -116,6 +114,7 @@ async function recordGrantEvent(tx: DbExecutor, params: {
   actorDid: string;
   capability?: string;
 }): Promise<void> {
+  const { prepareMechanicalAttestation } = await import('./emit-mechanical-attestation');
   const attestation = await prepareMechanicalAttestation({
     subjectDid: params.delegatorDid,
     type: `delegation.grant.${params.event}`,
