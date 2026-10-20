@@ -29,6 +29,7 @@ import { verifySignature } from '@/src/lib/auth/crypto';
 import { createAppToken } from '@/src/lib/auth/jwt';
 import { resolveActiveAppByAudience, appNotRegisteredResponse } from '@/src/lib/kernel/app-registry';
 import { createLogger } from '@imajin/logger';
+import { canConsentToApp, PRIVATE_APP_CONSENT_ERROR } from '@/src/lib/kernel/app-consent';
 
 const log = createLogger('kernel');
 
@@ -79,7 +80,13 @@ export async function POST(request: NextRequest) {
   // because one already existed), which would poison PoP verification even
   // though the app's real key in registry.apps is fine.
   const [app] = await db
-    .select({ publicKey: registryApps.publicKey, status: registryApps.status })
+    .select({
+      publicKey: registryApps.publicKey,
+      status: registryApps.status,
+      visibility: registryApps.visibility,
+      ownerDid: registryApps.ownerDid,
+      signInAudience: registryApps.signInAudience,
+    })
     .from(registryApps)
     .where(eq(registryApps.appDid, appDid))
     .limit(1);
@@ -121,6 +128,9 @@ export async function POST(request: NextRequest) {
   }
   if (att.revokedAt) {
     return NextResponse.json({ error: 'Authorization has been revoked' }, { status: 403, headers: cors });
+  }
+  if (!await canConsentToApp(app, att.issuerDid)) {
+    return NextResponse.json({ error: PRIVATE_APP_CONSENT_ERROR }, { status: 403, headers: cors });
   }
 
   const payload = att.payload as { scopes?: string[] } | null;

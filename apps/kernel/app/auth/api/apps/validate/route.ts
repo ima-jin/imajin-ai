@@ -10,10 +10,11 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { db, attestations } from '@/src/db';
+import { db, attestations, registryApps } from '@/src/db';
 import { eq, and } from 'drizzle-orm';
 import { requireInternalApiKey } from '@/src/lib/auth/require-internal-api-key';
 import { isLiveAppAuthorization } from '@/src/lib/auth/live-app-authorization';
+import { canConsentToApp, PRIVATE_APP_CONSENT_ERROR } from '@/src/lib/kernel/app-consent';
 
 export async function POST(request: NextRequest) {
   const authError = await requireInternalApiKey(request);
@@ -58,6 +59,14 @@ export async function POST(request: NextRequest) {
   }
   if (!isLiveAppAuthorization(att)) {
     return NextResponse.json({ error: 'Authorization has expired' }, { status: 403 });
+  }
+  const [app] = await db.select({
+    visibility: registryApps.visibility,
+    ownerDid: registryApps.ownerDid,
+    signInAudience: registryApps.signInAudience,
+  }).from(registryApps).where(eq(registryApps.appDid, appDid)).limit(1);
+  if (!app || !await canConsentToApp(app, att.issuerDid)) {
+    return NextResponse.json({ error: PRIVATE_APP_CONSENT_ERROR }, { status: 403 });
   }
 
   const payload = att.payload as { scopes?: string[] } | null;
