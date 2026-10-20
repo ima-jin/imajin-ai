@@ -10,6 +10,7 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, cleanup, waitFor, fireEvent, act } from '@testing-library/react';
 import { ProvisionAppPanel } from '../provision-app-panel';
 import { installIntervalSpy } from './panel-test-support';
+vi.mock('../app-emittable-events', () => ({ AppEmittableEvents: () => null }));
 
 const APPROVALS_POLL_URL = '/jin/api/operator-approvals?source=apps';
 const PROVISIONED_APPS_URL = '/api/apps/provision?status=succeeded';

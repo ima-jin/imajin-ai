@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { APPROVALS_REFRESH_EVENT, approvalCardAnchorId } from './approval-anchor';
 import { isScopeState, ProvisionedAppScopes, type ScopeState } from './provisioned-app-scopes';
+import { AppEmittableEvents } from './app-emittable-events';
 
 interface RegisteredApp extends ScopeState {
   appDid: string;
@@ -56,7 +57,7 @@ function isAppPage(value: unknown): value is AppPage {
     && (page.nextCursor === null || typeof page.nextCursor === 'string');
 }
 
-/** Registry discovery only. All writes remain pending, countersigned apps:service-scopes cards. */
+/** Registry discovery; scope writes remain countersigned cards, event writes use the existing admin PATCH. */
 export function RegisteredAppScopesPanel() {
   const [visible, setVisible] = useState(false);
   const [apps, setApps] = useState<RegisteredApp[]>([]);
@@ -131,6 +132,7 @@ export function RegisteredAppScopesPanel() {
             <p className="font-mono break-all text-gray-400">{app.appDid}</p>
             <p className="text-gray-400">Registry status: {app.status}</p>
             <ProvisionedAppScopes appDid={app.appDid} initialScopes={app} />
+            <AppEmittableEvents appDid={app.appDid} />
             {app.approvalId && <p className="text-gray-400">Recorded approval: <a className="underline" href={`#${approvalCardAnchorId(app.approvalId)}`}>{app.approvalId}</a>{app.approvedAt && ` · ${app.approvedAt}`}. Review signed decisions and audit in Operator approvals.</p>}
           </li>
         ))}

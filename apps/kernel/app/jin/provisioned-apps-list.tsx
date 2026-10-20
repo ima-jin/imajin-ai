@@ -10,6 +10,7 @@
  */
 import type { ProvisionedApp } from './provisioned-apps';
 import { ProvisionedAppScopes } from './provisioned-app-scopes';
+import { AppEmittableEvents } from './app-emittable-events';
 
 function ProvisionedAppRow({
   app,
@@ -32,6 +33,7 @@ function ProvisionedAppRow({
         </button>
       )}
       {app.appDid && <ProvisionedAppScopes key={app.appDid} appDid={app.appDid} />}
+      {app.appDid && <AppEmittableEvents key={`events-${app.appDid}`} appDid={app.appDid} />}
     </li>
   );
 }
