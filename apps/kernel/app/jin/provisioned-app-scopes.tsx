@@ -1,34 +1,34 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { SCOPE_VOCABULARY, isKnownScope } from '@imajin/auth/scope-vocabulary';
-import { approvalCardAnchorId, requestApprovalsRefresh } from './approval-anchor';
+import { APPROVALS_REFRESH_EVENT, approvalCardAnchorId, requestApprovalsRefresh } from './approval-anchor';
 
-interface ScopeState {
+export interface ScopeState {
   requestedScopes: string[];
   approvedServiceScopes: string[];
 }
 
 const EMPTY_SCOPES: ScopeState = { requestedScopes: [], approvedServiceScopes: [] };
 const SERVICE_SCOPES_URL = '/api/apps/service-scopes';
+function unapprovedSelection(state: ScopeState, selection = state.requestedScopes): string[] {
+  return selection.filter((scope) => isKnownScope(scope) && !state.approvedServiceScopes.includes(scope));
+}
 
-function stringList(value: unknown): string[] {
-  if (!Array.isArray(value)) return [];
-  return value.filter((item): item is string => typeof item === 'string');
+export function isScopeState(value: unknown): value is ScopeState {
+  if (!value || typeof value !== 'object') return false;
+  const state = value as ScopeState;
+  return [state.requestedScopes, state.approvedServiceScopes].every(
+    (scopes) => Array.isArray(scopes) && scopes.every((scope) => typeof scope === 'string'),
+  );
 }
 
 async function readScopes(appDid: string): Promise<ScopeState> {
-  try {
-    const res = await fetch(`${SERVICE_SCOPES_URL}?appDid=${encodeURIComponent(appDid)}`, { credentials: 'include' });
-    if (!res.ok) return EMPTY_SCOPES;
-    const body = await res.json() as Partial<ScopeState>;
-    return {
-      requestedScopes: stringList(body.requestedScopes),
-      approvedServiceScopes: stringList(body.approvedServiceScopes),
-    };
-  } catch {
-    return EMPTY_SCOPES;
-  }
+  const res = await fetch(`${SERVICE_SCOPES_URL}?appDid=${encodeURIComponent(appDid)}`, { credentials: 'include' });
+  if (!res.ok) throw new Error('Service scopes unavailable');
+  const body: unknown = await res.json();
+  if (!isScopeState(body)) throw new Error('Invalid service scopes response');
+  return body;
 }
 
 async function proposeScopes(appDid: string, scopes: string[]): Promise<{ proposalId?: string; message?: string; error?: string }> {
@@ -49,24 +49,43 @@ async function proposeScopes(appDid: string, scopes: string[]): Promise<{ propos
   }
 }
 
-export function ProvisionedAppScopes({ appDid }: Readonly<{ appDid: string }>) {
+export function ProvisionedAppScopes({ appDid, initialScopes }: Readonly<{ appDid: string; initialScopes?: ScopeState }>) {
   const [scopes, setScopes] = useState<ScopeState>(EMPTY_SCOPES);
   const [loaded, setLoaded] = useState(false);
+  const [readError, setReadError] = useState(false);
+  const [revision, setRevision] = useState(0);
   const [open, setOpen] = useState(false);
   const [selected, setSelected] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<Awaited<ReturnType<typeof proposeScopes>>>({});
+  const initializedDid = useRef<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    void readScopes(appDid).then((state) => {
+    setLoaded(false);
+    setReadError(false);
+    const read = initialScopes ? Promise.resolve(initialScopes) : readScopes(appDid);
+    void read.then((state) => {
       if (cancelled) return;
       setScopes(state);
-      setSelected(state.requestedScopes.filter((scope) => isKnownScope(scope) && !state.approvedServiceScopes.includes(scope)));
+      const alreadyInitialized = initializedDid.current === appDid;
+      setSelected((current) => alreadyInitialized
+        ? unapprovedSelection(state, current)
+        : unapprovedSelection(state));
+      initializedDid.current = appDid;
       setLoaded(true);
+    }).catch(() => {
+      if (!cancelled) setReadError(true);
     });
     return () => { cancelled = true; };
-  }, [appDid]);
+  }, [appDid, initialScopes, revision]);
+
+  useEffect(() => {
+    if (initialScopes) return;
+    const refresh = () => setRevision((value) => value + 1);
+    globalThis.addEventListener(APPROVALS_REFRESH_EVENT, refresh);
+    return () => globalThis.removeEventListener(APPROVALS_REFRESH_EVENT, refresh);
+  }, [initialScopes]);
 
   function toggle(scope: string) {
     setSelected((current) => current.includes(scope) ? current.filter((item) => item !== scope) : [...current, scope]);
@@ -86,16 +105,17 @@ export function ProvisionedAppScopes({ appDid }: Readonly<{ appDid: string }>) {
 
   return (
     <div className="w-full space-y-2 border-t border-gray-800 pt-2 pb-3">
-      <p className="text-gray-400">Requested scopes: <span className="font-mono text-gray-200">{scopes.requestedScopes.join(', ') || 'None'}</span></p>
-      <p className="text-gray-400">Approved service scopes: <span className="font-mono text-green-300">{scopes.approvedServiceScopes.join(', ') || 'None'}</span></p>
+      {readError && <p role="alert" className="text-red-400">Service scopes unavailable. <button type="button" className="underline" onClick={() => setRevision((value) => value + 1)}>Retry scope read</button></p>}
+      <p className="text-gray-400">Requested scopes: <span className="font-mono text-gray-200">{loaded ? scopes.requestedScopes.join(', ') || 'None' : 'Unavailable'}</span></p>
+      <p className="text-gray-400">Approved service scopes: <span className="font-mono text-green-300">{loaded ? scopes.approvedServiceScopes.join(', ') || 'None' : 'Unavailable'}</span></p>
       <button type="button" disabled={!loaded || busy} aria-expanded={open} onClick={() => setOpen(!open)}
         className="rounded bg-gray-800 px-2.5 py-1 text-gray-200 hover:bg-gray-700 disabled:opacity-40">
         Propose scopes
       </button>
       {open && (
         <div className="space-y-2">
-          <p className="text-gray-400">Requested, unapproved scopes are preselected. Grants require your countersignature in Operator approvals below.</p>
-          <fieldset disabled={busy} className="max-h-60 overflow-y-auto space-y-1">
+          <p className="text-gray-400">Requested, unapproved scopes are initially preselected. Choose any subset, or select one scope at a time for independent approve/deny cards. Grants require your countersignature in Operator approvals below.</p>
+          <fieldset disabled={busy || !loaded} className="max-h-60 overflow-y-auto space-y-1">
             <legend className="text-gray-300">Service scopes to propose</legend>
             {SCOPE_VOCABULARY.map(({ scope, label }) => (
               <label key={scope} className="flex items-start gap-2 text-gray-300">

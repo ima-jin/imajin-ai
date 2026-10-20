@@ -7,6 +7,7 @@ import { VaultImportPanel } from './vault-import-panel';
 import { AccessBearersPanel } from './access-bearers-panel';
 import { ProvisionAppPanel } from './provision-app-panel';
 import { AppSecretsPanel } from './app-secrets-panel';
+import { RegisteredAppScopesPanel } from './registered-app-scopes-panel';
 import { GrantsPanel } from './grants-panel';
 import { SpendPanel } from './spend-panel';
 import { RunsPanel } from './runs-panel';
@@ -65,6 +66,7 @@ export default function JinPage() {
             the raised proposal's confirm card appears directly below it. */}
         <ProvisionAppPanel />
         <AppSecretsPanel />
+        <RegisteredAppScopesPanel />
 
         {/* Front door (#2598) — author the agent-reach gate: tiers, open /
             published topics, deliver vs decline, daily cap. Operator-gated,
