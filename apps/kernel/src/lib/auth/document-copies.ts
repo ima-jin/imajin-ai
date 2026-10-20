@@ -102,4 +102,3 @@ export async function copyDocumentToSigner(
     return null;
   }
 }
-
