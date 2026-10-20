@@ -1,4 +1,5 @@
 'use client';
+import './cloudflare.css';
 
 import { approvalCardAnchorId } from './approval-anchor';
 import { CloudflareField, JsonView, cfButton, cfInput } from './cloudflare-editors';
@@ -10,7 +11,7 @@ import { CloudflareDnsTab, CloudflareCacheTab, CloudflareHostnamesTab, Cloudflar
 export function CloudflarePanel() {
   const model = useCloudflare();
   const { zone, setZone, section, setSection, busy, notice, proposal, settings, setRecords, setRules, setHistory, setHostnames, setSettings, setPreview, setNotice, run, load } = model;
-  return <section className="mt-8 min-w-0 space-y-3 border border-white/10 bg-surface-card p-3 text-[var(--text-primary)]" data-testid="cloudflare-panel">
+  return <section className="cloudflare-surface mt-8 min-w-0 space-y-3 border border-white/10 p-3" data-testid="cloudflare-panel">
     <h2 className="font-mono text-base font-bold">Cloudflare operations</h2>
     <p className="text-sm text-[var(--text-secondary)]">Use an exact verified zone domain and its Cloudflare zone ID.
       Import and seal credentials through Import credential above; this panel never receives keys.
@@ -29,7 +30,7 @@ export function CloudflarePanel() {
       <CloudflareField label="Initial zone view"><select name="view" className={cfInput} disabled={busy}>{sections.map((tab) => <option key={tab}>{tab}</option>)}</select></CloudflareField>
       <button type="submit" disabled={busy} className={cfButton}>Load zone</button>
     </form>
-    {notice && <output aria-live="polite" className="block break-words text-sm text-imajin-purple">{notice}
+    {notice && <output aria-live="polite" className="block break-words text-sm text-[var(--sunset-purple)]">{notice}
       {proposal && <> <a className="underline" href={`#${approvalCardAnchorId(proposal)}`}>Review Cloudflare proposal</a></>}
     </output>}
     {zone && <>
@@ -44,7 +45,6 @@ export function CloudflarePanel() {
       {section === 'Cache rules' && <CloudflareCacheTab model={model} />}
       {section === 'Custom hostnames' && <CloudflareHostnamesTab model={model} />}
       {section === 'Signed history' && <CloudflareHistoryTab model={model} />}
-      
     </>}
   </section>;
 }

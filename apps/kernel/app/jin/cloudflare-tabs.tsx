@@ -21,7 +21,7 @@ export function CloudflareDnsTab({ model }: Readonly<{ model: CloudflareModel }>
           <div className="flex flex-wrap gap-2"><button type="button" disabled={busy} className={cfButton} onClick={() => setEditing(record)}>Edit {record.name}</button>
             <button type="button" disabled={busy} className={cfButton} onClick={() => setDeleting(record)}>Delete {record.name}</button></div>
         </article>)}</div>
-        {deleting && <div role="alert" className="space-y-2 border border-imajin-red p-3">
+        {deleting && <div role="alert" className="space-y-2 border border-[var(--error)] p-3">
           <p className="break-all">Permanently delete {deleting.name} ({deleting.type})?</p>
           <button className={cfButton} disabled={busy} onClick={() => void mutate(`dns/${encodeURIComponent(deleting.id)}`, 'DELETE')}>Confirm DNS deletion</button>
           <button className={cfButton} disabled={busy} onClick={() => setDeleting(null)}>Cancel deletion</button>

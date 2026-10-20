@@ -41,6 +41,31 @@ export function cloudflareFailure(status: number): string {
   return 'Cloudflare operation unavailable. Retry after checking access and zone configuration.';
 }
 
+function record(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+export function isDnsRecord(value: unknown): value is DnsRecord {
+  return record(value) && ['id', 'type', 'name', 'content'].every((key) => typeof value[key] === 'string')
+    && typeof value.ttl === 'number' && typeof value.proxied === 'boolean';
+}
+export function isCacheRule(value: unknown): value is CacheRule {
+  return record(value) && typeof value.expression === 'string' && typeof value.enabled === 'boolean'
+    && record(value.action_parameters) && value.action === 'set_cache_settings';
+}
+export function isCustomHostname(value: unknown): value is CustomHostname {
+  return record(value) && typeof value.id === 'string' && typeof value.hostname === 'string'
+    && (value.ssl === undefined || record(value.ssl));
+}
+export function isCloudflareHistory(value: unknown): value is CloudflareHistory {
+  if (!record(value) || typeof value.id !== 'string' || !record(value.payload)) return false;
+  const payload = value.payload;
+  return ['actorDid', 'onBehalfOf', 'zoneId', 'operation', 'phase'].every((key) => typeof payload[key] === 'string');
+}
+export function cloudflareList<T>(value: unknown, key: string, guard: (item: unknown) => item is T): T[] {
+  const list = record(value) ? value[key] : null;
+  if (!Array.isArray(list) || !list.every(guard)) throw new Error('Invalid operation metadata');
+  return list;
+}
 /** Provider/server error text is never displayed, thrown or logged. */
 export async function cloudflareRequest<T>(zone: CloudflareZone, resource: string, method = 'GET', body?: unknown): Promise<T> {
   const response = await fetch(cloudflareUrl(zone, resource), {

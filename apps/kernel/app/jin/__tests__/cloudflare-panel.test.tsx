@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { CloudflarePanel } from '../cloudflare-panel';
 import { APPROVALS_REFRESH_EVENT } from '../approval-anchor';
-import { cloudflareUrl, validCloudflareZone } from '../cloudflare-client';
+import { cloudflareUrl, validCloudflareZone, cloudflareList, isDnsRecord, isCacheRule, isCustomHostname, isCloudflareHistory } from '../cloudflare-client';
 
 const zone = { zoneId: 'a'.repeat(32), domain: 'example.com' };
 const record = { id: 'record-1', type: 'A', name: 'www.example.com', content: '192.0.2.1', ttl: 1, proxied: false, proxiable: true };
@@ -26,6 +26,15 @@ async function idle() {
 }
 
 describe('Cloudflare operations', () => {
+  it('rejects malformed operation metadata rather than crashing a tab render', () => {
+    for (const guard of [isDnsRecord, isCacheRule, isCustomHostname, isCloudflareHistory]) {
+      for (const value of [null, [], {}, { id: 'fake', payload: null }]) expect(guard(value)).toBe(false);
+    }
+    expect(() => cloudflareList(null, 'records', isDnsRecord)).toThrow();
+    expect(() => cloudflareList({ records: [null] }, 'records', isDnsRecord)).toThrow();
+    expect(isCustomHostname({ id: 'fake', hostname: 'example.com', ssl: null })).toBe(false);
+    expect(isCloudflareHistory({ id: 'fake', payload: { actorDid: {} } })).toBe(false);
+  });
   it('uses exact canonical zone input and never asks for a credential', async () => {
     expect(validCloudflareZone(zone)).toBe(true);
     expect(validCloudflareZone({ ...zone, domain: 'EXAMPLE.com' })).toBe(false);
@@ -154,5 +163,72 @@ describe('Cloudflare operations', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Create custom hostname' }));
     await idle();
     expect(body(fetchMock, 2)).toEqual({ hostname: 'customer.example.net', ssl: { method: 'txt', type: 'dv' } });
+  });
+  it('requests cache approval only after dry-run and never applies or sends provider rule IDs', async () => {
+    const rule = { id: 'provider-id', description: 'Existing rule', expression: 'true', enabled: true, action: 'set_cache_settings', action_parameters: { cache: true } };
+    const fetchMock = vi.fn().mockResolvedValueOnce(Response.json({ records: [record] }))
+      .mockResolvedValueOnce(Response.json({ rules: [rule] }))
+      .mockResolvedValueOnce(Response.json({ before: [rule], rules: [] }))
+      .mockResolvedValueOnce(Response.json({ approval: { proposalId: 'cache-proposal' } }, { status: 202 }));
+    await openZone(fetchMock);
+    fireEvent.click(screen.getByRole('button', { name: 'Cache rules' }));
+    fireEvent.click(await screen.findByRole('checkbox', { name: 'Rule enabled' }));
+    expect(screen.queryByRole('link', { name: 'Review Cloudflare proposal' })).toBeNull();
+    fireEvent.click(await screen.findByRole('button', { name: 'Request cache approval' }));
+    expect((await screen.findByRole('link', { name: 'Review Cloudflare proposal' })).getAttribute('href')).toBe('#approval-cache-proposal');
+    expect(body(fetchMock, 2).dryRun).toBe(true);
+    expect(body(fetchMock, 3).dryRun).toBe(false);
+    expect(body(fetchMock, 3).rules[0].id).toBeUndefined();
+    expect(body(fetchMock, 3).rules[0].enabled).toBe(false);
+    expect(fetchMock).toHaveBeenCalledTimes(4);
+  });
+  it('edits a cache rule through preview and invalidates preview after further input changes', async () => {
+    const rule = { id: 'provider-id', description: 'Existing rule', expression: 'true', enabled: false, action: 'set_cache_settings', action_parameters: { cache: true, edge_ttl: { mode: 'override_origin', default: 7200 } } };
+    const fetchMock = vi.fn().mockResolvedValueOnce(Response.json({ records: [record] }))
+      .mockResolvedValueOnce(Response.json({ rules: [rule] }))
+      .mockResolvedValueOnce(Response.json({ before: [rule], rules: [] }));
+    await openZone(fetchMock);
+    fireEvent.click(screen.getByRole('button', { name: 'Cache rules' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit rule 1' }));
+    expect((screen.getByLabelText('Edge TTL seconds (override only)') as HTMLInputElement).value).toBe('7200');
+    fireEvent.change(screen.getByLabelText('Rule description'), { target: { value: 'Updated rule' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Preview cache rule edit' }));
+    await screen.findByRole('button', { name: 'Request cache approval' });
+    expect(body(fetchMock, 2).rules[0].enabled).toBe(false);
+    fireEvent.change(screen.getByLabelText('Match expression'), { target: { value: 'false' } });
+    expect(screen.queryByRole('button', { name: 'Request cache approval' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel cache edit' }));
+    expect(screen.getByRole('button', { name: 'Preview new cache rule' })).toBeDefined();
+  });
+  it('refreshes hostname status and displays ownership and DCV records before deletion', async () => {
+    const hostname = { id: 'fake-hostname', hostname: 'customer.example.net', status: 'pending',
+      ownership_verification: { name: '_cf-custom-hostname.customer.example.net', value: 'fake-ownership' },
+      ssl: { status: 'pending_validation', validation_records: [{ txt_name: '_acme-challenge.customer.example.net', txt_value: 'fake-dcv' }] } };
+    const fetchMock = vi.fn().mockResolvedValueOnce(Response.json({ records: [record] }))
+      .mockResolvedValueOnce(Response.json({ hostnames: [hostname] }))
+      .mockResolvedValueOnce(Response.json({ hostname: { ...hostname, status: 'active', ssl: { status: 'active' } } }))
+      .mockResolvedValueOnce(Response.json({ hostname: { id: hostname.id } }))
+      .mockResolvedValueOnce(Response.json({ hostnames: [] }));
+    await openZone(fetchMock);
+    fireEvent.click(screen.getByRole('button', { name: 'Custom hostnames' }));
+    await screen.findByText(/fake-ownership/);
+    expect(screen.getByText(/fake-dcv/)).toBeDefined();
+    fireEvent.click(screen.getByRole('button', { name: 'Check status customer.example.net' }));
+    await screen.findByText('Status: active · SSL: active');
+    fireEvent.click(screen.getByRole('button', { name: 'Delete hostname customer.example.net' }));
+    await idle();
+    expect(fetchMock.mock.calls[3][1].method).toBe('DELETE');
+  });
+  it.each(['Settings / SSL', 'SSL'])('loads %s directly for a grantee without DNS read', async (view) => {
+    const fetchMock = vi.fn().mockResolvedValue(Response.json({ settings: [{ id: 'ssl', value: 'strict' }] }));
+    vi.stubGlobal('fetch', fetchMock);
+    render(<CloudflarePanel />);
+    fireEvent.change(screen.getByLabelText('Verified zone domain'), { target: { value: zone.domain } });
+    fireEvent.change(screen.getByLabelText('Cloudflare zone ID'), { target: { value: zone.zoneId } });
+    fireEvent.change(screen.getByLabelText('Initial zone view'), { target: { value: view } });
+    fireEvent.click(screen.getByRole('button', { name: 'Load zone' }));
+    await screen.findByText(/strict/);
+    expect(fetchMock.mock.calls[0][0]).toContain(view === 'SSL' ? '/ssl?' : '/settings?');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });

@@ -1,6 +1,7 @@
 'use client';
 
 import { VaultImportApproval } from './vault-import-approval';
+import { CloudflareApprovalDetail } from './cloudflare-approval-detail';
 
 /**
  * Operator approvals panel for the `/jin` kernel dashboard (#2059,
@@ -858,6 +859,10 @@ const REACH_RENDERER: SourceRenderer = {
 };
 
 const SOURCE_RENDERERS: Readonly<Record<string, SourceRenderer>> = {
+  cloudflare: {
+    decisionLabels: { approve: 'Countersign Cloudflare plan', reject: 'Reject Cloudflare plan' },
+    renderDetail: (approval) => <CloudflareApprovalDetail detail={approval.detail} />,
+  },
   [DECISION_APPROVAL_SOURCE]: DECISION_RENDERER,
   'skill-workshop': SKILL_WORKSHOP_RENDERER,
   'gateway-exec': GATEWAY_EXEC_RENDERER,

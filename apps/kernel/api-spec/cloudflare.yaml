@@ -77,7 +77,7 @@ components:
             edge_ttl:
               type: object
               properties:
-                mode: { type: string, const: override_origin }
+                mode: { type: string, enum: [respect_origin, bypass_by_default, override_origin] }
                 default: { type: integer, minimum: 1 }
 paths:
   /api/zones/{zoneId}/dns:

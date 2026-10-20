@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { requestApprovalsRefresh } from './approval-anchor';
 import { cloudflareFailure, cloudflareRequest, type CacheRule, type CloudflareHistory, type CloudflareZone, type CustomHostname, type DnsRecord } from './cloudflare-client';
+import { cloudflareList, isCacheRule, isCloudflareHistory, isCustomHostname, isDnsRecord } from './cloudflare-client';
 
 export const sections = ['DNS', 'Settings / SSL', 'SSL', 'Cache rules', 'Custom hostnames', 'Signed history'] as const;
 export type Section = typeof sections[number];
@@ -39,22 +40,18 @@ export function useCloudflare() {
   const load = async (target: CloudflareZone, tab: Section) => {
     if (tab === 'DNS') {
       const data = await cloudflareRequest<{ records: DnsRecord[] }>(target, 'dns');
-      if (!Array.isArray(data.records)) throw new Error('invalid');
-      setRecords(data.records); setSelected([]); setPreview(null); setEditing(undefined); setDeleting(null);
+      setRecords(cloudflareList(data, 'records', isDnsRecord)); setSelected([]); setPreview(null); setEditing(undefined); setDeleting(null);
     } else if (tab === 'Cache rules') {
       const data = await cloudflareRequest<{ rules: CacheRule[] }>(target, 'cache-rules');
-      if (!Array.isArray(data.rules)) throw new Error('invalid');
-      setRules(data.rules);
+      setRules(cloudflareList(data, 'rules', isCacheRule));
       setEditingRule(undefined);
       setCachePreview(null);
     } else if (tab === 'Custom hostnames') {
       const data = await cloudflareRequest<{ hostnames: CustomHostname[] }>(target, 'custom-hostnames');
-      if (!Array.isArray(data.hostnames)) throw new Error('invalid');
-      setHostnames(data.hostnames);
+      setHostnames(cloudflareList(data, 'hostnames', isCustomHostname));
     } else if (tab === 'Signed history') {
       const data = await cloudflareRequest<{ history: CloudflareHistory[] }>(target, 'history');
-      if (!Array.isArray(data.history)) throw new Error('invalid');
-      setHistory(data.history);
+      setHistory(cloudflareList(data, 'history', isCloudflareHistory));
     } else setSettings(await cloudflareRequest(target, tab === 'SSL' ? 'ssl' : 'settings'));
   };
   const mutate = (resource: string, method: string, body?: unknown) => run(async () => {
@@ -90,7 +87,7 @@ export function useCloudflare() {
   const refreshHostname = (hostname: CustomHostname) => run(async () => {
     if (!zone) return;
     const data = await cloudflareRequest<{ hostname: CustomHostname }>(zone, `custom-hostnames/${encodeURIComponent(hostname.id)}`);
-    if (!data.hostname) throw new Error('invalid');
+    if (!isCustomHostname(data.hostname)) throw new Error('invalid');
     setHostnames(hostnames.map((item) => item.id === hostname.id ? data.hostname : item));
   });
 
