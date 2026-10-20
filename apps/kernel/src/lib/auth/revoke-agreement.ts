@@ -3,13 +3,13 @@ import { db, attestations, attestationSignatures } from '@/src/db';
 import { prepareMechanicalAttestation } from './emit-mechanical-attestation';
 
 /** The tombstone and its signed event commit together, exactly once. */
-export async function revokeAgreement(params: {
+export function revokeAgreement(params: {
   attestationId: string;
   effectiveDid: string;
   actingHumanDid: string;
 }): Promise<{ status: number; error?: string; id?: string; revokedAt?: Date }> {
   const privateKey = process.env.AUTH_PRIVATE_KEY;
-  if (!privateKey) return { status: 503, error: 'Agreement revocation signing unavailable' };
+  if (!privateKey) return Promise.resolve({ status: 503, error: 'Agreement revocation signing unavailable' });
   return db.transaction(async (tx) => {
     const [agreement] = await tx.select().from(attestations)
       .where(eq(attestations.id, params.attestationId)).limit(1).for('update');

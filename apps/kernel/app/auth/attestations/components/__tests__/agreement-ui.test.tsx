@@ -39,7 +39,7 @@ describe('agreement identity and signing', () => {
     card();
     expect(screen.getByText('Service agreement')).toBeDefined();
     expect(screen.getAllByText('Example Studio').length).toBeGreaterThan(0);
-    expect(screen.getByTitle('Service agreement').getAttribute('src')).toContain('/media/api/assets/asset_1');
+    expect(screen.getByTitle('Service agreement').getAttribute('src')).toBe('/auth/api/documents/att_agreement/content');
     expect(screen.getByText('Signing account:').textContent).toContain(PARTY);
     expect(screen.getByText(/node-witnessed action/)).toBeDefined();
     expect(screen.getByRole('button', { name: 'Sign', exact: true })).toBeDefined();

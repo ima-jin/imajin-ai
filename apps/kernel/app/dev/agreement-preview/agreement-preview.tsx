@@ -27,6 +27,11 @@ const initialSignatures: Signature[] = [
 function fixtureResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
 }
+export function fixtureRequestUrl(input: RequestInfo | URL): string {
+  if (input instanceof Request) return input.url;
+  if (input instanceof URL) return input.href;
+  return input;
+}
 
 export default function AgreementPreview() {
   const [ready, setReady] = useState(false);
@@ -39,7 +44,7 @@ export default function AgreementPreview() {
     let revoked = false;
     let signed = false;
     globalThis.fetch = async (input, init) => {
-      const url = String(input);
+      const url = fixtureRequestUrl(input);
       if ([ORG, PARTY].some((did) => url === `/auth/api/identity/${encodeURIComponent(did)}/sign`)) {
         return fixtureResponse({ signature: 'fixture-node-witness-not-real' });
       }

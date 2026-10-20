@@ -45,7 +45,7 @@ const TYPE_BADGE: Record<string, { label: string; classes: string }> = {
 
 const ALL_TYPES = Object.keys(TYPE_BADGE);
 
-const DOCUMENT_TYPES = ['document.created', 'document.amended', 'agreement'];
+const DOCUMENT_TYPES = new Set(['document.created', 'document.amended', 'agreement']);
 
 function getBadge(type: string) {
   return (
@@ -132,7 +132,7 @@ export default async function AttestationList({ sessionDid, viewerDid, searchPar
   const identityMap = new Map(identityRows.map((i) => [i.id, i]));
 
   // Fetch signatures for document attestations
-  const documentAttIds = items.filter((att) => DOCUMENT_TYPES.includes(att.type)).map((att) => att.id);
+  const documentAttIds = items.filter((att) => DOCUMENT_TYPES.has(att.type)).map((att) => att.id);
   let documentSigs: typeof attestationSignatures.$inferSelect[] = [];
   if (documentAttIds.length > 0) {
     documentSigs = await db
@@ -236,7 +236,7 @@ export default async function AttestationList({ sessionDid, viewerDid, searchPar
         <div className="space-y-3">
           {items.map((att) => {
             // Document attestations get the rich card
-            if (DOCUMENT_TYPES.includes(att.type)) {
+            if (DOCUMENT_TYPES.has(att.type)) {
               const sigs = sigsByAttestation.get(att.id) ?? [];
               const sigsWithIdentity: Signature[] = sigs.map((sig) => ({
                 ...sig,

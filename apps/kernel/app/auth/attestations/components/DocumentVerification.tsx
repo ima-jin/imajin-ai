@@ -52,12 +52,12 @@ export default function DocumentVerification({ documentId }: Readonly<{ document
       </button>
       {error && <p role="alert" className="text-sm text-red-400">{error}</p>}
       {result && (
-        <div role="status" className={`text-sm ${verified ? 'text-green-400' : 'text-red-400'}`}>
+        <output className={`block text-sm ${verified ? 'text-green-400' : 'text-red-400'}`}>
           {verified ? 'Verified: file matches and recorded signatures are valid.' : 'Verification failed.'}
-          {!result.hashMatches && <p>File does not match the signed document. It may have been changed or tampered with.</p>}
-          {!result.signaturesValid && <p>Recorded signatures could not be verified.</p>}
-          {result.revoked && <p>This agreement has been revoked.</p>}
-        </div>
+          {!result.hashMatches && <span className="block">File does not match the signed document. It may have been changed or tampered with.</span>}
+          {!result.signaturesValid && <span className="block">Recorded signatures could not be verified.</span>}
+          {result.revoked && <span className="block">This agreement has been revoked.</span>}
+        </output>
       )}
     </form>
   );

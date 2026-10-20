@@ -29,7 +29,7 @@ export async function GET(
       .where(eq(attestations.id, id))
       .limit(1);
 
-    if (!attestation || !attestation.documentHash) {
+    if (!attestation?.documentHash) {
       return NextResponse.json({ error: 'Document not found' }, { status: 404, headers: cors });
     }
 

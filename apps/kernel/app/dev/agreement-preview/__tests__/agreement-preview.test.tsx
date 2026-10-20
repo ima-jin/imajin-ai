@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import AgreementPreview, { FIXTURE_CONTENT } from '../agreement-preview';
+import AgreementPreview, { FIXTURE_CONTENT, fixtureRequestUrl } from '../agreement-preview';
 import AgreementPreviewPage from '../page';
 import { GET } from '../document/route';
 
@@ -9,6 +9,11 @@ vi.mock('next/navigation', () => ({ notFound: () => { throw new Error('not-found
 afterEach(() => { cleanup(); vi.unstubAllEnvs(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
 describe('agreement development preview', () => {
+  it('handles each fetch request input without default object stringification', () => {
+    expect(fixtureRequestUrl('/relative')).toBe('/relative');
+    expect(fixtureRequestUrl(new URL('https://fixture.example/document'))).toBe('https://fixture.example/document');
+    expect(fixtureRequestUrl(new Request('https://fixture.example/document'))).toBe('https://fixture.example/document');
+  });
   it.each(['production', 'test'])('refuses preview page and fixture document outside development (%s)', (environment) => {
     vi.stubEnv('NODE_ENV', environment);
     expect(() => AgreementPreviewPage()).toThrow('not-found');
