@@ -10,6 +10,7 @@
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 import { requireAuth, authErrorResponse, type Identity } from '@imajin/auth';
+import { requireGrantPrincipal } from './grant-principal';
 
 export interface CallerIdentity {
   identity: Identity;
@@ -25,8 +26,11 @@ export interface CallerIdentityError {
  * (`identity.actingAs ?? identity.id`), or a ready-to-return error response
  * when authentication fails.
  */
-export async function resolveCallerIdentity(request: NextRequest): Promise<CallerIdentity | CallerIdentityError> {
-  const authResult = await requireAuth(request);
+export async function resolveCallerIdentity(
+  request: NextRequest,
+  options: { grantManagement?: boolean } = {},
+): Promise<CallerIdentity | CallerIdentityError> {
+  const authResult = options.grantManagement ? await requireGrantPrincipal(request) : await requireAuth(request, { service: 'auth' });
   if ('error' in authResult) {
     return { errorResponse: authErrorResponse(authResult) };
   }

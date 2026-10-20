@@ -43,7 +43,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
  * silent delete; the row and its step history remain visible.
  */
 export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const auth = await resolveCallerIdentity(request);
+  const auth = await resolveCallerIdentity(request, { grantManagement: true });
   if (isCallerIdentityError(auth)) {
     return auth.errorResponse;
   }
@@ -51,7 +51,7 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
   const { id } = await params;
 
   try {
-    const result = await revokeProvision(id, callerDid);
+    const result = await revokeProvision(id, callerDid, auth.identity.id);
     if ('error' in result) {
       return NextResponse.json({ error: result.error }, { status: result.status });
     }

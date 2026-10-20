@@ -19,7 +19,7 @@ const log = createLogger('kernel');
  * equal the caller's own effective DID.
  */
 export async function POST(request: NextRequest) {
-  const auth = await resolveCallerIdentity(request);
+  const auth = await resolveCallerIdentity(request, { grantManagement: true });
   if (isCallerIdentityError(auth)) {
     return auth.errorResponse;
   }
@@ -62,6 +62,7 @@ export async function POST(request: NextRequest) {
   try {
     const provision = await createProvision({
       servingDid,
+      actorDid: identity.id,
       name: name ?? '',
       harness: harness as ProvisionHarness,
       placement: placement as ProvisionPlacement,

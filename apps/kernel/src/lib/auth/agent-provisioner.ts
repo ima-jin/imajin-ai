@@ -47,6 +47,8 @@ const SUPPORTED_PLACEMENTS: readonly ProvisionPlacement[] = ['hosted', 'local'];
 export interface CreateProvisionInput {
   /** The DID the new agent will belong to. The route layer must have already verified the caller acts directly as this DID. */
   servingDid: string;
+  /** Human who authenticated, not the effective org delegator. */
+  actorDid?: string;
   name: string;
   harness: ProvisionHarness;
   placement: ProvisionPlacement;
@@ -212,7 +214,7 @@ export async function createProvision(input: CreateProvisionInput): Promise<Agen
   let grantId: string | undefined;
   try {
     if (valid.length > 0) {
-      const result = await issueGrant({ delegatorDid: input.servingDid, agentDid, capabilities: valid, audience: { type: 'all' } });
+      const result = await issueGrant({ delegatorDid: input.servingDid, actorDid: input.actorDid, agentDid, capabilities: valid, audience: { type: 'all' } });
       if ('error' in result) throw new Error(result.error);
       grantId = result.grant.grantId;
       steps = await appendStep(id, steps, { step: 'issue_grants', status: 'ok', at: nowIso() }, { grantId, status: 'grants_issued' });
@@ -251,7 +253,7 @@ export async function createProvision(input: CreateProvisionInput): Promise<Agen
 }
 
 /** Revoke a provision: revokes its issued grant (if any) and marks the row 'revoked' — revocation is first-class, never a silent DB delete. */
-export async function revokeProvision(id: string, requestedBy: string): Promise<{ revoked: boolean } | { error: string; status: number }> {
+export async function revokeProvision(id: string, requestedBy: string, actorDid?: string): Promise<{ revoked: boolean } | { error: string; status: number }> {
   const row = await getProvision(id);
   if (!row) return { error: 'Provision not found', status: 404 };
   if (row.servingDid !== requestedBy) {
@@ -262,7 +264,7 @@ export async function revokeProvision(id: string, requestedBy: string): Promise<
   }
 
   if (row.grantId) {
-    const result = await revokeGrant({ grantId: row.grantId, requestedBy });
+    const result = await revokeGrant({ grantId: row.grantId, requestedBy, actorDid });
     if ('error' in result) {
       log.error({ err: result.error, provisionId: id, grantId: row.grantId }, '[agent-provisioner] grant revoke failed during provision revoke');
     }
