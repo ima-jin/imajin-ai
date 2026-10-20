@@ -122,7 +122,7 @@ export function RegisteredAppScopesPanel() {
         <button type="button" disabled={busy} onClick={() => void load()} className="px-3 py-2 text-gray-300 disabled:opacity-40">Refresh registered apps</button>
       </div>
       {error && <p role="alert" className="text-red-400">Registered apps unavailable. Refresh to retry; no approval state can be inferred from this failed read.</p>}
-      {busy && <p role="status" className="text-gray-400">Loading registered apps…</p>}
+      {busy && <output className="block text-gray-400">Loading registered apps…</output>}
       {!busy && !error && apps.length === 0 && <p className="text-gray-400">No registered apps.</p>}
       <ul className="space-y-3">
         {apps.map((app) => (
