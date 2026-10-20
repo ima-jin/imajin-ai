@@ -6,6 +6,7 @@ import { requireDocumentActor } from '@/src/lib/auth/document-authorization';
 import { createLogger } from '@imajin/logger';
 import {
   buildSignatureCountMap,
+  buildDocumentPayload,
   getCreatorDisplayName,
   publishDocumentCreatedNotifications,
   finalizeDocumentAttestation,
@@ -13,6 +14,7 @@ import {
   validateDocumentRequestInput,
 } from '../../../../src/lib/auth/document-attestation';
 import { randomUUID } from 'node:crypto';
+import { DOCUMENT_TYPES } from '@/src/lib/auth/document-types';
 
 const log = createLogger('kernel:documents');
 export const dynamic = 'force-dynamic';
@@ -74,18 +76,11 @@ export async function POST(request: NextRequest) {
           issuerDid: callerDid,
           subjectDid: signerDids.length === 1 ? signerDids[0] : callerDid,
           type: 'document.created',
-          payload: {
-            ...payload,
-            title,
-            documentHash,
-            orgDid: callerDid,
-            counterpartyDids: signerDids,
-            actingHumanDid: actor.actingHumanDid,
-            signedBy: { [callerDid]: {
-              actingHumanDid: actor.actingHumanDid,
-              signatureModel: authorJws.split('.').length === 3 ? 'did-key' : 'node-witness',
-            } },
-          },
+          payload: buildDocumentPayload({
+            payload, title, documentHash, creatorDid: callerDid,
+            actingHumanDid: actor.actingHumanDid, signerDids, authorJws,
+            issuerScope: callerIdentity.scope,
+          }),
           signature: '', // legacy — not used for document attestations
           authorJws,
           attestationStatus: 'collecting',
@@ -140,10 +135,8 @@ export async function GET(request: NextRequest) {
   const limitParam = Number.parseInt(searchParams.get('limit') ?? '20', 10);
   const limit = Math.min(Math.max(1, Number.isNaN(limitParam) ? 20 : limitParam), DOCUMENT_LIMIT_MAX);
 
-  const documentTypes = ['document.created', 'document.amended', 'agreement'] as const;
-
   try {
-    const typeConditions: Array<Parameters<typeof and>[0]> = [inArray(attestations.type, [...documentTypes])];
+    const typeConditions: Array<Parameters<typeof and>[0]> = [inArray(attestations.type, [...DOCUMENT_TYPES])];
 
     // Role filter: which attestations to show
     const roleResult = await buildRoleCondition(roleFilter, callerDid, cors, actor.actingHumanDid);

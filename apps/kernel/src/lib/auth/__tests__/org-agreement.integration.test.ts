@@ -33,6 +33,8 @@ vi.mock('@imajin/dfos', () => ({ verifyChain: vi.fn().mockResolvedValue({ isDele
 import { GET as LIST, POST as CREATE } from '@/app/auth/api/documents/route';
 import { GET as DETAIL } from '@/app/auth/api/documents/[id]/route';
 import { POST as SIGN } from '@/app/auth/api/documents/[id]/sign/route';
+import { POST as DECLINE } from '@/app/auth/api/documents/[id]/decline/route';
+import { POST as AMEND } from '@/app/auth/api/documents/[id]/amend/route';
 import { POST as IDENTITY_SIGN } from '@/app/auth/api/identity/[did]/sign/route';
 import { verifyDocumentSignatureToken } from '../document-signatures';
 
@@ -140,6 +142,139 @@ afterEach(() => { vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
 afterAll(async () => { await pg.close(); });
 
 describe('org document agreement acceptance (#2998)', () => {
+  async function personalRequestForOrg() {
+    await database.update(media.assets).set({ ownerDid: bob }).where(eq(media.assets.id, 'asset_original'));
+    const response = await CREATE(request(bob, createBody({
+      author_jws: token(bob), signers: [org],
+    })));
+    expect(response.status).toBe(201);
+    return (await response.json()).attestation.id as string;
+  }
+  it.each([owner, admin])('lets an authorized org counterparty decline as the org (%s)', async (human) => {
+    const id = await personalRequestForOrg();
+    const response = await DECLINE(request(human, {}, org), params(id));
+    expect(response.status).toBe(200);
+    const state = await counts();
+    expect(state.attestations[0]).toMatchObject({
+      issuerDid: bob, type: 'document.created', attestationStatus: 'declined',
+      payload: { declinedBy: { did: org, actingHumanDid: human } },
+    });
+    expect(state.signatures.find((signature) => signature.signerDid === org)?.status).toBe('declined');
+    expect(mocks.publish).toHaveBeenLastCalledWith('document.declined', expect.objectContaining({
+      issuer: org, payload: expect.objectContaining({ signerDid: org }),
+    }));
+    const snapshot = await counts();
+    expect((await DECLINE(request(human, {}, org), params(id))).status).toBe(409);
+    expect(await counts()).toEqual(snapshot);
+  });
+  it.each([owner, admin])('lets the org amend as a recorded counterparty with authoritative provenance (%s)', async (human) => {
+    const originalId = await personalRequestForOrg();
+    const original = (await counts()).attestations[0];
+    const amendedHash = 'sha256-amendment';
+    await database.insert(media.assets).values({
+      id: 'asset_amended', ownerDid: org, filename: 'amendment.pdf', mimeType: 'application/pdf',
+      size: 12, hash: amendedHash, storagePath: '/test/amended.pdf', status: 'active',
+    });
+    const response = await AMEND(request(human, createBody({
+      document_asset_id: 'asset_amended', document_hash: amendedHash,
+      author_jws: token(org, amendedHash), payload: { amends: 'spoof', actingHumanDid: 'spoof', orgDid: 'spoof' },
+    }), org), params(originalId));
+    expect(response.status).toBe(201);
+    const { attestation, signatures } = await response.json();
+    expect(attestation).toMatchObject({
+      issuerDid: org, type: 'document.amended', documentHash: amendedHash,
+      payload: { amends: originalId, orgDid: org, actingHumanDid: human, documentHash: amendedHash,
+        signedBy: { [org]: { actingHumanDid: human } } },
+    });
+    expect(signatures).toContainEqual(expect.objectContaining({ signerDid: org, status: 'signed' }));
+    expect((await sign(attestation.id, bob, amendedHash)).status).toBe(200);
+    const state = await counts();
+    expect(state.attestations.find((row) => row.id === originalId)).toEqual(original);
+    expect(state.attestations.find((row) => row.id === attestation.id)).toMatchObject({ type: 'agreement', attestationStatus: 'executed' });
+  });
+  it.each([{ services: [] }, { services: ['media'] }])('denies restricted decline/amend before any writes (%j)', async ({ services }) => {
+    const id = await personalRequestForOrg();
+    await database.update(auth.identityMembers).set({ allowedServices: services })
+      .where(eq(auth.identityMembers.memberDid, admin));
+    const before = await counts();
+    mocks.publish.mockClear();
+    mocks.copyFile.mockClear();
+    expect((await DECLINE(request(admin, {}, org), params(id))).status).toBe(403);
+    expect((await AMEND(request(admin, createBody(), org), params(id))).status).toBe(403);
+    expect(await counts()).toEqual(before);
+    expect(mocks.publish).not.toHaveBeenCalled();
+    expect(mocks.copyFile).not.toHaveBeenCalled();
+  });
+  it.each([member, stranger])('denies non-controller decline/amend without personal fallback (%s)', async (human) => {
+    const id = await personalRequestForOrg();
+    const before = await counts();
+    expect((await DECLINE(request(human, {}, org), params(id))).status).toBe(403);
+    expect((await AMEND(request(human, createBody(), org), params(id))).status).toBe(403);
+    expect(await counts()).toEqual(before);
+  });
+  it('rolls back an amendment when the org signed copy cannot be persisted', async () => {
+    const id = await create();
+    const before = await counts();
+    mocks.copyFile.mockRejectedValueOnce(new Error('Unavailable'));
+    expect((await AMEND(request(owner, createBody(), org), params(id))).status).toBe(500);
+    expect(await counts()).toEqual(before);
+  });
+  it('rejects nonparties, missing/non-document originals, stale declines and invalid amendment payloads', async () => {
+    const id = await create();
+    const before = await counts();
+    expect((await DECLINE(request(stranger, {}), params(id))).status).toBe(403);
+    expect((await AMEND(request(stranger, createBody()), params(id))).status).toBe(403);
+    expect((await AMEND(request(owner, { invalid: true }, org), params(id))).status).toBe(400);
+    expect((await AMEND(request(owner, createBody(), org), params('missing'))).status).toBe(404);
+    expect((await DECLINE(request(bob, {}), params('missing'))).status).toBe(404);
+    expect(await counts()).toEqual(before);
+    await database.update(auth.attestations).set({ expiresAt: new Date(0) }).where(eq(auth.attestations.id, id));
+    expect((await DECLINE(request(bob, {}), params(id))).status).toBe(410);
+    await database.update(auth.attestations).set({ expiresAt: null, revokedAt: new Date() }).where(eq(auth.attestations.id, id));
+    expect((await DECLINE(request(bob, {}), params(id))).status).toBe(409);
+    await database.update(auth.attestations).set({ type: 'vouch' }).where(eq(auth.attestations.id, id));
+    expect((await DECLINE(request(bob, {}), params(id))).status).toBe(404);
+    expect((await AMEND(request(owner, createBody(), org), params(id))).status).toBe(404);
+  });
+  it('keeps completed personal documents and personal amendments on their original types', async () => {
+    await database.update(media.assets).set({ ownerDid: bob }).where(eq(media.assets.id, 'asset_original'));
+    const response = await CREATE(request(bob, createBody({ author_jws: token(bob), signers: [carol], payload: { orgDid: org } })));
+    const originalId = (await response.json()).attestation.id;
+    expect((await sign(originalId, carol)).status).toBe(200);
+    const amendment = await AMEND(request(bob, createBody({ author_jws: token(bob), signers: [carol] })), params(originalId));
+    expect(amendment.status).toBe(201);
+    const amendedId = (await amendment.json()).attestation.id;
+    expect((await sign(amendedId, carol)).status).toBe(200);
+    const state = await counts();
+    expect(state.attestations).toContainEqual(expect.objectContaining({
+      id: originalId, type: 'document.created', attestationStatus: 'executed', payload: expect.objectContaining({ orgDid: null }),
+    }));
+    expect(state.attestations).toContainEqual(expect.objectContaining({
+      id: amendedId, type: 'document.amended', attestationStatus: 'executed', payload: expect.objectContaining({ orgDid: null }),
+    }));
+  });
+  it('preserves the existing cookie-only contract and rejects bearer-only calls with no writes', async () => {
+    const before = await counts();
+    const bearer = new NextRequest('http://localhost/auth/api/documents', {
+      method: 'POST', headers: { authorization: 'Bearer fixture-token', 'x-acting-as': org }, body: '{}',
+    });
+    for (const response of [
+      await CREATE(bearer), await SIGN(bearer, params('missing')),
+      await DECLINE(bearer, params('missing')), await AMEND(bearer, params('missing')),
+    ]) expect(response.status).toBe(401);
+    expect(await counts()).toEqual(before);
+    expect(mocks.copyFile).not.toHaveBeenCalled();
+  });
+  it('makes the content-only witness scope explicit: identical files reuse a token but not request authority', async () => {
+    const firstId = await create();
+    const secondId = await create();
+    const state = await counts();
+    expect(firstId).not.toBe(secondId);
+    expect(state.attestations.map((row) => row.authorJws)).toEqual([token(org), token(org)]);
+    expect((await sign(secondId, stranger, hash, token(bob))).status).toBe(403);
+    expect((await sign(firstId, bob)).status).toBe(200);
+    expect((await sign(secondId, bob)).status).toBe(200);
+  });
   it('records the org author/first signature and human provenance, deduplicates signers, and registers agreement', async () => {
     const id = await create({ signers: [org, bob, bob], payload: { actingHumanDid: 'spoof', orgDid: 'spoof' } });
     const state = await counts();

@@ -495,10 +495,28 @@ not silently switched to a personal identity. No grants are added by this flow.
 
 The counterparty opens the request under their own account and sees the title,
 organization, document and own-account sign controls. Once every unique party
-has signed the exact hash, the registered `agreement` appears as a document card
+has signed the exact hash, a business-DID author's registered `agreement` appears as a document card
 in both parties' attestation history. Private signed copies remain separately
 owned. Either party can revoke the agreement; its history, timestamps, hash and
 signature records remain visible with a revoked marker rather than being deleted.
+Personal and non-business group documents keep their `document.created` or
+`document.amended` type on completion. Decline and amendment use the same
+owner/admin and `auth` allowed-services gate as signing; amendments retain the
+actual human and original reference without trusting caller-supplied provenance.
+
+Document APIs require a user session cookie. The previous kernel-local document
+middleware was cookie-only too; bearer-only credentials were not supported.
+The repository and sibling-checkout consumer audit found only browser document
+clients using the session cookie, not bearer-token callers. Agent/app bearer
+support would require a separately scoped contract rather than a silent fallback.
+
+Document signature payloads bind **only** `{did, document_hash}`. They do not bind
+a request id, title, counterparty list or amendment reference. Two requests with
+identical file bytes and the same DID can reuse that proof without any hash
+collision; a token is evidence of the content, not independent request-specific
+consent. Each submission still checks the authenticated effective identity,
+current act-as authority and that request's pending signer row. This release
+does not change the existing signing wire format or claim request-bound proof.
 
 **Verify a saved document** uploads a file to
 `POST /auth/api/documents/{id}/verify` as multipart `file`. The response is

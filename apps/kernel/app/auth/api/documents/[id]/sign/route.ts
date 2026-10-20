@@ -7,6 +7,7 @@ import { publish } from '@imajin/bus';
 import { createLogger } from '@imajin/logger';
 import { verifyDocumentSignatureToken } from '@/src/lib/auth/document-signatures';
 import { copyDocumentToSigner } from '@/src/lib/auth/document-copies';
+import { completedDocumentType } from '@/src/lib/auth/document-types';
 
 const log = createLogger('kernel:documents');
 export const dynamic = 'force-dynamic';
@@ -69,8 +70,12 @@ export async function POST(
         && signatures.every((row) => row.signerDid === actor.effectiveDid || row.status === 'signed');
       const payload = (attestation.payload ?? {}) as Record<string, unknown>;
       const signedBy = (payload.signedBy ?? {}) as Record<string, unknown>;
+      const [issuer] = allSigned
+        ? await tx.select({ scope: identities.scope }).from(identities)
+          .where(eq(identities.id, attestation.issuerDid)).limit(1)
+        : [];
       await tx.update(attestations).set({
-        ...(allSigned ? { type: 'agreement', attestationStatus: 'executed' } : {}),
+        ...(allSigned ? { type: completedDocumentType(attestation.type, issuer?.scope), attestationStatus: 'executed' } : {}),
         payload: {
           ...payload,
           signedBy: { ...signedBy, [actor.effectiveDid]: {

@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation';
 import { getDocumentPageActor } from '@/app/auth/lib/get-document-page-actor';
 import { canReadDocument } from '@/src/lib/auth/document-authorization';
+import { DOCUMENT_TYPES } from '@/src/lib/auth/document-types';
 import Link from 'next/link';
 import { and, eq, inArray } from 'drizzle-orm';
 import { attestations, attestationSignatures, db, identities } from '@/src/db';
@@ -9,8 +10,6 @@ import DocumentSigningCard, { type DocumentAttestation, type Signature } from '.
 interface PageProps {
   params: Promise<{ id: string }>;
 }
-
-const DOCUMENT_TYPES = ['document.created', 'document.amended', 'agreement'] as const;
 
 export default async function DocumentDetailPage({ params }: Readonly<PageProps>) {
   const { id } = await params;

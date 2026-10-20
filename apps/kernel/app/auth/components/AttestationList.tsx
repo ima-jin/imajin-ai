@@ -3,6 +3,7 @@ import { eq, ne, or, and, isNull, desc, inArray, notInArray } from 'drizzle-orm'
 import Link from 'next/link';
 import DocumentSigningCard, { type DocumentAttestation, type Signature } from '../attestations/components/DocumentSigningCard';
 import { relationshipLabelOrgDids, RELATIONSHIP_LABEL_EVENT } from '../api/attestations/relationship-label-visibility';
+import { DOCUMENT_REQUEST_TYPES, isDocumentType } from '@/src/lib/auth/document-types';
 
 const TYPE_BADGE: Record<string, { label: string; classes: string }> = {
   agreement: {
@@ -44,8 +45,6 @@ const TYPE_BADGE: Record<string, { label: string; classes: string }> = {
 };
 
 const ALL_TYPES = Object.keys(TYPE_BADGE);
-
-const DOCUMENT_TYPES = new Set(['document.created', 'document.amended', 'agreement']);
 
 function getBadge(type: string) {
   return (
@@ -107,7 +106,7 @@ export default async function AttestationList({ sessionDid, viewerDid, searchPar
     ? or(notLabelEvent, inArray(attestations.subjectDid, allowedOrgDids))!
     : notLabelEvent);
   if (typeFilter) conditions.push(eq(attestations.type, typeFilter));
-  if (excludeDocumentTypes && !typeFilter) conditions.push(notInArray(attestations.type, ['document.created', 'document.amended']));
+  if (excludeDocumentTypes && !typeFilter) conditions.push(notInArray(attestations.type, [...DOCUMENT_REQUEST_TYPES]));
 
   const rows = await db
     .select()
@@ -132,7 +131,7 @@ export default async function AttestationList({ sessionDid, viewerDid, searchPar
   const identityMap = new Map(identityRows.map((i) => [i.id, i]));
 
   // Fetch signatures for document attestations
-  const documentAttIds = items.filter((att) => DOCUMENT_TYPES.has(att.type)).map((att) => att.id);
+  const documentAttIds = items.filter((att) => isDocumentType(att.type)).map((att) => att.id);
   let documentSigs: typeof attestationSignatures.$inferSelect[] = [];
   if (documentAttIds.length > 0) {
     documentSigs = await db
@@ -236,7 +235,7 @@ export default async function AttestationList({ sessionDid, viewerDid, searchPar
         <div className="space-y-3">
           {items.map((att) => {
             // Document attestations get the rich card
-            if (DOCUMENT_TYPES.has(att.type)) {
+            if (isDocumentType(att.type)) {
               const sigs = sigsByAttestation.get(att.id) ?? [];
               const sigsWithIdentity: Signature[] = sigs.map((sig) => ({
                 ...sig,

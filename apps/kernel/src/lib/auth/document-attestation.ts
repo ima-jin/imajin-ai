@@ -15,6 +15,7 @@ interface CallerIdentity {
   publicKey: string;
   name: string | null;
   handle: string | null;
+  scope?: string;
 }
 
 interface DocumentRequestInput {
@@ -130,7 +131,7 @@ async function validateAssetOwnership(
 
 async function loadCallerIdentityForDocument(callerDid: string): Promise<CallerIdentityResult> {
   const [callerIdentity] = await db
-    .select({ publicKey: identities.publicKey, name: identities.name, handle: identities.handle })
+    .select({ publicKey: identities.publicKey, name: identities.name, handle: identities.handle, scope: identities.scope })
     .from(identities)
     .where(eq(identities.id, callerDid))
     .limit(1);
@@ -246,6 +247,31 @@ export function buildDocumentSignatureRows(params: {
 
 export function getCreatorDisplayName(callerIdentity: CallerIdentity, callerDid: string): string {
   return callerIdentity.handle ? `@${callerIdentity.handle}` : callerIdentity.name || callerDid;
+}
+export function buildDocumentPayload(params: {
+  payload?: Record<string, unknown>;
+  title: string;
+  documentHash: string;
+  creatorDid: string;
+  actingHumanDid: string;
+  signerDids: string[];
+  authorJws: string;
+  issuerScope?: string;
+  amends?: string;
+}) {
+  return {
+    ...params.payload,
+    title: params.title,
+    documentHash: params.documentHash,
+    orgDid: params.issuerScope === 'business' ? params.creatorDid : null,
+    counterpartyDids: params.signerDids,
+    actingHumanDid: params.actingHumanDid,
+    ...(params.amends ? { amends: params.amends } : {}),
+    signedBy: { [params.creatorDid]: {
+      actingHumanDid: params.actingHumanDid,
+      signatureModel: params.authorJws.split('.').length === 3 ? 'did-key' : 'node-witness',
+    } },
+  };
 }
 
 export interface SignatureCounts {

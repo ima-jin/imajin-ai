@@ -31,8 +31,6 @@ export async function POST(
   if (!callerDid) {
     return NextResponse.json({ error: 'Not authenticated' }, { status: 401, headers: cors });
   }
-
-
   const { did: rawId } = await params;
   const attestationId = decodeURIComponent(rawId);
 
