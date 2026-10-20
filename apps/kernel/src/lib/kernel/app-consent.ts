@@ -17,7 +17,7 @@ export async function canConsentToApp(app: ConsentApp, sessionDid: string): Prom
   try {
     return (await resolveAppOwnerDids(sessionDid)).has(app.ownerDid);
   } catch {
-    log.error('Private app sign-in membership lookup failed; refusing consent');
+    log.error({}, 'Private app sign-in membership lookup failed; refusing consent');
     return false;
   }
 }
