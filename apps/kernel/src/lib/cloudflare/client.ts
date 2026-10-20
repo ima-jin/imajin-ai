@@ -69,7 +69,7 @@ async function boundedText(response: Response): Promise<string> {
     const { done, value } = await reader.read();
     if (done) break;
     size += value.byteLength;
-    if (size > 2_000_000) { await reader.cancel(); throw new Error('Unavailable'); }
+    if (size > 2_000_000) return reader.cancel().then(() => { throw new Error('Unavailable'); });
     chunks.push(value);
   }
   return Buffer.concat(chunks).toString('utf8');

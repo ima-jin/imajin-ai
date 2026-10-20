@@ -11,6 +11,7 @@ import { controlsImportOwner, isImportHuman } from '@/src/lib/vault/import-autho
 import { authorizeZone, type ZoneAuthority } from './authority';
 import { mutation } from './audit';
 import { dnsRecord, patchDns, cacheRules } from './operations';
+import { forEachSequential, mapWithConcurrency } from '@/src/lib/async/sequential';
 import {
   bulkSchema, cacheRuleOutputSchema, cacheRuleSchema, cacheSetSchema, CloudflareError,
   dnsRecordSchema, domainSchema, idSchema, parse,
@@ -74,14 +75,13 @@ function planContext(authority: ZoneAuthority) {
 
 export async function bulkProxy(authority: ZoneAuthority, raw: unknown) {
   const input = parse(bulkSchema, raw);
-  const changes = [];
-  for (const change of input.changes) {
+  const changes = await mapWithConcurrency(input.changes, 1, async change => {
     const fresh = await authorizeZone(authority.actor, authority.zoneId, authority.domain, 'cloudflare:dns');
     if (fresh.ownerDid !== authority.ownerDid) throw new CloudflareError(403, 'zone_owner_changed');
     const before = await dnsRecord(fresh, change.recordId);
     if (!before.proxiable) throw new CloudflareError(400, 'record_not_proxiable');
-    changes.push({ recordId: change.recordId, before, after: { ...before, proxied: change.proxied } });
-  }
+    return { recordId: change.recordId, before, after: { ...before, proxied: change.proxied } };
+  });
   const plan = { ...planContext(authority), operation: 'bulk-proxy' as const, changes };
   return input.dryRun ? { changes, dryRun: true } : { changes, dryRun: false, approval: await stage(authority, plan) };
 }
@@ -123,12 +123,12 @@ async function freshAuthority(plan: Plan, capability: string) {
 
 async function applyPlan(plan: Plan, proposalId: string, operatorDid: string) {
   if (plan.operation === 'bulk-proxy') {
-    for (const change of plan.changes) {
+    await forEachSequential(plan.changes, async change => {
       await requireExecutingClaim(proposalId);
       if (!await isImportHuman(operatorDid) || !await controlsImportOwner(operatorDid, plan.ownerDid)) throw new Error('Unavailable');
       const authority = await freshAuthority(plan, 'cloudflare:dns');
       await patchDns(authority, change.recordId, { proxied: change.after.proxied }, proposalId, change.before);
-    }
+    });
     return;
   }
   await requireExecutingClaim(proposalId);

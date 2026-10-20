@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import { approvalCardAnchorId, requestApprovalsRefresh } from './approval-anchor';
 import { CLOUDFLARE_CAPABILITIES, cloudflarePurpose, isCloudflareImport, type CloudflareImport } from '@/src/lib/cloudflare/contract';
 import { CloudflareDelegations } from './cloudflare-delegations';
+import { cloudflareFormText } from './cloudflare-client';
 
 interface VaultOwner {
   did: string;
@@ -166,7 +167,7 @@ export function VaultImportPanel() {
         body: JSON.stringify({
           ownerDid, secret,
           ...(cloudflare ? {
-            purpose: cloudflarePurpose(String(values.get('zoneId'))), consumerDid: metadata?.nodeDid,
+            purpose: cloudflarePurpose(cloudflareFormText(values, 'zoneId')), consumerDid: metadata?.nodeDid,
             cloudflare: {
               domain: values.get('domain'), zoneId: values.get('zoneId'),
               granteeDid: values.get('granteeDid'), capabilities: values.getAll('capabilities'),
@@ -208,7 +209,7 @@ export function VaultImportPanel() {
       )}</output>}
       <form ref={formRef} onSubmit={(event) => void submit(event)}
         className="min-w-0 rounded-lg border border-gray-800 p-3 space-y-3">
-        <label className="block text-xs text-gray-300">Import mode
+        <label className="block text-xs text-gray-300"><span>Import mode</span>
           <select aria-label="Import mode" value={cloudflare ? 'cloudflare' : 'generic'} disabled={busy || replacement !== null}
             className={`${inputClass} mt-1`} onChange={event => {
               setCloudflare(event.target.value === 'cloudflare');
@@ -232,18 +233,18 @@ export function VaultImportPanel() {
         <fieldset hidden={!cloudflare} disabled={busy || !cloudflare} className="space-y-3">
           <legend className="text-xs text-gray-300">Cloudflare zone authority</legend>
           <p className="text-xs text-amber-200">Only the kernel node receives the sealed token. The grantee gets revocable zone operations, never credential access.</p>
-          <label className="block text-xs text-gray-300">Verified zone domain
+          <label className="block text-xs text-gray-300"><span>Verified zone domain</span>
             <select name="domain" aria-label="Verified zone domain" required={cloudflare} className={`${inputClass} mt-1`}>
               <option value="">Select a verified zone</option>
               {(metadata.domains ?? []).filter(domain => domain.ownerDid === ownerDid).map(domain =>
                 <option key={domain.domain} value={domain.domain}>{domain.domain}</option>)}
             </select>
           </label>
-          <label className="block text-xs text-gray-300">Cloudflare zone ID
+          <label className="block text-xs text-gray-300"><span>Cloudflare zone ID</span>
             <input name="zoneId" aria-label="Cloudflare zone ID" required={cloudflare} pattern="[a-f0-9]{32}" maxLength={32}
               autoCapitalize="none" spellCheck={false} className={`${inputClass} mt-1`} />
           </label>
-          <label className="block text-xs text-gray-300">Capability grantee DID
+          <label className="block text-xs text-gray-300"><span>Capability grantee DID</span>
             <input name="granteeDid" aria-label="Capability grantee DID" required={cloudflare}
               placeholder="did:imajin:…" autoCapitalize="none" spellCheck={false} className={`${inputClass} mt-1`} />
           </label>

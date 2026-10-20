@@ -48,7 +48,7 @@ export async function POST(request: NextRequest) {
     const { ownerDid, domain, zoneId, granteeDid, capabilities, ttlMs } = body;
     if (Object.keys(body).some(key => !['ownerDid', 'domain', 'zoneId', 'granteeDid', 'capabilities', 'ttlMs'].includes(key))
       || !isCloudflareImport({ domain, zoneId, granteeDid, capabilities })
-      || (ttlMs !== undefined && (!Number.isSafeInteger(ttlMs) || Number(ttlMs) <= 0 || Number(ttlMs) > 30 * 86400_000))) {
+      || (ttlMs !== undefined && (!Number.isSafeInteger(ttlMs) || Number(ttlMs) <= 0 || Number(ttlMs) > 30 * 86_400_000))) {
       return response(request, { error: 'Invalid zone grant' }, 400);
     }
     const actor = await authorizedOwner(request, ownerDid, domain, zoneId);

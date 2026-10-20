@@ -9,13 +9,20 @@ import { recordApprovalRequested } from '@/src/lib/notify/operator-approvals-ser
 import { importProposer, listImportOwners, canExecuteImport } from '@/src/lib/vault/import-authority';
 import { listImportedKeyCards, requireImportRotationTarget, validateImportBody } from '@/src/lib/vault/import';
 import { stageImport, importFingerprint, discardImportForProposal, type ImportDetail } from '@/src/lib/vault/import-staging';
-import { isVaultTier1 } from '@/src/lib/vault/sealing';
-import { getNodeSigningIdentity } from '@/src/lib/vault/sealing';
+import { getNodeSigningIdentity, isVaultTier1 } from '@/src/lib/vault/sealing';
 import { cloudflarePurpose } from '@/src/lib/cloudflare/contract';
 import { requireCloudflareImportBinding } from '@/src/lib/vault/cloudflare-import';
 import { listDomains } from '@/src/lib/domains/service';
 
 export const dynamic = 'force-dynamic';
+
+async function discardFailedImport(stagingRef: string | undefined, proposalId: string, approverDid: string, detail: ImportDetail) {
+  if (!stagingRef) return;
+  await discardImportForProposal({
+    proposalId, operatorDid: approverDid, source: 'vault', kind: 'vault:import',
+    detail: { ...detail, stagingRef }, status: 'denied',
+  }).catch(() => undefined);
+}
 
 async function authorize(request: NextRequest) {
   const headers = new Headers(corsHeaders(request));
@@ -91,10 +98,7 @@ export async function POST(request: NextRequest) {
       proposalId, fingerprint: detail.fingerprint, purpose: detail.purpose, status: 'pending',
     }, { status: 201, headers: auth.headers });
   } catch {
-    if (stagingRef) await discardImportForProposal({
-      proposalId, operatorDid: auth.approverDid, source: 'vault', kind: 'vault:import',
-      detail: { ...detail, stagingRef }, status: 'denied',
-    }).catch(() => undefined);
+    await discardFailedImport(stagingRef, proposalId, auth.approverDid, detail);
     return auth.fail('Import proposal unavailable', 503);
   }
 }

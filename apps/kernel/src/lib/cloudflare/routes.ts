@@ -55,7 +55,7 @@ async function readBody(request: NextRequest): Promise<Record<string, unknown>> 
     const { done, value } = await reader.read();
     if (done) break;
     size += value.byteLength;
-    if (size > 32_768) { await reader.cancel(); throw new CloudflareError(413, 'request_too_large'); }
+    if (size > 32_768) return reader.cancel().then(() => { throw new CloudflareError(413, 'request_too_large'); });
     chunks.push(value);
   }
   const text = Buffer.concat(chunks).toString('utf8');

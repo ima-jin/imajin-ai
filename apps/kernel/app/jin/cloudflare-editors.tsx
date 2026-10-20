@@ -1,12 +1,19 @@
 'use client';
 
 import { useState, type FormEvent, type ReactNode } from 'react';
-import type { CacheRule, DnsRecord } from './cloudflare-client';
+import { cloudflareFormText, type CacheRule, type DnsRecord } from './cloudflare-client';
 
 export const cfInput = 'mt-1 min-h-11 w-full min-w-0 border border-white/15 bg-[var(--bg-input)] px-3 py-2 font-mono text-sm focus:border-[var(--sunset-purple)]';
 export const cfButton = 'min-h-11 border border-white/15 bg-[var(--bg-elevated)] px-3 py-2 font-mono text-sm disabled:opacity-40';
 export function JsonView({ value }: Readonly<{ value: unknown }>) {
   return <pre className="max-h-80 overflow-auto whitespace-pre-wrap break-all border border-white/10 p-2 font-mono text-xs">{JSON.stringify(value, null, 2)}</pre>;
+}
+
+function cacheEditorMode(current: CacheRule | undefined): string {
+  const edgeMode = current?.action_parameters.edge_ttl?.mode;
+  if (edgeMode === 'override_origin') return 'ttl';
+  if (edgeMode) return edgeMode;
+  return current?.action_parameters.cache === false ? 'bypass' : 'eligible';
 }
 export function CloudflareField({ label, children }: Readonly<{ label: string; children: ReactNode }>) {
   return <label className="block min-w-0 font-mono text-xs">{label}{children}</label>;
@@ -21,7 +28,7 @@ export function DnsEditor({ record, busy, save, cancel }: Readonly<{
     event.preventDefault();
     const data = new FormData(event.currentTarget);
     void save({
-      type, name: String(data.get('name')), content: String(data.get('content')),
+      type, name: cloudflareFormText(data, 'name'), content: cloudflareFormText(data, 'content'),
       ttl: Number(data.get('ttl')), ...(['A', 'AAAA', 'CNAME'].includes(type) ? { proxied: data.get('proxied') === 'on' } : {}),
       ...(type === 'MX' ? { priority: Number(data.get('priority')) } : {}),
     });
@@ -54,24 +61,24 @@ export function CacheRuleEditor({ rules, busy, save, editing, cancel, onDirty }:
   return <form className="space-y-3" onChange={onDirty} onSubmit={(event) => {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
-    const mode = data.get('mode');
+    const mode = cloudflareFormText(data, 'mode');
     const parameters = { ...current?.action_parameters };
     delete parameters.edge_ttl;
     const rule: CacheRule = {
       ...current,
-      description: String(data.get('description')), expression: String(data.get('expression')),
+      description: cloudflareFormText(data, 'description'), expression: cloudflareFormText(data, 'expression'),
       action: 'set_cache_settings', enabled: current?.enabled ?? true,
       action_parameters: {
         ...parameters, cache: mode !== 'bypass',
         ...(mode === 'ttl' ? { edge_ttl: { mode: 'override_origin', default: Number(data.get('ttl')) } } : {}),
-        ...(['respect_origin', 'bypass_by_default'].includes(String(mode)) ? { edge_ttl: { mode: mode as 'respect_origin' | 'bypass_by_default' } } : {}),
+        ...(['respect_origin', 'bypass_by_default'].includes(mode) ? { edge_ttl: { mode: mode as 'respect_origin' | 'bypass_by_default' } } : {}),
       },
     };
     void save(editing === undefined ? [...rules, rule] : rules.map((item, index) => index === editing ? rule : item));
   }}>
     <CloudflareField label="Rule description"><input name="description" defaultValue={current?.description} required maxLength={200} className={cfInput} disabled={busy} /></CloudflareField>
     <CloudflareField label="Match expression"><input name="expression" defaultValue={current?.expression} required placeholder={'http.host eq "www.example.com"'} className={cfInput} disabled={busy} /></CloudflareField>
-    <CloudflareField label="Cache behavior"><select name="mode" defaultValue={current?.action_parameters.edge_ttl?.mode === 'override_origin' ? 'ttl' : current?.action_parameters.edge_ttl?.mode ?? (current?.action_parameters.cache === false ? 'bypass' : 'eligible')} className={cfInput} disabled={busy}>
+    <CloudflareField label="Cache behavior"><select name="mode" defaultValue={cacheEditorMode(current)} className={cfInput} disabled={busy}>
       <option value="eligible">Eligible for cache</option><option value="bypass">Bypass cache</option><option value="ttl">Override edge TTL</option>
       <option value="respect_origin">Respect origin edge TTL</option><option value="bypass_by_default">Bypass edge cache unless origin allows</option>
     </select></CloudflareField>

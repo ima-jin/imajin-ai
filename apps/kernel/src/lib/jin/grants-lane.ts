@@ -318,13 +318,18 @@ function normalizeAppAuthorizations(apps: AppAuthorizationSummary[]): GrantCard[
  * function does no authorization of its own, matching every other /jin/api
  * service function's split of "gate at the route, read in the service".
  */
+async function ownedZoneGrants(operatorDid: string) {
+  const owners = await listImportOwners(operatorDid);
+  const groups = await Promise.all(owners.map(async owner => {
+    const grants = await listGrantDetailsForDelegator(owner.did);
+    return owner.did === operatorDid ? grants : grants.filter(grant => isCloudflareZoneAudience(grant.audience));
+  }));
+  return groups.flat();
+}
+
 export async function listGrantsForOperator(operatorDid: string): Promise<GrantCard[]> {
   const [authGrants, legacyMemberships, vaultKeyCards, accessBearers, appAuthorizations] = await Promise.all([
-    listImportOwners(operatorDid).then(owners =>
-      Promise.all(owners.map(async owner => {
-        const grants = await listGrantDetailsForDelegator(owner.did);
-        return owner.did === operatorDid ? grants : grants.filter(grant => isCloudflareZoneAudience(grant.audience));
-      })).then(grants => grants.flat())),
+    ownedZoneGrants(operatorDid),
     listLegacyAgentMemberships(operatorDid),
     listVaultKeyCards(),
     listDelegateGrantBearersForPrincipal(operatorDid),

@@ -13,7 +13,7 @@ export async function requireCloudflareImportBinding(detail: ImportDetail, execu
     || detail.consumerDid !== getNodeSigningIdentity().senderDid
     || detail.purpose !== cloudflarePurpose(zone.zoneId)) throw new Error('Cloudflare import unavailable');
   const binding = await resolveVerifiedDomain(zone.domain, executor, 'update');
-  if (!binding || binding.domain !== zone.domain || binding.zoneOwner !== detail.ownerDid) {
+  if (binding?.domain !== zone.domain || binding.zoneOwner !== detail.ownerDid) {
     throw new Error('Cloudflare import unavailable');
   }
 }

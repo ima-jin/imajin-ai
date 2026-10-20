@@ -55,7 +55,7 @@ export function CloudflareDelegations({ ownerDid, zone }: Readonly<{ ownerDid: s
           capabilities: data.getAll('capabilities'), ttlMs: Number(data.get('ttlMs')),
         }));
       }}>
-        <label className="block text-xs">New zone grantee DID
+        <label className="block text-xs"><span>New zone grantee DID</span>
           <input name="granteeDid" aria-label="New zone grantee DID" required disabled={busy} className={`${control} block w-full`}
             autoCapitalize="none" spellCheck={false} />
         </label>
@@ -64,10 +64,10 @@ export function CloudflareDelegations({ ownerDid, zone }: Readonly<{ ownerDid: s
             <input type="checkbox" name="capabilities" value={capability} defaultChecked={capability === 'cloudflare:read'} />{capability}
           </label>)}
         </fieldset>
-        <label className="block text-xs">New grant lease
+        <label className="block text-xs"><span>New grant lease</span>
           <select name="ttlMs" disabled={busy} className={`${control} block w-full`}>
-            <option value={86400_000}>24 hours</option><option value={7 * 86400_000}>7 days</option>
-            <option value={30 * 86400_000}>30 days</option>
+            <option value={86_400_000}>24 hours</option><option value={7 * 86_400_000}>7 days</option>
+            <option value={30 * 86_400_000}>30 days</option>
           </select>
         </label>
         <button type="submit" className={control} disabled={busy}>Delegate zone operations</button>
@@ -77,7 +77,7 @@ export function CloudflareDelegations({ ownerDid, zone }: Readonly<{ ownerDid: s
         <p className="break-words">{grant.capabilities.join(', ')}</p>
         {!grant.revokedAt && <div className="flex flex-wrap gap-2">
           <button type="button" className={control} disabled={busy} onClick={() => void run(() =>
-            mutate(`/auth/api/grants/${encodeURIComponent(grant.grantId)}/renew`, 'POST', { ttlMs: 86400_000 }))}>Renew for 24 hours</button>
+            mutate(`/auth/api/grants/${encodeURIComponent(grant.grantId)}/renew`, 'POST', { ttlMs: 86_400_000 }))}>Renew for 24 hours</button>
           <button type="button" className={control} disabled={busy} onClick={() => void run(() =>
             mutate(`/auth/api/grants/${encodeURIComponent(grant.grantId)}`, 'DELETE'))}>Revoke zone grant</button>
         </div>}

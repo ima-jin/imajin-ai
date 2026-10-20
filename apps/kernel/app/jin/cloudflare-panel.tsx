@@ -3,7 +3,7 @@ import './cloudflare.css';
 
 import { approvalCardAnchorId } from './approval-anchor';
 import { CloudflareField, JsonView, cfButton, cfInput } from './cloudflare-editors';
-import { validCloudflareZone } from './cloudflare-client';
+import { cloudflareFormText, validCloudflareZone } from './cloudflare-client';
 import { sections, useCloudflare, type Section } from './use-cloudflare';
 import { CloudflareDnsTab, CloudflareCacheTab, CloudflareHostnamesTab, CloudflareHistoryTab } from './cloudflare-tabs';
 
@@ -19,8 +19,8 @@ export function CloudflarePanel() {
     <form className="grid min-w-0 gap-3 sm:grid-cols-2" onSubmit={(event) => {
       event.preventDefault();
       const data = new FormData(event.currentTarget);
-      const target = { domain: String(data.get('domain')).trim(), zoneId: String(data.get('zoneId')).trim() };
-      const initial = String(data.get('view')) as Section;
+      const target = { domain: cloudflareFormText(data, 'domain').trim(), zoneId: cloudflareFormText(data, 'zoneId').trim() };
+      const initial = cloudflareFormText(data, 'view') as Section;
       if (!validCloudflareZone(target)) { setNotice('Enter a canonical lowercase domain and a 32-character lowercase hexadecimal zone ID.'); return; }
       setZone(null); setRecords([]); setRules([]); setHistory([]); setHostnames([]); setSettings(null); setPreview(null);
       void run(async () => { await load(target, initial); setZone(target); setSection(initial); });

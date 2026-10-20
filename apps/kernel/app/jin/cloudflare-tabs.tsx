@@ -2,6 +2,7 @@
 
 import { CacheRuleEditor, CloudflareField, DnsEditor, JsonView, cfButton, cfInput } from './cloudflare-editors';
 import type { CloudflareModel } from './use-cloudflare';
+import { cloudflareFormText } from './cloudflare-client';
 
 export function CloudflareDnsTab({ model }: Readonly<{ model: CloudflareModel }>) {
   const { busy, records, selected, setSelected, setPreview, editing, setEditing, deleting, setDeleting, proxy, setProxy, preview, mutate, bulk } = model;
@@ -60,7 +61,7 @@ export function CloudflareHostnamesTab({ model }: Readonly<{ model: CloudflareMo
         <form className="space-y-2" onSubmit={(event) => {
           event.preventDefault();
           const data = new FormData(event.currentTarget);
-          void mutate('custom-hostnames', 'POST', { hostname: String(data.get('hostname')), ssl: { method: 'txt', type: 'dv' } });
+          void mutate('custom-hostnames', 'POST', { hostname: cloudflareFormText(data, 'hostname'), ssl: { method: 'txt', type: 'dv' } });
         }}>
           <CloudflareField label="Custom hostname"><input name="hostname" required placeholder="customer.example.net" className={cfInput} disabled={busy} /></CloudflareField>
           <button type="submit" disabled={busy} className={cfButton}>Create custom hostname</button>

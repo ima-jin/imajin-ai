@@ -115,7 +115,8 @@ export function createCloudflarePreviewTransport(onProposal: (proposal: FixtureP
     }
     const prefix = `/cloudflare/api/zones/${fixtureZoneId}/`;
     if (!url.pathname.startsWith(prefix) || url.searchParams.get('domain') !== 'example.com') return json({ error: 'fixture_only' }, 404);
-    const body = typeof options?.body === 'string' ? JSON.parse(options.body) as Record<string, unknown> : {};
+    const text = await previewPayload(input, options, method);
+    const body = text ? JSON.parse(text) as Record<string, unknown> : {};
     return dispatch(url.pathname.slice(prefix.length), method, body);
   };
   return { fetcher };
@@ -126,4 +127,10 @@ export function installCloudflarePreview(onProposal: (proposal: FixtureProposal)
   const previous = globalThis.fetch;
   globalThis.fetch = fixture.fetcher;
   return () => { globalThis.fetch = previous; };
+}
+
+function previewPayload(input: RequestInfo | URL, options: RequestInit | undefined, method: string): Promise<string> {
+  if (typeof options?.body === 'string') return Promise.resolve(options.body);
+  if (input instanceof Request && method !== 'GET') return input.text();
+  return Promise.resolve('');
 }

@@ -1,4 +1,8 @@
 export interface CloudflareZone { domain: string; zoneId: string }
+export function cloudflareFormText(data: FormData, name: string): string {
+  const value = data.get(name);
+  return typeof value === 'string' ? value : '';
+}
 export interface DnsRecord {
   id: string; type: string; name: string; content: string; ttl: number;
   proxied?: boolean; proxiable?: boolean;

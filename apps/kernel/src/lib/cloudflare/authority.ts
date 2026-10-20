@@ -36,7 +36,7 @@ export async function authorizeZone(actor: CloudflareActor, zoneId: string, doma
   parse(domainSchema, domain);
   if (!actor.did) throw new CloudflareError(401, 'authentication_required');
   const binding = await resolveVerifiedDomain(domain);
-  if (!binding || binding.domain !== domain) throw new CloudflareError(403, 'zone_not_verified');
+  if (binding?.domain !== domain) throw new CloudflareError(403, 'zone_not_verified');
   const owner = actor.humanSession && await isImportHuman(actor.did)
     && await controlsImportOwner(actor.did, binding.zoneOwner);
   if (!owner) {
