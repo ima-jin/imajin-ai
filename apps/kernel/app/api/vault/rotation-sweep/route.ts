@@ -37,16 +37,15 @@ async function restoreField(field: string, plaintext: string) {
 async function collectFields() {
   const rows = await db.selectDistinct({ field: vaultDelegationGrants.field })
     .from(vaultDelegationGrants).where(eq(vaultDelegationGrants.status, 'active'));
-  const exported: { field: string; plaintext: string }[] = [];
-  for (const { field } of rows) {
+  const exported = await Promise.all(rows.map(async ({ field }) => {
     if (!parseVaultFieldName(field).ok) throw new Error('Invalid active grant field');
-    if (!isSweepField(field)) continue;
+    if (!isSweepField(field)) return undefined;
     const plaintext = await loadAndUnseal(field);
     // Stale active grants are an error, not a misleadingly successful short export.
     if (plaintext === undefined) throw new Error('Active grant is unreadable');
-    exported.push({ field, plaintext });
-  }
-  return exported;
+    return { field, plaintext };
+  }));
+  return exported.filter((item): item is { field: string; plaintext: string } => item !== undefined);
 }
 
 /** Browser-session admin flow. Legacy plaintext bodies are deliberately refused. */

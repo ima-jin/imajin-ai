@@ -189,7 +189,11 @@ export async function reimportRotationHandoff(store: (field: string, plaintext: 
     }
     const fields = openRotationHandoff(envelope, process.env.AUTH_PRIVATE_KEY, process.env.AUTH_PREVIOUS_PUBLIC_KEY, filename);
     // Keep the complete ciphertext if ANY field fails, for a full roll-forward retry.
-    for (const { field, plaintext } of fields) await store(field, plaintext);
+    // Writes must remain sequential: each store updates the shared vault file.
+    await fields.reduce<Promise<unknown>>(
+      (pending, { field, plaintext }) => pending.then(() => store(field, plaintext)),
+      Promise.resolve(),
+    );
     await fs.unlink(filename);
     return { resealed: fields.length };
   });

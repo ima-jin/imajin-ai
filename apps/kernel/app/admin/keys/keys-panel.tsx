@@ -12,13 +12,13 @@ const MAX_PUBLIC_FILE_BYTES = 16 * 1024;
 const buttonClass = 'rounded bg-orange-600 px-4 py-2 text-white disabled:opacity-50';
 const inputClass = 'block w-full mt-2 rounded border p-2 bg-white dark:bg-gray-900 font-mono text-sm';
 function VerificationResult({ report }: Readonly<{ report: ReturnType<typeof parseVerification> }>) {
-  return <div role="status" className="break-words">
-    <p>{report.ok ? 'Key history verified.' : 'Key history verification failed. Resolve node configuration or history before continuing.'}</p>
-    <p>Recorded rotations: {report.rotations}</p>
-    <p>Current key ID: {report.currentKid ?? 'Unavailable'}</p>
-    <p>Node DID: {report.nodeDid ?? 'Unavailable'} (source: {report.nodeDidSource})</p>
-    <p>Signing process started at (UTC): {report.processStartedAt}</p>
-  </div>;
+  return <output className="block break-words">
+    <span className="block">{report.ok ? 'Key history verified.' : 'Key history verification failed. Resolve node configuration or history before continuing.'}</span>
+    <span className="block">Recorded rotations: {report.rotations}</span>
+    <span className="block">Current key ID: {report.currentKid ?? 'Unavailable'}</span>
+    <span className="block">Node DID: {report.nodeDid ?? 'Unavailable'} (source: {report.nodeDidSource})</span>
+    <span className="block">Signing process started at (UTC): {report.processStartedAt}</span>
+  </output>;
 }
 
 async function request(url: string, body?: object): Promise<unknown> {
@@ -109,7 +109,7 @@ export function KeysPanel() {
   return (
     <div className="space-y-6 text-gray-900 dark:text-gray-100">
       {error && <p role="alert" className="rounded border border-red-500 p-3">{error}</p>}
-      {message && <p role="status" className="rounded border p-3">{message}</p>}
+      {message && <output className="block rounded border p-3">{message}</output>}
       <section className="rounded border p-4 space-y-3" aria-labelledby="custody-title">
         <h2 id="custody-title" className="text-lg font-semibold">0. Check v1 custody</h2>
         <p>Read-only go/no-go check. Do not rotate with remaining v1 entries; this page never applies a custody migration.</p>
@@ -119,12 +119,12 @@ export function KeysPanel() {
             setCustody(parseCustody(await request('/api/vault/migrate-custody', { dryRun: true })));
           }, 'Custody check failed. Resolve custody status before rotating.');
         }}>Check v1 custody</button>
-        {custody && <div role="status">
-          <p>Remaining eligible v1 fields: {custody.totalV1Fields}. Candidates: {custody.candidateCount}.</p>
-          <p>{custody.aborted || custody.totalV1Fields !== 0
+        {custody && <output className="block">
+          <span className="block">Remaining eligible v1 fields: {custody.totalV1Fields}. Candidates: {custody.candidateCount}.</span>
+          <span className="block">{custody.aborted || custody.totalV1Fields !== 0
             ? 'STOP: resolve custody migration before rotating.'
-            : 'Eligible v1 custody check passed. Verify excluded custody separately.'}</p>
-        </div>}
+            : 'Eligible v1 custody check passed. Verify excluded custody separately.'}</span>
+        </output>}
       </section>
 
       <section className="rounded border p-4 space-y-3" aria-labelledby="baseline-title">
@@ -137,7 +137,7 @@ export function KeysPanel() {
       <section className="rounded border p-4 space-y-3" aria-labelledby="sweep-title">
         <h2 id="sweep-title" className="text-lg font-semibold">2. Prepare encrypted vault handoff</h2>
         <p>With the old key still loaded, export to the new public key. The encrypted handoff stays on the server; no vault plaintext is sent to this browser.</p>
-        <label className="block">New Ed25519 public key (64 hex characters)
+        <label className="block"><span>New Ed25519 public key (64 hex characters)</span>
           <input className={inputClass} aria-label="New Ed25519 public key" value={newKey}
             maxLength={64} autoComplete="off" spellCheck={false} disabled={busy || handoff?.pending}
             onChange={(event) => setNewKey(event.target.value)} />
@@ -191,13 +191,13 @@ export function KeysPanel() {
               setReimported(resealed);
             }, 'Reimport failed or could not be confirmed. Refresh status and retry after confirming the new key is loaded.');
           }}>Reimport encrypted handoff</button>
-        {reimported !== null && <p role="status">Vault reimport complete. Resealed fields: {reimported}.</p>}
+        {reimported !== null && <output className="block">Vault reimport complete. Resealed fields: {reimported}.</output>}
       </section>
 
       <section className="rounded border p-4 space-y-3" aria-labelledby="record-title">
         <h2 id="record-title" className="text-lg font-semibold">4. Record key.rotated</h2>
         <p>After restart, upload the PUBLIC dual-signed JSON from the offline signing step. Only public keys, key IDs, effective time, and signatures are accepted. The server verifies both signatures.</p>
-        <label className="block">Public signed rotation JSON
+        <label className="block"><span>Public signed rotation JSON</span>
           <input className="block mt-2" type="file" accept=".json,application/json" disabled={busy}
             onChange={(event) => { void upload(event.target.files?.[0]); }} />
         </label>
@@ -211,12 +211,12 @@ export function KeysPanel() {
             setRecorded(true);
           }, 'Recording failed or could not be confirmed. Verify key history before retrying.');
         }}>Submit key.rotated</button>
-        {recorded && <p role="status">key.rotated recorded. Verify from the old public anchor below.</p>}
+        {recorded && <output className="block">key.rotated recorded. Verify from the old public anchor below.</output>}
       </section>
 
       <section className="rounded border p-4 space-y-3" aria-labelledby="anchor-title">
         <h2 id="anchor-title" className="text-lg font-semibold">5. Verify from the old public anchor</h2>
-        <label className="block">Old pinned public anchor (64 hex characters)
+        <label className="block"><span>Old pinned public anchor (64 hex characters)</span>
           <input className={inputClass} aria-label="Old public anchor" value={anchor} maxLength={64}
             autoComplete="off" spellCheck={false} disabled={busy} onChange={(event) => setAnchor(event.target.value)} />
         </label>

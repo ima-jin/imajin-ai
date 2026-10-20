@@ -57,7 +57,9 @@ it('carries only authenticated ciphertext across the restart boundary and never 
   expect(exported.status).toBe(200);
   expect(await exported.json()).toEqual({ exported: 1, newPublicKey });
   const ciphertext = await readFile(`${vaultPath}.key-rotation.sealed`, 'utf8');
-  for (const value of [oldKey, newKey, plaintext]) expect(ciphertext.includes(value)).toBe(false);
+  for (const value of [oldKey, newKey, plaintext]) {
+    if (ciphertext.includes(value)) throw new Error('Private material persisted outside encryption');
+  }
 
   // Clear all process-lifetime caches, keeping only filesystem state.
   vi.stubEnv('AUTH_PRIVATE_KEY', newKey);
@@ -73,7 +75,7 @@ it('carries only authenticated ciphertext across the restart boundary and never 
   expect(replay.status).toBe(409);
   const replayText = await replay.text();
   for (const value of [oldKey, newKey, plaintext]) {
-    expect(replayText.includes(value)).toBe(false);
+    if (replayText.includes(value)) throw new Error('Private material disclosed in response');
     expect(JSON.stringify(h.log.mock.calls).includes(value)).toBe(false);
   }
 });

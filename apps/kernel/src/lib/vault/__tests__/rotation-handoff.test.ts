@@ -58,7 +58,7 @@ describe('rotation handoff cryptography', () => {
     expect(JSON.stringify(envelope).includes(oldKey)).toBe(false);
     expect(JSON.stringify(envelope).includes(newKey)).toBe(false);
     const fields = openRotationHandoff(envelope, newKey, oldPublicKey, filename);
-    expect(fields[0].plaintext === plaintext).toBe(true);
+    if (fields[0].plaintext !== plaintext) throw new Error('Decrypted value did not match');
     expect(() => openRotationHandoff(envelope, oldKey, oldPublicKey, filename)).toThrow();
     expect(() => openRotationHandoff(envelope, newKey, newPublicKey, filename)).toThrow();
     expect(() => openRotationHandoff(envelope, newKey, oldPublicKey, `${filename}.other`)).toThrow();
@@ -125,7 +125,7 @@ describe('persistent sealed rotation state', () => {
     bootNewKey();
     let calls = 0;
     await expect(reimportRotationHandoff(async () => { if (++calls === 2) throw new Error('storage failure'); })).rejects.toThrow();
-    expect((await readFile(filename, 'utf8')) === before).toBe(true);
+    expect(await readFile(filename, 'utf8')).toBe(before);
     expect(await reimportRotationHandoff(async () => {})).toEqual({ resealed: 2 });
   });
   it('refuses the wrong loaded key and missing previous-key pin without writes', async () => {
@@ -137,6 +137,22 @@ describe('persistent sealed rotation state', () => {
     await expect(reimportRotationHandoff(store)).rejects.toThrow();
     expect(store).not.toHaveBeenCalled();
     expect((await rotationHandoffStatus()).pending).toBe(true);
+  });
+  it('serializes stores so concurrent vault-file writes cannot overwrite each other', async () => {
+    await exportRotationHandoff(newPublicKey, async () => [
+      { field: 'FIRST', plaintext }, { field: 'SECOND', plaintext },
+    ]);
+    bootNewKey();
+    let active = false;
+    const order: string[] = [];
+    await reimportRotationHandoff(async (field) => {
+      if (active) throw new Error('Concurrent vault write');
+      active = true;
+      order.push(field);
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      active = false;
+    });
+    expect(order).toEqual(['FIRST', 'SECOND']);
   });
   it('requires an explicit old node key, never the development fallback', async () => {
     vi.stubEnv('AUTH_PRIVATE_KEY', '');

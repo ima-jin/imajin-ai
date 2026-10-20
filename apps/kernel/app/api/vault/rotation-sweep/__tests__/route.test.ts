@@ -88,7 +88,7 @@ describe('rotation sweep browser protocol', () => {
     expect((await POST(request({ phase: 'reimport' }))).status).toBe(200);
     expect(h.store).toHaveBeenCalledTimes(1);
     expect(h.store.mock.calls[0][0]).toBe('API_KEY');
-    expect(h.store.mock.calls[0][1] === value).toBe(true);
+    if (h.store.mock.calls[0][1] !== value) throw new Error('Restored value did not match');
   });
   it('retains retry state when an owner grant or readback is not ready', async () => {
     const value = randomBytes(32).toString('base64');
