@@ -14,6 +14,12 @@ interface GrantCapability {
   status: 'active' | 'revoked';
   revokedAt: string | null;
 }
+interface Delegator {
+  did: string;
+  name: string | null;
+  isOrganization: boolean;
+  actorDid: string;
+}
 
 interface GrantHistoryEntry {
   event: 'issued' | 'renewed' | 'revoked' | 'capability_revoked' | 'capability_added';
@@ -252,14 +258,14 @@ function GrantCard({
           <span className={`px-1.5 py-0.5 text-xs rounded border capitalize ${GRANT_STATUS_STYLES[grant.status]}`}>
             {grant.status}
           </span>
-          <span className="text-xs text-gray-500 font-mono" title={grant.grantId}>
+          <span className="text-xs text-gray-500 font-mono break-all" title={grant.grantId}>
             {grant.grantId}
           </span>
           {!isRevoked && !isExpired && (
             <span className="text-xs text-gray-500">{formatTimeRemaining(grant.expiresAt)}</span>
           )}
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           {canAct && (
             <>
               <button
@@ -318,11 +324,11 @@ function GrantCard({
 
       {/* Add-capability control (#2108): available on every grant, not just a zero-grant agent's first-grant flow. */}
       {canAct && addableCapabilities.length > 0 && (
-        <form onSubmit={handleAddCapabilitySubmit} className="flex items-center gap-2">
+        <form onSubmit={handleAddCapabilitySubmit} className="flex items-center gap-2 flex-wrap">
           <select
             name="capability"
             aria-label={`Add capability to grant ${grant.grantId}`}
-            className="px-2 py-1 text-xs border border-gray-700 rounded bg-black text-white focus:ring-2 focus:ring-amber-500 focus:border-transparent"
+            className="min-w-0 max-w-full px-2 py-1 text-xs border border-gray-700 rounded bg-black text-white focus:ring-2 focus:ring-amber-500 focus:border-transparent"
           >
             {addableCapabilities.map((scope) => (
               <option key={scope} value={scope}>{scope}</option>
@@ -339,7 +345,8 @@ function GrantCard({
       )}
 
       {expanded && (
-        <div className="pt-2 border-t border-gray-900 space-y-2 text-xs text-gray-500">
+        <div className="pt-2 border-t border-gray-900 space-y-2 text-xs text-gray-500 break-all">
+          <p>Delegator: <span className="font-mono text-gray-300">{grant.delegatorDid}</span></p>
           <p>
             Audience:{' '}
             <span className="text-gray-300">
@@ -369,6 +376,7 @@ function GrantCard({
                   <li key={`${entry.event}-${entry.createdAt}-${i}`}>
                     {HISTORY_EVENT_LABELS[entry.event]}
                     {entry.capability ? ` (${entry.capability})` : ''} — {formatDateTime(entry.createdAt)}
+                    <span className="block">Human actor: <span className="font-mono text-gray-300">{entry.actorDid}</span></span>
                   </li>
                 ))}
               </ul>
@@ -649,6 +657,8 @@ export default function AgentsPage() {
   const [agents, setAgents] = useState<Agent[]>([]);
   const [pendingKnocks, setPendingKnocks] = useState<PendingKnock[]>([]);
   const [session, setSession] = useState<Session | null>(null);
+  const [delegator, setDelegator] = useState<Delegator | null>(null);
+  const [grantAgentDid, setGrantAgentDid] = useState('');
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState('');
   const [showCreateForm, setShowCreateForm] = useState(false);
@@ -704,6 +714,11 @@ export default function AgentsPage() {
       if (agentsRes.ok) {
         const data = await agentsRes.json();
         setAgents(data.agents || []);
+        setDelegator(data.delegator ?? null);
+      } else {
+        setAgents([]);
+        setDelegator(null);
+        showStatus('error', 'Failed to load grant delegator. Check your auth service access.');
       }
 
       if (knocksRes.ok) {
@@ -1101,12 +1116,12 @@ export default function AgentsPage() {
   return (
     <div className="min-h-screen bg-[#0a0a0a] p-4 md:p-8">
       <div className="max-w-2xl mx-auto space-y-8">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-4 flex-wrap">
           <div>
             <h1 className="text-2xl font-bold text-white mb-1">Agents</h1>
             <p className="text-gray-400 text-sm">Scoped delegation grants for agents that act on your behalf.</p>
           </div>
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-wrap">
             <button type="button"
               onClick={() => setShowProvisionWizard(true)}
               className="px-4 py-2 border border-amber-600 text-amber-400 hover:bg-amber-900/20 text-sm font-semibold rounded-lg transition-colors"
@@ -1121,6 +1136,35 @@ export default function AgentsPage() {
             </button>
           </div>
         </div>
+
+        {delegator && (
+          <section aria-label="Grant delegator" className="rounded-xl border border-amber-800 p-4 space-y-2 text-sm break-words">
+            <p className="text-amber-400">
+              {delegator.isOrganization ? 'Issuing grants as organization' : 'Issuing grants as your personal identity'}
+              {delegator.name ? ` — ${delegator.name}` : ''}
+            </p>
+            <p className="text-gray-400">Delegator DID: <span className="font-mono text-gray-200 break-all">{delegator.did}</span></p>
+            <p className="text-gray-400">Authenticated human: <span className="font-mono text-gray-200 break-all">{delegator.actorDid}</span></p>
+          </section>
+        )}
+
+        <section aria-label="Issue grant to agent DID" className="rounded-xl border border-gray-800 p-4 space-y-3">
+          <h2 className="text-lg font-semibold text-white">Grant an existing agent a capability</h2>
+          <p className="text-sm text-gray-400">No membership required. Enter the agent DID; the selected delegator above grants scoped authority, not organization membership.</p>
+          <label htmlFor="grant-agent-did" className="block text-sm text-gray-400">Agent DID</label>
+          <input id="grant-agent-did" value={grantAgentDid} onChange={(e) => setGrantAgentDid(e.target.value.trim())}
+            className="w-full min-w-0 px-2 py-2 text-sm border border-gray-700 rounded bg-black text-white" />
+          <label htmlFor="grant-agent-capabilities" className="block text-sm text-gray-400">Capabilities</label>
+          <input id="grant-agent-capabilities" value={grantCapabilitiesInput[grantAgentDid] ?? ''}
+            onChange={(e) => setGrantCapabilitiesInput((prev) => ({ ...prev, [grantAgentDid]: e.target.value }))}
+            placeholder="e.g. messages:write, intros:propose"
+            className="w-full min-w-0 px-2 py-2 text-sm border border-gray-700 rounded bg-black text-white" />
+          <button type="button" onClick={() => handleIssueFirstGrant(grantAgentDid)}
+            disabled={!delegator || !grantAgentDid.startsWith('did:') || actionLoading === `issue-grant-${grantAgentDid}`}
+            className="px-3 py-2 bg-amber-500 text-black rounded text-sm disabled:opacity-50">
+            {actionLoading === `issue-grant-${grantAgentDid}` ? 'Issuing…' : '+ Add capability to agent'}
+          </button>
+        </section>
 
         {/* Envelope provisioner (#1933): new agent flow */}
         {showProvisionWizard && (
@@ -1318,7 +1362,7 @@ export default function AgentsPage() {
         )}
 
         {/* Agents list — grants view (#1887): one list, local and external agents alike */}
-        <div className="bg-[#0a0a0a] border border-gray-800 rounded-2xl p-8">
+        <div className="bg-[#0a0a0a] border border-gray-800 rounded-2xl p-4 sm:p-8">
           <h2 className="text-lg font-semibold text-white mb-6">Your agents</h2>
 
           {agents.length === 0 ? (
@@ -1379,7 +1423,7 @@ export default function AgentsPage() {
                         ))}
                       </div>
                       {agent.handle && <p className="text-xs text-gray-500">@{agent.handle}</p>}
-                      <p className="text-xs text-gray-600 font-mono mt-0.5 truncate">{agent.did}</p>
+                      <p className="text-xs text-gray-600 font-mono mt-0.5 break-all">{agent.did}</p>
                       {agent.externalDid && (
                         <p className="text-xs text-gray-600 mt-1 flex items-center gap-1.5 flex-wrap">
                           External identity: <span className="font-mono">{agent.externalDid}</span>
@@ -1429,7 +1473,7 @@ export default function AgentsPage() {
                       <p className="text-xs text-gray-600">
                         No grants issued yet{agent.hasLegacyMembership ? ' — this agent is currently authorized only via the legacy membership fallback.' : '.'}
                       </p>
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
                         <input
                           type="text"
                           aria-label={`Capabilities to grant ${agentLabel(agent)}`}
@@ -1438,7 +1482,7 @@ export default function AgentsPage() {
                           onChange={(e) =>
                             setGrantCapabilitiesInput((prev) => ({ ...prev, [agent.did]: e.target.value }))
                           }
-                          className="flex-1 px-2 py-1 text-xs border border-gray-700 rounded bg-black text-white focus:ring-2 focus:ring-amber-500 focus:border-transparent"
+                          className="flex-1 min-w-0 px-2 py-1 text-xs border border-gray-700 rounded bg-black text-white focus:ring-2 focus:ring-amber-500 focus:border-transparent"
                         />
                         <button
                           type="button"

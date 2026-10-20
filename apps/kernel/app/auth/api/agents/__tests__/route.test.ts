@@ -52,6 +52,7 @@ const {
     return fn(tx);
   });
 
+
   const mockRequireAuth = vi.fn();
   const mockListGrantDetailsForDelegator = vi.fn().mockResolvedValue([]);
 
@@ -230,6 +231,27 @@ describe('POST /auth/api/agents (#1717)', () => {
 });
 
 describe('GET /auth/api/agents (#1717 acting-for scoping)', () => {
+  it('requires auth service access and returns the authenticated org delegator context', async () => {
+    mockRequireAuth.mockResolvedValue({ identity: { id: PERSONAL_DID, actingAs: BUSINESS_DID, actingAsRole: 'owner' } });
+    pushSelectResult([]); // owned agents
+    pushSelectResult([]); // accepted knocks
+    pushSelectResult([{ name: 'Agrifortress' }]); // delegator label only
+    const request = makeGetRequest();
+    const res = await GET(request);
+    expect(mockRequireAuth).toHaveBeenCalledWith(request, { service: 'auth' });
+    expect(mockListGrantDetailsForDelegator).toHaveBeenCalledWith(BUSINESS_DID);
+    expect((await res.json()).delegator).toEqual({
+      did: BUSINESS_DID, name: 'Agrifortress', isOrganization: true, actorDid: PERSONAL_DID,
+    });
+  });
+
+  it('returns an auth-service denial before reading any agents', async () => {
+    mockRequireAuth.mockResolvedValue({ error: 'Not authorized to act as this group', status: 403 });
+    const res = await GET(makeGetRequest());
+    expect(res.status).toBe(403);
+    expect(mockDbSelect).not.toHaveBeenCalled();
+    expect(mockListGrantDetailsForDelegator).not.toHaveBeenCalled();
+  });
   it('lists agents owned by the acting-for DID, not the caller personal DID', async () => {
     mockRequireAuth.mockResolvedValue({ identity: { id: PERSONAL_DID, actingFor: BUSINESS_DID } });
 
@@ -245,7 +267,10 @@ describe('GET /auth/api/agents (#1717 acting-for scoping)', () => {
     const res = await GET(makeGetRequest());
 
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ agents: [] });
+    expect(await res.json()).toEqual({
+      agents: [],
+      delegator: { did: PERSONAL_DID, name: null, isOrganization: false, actorDid: PERSONAL_DID },
+    });
   });
 });
 

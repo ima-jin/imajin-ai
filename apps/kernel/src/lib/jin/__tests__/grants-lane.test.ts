@@ -102,6 +102,7 @@ import {
   listLegacyAgentMemberships,
   listAppAuthorizationsForOwner,
   listGrantsForOperator,
+  listAuthGrantsForDelegator,
 } from '../grants-lane';
 import { listImportOwners } from '@/src/lib/vault/import-authority';
 
@@ -177,6 +178,25 @@ describe('listAppAuthorizationsForOwner', () => {
     const result = await listAppAuthorizationsForOwner(OPERATOR_DID);
     expect(result).toEqual([]);
     expect(mockWhereQueue).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('listAuthGrantsForDelegator (#2997)', () => {
+  it('reads only the org auth source, preserving human history and org delegator', async () => {
+    const delegatorDid = 'did:imajin:org';
+    const history = [{ event: 'issued', actorDid: 'did:imajin:owner', createdAt: '2026-03-01T00:00:00.000Z', capability: null }];
+    mockListGrantDetailsForDelegator.mockResolvedValue([
+      { grantId: 'older', delegatorDid, history, agentDid: 'did:imajin:bot', capabilities: [], issuedAt: '2026-01-01T00:00:00.000Z', lastUsedAt: null, status: 'revoked' },
+      { grantId: 'newer', delegatorDid, history, agentDid: 'did:imajin:bot', capabilities: [{ capability: 'messages:write', status: 'active' }], issuedAt: '2026-03-01T00:00:00.000Z', lastUsedAt: null, status: 'active' },
+    ]);
+    const cards = await listAuthGrantsForDelegator(delegatorDid);
+    expect(mockListGrantDetailsForDelegator).toHaveBeenCalledWith(delegatorDid);
+    expect(cards.map((card) => card.id)).toEqual(['auth-grant:newer', 'auth-grant:older']);
+    expect(cards[0]).toMatchObject({ source: 'auth-grant', delegatorDid, history, revocable: true });
+    expect(cards[1]).toMatchObject({ revocable: false, revoke: null });
+    expect(mockDbSelect).not.toHaveBeenCalled();
+    expect(mockListVaultKeyCards).not.toHaveBeenCalled();
+    expect(mockListDelegateGrantBearersForPrincipal).not.toHaveBeenCalled();
   });
 });
 

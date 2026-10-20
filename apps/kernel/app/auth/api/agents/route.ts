@@ -55,7 +55,7 @@ interface AgentResponse {
  * untouched by this source.
  */
 export async function GET(request: NextRequest) {
-  const authResult = await requireAuth(request);
+  const authResult = await requireAuth(request, { service: 'auth' });
   if ('error' in authResult) {
     return authErrorResponse(authResult);
   }
@@ -196,7 +196,23 @@ export async function GET(request: NextRequest) {
       })),
     ];
 
-    return NextResponse.json({ agents });
+    const { identity } = authResult;
+    const delegatorDid = identity.actingAs ?? identity.id;
+    const [organization] = identity.actingAs ? await db
+      .select({ name: identities.name })
+      .from(identities)
+      .where(eq(identities.id, delegatorDid))
+      .limit(1) : [];
+
+    return NextResponse.json({
+      agents,
+      delegator: {
+        did: delegatorDid,
+        name: organization?.name ?? (identity.actingAs ? null : identity.name ?? null),
+        isOrganization: Boolean(identity.actingAs),
+        actorDid: identity.id,
+      },
+    });
   } catch (error) {
     log.error({ err: String(error) }, '[agents] List error');
     return NextResponse.json({ error: 'Failed to list agents' }, { status: 500 });
