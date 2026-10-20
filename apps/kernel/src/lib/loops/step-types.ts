@@ -43,7 +43,7 @@ export type StepDeclaration = z.infer<typeof declaration>;
 const update = z.object({
   rank: z.number().finite().optional(),
   intention: text.optional(),
-  issue: z.object({ ref: text, outcome: text.regex(/^OUTCOME\b/u) }).strict().optional(),
+  issue: z.object({ ref: text, outcome: z.string().max(2000).regex(/^OUTCOME\b/u).optional() }).strict().optional(),
   briefRef: text.optional(),
   provisionRef: text.optional(),
   designRef: text.optional(),

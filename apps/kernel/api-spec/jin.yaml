@@ -437,8 +437,9 @@ components:
         intention: { type: string, minLength: 1, maxLength: 2000 }
         issue:
           type: object
-          required: [ref, outcome]
+          required: [ref]
           additionalProperties: false
+          description: "Ref-only binding counts for issue_closed exactly like ref+OUTCOME but stays tail until closure (past) or a real OUTCOME. Middle/near sharpening requires OUTCOME, which is never invented."
           properties:
             ref: { type: string, minLength: 1, maxLength: 2000 }
             outcome: { type: string, pattern: '^OUTCOME\b', maxLength: 2000 }
@@ -552,7 +553,7 @@ components:
             repository: { type: string }
             exitConditions: { type: array, items: { $ref: "#/components/schemas/StepExitCondition" } }
             state: { type: string, enum: [queued, claimed, running, blocked, finished, exited], readOnly: true }
-            zone: { type: string, enum: [tail, middle, near, head, past, done], readOnly: true }
+            zone: { type: string, enum: [tail, middle, near, head, past, done], readOnly: true, description: "Middle requires issue ref + OUTCOME; near additionally requires brief/provision/design refs. Ref-only stays tail, but matching issue_closed gives past and all exit conditions give done; live leases give head." }
             issue: { type: object, properties: { ref: { type: string }, outcome: { type: string } } }
             briefRef: { type: string }
             provisionRef: { type: string }
@@ -634,6 +635,45 @@ components:
         keyId: { type: string, description: "Hex-encoded Ed25519 public key that produced sig — must equal publisherDid's current registered key." }
         alg: { type: string, enum: [ed25519] }
         sig: { type: string, description: "Hex-encoded Ed25519 signature." }
+    LoopReceiptRequest:
+      type: object
+      required: [type, payload, publisherDid, signature]
+      properties:
+        type: { const: loop.receipt }
+        publisherDid: { type: string, description: "Original publishing DID; authenticated with its current key, not a session." }
+        signature: { $ref: "#/components/schemas/LoopPublisherSignature" }
+        payload:
+          type: object
+          additionalProperties: false
+          required: [loopId, principal, envelopeHash, at]
+          properties:
+            loopId: { type: string, minLength: 1, maxLength: 2000 }
+            principal: { type: string, description: "Owning principal; current loops:publish authority required." }
+            envelopeHash:
+              type: string
+              pattern: '^[0-9a-f]{64}$'
+              description: >-
+                SHA-256 of UTF-8 canonicalize({type,payload,publisherDid,signature})
+                for the original parsed ingest request, with signature.keyId/sig
+                lowercase and exact original wire payload. Not a hash of raw HTTP
+                bytes, redacted data or this lookup. Stored id is signed-loop:<hash>.
+            at:
+              type: string
+              format: date-time
+              description: "Fresh lookup timestamp within SIGNED_MESSAGE_MAX_AGE (5 minutes) and FUTURE_TOLERANCE; original envelope at is never changed."
+    LoopReceipt:
+      type: object
+      additionalProperties: false
+      required: [status, eventId]
+      properties:
+        status: { const: accepted }
+        eventId: { type: string, description: "Immutable kernel.loop_events.id; this rail has no seq." }
+    LoopReceiptNotFound:
+      type: object
+      additionalProperties: false
+      required: [status]
+      properties:
+        status: { const: not_found }
     LoopRecord:
       type: object
       description: Current-state-per-loopId projection row.
@@ -1937,6 +1977,11 @@ paths:
         loop lifecycle. Exact signed retries deduplicate. Code exit evidence must
         match the item's issue/repository and the same production release tag;
         manual attestations must come from the declared completing DID.
+        step.updated.issue requires only ref; optional outcome must match
+        /^OUTCOME\b/ and is never invented. Matching issue_closed evidence
+        satisfies a ref-only binding. Stale envelopes still reject with 400;
+        reconcile ambiguous stale deliveries via POST /api/loops/receipts,
+        signing a separate fresh lookup without modifying the original at.
         See docs/loops-rail-contract.md for the complete type-to-block contract.
       security: []
       requestBody:
@@ -2041,6 +2086,66 @@ paths:
               schema: { $ref: "#/components/schemas/Error" }
         "403":
           description: "?principal= does not match the caller's effective DID"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/loops/receipts:
+    post:
+      tags: [loops]
+      operationId: lookupLoopReceipt
+      summary: Reconcile an ambiguous signed envelope without restamping or replaying it
+      description: >-
+        Kernel-root route, no /jin prefix. Sign canonicalize({type:"loop.receipt",
+        payload:{loopId,principal,envelopeHash,at}}) with the same publisher DID
+        key and signature shape as ingest. Uses the current registered key and
+        current loops:publish authorization, including self/node-witness paths.
+        Only rows matching the authenticated publisher, owning loop, principal
+        and signed envelope hash can return accepted. Unknown, foreign-publisher
+        (even another delegate of the same principal), wrong-loop/principal and
+        unauthorized scope all return identical 404 not_found.
+        Original envelope age does not affect lookup; the separate lookup at
+        must be fresh. No writes, lease renewal, bus publication or harness reads.
+        On accepted, reconcile the unchanged durable outbox using eventId.
+        On not_found retain the original and fail closed: never restamp an
+        ambiguous envelope, and a lookup cannot rule out a still-in-flight ingest.
+        Storage/auth failures return 500, never not_found.
+        Every new signed ingest uses a deterministic signed-loop:<hash> id;
+        existing steps/surfaces/completions already used it. Legacy random-id
+        lifecycle history is not backfilled. Ingest freshness is unchanged,
+        including for stored exact stale retries. Discoverable in /jin/api/spec.
+      servers:
+        - url: https://{node}.imajin.ai
+          variables:
+            node:
+              default: jin
+        - url: http://localhost:3000
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/LoopReceiptRequest" }
+      responses:
+        "200":
+          description: Accepted envelope, with the original stored event id
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/LoopReceipt" }
+        "404":
+          description: Non-disclosing not-found for unknown or out-of-scope envelope
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/LoopReceiptNotFound" }
+        "400":
+          description: Malformed request, invalid/current-key-mismatched signature or stale/future lookup timestamp
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "413":
+          description: Complete request exceeds 1048576 bytes
+        "500":
+          description: Receipt lookup or authorization storage unavailable; not a not-found result
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }

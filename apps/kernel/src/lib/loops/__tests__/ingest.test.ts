@@ -200,6 +200,7 @@ describe('ingestLoopEvent', () => {
 
     expect(result).toEqual({ ok: true });
     expect(mockPublish).toHaveBeenCalledWith('loop.started', {
+      id: 'signed-finish',
       issuer: 'did:imajin:warp-node',
       subject: 'did:imajin:ryan',
       scope: 'loop',

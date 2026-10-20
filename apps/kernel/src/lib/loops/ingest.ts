@@ -80,7 +80,7 @@ export async function ingestLoopEvent(request: LoopIngestRequest): Promise<Inges
     };
     const conflictingLoopId = isStepEventType(type) ? null : await projectSurfaceLease(request, publishedPayload, canKeepProof);
     await bus.publish(type, {
-      ...(type === 'loop.finished' || isStepEventType(type) ? { id: loopObservationId(request) } : {}),
+      id: loopObservationId(request),
       issuer: publisherDid,
       subject: sanitized.principal,
       scope: 'loop',

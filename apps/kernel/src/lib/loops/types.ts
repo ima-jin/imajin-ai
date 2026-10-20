@@ -85,7 +85,7 @@ const REFS_KEYS = new Set(['issue', 'pr', 'runId', 'sessionKey', 'sessionId', 'c
 
 export type ParseResult<T> = { ok: true; value: T } | { ok: false; error: string };
 
-function isDid(value: unknown): value is string {
+export function isDid(value: unknown): value is string {
   return typeof value === 'string' && value.startsWith('did:') && value.length > 4;
 }
 
@@ -161,7 +161,7 @@ function parseEnvelope(raw: unknown): ParseResult<LoopEnvelope> {
   return { ok: true, value: raw as LoopEnvelope };
 }
 
-function parseSignature(raw: unknown): ParseResult<LoopPublisherSignature> {
+export function parseSignature(raw: unknown): ParseResult<LoopPublisherSignature> {
   if (typeof raw !== 'object' || raw === null) {
     return { ok: false, error: 'signature must be an object' };
   }

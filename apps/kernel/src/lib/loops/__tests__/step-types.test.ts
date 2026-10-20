@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { parseLoopIngestRequest } from '../types';
 import { STEP_EVENT_TYPES, validateStepPayload } from '../step-types';
-import { CODE_STEP, STEP_CLAIM, STEP_NOW, STEP_PRINCIPAL, STEP_ISSUE_UPDATE, queuedStep, stepEvent } from './horizon-fixtures';
+import { CODE_STEP, STEP_CLAIM, STEP_ISSUE, STEP_NOW, STEP_PRINCIPAL, STEP_ISSUE_UPDATE, queuedStep, stepEvent } from './horizon-fixtures';
 
 function wire(event = queuedStep()) {
   return { type: event.type, payload: event.payload, publisherDid: event.issuer,
@@ -17,6 +17,38 @@ describe('step wire validation', () => {
     expect(parsed.ok).toBe(true);
     if (parsed.ok) expect(parsed.value.payload).toBe(request.payload);
   });
+  it('accepts the exact signed ref-only update without inventing an OUTCOME', () => {
+    const request = wire(stepEvent('step.updated', 1, { update: { issue: { ref: STEP_ISSUE } } }));
+    const signedPayload = JSON.stringify(request.payload);
+    const parsed = parseLoopIngestRequest(request);
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) throw new Error(parsed.error);
+    expect(parsed.value.payload).toBe(request.payload);
+    expect(parsed.value.payload.update).toEqual({ issue: { ref: STEP_ISSUE } });
+    expect(JSON.stringify(parsed.value.payload)).toBe(signedPayload);
+    expect((parsed.value.payload.update as { issue: object }).issue).not.toHaveProperty('outcome');
+  });
+  it.each(['OUTCOME', 'OUTCOME · Real declared result', 'OUTCOME: Real declared result\nMore detail'])(
+    'preserves an explicitly supplied valid outcome verbatim: %s', outcome => {
+      const request = wire(stepEvent('step.updated', 1, { update: { issue: { ref: STEP_ISSUE, outcome } } }));
+      const parsed = parseLoopIngestRequest(request);
+      expect(parsed.ok).toBe(true);
+      if (!parsed.ok) throw new Error(parsed.error);
+      expect(parsed.value.payload).toBe(request.payload);
+      expect(parsed.value.payload.update).toEqual({ issue: { ref: STEP_ISSUE, outcome } });
+    },
+  );
+  it.each(['', ' ', ' OUTCOME · not at the start', '\nOUTCOME · not at the start', 'not an OUTCOME', 'outcome · wrong case', 'OUTCOMES are not the prefix', 'OUTCOME_invalid', null, 42])(
+    'rejects a malformed optional outcome when supplied: %j', outcome => {
+      const request = wire(stepEvent('step.updated', 1, { update: { issue: { ref: STEP_ISSUE, outcome } } }));
+      expect(parseLoopIngestRequest(request).ok).toBe(false);
+    },
+  );
+  it.each([{}, { ref: '' }, { ref: ' ' }, { ref: null }, { ref: STEP_ISSUE, invented: true }])(
+    'still requires a non-empty ref and rejects unknown issue fields: %j', issue => {
+      expect(parseLoopIngestRequest(wire(stepEvent('step.updated', 1, { update: { issue } }))).ok).toBe(false);
+    },
+  );
   it.each(STEP_EVENT_TYPES)('recognizes signed %s events', type => {
     const extras: Partial<Record<typeof type, Record<string, unknown>>> = {
       'step.queued': { step: CODE_STEP }, 'step.updated': { update: STEP_ISSUE_UPDATE },
