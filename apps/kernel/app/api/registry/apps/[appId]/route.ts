@@ -70,11 +70,10 @@ function validateDisclosureChange(
   if (body.signInAudience !== undefined && !isAppSignInAudience(body.signInAudience)) {
     return NextResponse.json({ error: APP_SIGN_IN_AUDIENCE_ERROR }, { status: 400 });
   }
-  if (body.signInAudience === 'anyone' && existing.signInAudience !== 'anyone') {
-    const denied = enforceRoutePolicy(identity, 'kernel.registry-app.visibility-widen', { resourceId: appId });
-    if (denied) return denied;
-  }
-  return enforceVisibilityPolicy(identity, existing.visibility, body.visibility, appId);
+  const widensSignIn = body.signInAudience === 'anyone' && existing.signInAudience !== 'anyone';
+  const widensVisibility = isAppVisibility(body.visibility) && isVisibilityWidening(existing.visibility, body.visibility);
+  if (!widensSignIn && !widensVisibility) return null;
+  return enforceRoutePolicy(identity, 'kernel.registry-app.visibility-widen', { resourceId: appId });
 }
 
 type AppUpdates = Partial<typeof registryApps.$inferInsert>;
@@ -150,12 +149,6 @@ function checkRequestedScopesCeiling(
   if (!existing.slug || !Array.isArray(body.requestedScopes)) return null;
   const over = beyondApprovedList(body.requestedScopes.map(String), existing);
   return over.length > 0 ? `requestedScopes beyond the approved list (it can be narrowed, not widened): ${over.join(', ')}` : null;
-}
-
-/** Reversible metadata/narrowing is allowed under requireAuth's active grant. */
-function enforceVisibilityPolicy(identity: IdentitySource, previous: AppVisibility, requested: unknown, appId: string): Response | null {
-  if (!isAppVisibility(requested) || !isVisibilityWidening(previous, requested)) return null;
-  return enforceRoutePolicy(identity, 'kernel.registry-app.visibility-widen', { resourceId: appId });
 }
 
 // PATCH /api/registry/apps/:appId — update (owner only)
