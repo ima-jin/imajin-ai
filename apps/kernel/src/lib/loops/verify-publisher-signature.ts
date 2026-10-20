@@ -44,6 +44,7 @@ import { createDbResolver } from '@imajin/auth/resolve-db';
 import { db, identities } from '@/src/db';
 import { getNodeSigningIdentity } from '@/src/lib/vault/sealing';
 import type { LoopEnvelope, LoopRailType, LoopPublisherSignature } from './types';
+import type { LoopReceiptRequest } from './receipt-types';
 
 export type VerifyLoopPublisherSignatureResult = { ok: true } | { ok: false; error: string };
 
@@ -72,7 +73,7 @@ async function resolvePublisherPublicKey(publisherDid: string): Promise<string |
  */
 export async function verifyLoopPublisherSignature(
   publisherDid: string,
-  fields: { type: LoopRailType; payload: LoopEnvelope },
+  fields: { type: LoopRailType; payload: LoopEnvelope } | Pick<LoopReceiptRequest, 'type' | 'payload'>,
   signature: LoopPublisherSignature,
 ): Promise<VerifyLoopPublisherSignatureResult> {
   if (signature.alg !== 'ed25519') {
