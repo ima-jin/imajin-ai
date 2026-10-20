@@ -3,10 +3,9 @@ import { and, desc, eq, inArray } from 'drizzle-orm';
 import Link from 'next/link';
 import DocumentSigningCard, { type DocumentAttestation, type Signature } from './DocumentSigningCard';
 import CopyLinkButton from './CopyLinkButton';
+import { DOCUMENT_TYPES } from '@/src/lib/auth/document-types';
 
 type DocumentRoleFilter = 'created' | 'needs-signature';
-
-const DOCUMENT_TYPES = ['document.created', 'document.amended'] as const;
 
 interface Props {
   sessionDid: string;

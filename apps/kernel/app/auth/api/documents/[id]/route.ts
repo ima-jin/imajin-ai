@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db, attestations, attestationSignatures, identities } from '@/src/db';
-import { eq, and, inArray } from 'drizzle-orm';
+import { db, attestations, attestationSignatures, identities, assets } from '@/src/db';
+import { eq, inArray, and, sql } from 'drizzle-orm';
 import { corsHeaders } from '@imajin/config';
-import { requireAuth } from '@/src/lib/auth/middleware';
+import { requireDocumentActor, canReadDocument } from '@/src/lib/auth/document-authorization';
 import { createLogger } from '@imajin/logger';
 
 const log = createLogger('kernel:documents');
+export const dynamic = 'force-dynamic';
 
 /**
  * GET /api/documents/[id] — Get document with all signatures
@@ -17,12 +18,8 @@ export async function GET(
   const cors = corsHeaders(request);
   const { id } = await params;
 
-  const session = await requireAuth(request);
-  if (!session) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401, headers: cors });
-  }
-
-  const callerDid = session.sub;
+  const actor = await requireDocumentActor(request);
+  if (actor instanceof Response) return actor;
 
   try {
     // Load attestation
@@ -32,24 +29,12 @@ export async function GET(
       .where(eq(attestations.id, id))
       .limit(1);
 
-    if (!attestation) {
+    if (!attestation?.documentHash) {
       return NextResponse.json({ error: 'Document not found' }, { status: 404, headers: cors });
     }
 
     // Verify caller is creator or signer
-    const isCreator = attestation.issuerDid === callerDid;
-    const callerSig = await db
-      .select()
-      .from(attestationSignatures)
-      .where(
-        and(
-          eq(attestationSignatures.attestationId, id),
-          eq(attestationSignatures.signerDid, callerDid)
-        )
-      )
-      .limit(1);
-
-    if (!isCreator && callerSig.length === 0) {
+    if (!await canReadDocument(id, attestation.issuerDid, actor)) {
       return NextResponse.json({ error: 'Access denied' }, { status: 403, headers: cors });
     }
 
@@ -77,9 +62,18 @@ export async function GET(
       ...sig,
       identity: identityMap.get(sig.signerDid) ?? null,
     }));
+    // Prefer this party's copy. Org readers use the issuer-owned copy; never
+    // expose a different party's private asset as the downloadable reference.
+    const copyOwner = signatures.some((sig) => sig.signerDid === actor.effectiveDid)
+      ? actor.effectiveDid : attestation.issuerDid;
+    const [copy] = await db.select({ id: assets.id }).from(assets).where(and(
+      eq(assets.ownerDid, copyOwner),
+      sql`${assets.metadata}->>'documentId' = ${id}`,
+      eq(assets.status, 'active'),
+    )).limit(1);
 
     return NextResponse.json(
-      { attestation, signatures: signaturesWithIdentity },
+      { attestation: { ...attestation, documentAssetId: copy?.id ?? attestation.documentAssetId }, signatures: signaturesWithIdentity },
       { headers: cors }
     );
   } catch (error) {

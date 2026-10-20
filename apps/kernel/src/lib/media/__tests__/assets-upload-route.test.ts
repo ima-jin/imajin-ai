@@ -114,6 +114,22 @@ beforeEach(() => {
 
 // ─── Tests ─────────────────────────────────────────────────────────────────
 
+describe('POST /media/api/assets — agreement privacy (#2998)', () => {
+  it('does not reuse another owner asset and overrides public context for a signed document', async () => {
+    const res = await POST(uploadRequest({
+      filename: 'agreement.txt', type: 'text/plain',
+      context: { app: 'auth', feature: 'signed', access: 'public' },
+    }));
+    expect(res.status).toBe(201);
+    expect(mockCreateAsset).toHaveBeenCalledWith(expect.objectContaining({ dedup: false, access: 'private' }));
+  });
+  it('preserves default dedup behavior for unrelated uploads', async () => {
+    await POST(uploadRequest({ context: { app: 'profile' } }));
+    expect(mockCreateAsset.mock.calls[0][0]).not.toHaveProperty('dedup');
+    expect(mockCreateAsset.mock.calls[0][0]).not.toHaveProperty('access');
+  });
+});
+
 describe('POST /media/api/assets — JSON MIME allowlist (#2889)', () => {
   it.each(['application/json', 'application/octet-stream'])(
     'accepts a survey.json upload sent as %s with 201',

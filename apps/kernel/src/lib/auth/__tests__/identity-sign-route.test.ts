@@ -8,8 +8,8 @@ const mocks = vi.hoisted(() => ({
   parseDocumentSigningPayloadMock: vi.fn(),
 }));
 
-vi.mock('@/src/lib/auth/middleware', () => ({
-  requireAuth: mocks.requireAuthMock,
+vi.mock('@/src/lib/auth/document-authorization', () => ({
+  requireDocumentActor: mocks.requireAuthMock,
 }));
 
 vi.mock('@/src/lib/auth/dfos', () => ({
@@ -47,7 +47,7 @@ describe('POST /auth/api/identity/[did]/sign', () => {
   });
 
   it('allows authenticated session signing for matching DID and valid payload', async () => {
-    mocks.requireAuthMock.mockResolvedValueOnce({ sub: 'did:imajin:alice' });
+    mocks.requireAuthMock.mockResolvedValueOnce({ effectiveDid: 'did:imajin:alice', actingHumanDid: 'did:imajin:alice' });
     mocks.getChainByImajinDidMock.mockResolvedValueOnce({ log: ['cid1'] });
     mocks.verifyChainMock.mockResolvedValueOnce({ isDeleted: false, authKeys: ['key1'] });
     mocks.signSyncMock.mockReturnValueOnce('deadbeefsignature');
@@ -71,7 +71,7 @@ describe('POST /auth/api/identity/[did]/sign', () => {
   });
 
   it('returns 400 when session-auth payload did does not match path did', async () => {
-    mocks.requireAuthMock.mockResolvedValueOnce({ sub: 'did:imajin:alice' });
+    mocks.requireAuthMock.mockResolvedValueOnce({ effectiveDid: 'did:imajin:alice', actingHumanDid: 'did:imajin:alice' });
     mocks.parseDocumentSigningPayloadMock.mockReturnValueOnce({
       did: 'did:imajin:bob',
       documentHash: 'bafyhash123',
@@ -91,7 +91,7 @@ describe('POST /auth/api/identity/[did]/sign', () => {
   });
 
   it('returns 403 when session DID does not match route DID', async () => {
-    mocks.requireAuthMock.mockResolvedValueOnce({ sub: 'did:imajin:alice' });
+    mocks.requireAuthMock.mockResolvedValueOnce({ effectiveDid: 'did:imajin:alice', actingHumanDid: 'did:imajin:alice' });
 
     const payload = buildDocumentSigningPayload('did:imajin:bob', 'bafyhash123');
     const request = new Request('https://test.imajin.ai/auth/api/identity/did%3Aimajin%3Abob/sign', {

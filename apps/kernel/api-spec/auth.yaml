@@ -2554,11 +2554,17 @@ paths:
     post:
       tags: [auth]
       operationId: nodeSignPayload
-      summary: Internal — node signs a payload on behalf of a chain-verified identity
+      summary: Node witnesses a payload on behalf of an authorized identity
       description: |
-        Service-to-service endpoint (INTERNAL_API_KEY required). Signs a canonical payload using
-        AUTH_PRIVATE_KEY as node witness. Only signs for identities with a valid DFOS chain.
+        Signs a canonical payload using the node key as witness, not the identity's own
+        private key. A session may sign a document payload for its effective DID using the
+        existing act-as cookies. Act-as authorization is service-scoped to auth, rejects
+        a controller whose allowed_services excludes auth with 403 (no personal fallback),
+        and retains the authenticated human as provenance. Internal callers use the
+        existing internal authentication rail. Document payloads bind the signer DID and
+        exact document hash; a valid signature over a different hash is not accepted.
       security:
+        - cookieAuth: []
         - bearerAuth: []
       parameters:
         - name: did
@@ -2573,7 +2579,7 @@ paths:
               type: object
               required: [payload]
               properties:
-                payload: { type: string }
+                payload: { type: string, description: "Serialized canonical payload to witness; documents bind {did, document_hash}." }
       responses:
         "200":
           description: Signature result
@@ -2750,6 +2756,298 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
+
+  /api/documents:
+    description: |
+      Document operations resolve the effective DID through the canonical auth-scoped
+      act-as policy. The authenticated human remains queryable provenance, not the
+      organization's private-key signer. A controller restricted away from auth is denied
+      with 403 before writes; selecting an organization never falls back to a personal DID.
+      These routes require a user session cookie, as did the previous document middleware;
+      bearer-only credentials and agents are not supported by this human document workflow.
+    post:
+      tags: [auth]
+      operationId: createDocumentAgreement
+      summary: Create and first-sign a document request as the effective identity
+      description: |
+        The effective identity is author and first signer; signers names the other
+        unique parties. The exact stored file SHA-256 must match document_hash.
+        A business-DID author's agreement is finalized only after every unique party has
+        signed the same hash. Personal and non-business group documents retain their
+        document.created or document.amended type when executed.
+        Both parties receive their own private signed copy through existing media
+        storage; one party's copy is not authority to read the other's private copy.
+        Node-witness signatures establish node-recorded authorized actions, not signatures
+        produced with an organization's or human's own DID private key.
+        The signed payload is {did, document_hash}, not a request id, title, signer list
+        or amendment reference. Identical bytes for the same DID can reuse that proof
+        without a hash collision. Every submission still requires current session
+        authority and that request's own pending signer row; the proof alone is not
+        authority to sign a different request.
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title, document_asset_id, document_hash, signers, author_jws]
+              properties:
+                title: { type: string }
+                document_asset_id: { type: string }
+                document_hash: { type: string }
+                signers: { type: array, minItems: 1, uniqueItems: true, items: { type: string } }
+                author_jws: { type: string, description: Node witness or supported compact JWS bound to the author DID and exact document hash. }
+                expiry: { type: string, enum: [24h, 7d, 1m, 1y, never] }
+      responses:
+        "201": { description: Collecting document and initial signature records }
+        "400": { description: "Invalid document, signer set or signature/hash binding" }
+        "401": { description: Not authenticated }
+        "403": { description: Effective identity or document asset access is forbidden }
+    get:
+      tags: [auth]
+      operationId: listDocumentAgreements
+      summary: List documents where the effective identity is author or signer
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: role
+          in: query
+          schema: { type: string, enum: [creator, signer, all] }
+      responses:
+        "200": { description: "Documents with signature counts, issuedAt, expiresAt and revokedAt" }
+        "401": { description: Not authenticated }
+        "403": { description: Act-as forbidden for auth }
+
+  /api/documents/{id}:
+    get:
+      tags: [auth]
+      operationId: getDocumentAgreement
+      summary: Read a document and signer identities as an authorized party
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: "Attestation and signatures, with issuedAt, expiresAt, signedAt and revokedAt timestamps" }
+        "401": { description: Not authenticated }
+        "403": { description: Not an authorized party or act-as forbidden for auth }
+        "404": { description: Document not found }
+
+  /api/documents/{id}/content:
+    get:
+      tags: [auth]
+      operationId: getDocumentContent
+      summary: Preview or download only the hash-bound document
+      description: |
+        Requires a user session cookie and auth-scoped act-as authorization. The caller
+        must be an invited party or an active member of the issuer organization.
+        The invitation exposes only this document, not the organization's other assets.
+        Reads the recorded asset and recomputes SHA-256 before serving: changed stored
+        bytes return 409, never an apparently valid document. Revoked agreements remain
+        readable by their authorized parties and members for retained history.
+        Text is served as plain text; unsupported active types are octet-stream.
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+        - name: download
+          in: query
+          description: Set to true for attachment rather than inline preview.
+          schema: { type: boolean, default: false }
+      responses:
+        "200":
+          description: Exact hash-checked private document bytes
+          headers:
+            Cache-Control:
+              schema: { type: string, const: "private, no-store" }
+            Content-Disposition:
+              description: Inline or attachment with an encoded UTF-8 filename.
+              schema: { type: string }
+            X-Document-Hash:
+              description: SHA-256 matching the stored document hash.
+              schema: { type: string }
+            X-Content-Type-Options:
+              schema: { type: string, const: nosniff }
+          content:
+            application/pdf:
+              schema: { type: string, format: binary }
+            text/plain:
+              schema: { type: string }
+            application/octet-stream:
+              schema: { type: string, format: binary }
+            image/png:
+              schema: { type: string, format: binary }
+            image/jpeg:
+              schema: { type: string, format: binary }
+            image/webp:
+              schema: { type: string, format: binary }
+            image/gif:
+              schema: { type: string, format: binary }
+        "401": { description: User session required }
+        "403": { description: "Not an invited party or issuer-org member, or act-as forbidden for auth" }
+        "404": { description: "Document, active asset or stored file not found" }
+        "409": { description: Document hash mismatch - stored file has changed }
+
+  /api/documents/{id}/decline:
+    post:
+      tags: [auth]
+      operationId: declineDocumentAgreement
+      summary: Decline as the effective account's pending party
+      description: |
+        Uses the same auth-scoped act-as and owner/admin mutation rule as signing.
+        Restricted allowed_services or a non-controller returns 403 before writes.
+        Atomically declines the pending signature and collecting document, retaining
+        effective DID and acting human provenance. Cannot decline after execution,
+        revocation, expiry or a prior decline.
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: Document and this party's signature declined }
+        "401": { description: User session required }
+        "403": { description: Not the pending signer or act-as forbidden for auth }
+        "404": { description: Document not found }
+        "409": { description: Document is not collecting signatures }
+        "410": { description: Document has expired }
+
+  /api/documents/{id}/amend:
+    post:
+      tags: [auth]
+      operationId: amendDocumentAgreement
+      summary: Propose an independently signed amendment as the effective identity
+      description: |
+        The creator or a recorded signer of the original may propose an amendment.
+        Uses the same auth-scoped act-as and owner/admin mutation rule as signing.
+        Restricted allowed_services returns 403 before writes, never personal fallback.
+        The new asset must belong to the effective identity and its hash and author
+        signature must match. Creates a document.amended request, first signature and
+        private signed copy atomically; amends and acting-human provenance are derived
+        by the server, never taken from a caller's payload. The original is unchanged.
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title, document_asset_id, document_hash, signers, author_jws]
+              properties:
+                title: { type: string }
+                document_asset_id: { type: string }
+                document_hash: { type: string }
+                signers: { type: array, minItems: 1, items: { type: string } }
+                author_jws: { type: string }
+                payload: { type: object }
+      responses:
+        "201": { description: New collecting amendment and initial signature records }
+        "400": { description: "Invalid payload, signer set or signature/hash binding" }
+        "401": { description: User session required }
+        "403": { description: "Not a creator or signer, asset not owned, or act-as forbidden for auth" }
+        "404": { description: Original document or new asset not found }
+        "500": { description: Amendment or required signed copy could not be persisted - transaction rolled back }
+
+  /api/documents/{id}/sign:
+    post:
+      tags: [auth]
+      operationId: signDocumentAgreement
+      summary: Sign as the effective account's pending party
+      description: Rejects wrong signers, revoked requests and any signed payload that does not bind this exact hash. Only business-DID authors finalize as the registered agreement type when all unique signers have signed; personal documents retain their existing type.
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [jws, document_hash]
+              properties:
+                jws: { type: string }
+                document_hash: { type: string }
+      responses:
+        "200": { description: Signature recorded and current document status returned }
+        "400": { description: Invalid signature or document hash binding }
+        "401": { description: Not authenticated }
+        "403": { description: Not the pending signer or act-as forbidden for auth }
+        "409": { description: Document is no longer signable }
+
+  /api/documents/{id}/verify:
+    post:
+      tags: [auth]
+      operationId: verifyDocumentAgreement
+      summary: Compare a saved file against the signed hash and verify recorded signatures
+      description: |
+        Party-authorized verification of exact uploaded bytes. valid is true only when
+        the file hash matches, recorded signatures verify and the agreement is not revoked.
+        This does not convert a node witness into a true DID-key signature or prove the
+        underlying agreement's claims. A changed file yields hashMatches=false and valid=false.
+        The maximum file size is 25 MB.
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file: { type: string, format: binary }
+      responses:
+        "200":
+          description: Verification result (including tampered file or revoked agreement)
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [valid, hashMatches, signaturesValid, revoked]
+                properties:
+                  valid: { type: boolean }
+                  hashMatches: { type: boolean }
+                  signaturesValid: { type: boolean }
+                  revoked: { type: boolean }
+        "400": { description: Missing or invalid file }
+        "401": { description: Not authenticated }
+        "403": { description: Not an agreement party or act-as forbidden for auth }
+        "404": { description: Document not found }
+        "413": { description: File exceeds 25 MB verification limit }
+
+  /api/attestations/types:
+    get:
+      tags: [auth]
+      operationId: listRegisteredAttestationTypes
+      summary: Discover registered attestation types
+      description: Includes agreement for finalized document agreements. The record retains the signed document hash and unique party DIDs; agreement cards appear in both parties' attestation history including revocation state.
+      responses:
+        "200": { description: "Registered types and schemas, including agreement" }
 
   /api/attestations:
     post:
@@ -3017,7 +3315,7 @@ paths:
     post:
       tags: [auth]
       operationId: revokeAttestation
-      summary: Revoke an attestation (issuer-only)
+      summary: Revoke an attestation (either party for document agreements)
       description: |
         (#2649) Stamps `revokedAt` on the attestation, withdrawing it: revoked attestations are
         excluded from `GET /api/attestations`. Only the attestation's issuer may revoke. Callable
@@ -3025,6 +3323,11 @@ paths:
         minted by `POST /auth/api/tokens/app`. An app-token resolves to the user who minted it, so
         for an app-issued (delegated) attestation — `issuerDid` is the app, `delegatorDid` the
         user — the delegator the issuer acted for is accepted as the issuer. No schema change.
+        For document-backed `agreement` records, either recorded agreement party may revoke
+        through its effective DID. Auth-scoped act-as authorization applies. Revocation
+        persists signed provenance and revokedAt without deleting the agreement, signatures,
+        hash or either party's private copy. The document verifier then reports revoked=true
+        and valid=false. Agreement cards retain the revoked history for both parties.
       security:
         - cookieAuth: []
         - bearerAuth: []
@@ -3050,7 +3353,7 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
         "403":
-          description: Caller is not the attestation's issuer
+          description: Caller is not the issuer or an authorized document-agreement party, or act-as is forbidden for auth
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }

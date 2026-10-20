@@ -5,6 +5,8 @@ import SignerList from './SignerList';
 import DocumentViewer from './DocumentViewer';
 import { buildDocumentSigningPayload } from '@/src/lib/auth/document-signing-payload';
 import { fireAndForget } from '@/src/lib/async/fire-and-forget';
+import DocumentIdentityNotice from './DocumentIdentityNotice';
+import DocumentVerification from './DocumentVerification';
 
 export interface Signature {
   id: string;
@@ -31,6 +33,7 @@ export interface DocumentAttestation {
   totalSigners: number | null;
   issuedAt: Date;
   expiresAt: Date | null;
+  revokedAt?: Date | null;
 }
 
 interface Props {
@@ -38,6 +41,8 @@ interface Props {
   signatures: Signature[];
   sessionDid: string;
   defaultExpanded?: boolean;
+  actingHumanDid?: string;
+  previewUrl?: string;
 }
 
 function statusBadge(status: string | null): { label: string; classes: string } {
@@ -50,6 +55,8 @@ function statusBadge(status: string | null): { label: string; classes: string } 
       return { label: 'declined', classes: 'bg-red-900/30 text-red-400 border-red-800' };
     case 'expired':
       return { label: 'expired', classes: 'bg-zinc-800 text-zinc-400 border-zinc-700' };
+    case 'revoked':
+      return { label: 'revoked', classes: 'bg-red-900/30 text-red-400 border-red-800' };
     default:
       return { label: status ?? 'unknown', classes: 'bg-zinc-800 text-zinc-400 border-zinc-700' };
   }
@@ -88,25 +95,78 @@ function getDocumentTitle(payload: unknown): string {
   return 'Untitled Document';
 }
 
-export default function DocumentSigningCard({ attestation, signatures, sessionDid, defaultExpanded = false }: Readonly<Props>) {
+function authorProvenance(payload: unknown, authorDid: string) {
+  if (!payload || typeof payload !== 'object') return {};
+  const data = payload as { actingHumanDid?: unknown; signedBy?: Record<string, { actingHumanDid?: unknown; signatureModel?: unknown }> };
+  const author = data.signedBy?.[authorDid];
+  const humanDid = author?.actingHumanDid ?? data.actingHumanDid;
+  return {
+    actingHumanDid: typeof humanDid === 'string' ? humanDid : undefined,
+    signatureModel: typeof author?.signatureModel === 'string' ? author.signatureModel : undefined,
+  };
+}
+export default function DocumentSigningCard({ attestation, signatures, sessionDid, defaultExpanded = false, actingHumanDid, previewUrl }: Readonly<Props>) {
   const [expanded, setExpanded] = useState(defaultExpanded);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [localStatus, setLocalStatus] = useState(attestation.attestationStatus);
+  const [localType, setLocalType] = useState(attestation.type);
   const [localSigs, setLocalSigs] = useState(signatures);
+  const [revokedAt, setRevokedAt] = useState(attestation.revokedAt);
 
-  const badge = statusBadge(localStatus);
+  const badge = statusBadge(revokedAt ? 'revoked' : localStatus);
   const mySig = localSigs.find((s) => s.signerDid === sessionDid);
-  const canSign = mySig?.status === 'pending' && localStatus === 'collecting';
-  const canDecline = mySig?.status === 'pending' && localStatus === 'collecting';
+  const expired = !!attestation.expiresAt && attestation.expiresAt.getTime() <= Date.now();
+  const canSign = !revokedAt && !expired && mySig?.status === 'pending' && localStatus === 'collecting';
+  const canDecline = canSign;
+  const canRevoke = !revokedAt && localType === 'agreement'
+    && (attestation.issuerDid === sessionDid || !!mySig);
+  const author = localSigs.find((sig) => sig.signerDid === attestation.issuerDid)?.identity;
+  const authorName = author?.name || (author?.handle ? `@${author.handle}` : null);
   const signedCount = localSigs.filter((s) => s.status === 'signed').length;
   const totalCount = attestation.totalSigners ?? localSigs.length;
 
   const title = getDocumentTitle(attestation.payload);
+  const provenance = authorProvenance(attestation.payload, attestation.issuerDid);
+  async function refreshSignatures() {
+    const detailRes = await fetch(`/auth/api/documents/${attestation.id}`, { credentials: 'include' });
+    if (!detailRes.ok) return;
+    const detail = await detailRes.json();
+    setLocalSigs(detail.signatures.map((sig: Signature) => ({
+      ...sig, signedAt: sig.signedAt ? new Date(sig.signedAt) : null,
+    })));
+    if (detail.attestation) {
+      setLocalType(detail.attestation.type);
+      setLocalStatus(detail.attestation.attestationStatus);
+      setRevokedAt(detail.attestation.revokedAt ? new Date(detail.attestation.revokedAt) : null);
+    }
+  }
+
+  async function handleRevoke() {
+    if (!globalThis.confirm('Revoke this agreement? The signed record will remain, marked revoked.')) return;
+    setLoading(true);
+    setError(null);
+    setExpanded(true);
+    try {
+      const response = await fetch(`/auth/api/attestations/${attestation.id}/revoke`, {
+        method: 'POST', credentials: 'include',
+        headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error ?? 'Revoke failed');
+      setRevokedAt(new Date(data.revokedAt ?? data.attestation?.revokedAt ?? Date.now()));
+      setLocalStatus('revoked');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Revoke failed');
+    } finally {
+      setLoading(false);
+    }
+  }
 
   async function handleSign() {
     setLoading(true);
     setError(null);
+    setExpanded(true);
     try {
       if (!attestation.documentHash) {
         setError('Document hash missing');
@@ -115,6 +175,7 @@ export default function DocumentSigningCard({ attestation, signatures, sessionDi
       }
       const signRes = await fetch(`/auth/api/identity/${encodeURIComponent(sessionDid)}/sign`, {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           payload: buildDocumentSigningPayload(sessionDid, attestation.documentHash),
@@ -134,6 +195,7 @@ export default function DocumentSigningCard({ attestation, signatures, sessionDi
 
       const res = await fetch(`/auth/api/documents/${attestation.id}/sign`, {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           jws: signData.signature,
@@ -149,12 +211,7 @@ export default function DocumentSigningCard({ attestation, signatures, sessionDi
       }
 
       setLocalStatus(data.status);
-      // Refresh signatures
-      const detailRes = await fetch(`/auth/api/documents/${attestation.id}`);
-      if (detailRes.ok) {
-        const detail = await detailRes.json();
-        setLocalSigs(detail.signatures);
-      }
+      await refreshSignatures();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Sign failed');
     } finally {
@@ -169,6 +226,7 @@ export default function DocumentSigningCard({ attestation, signatures, sessionDi
     try {
       const res = await fetch(`/auth/api/documents/${attestation.id}/decline`, {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({}),
       });
@@ -198,7 +256,7 @@ export default function DocumentSigningCard({ attestation, signatures, sessionDi
   return (
     <div className="bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden">
       {/* Header */}
-      <div className="relative px-5 py-4 flex items-center gap-3 cursor-pointer hover:bg-zinc-800/40 transition-colors">
+      <div className="relative px-4 py-4 flex flex-wrap items-center gap-3 cursor-pointer hover:bg-zinc-800/40 transition-colors">
         {/* Full-row expand/collapse trigger. A real <button> (not a div+role) placed behind
             the Sign/Decline buttons via z-index so it never blocks them. */}
         <button
@@ -218,10 +276,11 @@ export default function DocumentSigningCard({ attestation, signatures, sessionDi
           {badge.label}
         </span>
 
-        <div className="relative flex-1 min-w-0">
-          <div className="text-sm font-medium text-zinc-200 truncate">
+        <div className="relative flex-1 min-w-[120px] pointer-events-none">
+          <div className="text-sm font-medium text-zinc-200 break-words">
             {title}
           </div>
+          <div className="text-xs text-zinc-400 break-all">{authorName || attestation.issuerDid}</div>
           <div className="text-xs text-zinc-500 mt-0.5">
             {signedCount}/{totalCount} signed
             {canSign && (
@@ -252,6 +311,11 @@ export default function DocumentSigningCard({ attestation, signatures, sessionDi
               Decline
             </button>
           )}
+          {canRevoke && (
+            <button type="button" disabled={loading}
+              onClick={() => fireAndForget(handleRevoke(), 'auth:documentSigning:revoke')}
+              className="px-3 py-2 text-xs text-red-400 border border-red-900 disabled:opacity-40">Revoke</button>
+          )}
           <svg
             aria-hidden="true"
             className={`w-4 h-4 text-zinc-600 transition-transform ${expanded ? 'rotate-180' : ''}`}
@@ -268,6 +332,12 @@ export default function DocumentSigningCard({ attestation, signatures, sessionDi
       {/* Expanded */}
       {expanded && (
         <div className="px-5 pb-5 border-t border-zinc-800/60 space-y-4">
+          <DocumentIdentityNotice authorDid={attestation.issuerDid} authorName={authorName} {...provenance} />
+          <div className="text-xs text-zinc-400 break-all">
+            Signing account: <span className="text-zinc-200">{sessionDid}</span>
+            {actingHumanDid && <div>Acting human: {actingHumanDid}</div>}
+          </div>
+          {revokedAt && <output className="block text-sm text-red-400">Agreement revoked · {new Date(revokedAt).toLocaleString()}</output>}
           {error && (
             <div className="text-xs text-red-400 bg-red-900/20 border border-red-800 rounded-lg px-3 py-2">
               {error}
@@ -281,6 +351,7 @@ export default function DocumentSigningCard({ attestation, signatures, sessionDi
                 assetId={attestation.documentAssetId}
                 mimeType="application/pdf"
                 filename={title}
+                previewUrl={previewUrl ?? `/auth/api/documents/${encodeURIComponent(attestation.id)}/content`}
                 hash={attestation.documentHash ?? ''}
               />
             </div>
@@ -293,6 +364,7 @@ export default function DocumentSigningCard({ attestation, signatures, sessionDi
             </h4>
             <SignerList signers={localSigs} sessionDid={sessionDid} />
           </div>
+          <DocumentVerification key={revokedAt?.toISOString() ?? 'active'} documentId={attestation.id} />
 
           {/* Meta */}
           <div className="text-xs text-zinc-600 space-y-1">
@@ -302,7 +374,7 @@ export default function DocumentSigningCard({ attestation, signatures, sessionDi
             </div>
             <div className="flex gap-2">
               <span className="w-16 shrink-0">By</span>
-              <span className="font-mono">{attestation.issuerDid}</span>
+              <span className="font-mono break-all">{attestation.issuerDid}</span>
             </div>
             {attestation.expiresAt && (
               <div className="flex gap-2">
