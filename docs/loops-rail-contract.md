@@ -1,4 +1,5 @@
 # Loop registry rail — publisher-authorization contract (#2358, epic #2288/#2290, #2295, #2296, #2338)
+Horizon bridge ruling #2931: issue-ref-only bindings and publisher-scoped envelope receipts.
 Horizon step entries extend this signed rail under #2878; #2879 binds claims to
 the existing surface leases. Runs rendering remains separate (#2880).
 ## Horizon steps (#2878, parent #2313 decision a)
