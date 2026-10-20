@@ -7,6 +7,7 @@ export LC_ALL=C
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 IMAGE="postgres:16-bookworm@sha256:0ea6700a3b4f0ae6ce746519073558aed4d88a79d8d07622a9a644946c7319c4"
 MIGRATION="$ROOT/migrations/0201_reconcile_seed_era_drift.sql"
+MEMBERSHIP_MIGRATION="$ROOT/migrations/0216_restore_conversation_members_unique.sql"
 TMP="$(mktemp -d)"
 CONTAINER=""
 cleanup() {
@@ -135,6 +136,25 @@ for pass in 1 2; do
   same_snapshot fresh "repeat$pass" "fresh migration rerun $pass must be a catalog/OID/data no-op"
 done
 printf 'PASS: %s migrations; reconciliation reruns preserve full catalogs including OIDs\n' "$count"
+# #2865: prod had only the legacy UNIQUE constraint, not the seed's standalone
+# index. After 0201 dropped that constraint, no membership conflict target worked.
+clone membership_missing
+query membership_missing 'DROP INDEX chat.idx_conv_members_unique' >/dev/null
+rows membership_missing > "$TMP/membership_before.rows"
+sql membership_missing --single-transaction < "$MEMBERSHIP_MIGRATION"
+rows membership_missing > "$TMP/membership_after.rows"
+diff -u "$TMP/membership_before.rows" "$TMP/membership_after.rows" || die "membership repair changed rows"
+schema membership_missing > "$TMP/membership_repaired.schema"
+diff -u "$TMP/fresh.schema" "$TMP/membership_repaired.schema" || die "membership repair did not converge to fresh schema"
+for db in seed_drift_baseline membership_missing; do
+  snapshot "$db" membership_before
+  for pass in 1 2; do
+    sql "$db" --single-transaction < "$MEMBERSHIP_MIGRATION"
+    snapshot "$db" membership_after
+    same_snapshot membership_before membership_after "$db: membership index rerun must preserve catalog/OIDs/data"
+  done
+done
+printf 'PASS: missing membership uniqueness restored; existing index reruns preserve catalog/OIDs/data\n'
 
 # Both membership key orders must disappear regardless of constraint name.
 for order in 'conversation_did, member_did' 'member_did, conversation_did'; do
