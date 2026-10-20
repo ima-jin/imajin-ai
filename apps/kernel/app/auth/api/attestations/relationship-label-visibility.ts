@@ -3,6 +3,19 @@ import { db, identityMembers } from '@/src/db';
 import type { Attestation } from '@/src/db';
 
 export const RELATIONSHIP_LABEL_EVENT = 'connection.relationship.label.changed';
+/** Live org books the real viewer may read; act-as identity alone is not authority. */
+export async function relationshipLabelOrgDids(viewerDid: string | null, orgDids: string[]): Promise<string[]> {
+  if (!viewerDid || orgDids.length === 0) return [];
+  const memberships = await db.select({ orgDid: identityMembers.identityDid })
+    .from(identityMembers)
+    .where(and(
+      eq(identityMembers.memberDid, viewerDid),
+      inArray(identityMembers.identityDid, orgDids),
+      inArray(identityMembers.role, ['owner', 'admin']),
+      isNull(identityMembers.removedAt),
+    ));
+  return memberships.map(row => row.orgDid);
+}
 
 /**
  * A commercial label is an org's private book, not a bilateral fact. Even the
@@ -17,14 +30,6 @@ export async function filterRelationshipLabelEvents(
   if (orgDids.length === 0) return rows;
 
   const viewerDid = await resolveViewer();
-  const memberships = viewerDid ? await db.select({ orgDid: identityMembers.identityDid })
-    .from(identityMembers)
-    .where(and(
-      eq(identityMembers.memberDid, viewerDid),
-      inArray(identityMembers.identityDid, orgDids),
-      inArray(identityMembers.role, ['owner', 'admin']),
-      isNull(identityMembers.removedAt),
-    )) : [];
-  const allowed = new Set(memberships.map(row => row.orgDid));
+  const allowed = new Set(await relationshipLabelOrgDids(viewerDid, orgDids));
   return rows.filter(row => row.type !== RELATIONSHIP_LABEL_EVENT || allowed.has(row.subjectDid));
 }

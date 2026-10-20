@@ -80,7 +80,7 @@ export default async function AttestationsPage(props: Readonly<{ searchParams: P
           <DocumentList sessionDid={effectiveDid} role={documentRole} />
         </div>
       ) : (
-        <AttestationList sessionDid={effectiveDid} searchParams={resolvedSearchParams} excludeDocumentTypes />
+        <AttestationList sessionDid={effectiveDid} viewerDid={sessionDid} searchParams={resolvedSearchParams} excludeDocumentTypes />
       )}
     </div>
   );
