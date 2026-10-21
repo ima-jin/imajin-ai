@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { nanoid } from 'nanoid';
 import { eq, and } from 'drizzle-orm';
-import { db, registryApps, attestations, oauthAuthorizationCodes } from '@/src/db';
-import { canonicalize, crypto as authCrypto } from '@imajin/auth';
+import { db, registryApps, oauthAuthorizationCodes } from '@/src/db';
 import { getEffectiveDid } from '@/app/auth/lib/get-effective-did';
 import { createLogger } from '@imajin/logger';
 import { rateLimit, getClientIP } from '@imajin/config';
@@ -21,7 +20,7 @@ import { promoteActorOnGrant } from '@/src/lib/auth/promote-actor';
 import { toOrigin } from '@/src/lib/http/public-origin';
 import { projectConsentedScopes } from '@/src/lib/kernel/consent-scope-projection';
 import { addConsentedApp } from '@/src/lib/kernel/app-membership';
-import { isLiveAppAuthorization } from '@/src/lib/auth/live-app-authorization';
+import { upsertAppAuthorization } from '@/src/lib/auth/upsert-app-authorization';
 import { canConsentToApp, PRIVATE_APP_CONSENT_ERROR } from '@/src/lib/kernel/app-consent';
 
 const log = createLogger('kernel');
@@ -345,47 +344,10 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'server_error', error_description: 'signing key unavailable' }, { status: 500 });
   }
 
-  // Consent → app.authorized attestation (reuse an active grant if present).
-  let attestationId: string;
-  const existingGrants = await db
-    .select({ id: attestations.id, revokedAt: attestations.revokedAt, expiresAt: attestations.expiresAt })
-    .from(attestations)
-    .where(and(
-      eq(attestations.issuerDid, sessionDid),
-      eq(attestations.subjectDid, client.appDid),
-      eq(attestations.type, 'app.authorized'),
-    ));
-
-  const existing = existingGrants.find((grant) => isLiveAppAuthorization(grant));
-  if (existing) {
-    attestationId = existing.id;
-  } else {
-    const issuedAtMs = Date.now();
-    const payload = { scopes: granted, appId: client.id, callbackUrl: client.callbackUrl };
-    const signature = authCrypto.signSync(
-      canonicalize({
-        subject_did: client.appDid,
-        type: 'app.authorized',
-        context_id: client.id,
-        context_type: 'app',
-        payload,
-        issued_at: issuedAtMs,
-      }),
-      privateKey,
-    );
-    attestationId = `att_${nanoid(16)}`;
-    await db.insert(attestations).values({
-      id: attestationId,
-      issuerDid: sessionDid,
-      subjectDid: client.appDid,
-      type: 'app.authorized',
-      contextId: client.id,
-      contextType: 'app',
-      payload,
-      signature,
-      issuedAt: new Date(issuedAtMs),
-    });
-  }
+  const attestationId = await upsertAppAuthorization({
+    ownerDid: sessionDid, appDid: client.appDid, appId: client.id,
+    callbackUrl: client.callbackUrl, scopes: granted, privateKey,
+  });
   await addConsentedApp(sessionDid, client.slug);
 
   // Promote the client into a first-class actor identity (#1170), storing its

@@ -33,11 +33,11 @@ export async function revokeAttestationOnce(params: {
   attestationId: string;
   revokedByDid: string;
   privateKey: string;
-}): Promise<RevokeAttestationResult> {
+}, database: Pick<typeof db, 'update' | 'insert'> = db): Promise<RevokeAttestationResult> {
   const { attestationId, revokedByDid, privateKey } = params;
   const issuedAtMs = Date.now();
 
-  const claimed = await db
+  const claimed = await database
     .update(attestations)
     .set({ revokedAt: new Date(issuedAtMs) })
     .where(
@@ -67,7 +67,7 @@ export async function revokeAttestationOnce(params: {
 
   const signature = authCrypto.signSync(canonicalPayload, privateKey);
 
-  await db.insert(attestations).values({
+  await database.insert(attestations).values({
     id: `att_${nanoid(16)}`,
     issuerDid: revokedByDid,
     subjectDid,
@@ -79,7 +79,7 @@ export async function revokeAttestationOnce(params: {
     issuedAt: new Date(issuedAtMs),
   });
 
-  await db
+  await database
     .update(oauthRefreshTokens)
     .set({ revokedAt: new Date(issuedAtMs) })
     .where(

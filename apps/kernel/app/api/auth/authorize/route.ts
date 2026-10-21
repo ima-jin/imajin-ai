@@ -17,24 +17,16 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { nanoid } from 'nanoid';
-import { db, attestations, registryApps } from '@/src/db';
-import { eq, and, isNull } from 'drizzle-orm';
-import { requireAuth, validateScopes, canonicalize, crypto as authCrypto, resolveActingDid } from '@imajin/auth';
+import { db, registryApps } from '@/src/db';
+import { eq } from 'drizzle-orm';
+import { requireAuth, validateScopes, resolveActingDid } from '@imajin/auth';
 import { withLogger } from '@imajin/logger';
 import { promoteActorOnGrant } from '@/src/lib/auth/promote-actor';
-import { revokeAttestationOnce } from '@/src/lib/auth/revoke-attestation';
-import { projectAppAuthorizationGrant } from '@/src/lib/auth/app-authorization-grant';
+import { upsertAppAuthorization } from '@/src/lib/auth/upsert-app-authorization';
 import { addConsentedApp } from '@/src/lib/kernel/app-membership';
-import { isLiveAppAuthorization } from '@/src/lib/auth/live-app-authorization';
 import { canConsentToApp, PRIVATE_APP_CONSENT_ERROR } from '@/src/lib/kernel/app-consent';
 
-function sameScopeSet(a: string[], b: string[]): boolean {
-  if (a.length !== b.length) return false;
-  const sortedA = [...a].sort((x, y) => x.localeCompare(y));
-  const sortedB = [...b].sort((x, y) => x.localeCompare(y));
-  return sortedA.every((s, i) => s === sortedB[i]);
-}
+export const dynamic = 'force-dynamic';
 
 export const POST = withLogger('kernel', async (request: NextRequest) => {
   const authResult = await requireAuth(request);
@@ -107,78 +99,9 @@ export const POST = withLogger('kernel', async (request: NextRequest) => {
     return NextResponse.json({ error: 'Server misconfigured' }, { status: 500 });
   }
 
-  // Re-consent: look for an active grant already on file for this (user, app).
-  const existingGrants = await db
-    .select({ id: attestations.id, payload: attestations.payload, expiresAt: attestations.expiresAt })
-    .from(attestations)
-    .where(
-      and(
-        eq(attestations.issuerDid, identity.id),
-        eq(attestations.subjectDid, app.appDid),
-        eq(attestations.type, 'app.authorized'),
-        isNull(attestations.revokedAt),
-      )
-    );
-
-  const existing = existingGrants.find((grant) => isLiveAppAuthorization(grant));
-  if (existing) {
-    const existingScopes = (existing.payload as { scopes?: string[] } | null)?.scopes ?? [];
-    if (sameScopeSet(existingScopes, validScopes)) {
-      // Nothing changed — reuse the existing grant rather than churning the
-      // attestation id (and, downstream, every cached token/session).
-      await promoteActorOnGrant({
-        appId: app.id,
-        appDid: app.appDid,
-        publicKey: app.publicKey,
-        ownerDid,
-        name: app.name,
-        avatarUrl: app.logoUrl,
-        adapter: 'keypair',
-      });
-      // Re-affirm the channel_links projection (#1803) even on a no-op
-      // re-submit, so a grant that was manually revoked out-of-band gets
-      // re-materialised alongside the attestation it is derived from.
-      await projectAppAuthorizationGrant({ ownerDid: identity.id, appDid: app.appDid, scopes: validScopes });
-      await addConsentedApp(identity.id, app.slug);
-      return NextResponse.json({ attestationId: existing.id, userDid: identity.id }, { status: 201 });
-    }
-
-    // Scopes changed — supersede: revoke the old grant exactly once before
-    // minting the replacement. If a concurrent request already won this race
-    // (revoked === false), we still proceed to mint the new attestation below
-    // — the caller's intent (grant the updated scope set) still holds.
-    await revokeAttestationOnce({
-      attestationId: existing.id,
-      revokedByDid: identity.id,
-      privateKey,
-    });
-  }
-
-  const issuedAtMs = Date.now();
-  const payload = { scopes: validScopes, appId: app.id, callbackUrl: app.callbackUrl };
-
-  const canonicalPayload = canonicalize({
-    subject_did: app.appDid,
-    type: 'app.authorized',
-    context_id: app.id,
-    context_type: 'app',
-    payload,
-    issued_at: issuedAtMs,
-  });
-
-  const signature = authCrypto.signSync(canonicalPayload, privateKey);
-  const attestationId = `att_${nanoid(16)}`;
-
-  await db.insert(attestations).values({
-    id: attestationId,
-    issuerDid: identity.id,
-    subjectDid: app.appDid,
-    type: 'app.authorized',
-    contextId: app.id,
-    contextType: 'app',
-    payload,
-    signature,
-    issuedAt: new Date(issuedAtMs),
+  const attestationId = await upsertAppAuthorization({
+    ownerDid: identity.id, appDid: app.appDid, appId: app.id,
+    callbackUrl: app.callbackUrl, scopes: validScopes, privateKey,
   });
 
   // Promote the authorized app into a first-class actor identity in the graph
@@ -195,13 +118,6 @@ export const POST = withLogger('kernel', async (request: NextRequest) => {
     adapter: 'keypair',
   });
 
-  // Project the just-granted scopes into auth.channel_links (#1803): the
-  // OAuth authorize/consent screen the user just completed IS the consent
-  // event for the selective-disclosure pipeline — no separate consent
-  // surface is needed. Attributed to the signing identity (identity.id),
-  // matching the attestation's issuerDid and what ends up as `sub` on every
-  // app token minted against this grant.
-  await projectAppAuthorizationGrant({ ownerDid: identity.id, appDid: app.appDid, scopes: validScopes });
   await addConsentedApp(identity.id, app.slug);
 
   return NextResponse.json({ attestationId, userDid: identity.id }, { status: 201 });
