@@ -3,6 +3,7 @@ import { mkdtempSync, readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
+import { tmpdir } from 'node:os';
 import YAML from 'yaml';
 import AgentReporter from '../agent-reporter.mjs';
 
@@ -215,15 +216,55 @@ describe('agent script and workflow contracts', () => {
   });
 
   it('uses quiet installs in CI and documents Warp setup plus output discipline', () => {
+    const installs = [];
     for (const job of Object.values(ci.jobs)) {
       for (const step of job.steps) {
-        if (step.run?.startsWith('pnpm install ')) expect(step.run).toContain('--reporter=silent');
+        if (step.run?.startsWith('pnpm install ')) {
+          installs.push(step.run);
+          expect(step.run).toContain('--loglevel=error');
+          expect(step.run).not.toContain('--reporter=silent');
+        }
       }
     }
+    expect(installs).toHaveLength(5);
     const guidance = readFileSync(join(root, 'AGENTS.md'), 'utf8');
     for (const text of ['only affected test files', 'full suite once via `pnpm test:agent`',
-      '--reporter=silent', 'Redirect long output to a file and grep']) {
+      '--loglevel=error', 'Redirect long output to a file and grep']) {
       expect(guidance).toContain(text);
     }
   });
+
+  it.each([false, true])('keeps real pnpm install diagnostics visible (outdated lockfile: %s)', (outdated) => {
+    const dir = mkdtempSync(join(tmpdir(), 'agent-install-'));
+    writeFileSync(join(dir, 'package.json'), JSON.stringify({
+      name: 'agent-install-fixture', private: true, packageManager: pkg.packageManager,
+      ...(outdated ? { dependencies: { typescript: '5.6.2' } } : {}),
+    }));
+    writeFileSync(join(dir, 'pnpm-lock.yaml'), YAML.stringify({
+      lockfileVersion: '9.0',
+      settings: { autoInstallPeers: true, excludeLinksFromLockfile: false },
+      importers: { '.': {} },
+    }));
+    const command = ci.jobs.test.steps.find((step) => step.run?.startsWith('pnpm install ')).run;
+    // `pnpm --silent test:agent` exports its reporter/loglevel to children.
+    // CI install steps run directly, not inside that quiet script invocation.
+    const env = { ...process.env, CI: 'true', NO_UPDATE_NOTIFIER: '1' };
+    for (const key of Object.keys(env)) {
+      if (['npm_config_reporter', 'npm_config_loglevel'].includes(key.toLowerCase())) delete env[key];
+    }
+    const result = spawnSync('pnpm', [...command.split(' ').slice(1), '--ignore-workspace', '--offline'], {
+      cwd: dir, encoding: 'utf8', timeout: 30000,
+      env,
+    });
+    expect(result.error).toBeUndefined();
+    const output = result.stdout + result.stderr;
+    expect(result.status, output).toBe(outdated ? 1 : 0);
+    if (outdated) {
+      expect(output).toContain('ERR_PNPM_OUTDATED_LOCKFILE');
+      expect(output).toContain('pnpm-lock.yaml');
+    } else {
+      expect(output).toContain('Done in');
+      expect(output).not.toMatch(/Progress:|downloaded|resolved/);
+    }
+  }, 30000);
 });

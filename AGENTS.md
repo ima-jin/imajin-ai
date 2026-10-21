@@ -11,7 +11,7 @@ test:agent` to suppress pnpm's own script banner as well. Coverage remains
 available with `pnpm --silent test:agent --coverage` (lcov for Sonar).
 
 Use `build:agent`, `lint:agent`, and `typecheck:agent` for Turbo's errors-only
-task logs. Install with `pnpm install --frozen-lockfile --reporter=silent` in
+task logs. Install with `pnpm install --frozen-lockfile --loglevel=error` in
 Warp setup. Redirect long output to a file and grep that file; never dump the
 whole install/build/test log into agent context.
 

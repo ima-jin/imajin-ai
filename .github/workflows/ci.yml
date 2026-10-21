@@ -160,7 +160,7 @@ jobs:
           node-version: 22
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile --ignore-scripts --reporter=silent
+        run: pnpm install --frozen-lockfile --ignore-scripts --loglevel=error
 
       # actions/checkout registers safe.directory in the RUNNER HOST's global
       # git config. This job's steps run inside the ci-runner container,
@@ -238,7 +238,7 @@ jobs:
           node-version: 22
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile --ignore-scripts --reporter=silent
+        run: pnpm install --frozen-lockfile --ignore-scripts --loglevel=error
 
       # --ignore-scripts above blocks arbitrary install/postinstall scripts
       # across the whole dependency tree (githubactions:S6505). apps/corpus's
@@ -313,7 +313,7 @@ jobs:
           node-version: 22
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile --ignore-scripts --reporter=silent
+        run: pnpm install --frozen-lockfile --ignore-scripts --loglevel=error
 
       # turbo hashes task inputs through git; see the identical note in the
       # Lint & Typecheck job (#2605).
@@ -414,7 +414,7 @@ jobs:
 
       # Same flags as the deploy's install, except the lockfile is enforced.
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile --ignore-scripts --reporter=silent
+        run: pnpm install --frozen-lockfile --ignore-scripts --loglevel=error
 
       # Same step, same command as deploy-prod.yml.
       - name: Build workspace packages (provisioning prerequisite)
@@ -464,7 +464,7 @@ jobs:
           node-version: 22
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile --ignore-scripts --reporter=silent
+        run: pnpm install --frozen-lockfile --ignore-scripts --loglevel=error
 
       # actions/checkout registers safe.directory in the RUNNER HOST's global
       # git config; this job's steps run inside the ci-runner container with
