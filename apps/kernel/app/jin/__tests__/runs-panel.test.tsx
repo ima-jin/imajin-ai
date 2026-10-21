@@ -12,7 +12,7 @@ vi.mock('../operator-approvals-panel', () => ({
 
 function setFetch(fetcher: ReturnType<typeof vi.fn>) {
   vi.stubGlobal('fetch', (url: string, options?: RequestInit) => options?.cache === 'no-store'
-    ? Promise.resolve(response({ isOperator: true, detail: { horizon: { steps: [], depth: 0, targetDepth: 12 } }, commandTarget: { available: false } }))
+    ? Promise.resolve(response({ isOperator: true, lastStepEventAt: null, detail: { horizon: { steps: [], depth: 0, targetDepth: 12 } }, commandTarget: { available: false } }))
     : url === '/api/loops/surfaces'
     ? Promise.resolve(response({ conflicts: [] })) : fetcher(url, options));
 }

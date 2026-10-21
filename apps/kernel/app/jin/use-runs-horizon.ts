@@ -16,8 +16,8 @@ function requireHorizon(value: Horizon | undefined): Horizon {
   return value;
 }
 
-async function readHorizon(loopId: string, signal: AbortSignal, onDenied: () => void): Promise<RunHorizon> {
-  const response = await fetch(`/jin/api/runs/${encodeURIComponent(loopId)}`, {
+async function readOperatorObservation(path: string, signal: AbortSignal, onDenied: () => void) {
+  const response = await fetch(path, {
     credentials: 'include', signal, cache: 'no-store',
   });
   if (response.status === 401 || response.status === 403) {
@@ -30,8 +30,21 @@ async function readHorizon(loopId: string, signal: AbortSignal, onDenied: () => 
     if (!signal.aborted) onDenied();
     throw new Error('Authorization changed');
   }
+  return data;
+}
+
+async function readHorizon(loopId: string, signal: AbortSignal, onDenied: () => void): Promise<RunHorizon> {
+  const data = await readOperatorObservation(`/jin/api/runs/${encodeURIComponent(loopId)}`, signal, onDenied);
   return { loopId, horizon: requireHorizon(data.detail?.horizon),
     commandAvailable: data.commandTarget?.available === true };
+}
+async function readLastStepEventAt(signal: AbortSignal, onDenied: () => void): Promise<string | null> {
+  const data = await readOperatorObservation('/jin/api/runs/horizon-status', signal, onDenied);
+  if (data.lastStepEventAt === null) return null;
+  if (typeof data.lastStepEventAt !== 'string' || !Number.isFinite(Date.parse(data.lastStepEventAt))) {
+    throw new Error('Incomplete horizon status');
+  }
+  return new Date(data.lastStepEventAt).toISOString();
 }
 
 /** Await every sibling, then advance the bounded batch; failure never releases a partial observation. */
@@ -50,12 +63,14 @@ export function useRunsHorizon(loopIds: string[], onDenied: () => void) {
   const [runs, setRuns] = useState<RunHorizon[]>([]);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
+  const [lastStepEventAt, setLastStepEventAt] = useState<string | null>();
   const key = JSON.stringify(loopIds);
   useEffect(() => {
     const ids = JSON.parse(key) as string[];
     const controller = new AbortController();
     let inFlight = false;
     setRuns([]);
+    setLastStepEventAt(undefined);
     setLoading(true);
     setError('');
     async function load() {
@@ -64,7 +79,10 @@ export function useRunsHorizon(loopIds: string[], onDenied: () => void) {
       try {
         const next = await readBatches(ids, controller.signal, onDenied);
         if (controller.signal.aborted) return;
+        const lastStep = await readLastStepEventAt(controller.signal, onDenied);
+        if (controller.signal.aborted) return;
         setRuns(next);
+        setLastStepEventAt(lastStep);
         setError('');
       } catch {
         if (!controller.signal.aborted) {
@@ -79,5 +97,5 @@ export function useRunsHorizon(loopIds: string[], onDenied: () => void) {
     const timer = setInterval(() => void load(), 5000);
     return () => { controller.abort(); clearInterval(timer); };
   }, [key, onDenied]);
-  return { runs, error, loading };
+  return { runs, error, loading, lastStepEventAt };
 }
