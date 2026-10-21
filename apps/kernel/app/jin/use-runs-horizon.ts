@@ -42,7 +42,7 @@ async function readLastStepEventAt(signal: AbortSignal, onDenied: () => void): P
   const data = await readOperatorObservation('/jin/api/runs/horizon-status', signal, onDenied);
   if (data.lastStepEventAt === null) return null;
   if (typeof data.lastStepEventAt !== 'string' || !Number.isFinite(Date.parse(data.lastStepEventAt))) {
-    throw new Error('Incomplete horizon status');
+    throw new TypeError('Incomplete horizon status');
   }
   return new Date(data.lastStepEventAt).toISOString();
 }
