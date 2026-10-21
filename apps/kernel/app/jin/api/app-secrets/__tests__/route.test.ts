@@ -135,9 +135,37 @@ describe('app secret operator routes', () => {
     expect(await response.json()).toEqual({ error });
     expect(mocks.record).not.toHaveBeenCalled();
   });
-  it('returns metadata only from the lifecycle read helper', async () => {
-    mocks.list.mockResolvedValue([{ appDid, name: 'Fake app', secrets: [declaration] }]);
-    expect(await (await GET(req())).json()).toEqual({ apps: [{ appDid, name: 'Fake app', secrets: [declaration] }] });
+  it('returns only allowlisted provenance and lifecycle metadata, never values, claim codes or hashes', async () => {
+    const provenance = {
+      created: { at: '2026-10-14T00:00:00Z', by: 'did:imajin:fake-registrar' },
+      provisioned: { at: null, proposedBy: null, approvedBy: null },
+      claimed: { at: null, by: null }, lastSeen: { at: null, by: null },
+    };
+    const metadata = {
+      appDid, slug: 'fake-app', name: 'Fake app', active: true, claimed: false,
+      claimExpiresAt: '2026-10-15T00:00:00Z', provenance,
+      secrets: [{ ...declaration, status: 'active', timeline: [{ phase: 'fetched', at: '2026-10-14T01:00:00Z' }] }],
+    };
+    const privateFields = { value: 'OBVIOUSLY_FAKE_VALUE', claimCode: 'OBVIOUSLY_FAKE_CODE', codeHash: 'OBVIOUSLY_FAKE_HASH' };
+    mocks.list.mockResolvedValue([{
+      ...metadata, ...privateFields,
+      provenance: { ...provenance, ...privateFields, created: { ...provenance.created, ...privateFields } },
+      secrets: metadata.secrets.map((secret) => ({
+        ...secret, ...privateFields, timeline: secret.timeline.map((entry) => ({ ...entry, ...privateFields })),
+      })),
+    }]);
+    const response = await GET(req());
+    expect(response.status).toBe(200);
+    expect(response.headers.get('Cache-Control')).toBe('no-store');
+    const body = await response.json();
+    expect(body).toEqual({ apps: [metadata] });
+    for (const forbidden of [...Object.keys(privateFields), ...Object.values(privateFields)]) {
+      expect(JSON.stringify(body)).not.toContain(forbidden);
+    }
+  });
+  it('returns no metadata when the lifecycle read fails', async () => {
+    mocks.list.mockRejectedValue(new Error('OBVIOUSLY_FAKE_PRIVATE_PROVIDER_DETAIL'));
+    expect(await (await GET(req())).json()).toEqual({ error: 'App-secret metadata unavailable' });
   });
   it('does not disclose unexpected provider exceptions', async () => {
     mocks.preview.mockRejectedValue(new Error('obvious-fake-placeholder'));

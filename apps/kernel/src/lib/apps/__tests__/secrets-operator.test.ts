@@ -19,12 +19,13 @@ vi.mock('../self-secrets', () => ({
   setAppDeclaredSecret: mocks.supplied,
 }));
 vi.mock('@/src/db', () => ({
-  registryApps: {}, appProvisions: {}, appSigningKeyClaims: {},
+  registryApps: {}, appProvisions: {}, appSigningKeyClaims: {}, operatorApprovals: {},
   db: {
-    select: () => ({ from: () => ({ where: () => {
+    select: () => ({ from: () => {
       const rows = mocks.select();
-      return Object.assign(Promise.resolve(rows), { orderBy: () => Promise.resolve(rows) });
-    } }) }),
+      const result = Object.assign(Promise.resolve(rows), { orderBy: () => Promise.resolve(rows) });
+      return { where: () => result, orderBy: () => Promise.resolve(rows) };
+    } }),
     update: () => ({ set: mocks.set.mockImplementation(() => ({ where: mocks.write })) }),
   },
 }));
@@ -225,14 +226,22 @@ describe('metadata and manifest preview', () => {
   });
   it('includes active claimed registry apps with no provision ledger, and unclaimed provisions', async () => {
     mocks.select.mockReset()
-      .mockReturnValueOnce([{ appDid: 'did:imajin:fake-old', name: 'Old app', slug: 'old-app' }])
+      .mockReturnValueOnce([{ appDid: 'did:imajin:fake-old', name: 'Old app', slug: 'old-app', createdAt: null, ownerDid: null }])
       .mockReturnValueOnce([{ appDid: 'did:imajin:fake-new', slug: 'new-app' }])
-      .mockReturnValueOnce([{ appDid: 'did:imajin:fake-old' }]);
+      .mockReturnValueOnce([{ appDid: 'did:imajin:fake-old', status: 'claimed', expiresAt: new Date('2026-10-14T00:00:00Z') }])
+      .mockReturnValueOnce([]);
     mocks.list.mockResolvedValue([{ ...declaration, status: 'active', timeline: [], value: 'obvious-fake-placeholder' }]);
+    const provenance = {
+      created: { at: null, by: null },
+      provisioned: { at: null, proposedBy: null, approvedBy: null },
+      claimed: { at: null, by: null }, lastSeen: { at: null, by: null },
+    };
     expect(await listOperatorAppSecrets()).toEqual([
       { appDid: 'did:imajin:fake-old', name: 'Old app', slug: 'old-app', active: true, claimed: true,
+        claimExpiresAt: '2026-10-14T00:00:00.000Z', provenance,
         secrets: [{ ...declaration, status: 'active', timeline: [] }] },
-      { appDid: 'did:imajin:fake-new', name: 'new-app', slug: 'new-app', active: false, claimed: false, secrets: [] },
+      { appDid: 'did:imajin:fake-new', name: 'new-app', slug: 'new-app', active: false, claimed: false,
+        claimExpiresAt: null, provenance, secrets: [] },
     ]);
   });
 });

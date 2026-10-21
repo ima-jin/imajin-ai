@@ -12,6 +12,7 @@ import { listOperatorAppSecrets, hasClaimedApp, previewAppSecrets } from '@/src/
 import { APP_SECRET_ACTIONS, appSecretsKind, type AppSecretAction } from '@/src/lib/apps/secrets-kind';
 import { validateSecrets } from '@/src/lib/apps/secret-declarations';
 import { isAppSecretValue, stageAppSecret } from '@/src/lib/apps/secret-staging';
+import { publicAppSecrets } from '@/src/lib/apps/secrets-metadata';
 
 export const dynamic = 'force-dynamic';
 
@@ -35,7 +36,8 @@ export async function GET(request: NextRequest) {
   const auth = await authorize(request);
   if (auth.response) return auth.response;
   try {
-    return NextResponse.json({ apps: await listOperatorAppSecrets() }, { headers: auth.cors });
+    const apps = (await listOperatorAppSecrets()).map(publicAppSecrets);
+    return NextResponse.json({ apps }, { headers: auth.cors });
   } catch {
     return NextResponse.json({ error: 'App-secret metadata unavailable' }, { status: 503, headers: auth.cors });
   }
