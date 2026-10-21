@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { PGlite } from '@electric-sql/pglite';
 
 // Fake postgres.js tagged-template client. `resolveWith` queues the next
 // call's return value; `calls` records each query's skeleton + interpolated
@@ -6,9 +7,9 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 const { calls, fakeSql, resolveWith, resolveUsing } = vi.hoisted(() => {
   const calls: Array<{ text: string; values: unknown[] }> = [];
   type Query = { text: string; values: unknown[] };
-  const queue: Array<unknown[] | ((query: Query) => unknown[])> = [];
+  const queue: Array<unknown[] | ((query: Query) => unknown[] | Promise<unknown[]>)> = [];
   const resolveWith = (rows: unknown[]) => { queue.push(rows); };
-  const resolveUsing = (query: (query: Query) => unknown[]) => { queue.push(query); };
+  const resolveUsing = (query: (query: Query) => unknown[] | Promise<unknown[]>) => { queue.push(query); };
   const fakeSql = (strings: TemplateStringsArray, ...values: unknown[]) => {
     const query = { text: strings.join(' ? '), values };
     calls.push(query);
@@ -20,7 +21,8 @@ const { calls, fakeSql, resolveWith, resolveUsing } = vi.hoisted(() => {
 
 vi.mock('@imajin/db', () => ({ getClient: () => fakeSql }));
 
-import { listLoops, listLoopsPage, getLoopWithHistory } from '../query';
+import { listLoops, listLoopsPage, getLoopWithHistory, getLastStepEventAt } from '../query';
+import { STEP_EVENT_TYPES } from '../step-types';
 import { CODE_STEP } from './horizon-fixtures';
 
 const PRINCIPAL = 'did:imajin:ryan';
@@ -46,6 +48,64 @@ function rawLoopRow(overrides: Record<string, unknown> = {}) {
 
 beforeEach(() => {
   calls.length = 0;
+});
+describe('getLastStepEventAt', () => {
+  it('uses one principal-scoped max with exactly the supported step types as an array parameter', async () => {
+    resolveWith([{ last_step_event_at: null }]);
+    expect(await getLastStepEventAt(PRINCIPAL)).toBeNull();
+    expect(calls).toHaveLength(1);
+    expect(calls[0].text.replaceAll(/\s+/g, ' ').trim()).toBe(
+      'SELECT max(occurred_at) AS last_step_event_at FROM kernel.loop_events WHERE principal = ? AND type = ANY( ? ::text[])',
+    );
+    expect(calls[0].values).toEqual([PRINCIPAL, [
+      'step.queued', 'step.updated', 'step.claimed', 'step.started', 'step.progress',
+      'step.blocked', 'step.finished', 'step.observed', 'step.attested',
+    ]]);
+    expect(calls[0].values[1]).toBe(STEP_EVENT_TYPES);
+  });
+
+  it.each([
+    [new Date('2026-10-16T12:34:56.789Z'), '2026-10-16T12:34:56.789Z'],
+    ['2026-10-16T08:34:56.789-04:00', '2026-10-16T12:34:56.789Z'],
+    [null, null],
+  ])('normalizes aggregate value %s to %s', async (value, expected) => {
+    resolveWith([{ last_step_event_at: value }]);
+    expect(await getLastStepEventAt(PRINCIPAL)).toBe(expected);
+  });
+
+  it('returns null for an empty result', async () => {
+    resolveWith([]);
+    expect(await getLastStepEventAt(PRINCIPAL)).toBeNull();
+  });
+
+  it('executes the aggregate with PostgreSQL semantics over mixed principals and non-step events', async () => {
+    const db = new PGlite();
+    try {
+      await db.exec(`
+        CREATE SCHEMA kernel;
+        CREATE TABLE kernel.loop_events (principal text, type text, occurred_at timestamptz);
+      `);
+      for (const [principal, type, at] of [
+        [PRINCIPAL, 'step.queued', '2026-10-16T10:00:00Z'],
+        [PRINCIPAL, 'step.finished', '2026-10-16T12:00:00Z'],
+        [PRINCIPAL, 'loop.progress', '2026-10-17T00:00:00Z'],
+        [PRINCIPAL, 'step.unsupported', '2026-10-18T00:00:00Z'],
+        ['did:imajin:other', 'step.progress', '2026-10-19T00:00:00Z'],
+      ]) {
+        await db.query('INSERT INTO kernel.loop_events VALUES ($1, $2, $3)', [principal, type, at]);
+      }
+      const execute = async ({ text, values }: { text: string; values: unknown[] }) => {
+        let index = 0;
+        return (await db.query(text.replaceAll('?', () => `$${++index}`), values)).rows;
+      };
+      resolveUsing(execute);
+      expect(await getLastStepEventAt(PRINCIPAL)).toBe('2026-10-16T12:00:00.000Z');
+      resolveUsing(execute);
+      expect(await getLastStepEventAt('did:imajin:nobody')).toBeNull();
+    } finally {
+      await db.close();
+    }
+  });
 });
 
 describe('listLoops', () => {

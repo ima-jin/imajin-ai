@@ -5,6 +5,7 @@ import type { HorizonStep } from '@/src/lib/loops/horizon';
 import { browserSessionCommands, type SessionCommandClient } from './session-command-client';
 import { useRunsHorizon } from './use-runs-horizon';
 
+// Horizon publication status comes only from the loop registry, never the harness.
 const zones = ['head', 'near', 'middle', 'tail', 'past'] as const;
 const descriptions = {
   head: 'Claimed · sharp up close',
@@ -79,11 +80,12 @@ export function RunsHorizon({ loopIds, onDenied, onSelect, client = browserSessi
   loopIds: string[]; onDenied: () => void; onSelect: (loopId: string) => void;
   client?: SessionCommandClient; hasMore?: boolean;
 }>) {
-  const { runs, error, loading } = useRunsHorizon(loopIds, onDenied);
+  const { runs, error, loading, lastStepEventAt } = useRunsHorizon(loopIds, onDenied);
   const items = runs.flatMap(run => run.horizon.steps.map(step => ({ ...run, step })))
     .filter(item => item.step.zone !== 'done')
     .sort((a, b) => a.step.rank - b.step.rank || a.loopId.localeCompare(b.loopId) || a.step.stepId.localeCompare(b.step.stepId));
   const depth = runs.reduce((total, run) => total + run.horizon.depth, 0);
+  const observedEmpty = !loading && !error && depth === 0 && items.length === 0 && lastStepEventAt !== undefined;
   return <section aria-label="Runs horizon" className="mb-5 min-w-0 space-y-3" data-testid="runs-horizon">
     <div className="flex flex-wrap items-baseline justify-between gap-2">
       <h3 className="font-mono text-sm font-semibold text-gray-100">Horizon</h3>
@@ -92,9 +94,14 @@ export function RunsHorizon({ loopIds, onDenied, onSelect, client = browserSessi
     <p className="text-xs text-gray-400">Nearest first · signed registry observation · updates every 5s</p>
     {loading && <output className="block text-xs text-gray-400">Loading horizon…</output>}
     {error && <p role="alert" className="text-xs text-amber-200">{error}</p>}
-    {!loading && !error && depth < 12 && <p className="text-xs text-amber-200">Below target · {12 - depth} more steps to reach 12. The horizon is not full yet.</p>}
+    {observedEmpty && <p className="break-words text-xs text-gray-400">
+      {lastStepEventAt === null
+        ? <>No horizon steps published yet · the harness horizon sync (#2881) hasn't reported · last step never</>
+        : <>{hasMore ? 'No horizon steps in loaded runs' : 'Horizon drained'} · last step <time dateTime={lastStepEventAt}>{lastStepEventAt}</time></>}
+    </p>}
+    {!loading && !error && items.length > 0 && depth < 12 && <p className="text-xs text-amber-200">Below target · {12 - depth} more steps to reach 12. The horizon is not full yet.</p>}
     {hasMore && <p className="text-xs text-gray-400">Loaded runs only · load more runs below to include older horizons.</p>}
-    {zones.map(zone => <section key={zone} aria-label={`${zone} steps`} className="min-w-0 border-l-2 border-indigo-500 pl-3">
+    {items.length > 0 && zones.map(zone => <section key={zone} aria-label={`${zone} steps`} className="min-w-0 border-l-2 border-indigo-500 pl-3">
       <h4 className="font-mono text-xs uppercase text-gray-200">{zone} <span className="text-gray-400">· {items.filter(item => item.step.zone === zone).length}</span></h4>
       <p className="mb-2 text-xs text-gray-400">{descriptions[zone]}</p>
       <ul className="space-y-2">{items.filter(item => item.step.zone === zone).map(({ loopId, step, commandAvailable }) =>
