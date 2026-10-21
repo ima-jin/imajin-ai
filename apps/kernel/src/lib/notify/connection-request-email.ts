@@ -30,7 +30,7 @@ export async function deliverConnectionRequestEmail(params: {
 }): Promise<ConnectionRequestEmailResult | null> {
   const { fromDid } = params;
   if (!params.recipientDid.startsWith('did:') || typeof fromDid !== 'string' || !fromDid.startsWith('did:')) return null;
-  return getClient().begin('isolation level read committed', async (tx): Promise<ConnectionRequestEmailResult | null> => {
+  return await getClient().begin('isolation level read committed', async (tx): Promise<ConnectionRequestEmailResult | null> => {
     // JSON encoding keeps distinct pairs distinct even if a DID contains separators.
     const pairKey = JSON.stringify([CONNECTION_REQUEST_SCOPE, params.recipientDid, fromDid]);
     await tx.unsafe('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [pairKey]);

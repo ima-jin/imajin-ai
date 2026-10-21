@@ -442,20 +442,30 @@ function ticketRegistrationReminderHtml(data: Record<string, any>): string {
 // =============================================================================
 
 const CONNECTION_REQUEST_ACCESS = 'Accepting creates a connection only. It grants no membership, roster access, or account access.';
+function connectionRequestText(value: unknown): string {
+  return typeof value === 'string' ? value : '';
+}
 
 function connectionRequester(data: Record<string, unknown>): string {
-  const rawHandle = typeof data.fromHandle === 'string' ? data.fromHandle.replace(/^@/, '') : '';
-  const name = data.fromName || (rawHandle ? `@${rawHandle}` : data.fromDid) || 'Someone';
-  const handle = rawHandle && data.fromName ? ` (@${rawHandle})` : '';
-  const did = data.fromDid && name !== data.fromDid ? ` · ${data.fromDid}` : '';
+  const rawHandle = connectionRequestText(data.fromHandle).replace(/^@/, '');
+  const fromName = connectionRequestText(data.fromName);
+  const fromDid = connectionRequestText(data.fromDid);
+  const name = fromName || (rawHandle ? `@${rawHandle}` : fromDid) || 'Someone';
+  const handle = rawHandle && fromName ? ` (@${rawHandle})` : '';
+  const did = fromDid && name !== fromDid ? ` · ${fromDid}` : '';
   return `${name}${handle}${did}`;
 }
 
 function connectionRequestBody(data: Record<string, unknown>): string {
-  const actor = data.actorDid && data.actorDid !== data.fromDid
-    ? ` Sent by ${data.actorName || data.actorDid} on behalf of ${data.fromName || data.fromDid}.`
+  const actorDid = connectionRequestText(data.actorDid);
+  const fromDid = connectionRequestText(data.fromDid);
+  const actorName = connectionRequestText(data.actorName) || actorDid;
+  const fromName = connectionRequestText(data.fromName) || fromDid;
+  const actor = actorDid && actorDid !== fromDid
+    ? ` Sent by ${actorName} on behalf of ${fromName}.`
     : '';
-  const note = data.note ? ` Note: ${data.note}` : '';
+  const noteText = connectionRequestText(data.note);
+  const note = noteText ? ` Note: ${noteText}` : '';
   return `${connectionRequester(data)} wants to connect with you.${actor} ${CONNECTION_REQUEST_ACCESS}${note}`;
 }
 

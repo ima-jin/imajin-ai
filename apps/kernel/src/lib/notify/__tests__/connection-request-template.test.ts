@@ -39,6 +39,14 @@ describe('connection:request-received', () => {
     expect(html).toContain('Accept or decline');
     expect(html).not.toContain('javascript:');
   });
+  it('ignores non-string identity/note fields rather than rendering object coercions', () => {
+    const copy = template.body({
+      fromDid: {}, fromName: {}, fromHandle: {}, actorDid: {}, actorName: {}, note: {},
+    });
+    expect(copy).toContain('Someone wants to connect');
+    expect(copy).not.toContain('[object Object]');
+    expect(copy).not.toContain('Note:');
+  });
 
   it('escapes all requester, actor and note text and the URL attribute', () => {
     vi.stubEnv('NEXT_PUBLIC_KERNEL_URL', 'https://node.example.com/?x="&y=<tag>');
