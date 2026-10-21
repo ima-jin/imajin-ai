@@ -1,5 +1,6 @@
 /**
  * POST /auth/api/apps/token  (#1069 / #799 P3)
+ * Principal-based grant resolution: #3040.
  *
  * Mint a short-lived, scoped app token. Replaces passing the raw attestationId
  * around as a long-lived bearer.
