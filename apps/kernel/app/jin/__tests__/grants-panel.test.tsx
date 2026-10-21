@@ -16,6 +16,8 @@ interface GrantCardFixture {
   delegatorDid?: string;
   history?: { event: string; actorDid: string; createdAt: string; capability: string | null }[];
   grantee: string;
+  appDid?: string;
+  surplusGrantIds?: string[];
   capabilities: string[];
   issuedAt: string | null;
   lastUsedAt: string | null;

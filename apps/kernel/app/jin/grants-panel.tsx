@@ -28,36 +28,15 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { useFlashNotice } from './use-flash-notice';
 import Link from 'next/link';
+import type { GrantCard, GrantSourceKind, DeferredAckState, GrantAckEvidence } from '@/src/lib/jin/grants-lane';
+import styles from './grants-panel.module.css';
 
-type GrantSourceKind = 'auth-grant' | 'auth-membership' | 'vault-delegation' | 'access-bearer' | 'app-authorization';
-type DeferredAckState = 'used' | 'failed' | 'discarded' | 'pending';
+const defaultTransport: typeof fetch = (...args) => fetch(...args);
 
-interface GrantAckEvidence {
-  kind?: string;
-  ref?: string;
-  note?: string;
-}
-
-interface RevokeAction {
-  method: 'DELETE' | 'POST';
-  path: string;
-  body?: Record<string, unknown>;
-}
-
-interface GrantCard {
-  id: string;
-  source: GrantSourceKind;
-  delegatorDid?: string;
-  history?: { event: string; actorDid: string; createdAt: string; capability: string | null }[];
-  grantee: string;
-  capabilities: string[];
-  issuedAt: string | null;
-  lastUsedAt: string | null;
-  ackState: DeferredAckState | null;
-  ackEvidence: GrantAckEvidence | null;
-  status: string;
-  revocable: boolean;
-  revoke: RevokeAction | null;
+function surplusIds(card: GrantCard): string[] {
+  if (card.source !== 'app-authorization' || card.status !== 'active' || !card.appDid || !card.revocable) return [];
+  const survivor = card.id.replace(/^app-authorization:/, '');
+  return [...new Set(card.surplusGrantIds ?? [])].filter(id => id && id !== survivor);
 }
 
 const POLL_INTERVAL_MS = 10000;
@@ -85,7 +64,7 @@ function formatDate(iso: string | null): string {
 
 function statusBadge(status: string) {
   const cls = status === 'active' ? 'bg-green-900/50 text-green-300' : 'bg-gray-800 text-gray-500';
-  return <span className={`px-1.5 py-0.5 rounded text-xs ${cls}`}>{status}</span>;
+  return <span className={`px-1.5 py-0.5 text-xs ${cls}`}>{status}</span>;
 }
 
 // S3358: avoid nested ternary by resolving the toggle glyph up front.
@@ -103,7 +82,7 @@ function AckBadge({ ackState, evidence }: Readonly<{ ackState: DeferredAckState;
         type="button"
         onClick={() => setExpanded((v) => !v)}
         disabled={!hasEvidence}
-        className={`px-1.5 py-0.5 rounded ${ACK_STATE_STYLES[ackState]} ${hasEvidence ? 'cursor-pointer' : 'cursor-default'}`}
+        className={`px-1.5 py-0.5 ${ACK_STATE_STYLES[ackState]} ${hasEvidence ? 'cursor-pointer' : 'cursor-default'}`}
       >
         {ackState}{ackToggleGlyph(hasEvidence, expanded)}
       </button>
@@ -125,6 +104,7 @@ function GrantCardView({
   onRevokeClick,
   onConfirmRevoke,
   onCancelRevoke,
+  onCleanup,
 }: Readonly<{
   card: GrantCard;
   confirming: boolean;
@@ -132,18 +112,34 @@ function GrantCardView({
   onRevokeClick: (card: GrantCard) => void;
   onConfirmRevoke: (card: GrantCard) => void;
   onCancelRevoke: () => void;
+  onCleanup: (card: GrantCard) => void;
 }>) {
+  const surplus = surplusIds(card);
   return (
-    <div className="rounded-lg border border-gray-800 p-4 space-y-2" data-testid="grant-card">
-      <div className="flex items-center justify-between gap-3 flex-wrap">
-        <div className="flex items-center gap-2 min-w-0 flex-wrap">
-          <span className="px-1.5 py-0.5 rounded text-xs font-mono bg-indigo-900/40 text-indigo-300 whitespace-nowrap">
+    <div className="border border-gray-800 bg-[var(--bg-surface)] p-4 space-y-2" data-testid="grant-card">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-2 min-w-0">
+          <span className="px-1.5 py-0.5 text-xs font-mono bg-indigo-900/40 text-indigo-300 whitespace-nowrap">
             {SOURCE_LABELS[card.source]}
           </span>
           <span className="font-mono text-xs text-gray-200 break-all" title={card.grantee}>{card.grantee}</span>
         </div>
         {statusBadge(card.status)}
       </div>
+      {surplus.length > 0 && (
+        <div className="space-y-2">
+          <p className="font-mono text-sm text-gray-200">{card.grantee} · {surplus.length + 1} live grants · keep newest</p>
+          <p className="text-xs text-gray-500 break-all">{card.appDid}</p>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => onCleanup(card)}
+            className="min-h-11 px-3 py-2 border border-red-900/60 text-xs font-mono text-red-300 hover:bg-red-900/40 disabled:opacity-40"
+          >
+            Revoke {surplus.length} older {surplus.length === 1 ? 'grant' : 'grants'}
+          </button>
+        </div>
+      )}
 
       {card.delegatorDid && (
         <p className="text-xs text-gray-500 break-all">Delegator: <span className="font-mono text-gray-300">{card.delegatorDid}</span></p>
@@ -164,7 +160,7 @@ function GrantCardView({
 
       <div className="text-xs text-gray-500 break-all">
         <span className="uppercase tracking-wide mr-2">Capabilities</span>
-        <span className="font-mono text-gray-400">{card.capabilities.join(', ') || '—'}</span>
+        <span className="font-mono text-gray-400 break-words">{card.capabilities.join(', ') || '—'}</span>
       </div>
 
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-500">
@@ -174,16 +170,16 @@ function GrantCardView({
 
       {card.ackState && <AckBadge ackState={card.ackState} evidence={card.ackEvidence} />}
 
-      {card.revocable && card.revoke && (
+      {surplus.length === 0 && card.revocable && card.revoke && (
         <div className="pt-1">
           {confirming ? (
-            <div className="flex items-center gap-2 flex-wrap">
+            <div className="flex flex-wrap items-center gap-2">
               <span className="text-xs text-gray-400">Revoke this grant?</span>
               <button
                 type="button"
                 onClick={() => onConfirmRevoke(card)}
                 disabled={busy}
-                className="px-2.5 py-1 rounded text-xs font-medium bg-red-900/40 text-red-300 hover:bg-red-800/60 disabled:opacity-40"
+                className="min-h-11 px-2.5 py-1 text-xs font-mono bg-red-900/40 text-red-300 hover:bg-red-800/60 disabled:opacity-40"
               >
                 {busy ? '…' : 'Yes, revoke'}
               </button>
@@ -191,7 +187,7 @@ function GrantCardView({
                 type="button"
                 onClick={onCancelRevoke}
                 disabled={busy}
-                className="px-2.5 py-1 rounded text-xs font-medium bg-gray-700 text-gray-200 hover:bg-gray-600 disabled:opacity-40"
+                className="min-h-11 px-2.5 py-1 text-xs font-mono bg-gray-700 text-gray-200 hover:bg-gray-600 disabled:opacity-40"
               >
                 Cancel
               </button>
@@ -200,7 +196,8 @@ function GrantCardView({
             <button
               type="button"
               onClick={() => onRevokeClick(card)}
-              className="px-2.5 py-1 rounded text-xs font-medium bg-red-900/40 text-red-300 hover:bg-red-800/60"
+              disabled={busy}
+              className="min-h-11 px-2.5 py-1 text-xs font-mono bg-red-900/40 text-red-300 hover:bg-red-800/60 disabled:opacity-40"
             >
               Revoke
             </button>
@@ -220,6 +217,7 @@ function renderCardsList(
     onRevokeClick: (card: GrantCard) => void;
     onConfirmRevoke: (card: GrantCard) => void;
     onCancelRevoke: () => void;
+    onCleanup: (card: GrantCard) => void;
   },
 ): ReactNode {
   if (loading) {
@@ -227,7 +225,7 @@ function renderCardsList(
   }
   if (cards.length === 0) {
     return (
-      <div className="text-center py-10 rounded-lg border border-gray-800">
+      <div className="text-center py-10 border border-gray-800">
         <p className="text-gray-500 text-sm">No standing grants.</p>
       </div>
     );
@@ -239,17 +237,18 @@ function renderCardsList(
           key={card.id}
           card={card}
           confirming={rest.confirmingId === card.id}
-          busy={rest.busyId === card.id}
+          busy={Boolean(rest.busyId)}
           onRevokeClick={rest.onRevokeClick}
           onConfirmRevoke={rest.onConfirmRevoke}
           onCancelRevoke={rest.onCancelRevoke}
+          onCleanup={rest.onCleanup}
         />
       ))}
     </div>
   );
 }
 
-export function GrantsPanel() {
+export function GrantsPanel({ transport = defaultTransport }: Readonly<{ transport?: typeof fetch }> = {}) {
   const [canManageGrants, setCanManageGrants] = useState(false);
   const [delegatorDid, setDelegatorDid] = useState('');
   const [actorDid, setActorDid] = useState('');
@@ -259,17 +258,18 @@ export function GrantsPanel() {
   const [confirmingId, setConfirmingId] = useState('');
   const [busyId, setBusyId] = useState('');
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const mutationRef = useRef(false);
 
   const { flash, notify } = useFlashNotice(5000);
 
   const load = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
     try {
-      const res = await fetch('/jin/api/grants', { credentials: 'include' });
+      const res = await transport('/jin/api/grants', { credentials: 'include' });
       if (!res.ok) {
         setCanManageGrants(false);
         setGrants([]);
-        return;
+        return false;
       }
       const data = (await res.json()) as {
         isOperator: boolean; canManageGrants?: boolean; delegatorDid?: string; actorDid?: string; grants: GrantCard[];
@@ -278,12 +278,14 @@ export function GrantsPanel() {
       setDelegatorDid(data.delegatorDid ?? '');
       setActorDid(data.actorDid ?? '');
       setGrants(data.grants ?? []);
+      return true;
     } catch {
       // Silent — this panel simply stays empty on a transient network error.
+      return false;
     } finally {
       if (!silent) setLoading(false);
     }
-  }, []);
+  }, [transport]);
 
   useEffect(() => {
     load();
@@ -302,10 +304,11 @@ export function GrantsPanel() {
   }, []);
 
   const handleConfirmRevoke = useCallback(async (card: GrantCard) => {
-    if (!card.revoke) return;
+    if (!card.revoke || mutationRef.current) return;
+    mutationRef.current = true;
     setBusyId(card.id);
     try {
-      const res = await fetch(card.revoke.path, {
+      const res = await transport(card.revoke.path, {
         method: card.revoke.method,
         credentials: 'include',
         headers: card.revoke.body ? { 'Content-Type': 'application/json' } : undefined,
@@ -318,29 +321,75 @@ export function GrantsPanel() {
       }
       notify('ok', 'Grant revoked.');
       setConfirmingId('');
-      await load(true);
+    } catch {
+      notify('err', 'Revoke could not be confirmed because of a network error. Refresh and try again.');
     } finally {
+      const refreshed = await load(true);
+      if (!refreshed) notify('err', 'Could not refresh grants. Refresh before trying again.');
       setBusyId('');
+      mutationRef.current = false;
     }
-  }, [load, notify]);
+  }, [load, notify, transport]);
+
+  const handleCleanup = useCallback(async (card: GrantCard) => {
+    const ids = surplusIds(card);
+    if (ids.length === 0 || mutationRef.current) return;
+    mutationRef.current = true;
+    setBusyId(card.id);
+    let failed = 0;
+    for (const attestationId of ids) {
+      try {
+        const res = await transport('/api/auth/revoke', {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ attestationId }),
+        });
+        // The existing route returns 409 only for an already-revoked grant.
+        if (!res.ok && res.status !== 409) failed += 1;
+      } catch {
+        failed += 1;
+      }
+    }
+    const refreshed = await load(true);
+    if (failed > 0) {
+      notify('err', `${failed} of ${ids.length} older grants could not be confirmed revoked. Newest kept. ${refreshed ? 'Grants refreshed; retry remaining older grants.' : 'Refresh failed; refresh before retrying.'}`);
+    } else if (!refreshed) {
+      notify('err', 'Older grants revoked; newest kept. Could not refresh grants. Refresh before trying again.');
+    } else {
+      notify('ok', 'Older grants revoked. Newest kept.');
+    }
+    setConfirmingId('');
+    setBusyId('');
+    mutationRef.current = false;
+  }, [load, notify, transport]);
 
   // Unauthorized principals see nothing — no header, no empty-state, no card. This
   // also holds during the initial load so nobody briefly sees panel chrome
   // before the operator check resolves.
   if (!canManageGrants) return null;
 
-  const visible = showRevoked ? grants : grants.filter((g) => g.status !== 'revoked');
+  const visible = grants.filter((g) => g.status !== 'revoked');
+  const history = grants.filter((g) => g.status === 'revoked');
+  const actions = {
+    confirmingId,
+    busyId,
+    onRevokeClick: handleRevokeClick,
+    onConfirmRevoke: handleConfirmRevoke,
+    onCancelRevoke: handleCancelRevoke,
+    onCleanup: handleCleanup,
+  };
 
   return (
-    <section id="grants" className="mt-8" data-testid="grants-panel">
-      <div className="flex items-center justify-between gap-3 flex-wrap mb-3">
+    <section id="grants" className={`${styles.panel} mt-8`} data-testid="grants-panel">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
         <div>
-          <h2 className="text-base font-semibold text-gray-100">Grants</h2>
+          <h2 className="font-mono text-base font-semibold text-gray-100">Grants</h2>
           <p className="text-xs text-gray-500">Who acts for you, with what capabilities — one-tap revoke</p>
           {delegatorDid && <p className="text-xs text-gray-400 break-all">Organization delegator: <span className="font-mono">{delegatorDid}</span></p>}
           {actorDid && <p className="text-xs text-gray-500 break-all">Authenticated human: <span className="font-mono">{actorDid}</span></p>}
         </div>
-        <div className="flex items-center gap-3 flex-wrap">
+        <div className="flex flex-wrap items-center gap-3 font-mono">
           <Link
             href="/auth/agents"
             className="text-xs text-indigo-400 hover:text-indigo-300 transition-colors"
@@ -363,18 +412,18 @@ export function GrantsPanel() {
       </div>
 
       {flash && (
-        <div className={`mb-3 px-3 py-2 rounded text-xs font-medium ${flash.type === 'ok' ? 'bg-green-900/40 text-green-300' : 'bg-red-900/40 text-red-300'}`}>
+        <div role={flash.type === 'err' ? 'alert' : 'status'} className={`mb-3 px-3 py-2 text-xs font-medium ${flash.type === 'ok' ? 'bg-green-900/40 text-green-300' : 'bg-red-900/40 text-red-300'}`}>
           {flash.msg}
         </div>
       )}
 
-      {renderCardsList(loading, visible, {
-        confirmingId,
-        busyId,
-        onRevokeClick: handleRevokeClick,
-        onConfirmRevoke: handleConfirmRevoke,
-        onCancelRevoke: handleCancelRevoke,
-      })}
+      {renderCardsList(loading, visible, actions)}
+      {showRevoked && history.length > 0 && (
+        <div className="mt-4 space-y-3" aria-label="Revoked grant history">
+          <h3 className="font-mono text-sm text-gray-400">Revoked history</h3>
+          {renderCardsList(loading, history, actions)}
+        </div>
+      )}
     </section>
   );
 }
