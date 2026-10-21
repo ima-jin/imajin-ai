@@ -6,6 +6,7 @@
  *
  * Body: { appId, scopes }
  * Returns: { attestationId }
+ * #3008: consent must converge to one live grant per (principal, app).
  *
  * Re-consent (#1795): when the caller already holds an active grant for this
  * app, an identical scope set reuses that attestation (no churn on duplicate
