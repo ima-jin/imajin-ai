@@ -4615,6 +4615,12 @@ paths:
         (identity.actingAs ?? identity.id) may renew the grant. An actual
         renewal atomically emits signed delegation.grant.renewed evidence
         naming the org delegatorDid and authenticated human actorDid.
+        The optional ttlMs field sets the lease length in milliseconds, clamped
+        to GRANT_MAX_TTL (30 days / 2592000000 ms). If ttlMs is absent, renewal
+        keeps the previous lease length, also clamped to GRANT_MAX_TTL, rather
+        than resetting it to 24 hours. The previous lease is expiresAt minus
+        the latest renewal event timestamp, or issuedAt before the first renewal.
+        The new expiry is the renewal time plus that lease length.
       security:
         - cookieAuth: []
         - bearerAuth: []
@@ -4624,12 +4630,18 @@ paths:
           required: true
           schema: { type: string }
       requestBody:
+        required: false
+        description: Omit the body, send an empty body, or omit ttlMs from the JSON object to keep the previous lease length.
         content:
           application/json:
             schema:
               type: object
               properties:
-                ttlMs: { type: integer }
+                ttlMs:
+                  type: number
+                  exclusiveMinimum: 0
+                  description: Optional positive finite lease length in milliseconds. Values above GRANT_MAX_TTL (2592000000 ms) are clamped, not rejected.
+                  example: 2592000000
       responses:
         "200":
           description: Renewed grant
@@ -4643,6 +4655,18 @@ paths:
                     properties:
                       grantId: { type: string }
                       expiresAt: { type: string, format: date-time }
+        "400":
+          description: Malformed JSON, a non-object JSON body (including null or an array), or ttlMs that is not a positive finite number.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+              examples:
+                malformedJson:
+                  value: { error: "Invalid JSON" }
+                nonObjectBody:
+                  value: { error: "Body must be an object" }
+                invalidTtl:
+                  value: { error: "ttlMs must be a positive finite number" }
         "403":
           description: Caller is not the delegator who issued this grant
           content:
