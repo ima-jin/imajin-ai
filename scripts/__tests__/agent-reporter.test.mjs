@@ -97,7 +97,14 @@ describe('AgentReporter', () => {
 });
 
 describe('real Vitest 2.1.9 invocation', () => {
-  const passSource = `test('passing test', () => { console.log('PASS CONSOLE'); expect(1).toBe(1); });
+  const passSource = `import { spawnSync } from 'node:child_process';
+test('passing test', () => {
+  console.log('PASS CONSOLE');
+  process.stdout.write('RAW PASS STDOUT\\n');
+  process.stderr.write('RAW PASS STDERR\\n');
+  spawnSync(process.execPath, ['-e', 'console.log("SUBPROCESS PASS")'], { stdio: 'inherit' });
+  expect(1).toBe(1);
+});
 test.skip('skipped test', () => {});`;
 
   it.each([
@@ -128,7 +135,7 @@ test('failing test', () => { console.error('FAIL CONSOLE'); expect({ value: 1 })
     expect(result.output).toMatch(/-\s+"value": 2/);
     expect(result.output).toMatch(/\+\s+"value": 1/);
     expect(result.output).toContain('sample.test.mjs:');
-    expect(result.output).not.toMatch(/passing test|skipped test|PASS CONSOLE|Test Files|passed/);
+    expect(result.output).not.toMatch(/passing test|skipped test|PASS CONSOLE|RAW PASS|SUBPROCESS PASS|Test Files|passed/);
   }, 30000);
 
   it('does not swallow suite setup failures', () => {
@@ -152,6 +159,15 @@ test('blocked test', () => {});`));
     const allowed = run(dir, ['--agent', 'not-a-matching-file', '--passWithNoTests']);
     expect(allowed.status).toBe(0);
     expect(allowed.output).toContain('No test files found, exiting with code 0');
+  }, 30000);
+
+  it('preserves startup diagnostics when there is no failing test to report', () => {
+    const dir = fixture(passSource);
+    writeFileSync(join(dir, 'vitest.config.mjs'), 'throw new Error("INVALID CONFIG");\n');
+    const result = run(dir);
+    expect(result.status).toBe(1);
+    expect(result.output).toContain('INVALID CONFIG');
+    expect(result.output).not.toMatch(summary);
   }, 30000);
 
   it('emits lcov without a coverage table or extra passing lines', () => {

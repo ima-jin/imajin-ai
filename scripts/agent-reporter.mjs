@@ -8,6 +8,15 @@ function collectTasks(task, names = []) {
 export default class AgentReporter {
   logs = new Map();
   started = performance.now();
+  constructor({ write, onFailure } = {}) {
+    this.write = write;
+    this.onFailure = onFailure;
+  }
+
+  log(line) {
+    if (this.write) this.write(line);
+    else this.ctx.logger.log(line);
+  }
 
   onInit(ctx) {
     this.ctx = ctx;
@@ -22,20 +31,20 @@ export default class AgentReporter {
   }
 
   printError(error) {
-    this.ctx.logger.log(`${error.name ?? 'Error'}: ${error.message ?? String(error)}`);
-    if (error.diff) this.ctx.logger.log(error.diff);
+    this.log(`${error.name ?? 'Error'}: ${error.message ?? String(error)}`);
+    if (error.diff) this.log(error.diff);
     const stack = (error.stack ?? '').split('\n')
       .filter((line) => line.trimStart().startsWith('at ')
         && !line.replace(this.ctx.config?.root ?? '\0', '').includes('node_modules'))
       .slice(0, 5);
-    if (stack.length) this.ctx.logger.log(stack.join('\n'));
+    if (stack.length) this.log(stack.join('\n'));
   }
 
   printFailure(task, names) {
-    this.ctx.logger.log(`FAIL ${names.join(' > ')}`);
+    this.log(`FAIL ${names.join(' > ')}`);
     for (const error of task.result?.errors ?? []) this.printError(error);
     for (const content of this.logs.get(task.id) ?? []) {
-      this.ctx.logger.log(content.trimEnd());
+      this.log(content.trimEnd());
     }
   }
 
@@ -48,11 +57,12 @@ export default class AgentReporter {
     // Suites may fail before any test runs (imports and beforeAll hooks).
     const failed = tasks.filter(({ task }) => task.result?.state === 'fail'
       && (task.type === 'test' || task.result.errors?.length));
+    if (failed.length || errors.length) this.onFailure?.();
     for (const { task, path } of failed) this.printFailure(task, path);
     for (const error of errors) this.printError(error);
     if (!failed.length && !errors.length) {
       const duration = ((performance.now() - this.started) / 1000).toFixed(2);
-      this.ctx.logger.log(`${passed} passed · ${skipped} skipped · ${files.length} files · ${duration}s duration`);
+      this.log(`${passed} passed · ${skipped} skipped · ${files.length} files · ${duration}s duration`);
     }
     this.logs.clear();
   }
