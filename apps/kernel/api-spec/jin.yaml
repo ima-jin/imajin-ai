@@ -1294,8 +1294,15 @@ paths:
         an acting organization it reads the session Inbox. It additionally
         returns `canAccess`: true for the node operator, an authorized group
         controller, or a principal with addressed cards; false for delegated
-        agents or other empty Inboxes. The shared nav counts only `pending`
-        cards from this same projection. No query parameter selects a DID.
+        agents or other empty Inboxes. `?count=true` returns a read-only
+        aggregate `pending` instead of hydrated approvals. While acting as
+        a different identity, an authenticated human also receives
+        `personalInbox: {pending, handle}` if their own Inbox has pending cards
+        (#3017). This is only a count and the session's personal handle, never
+        card contents, IDs, other members' counts or shared Reach cards. It
+        ignores the source filter so personal attention cannot be hidden by
+        an org filter. The shared nav adds this count to the org pending count;
+        the org list and its pending field stay isolated. No query parameter selects a DID.
         Decisions remain self-only; this read view grants no write authority.
         The one exception is Reach/knock cards: `reachActAsAllowed` permits
         their actions for a live owner/admin acting as the principal. All
@@ -1313,6 +1320,11 @@ paths:
           required: false
           schema: { type: string }
           description: "Filter to one open-vocabulary source, e.g. 'skill-workshop'."
+        - name: count
+          in: query
+          required: false
+          schema: { type: boolean }
+          description: Return pending count without hydrating cards or running recovery writes.
       responses:
         "200":
           description: OK
@@ -1323,6 +1335,15 @@ paths:
                 properties:
                   isOperator: { type: boolean }
                   canAccess: { type: boolean, description: "Present only for view=acting; shared nav and Inbox visibility." }
+                  pending: { type: integer, minimum: 0, description: "Count-only projection; organization-only under act-as." }
+                  personalInbox:
+                    type: object
+                    additionalProperties: false
+                    required: [pending, handle]
+                    description: Only for a validated acting human with pending personal approvals; never another member's attention.
+                    properties:
+                      pending: { type: integer, minimum: 1 }
+                      handle: { type: [string, "null"] }
                   reachActAsAllowed: { type: boolean, description: Live owner/admin membership verified for the acting principal; applies only to Reach/knock cards. }
                   approvals:
                     type: array

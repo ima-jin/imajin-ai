@@ -79,7 +79,8 @@ import { isAppSecretsKind } from '@/src/lib/apps/secrets-kind';
 import { validateSecrets } from '@/src/lib/apps/secret-declarations';
 import { prepareSignedSessionCommand } from './session-command-client';
 import type { SessionCommandFrame } from '@/src/lib/jin/session-command-contract';
-import { getActingAsHeaders } from '@imajin/ui/server';
+import { getActingAsHeaders, setActingAs } from '@imajin/ui/server';
+import { PersonalApprovalsNotice, type PersonalInboxAttention } from './personal-approvals-notice';
 
 interface StoredKeypair {
   privateKey: string;
@@ -1338,6 +1339,9 @@ export function useRunApprovals(prepareCommand = prepareSignedSessionCommand) {
 
   const [isOperator, setIsOperator] = useState(false);
   const [actAs, setActAs] = useState<ActAsState | null>(null);
+  const [personalInbox, setPersonalInbox] = useState<PersonalInboxAttention | null>(null);
+  const [switchingPersonal, setSwitchingPersonal] = useState(false);
+  const [personalSwitchTarget, setPersonalSwitchTarget] = useState<string | null>(null);
   const [reachActAsAllowed, setReachActAsAllowed] = useState(false);
   const [approvals, setApprovals] = useState<OperatorApprovalCard[]>([]);
   const [loading, setLoading] = useState(true);
@@ -1372,16 +1376,20 @@ export function useRunApprovals(prepareCommand = prepareSignedSessionCommand) {
         approvals: OperatorApprovalCard[];
         actAs?: ActAsState | null;
         reachActAsAllowed?: boolean;
+        personalInbox?: PersonalInboxAttention;
       };
       if (generation !== loadGeneration.current) return;
       setIsOperator(data.isOperator);
       setActAs(data.actAs ?? null);
+      setPersonalInbox(data.actAs ? data.personalInbox ?? null : null);
       setReachActAsAllowed(data.reachActAsAllowed === true);
       setApprovals(data.approvals ?? []);
+      return data.approvals ?? [];
     } catch {
       if (generation !== loadGeneration.current) return;
       setIsOperator(false);
       setActAs(null);
+      setPersonalInbox(null);
       setApprovals([]);
     } finally {
       if (generation === loadGeneration.current) setLoading(false);
@@ -1394,6 +1402,8 @@ export function useRunApprovals(prepareCommand = prepareSignedSessionCommand) {
     const scopeChanged = () => {
       setIsOperator(false);
       setActAs(null);
+      setPersonalInbox(null);
+      setPersonalSwitchTarget(null);
       setApprovals([]);
       void load();
     };
@@ -1413,6 +1423,24 @@ export function useRunApprovals(prepareCommand = prepareSignedSessionCommand) {
       globalThis.removeEventListener('storage', storageChanged);
     };
   }, [load, cancelLoad]);
+
+  const handleReturnToPersonal = useCallback(async () => {
+    setSwitchingPersonal(true);
+    try {
+      const response = await fetch('/auth/api/session/act-as', {
+        method: 'POST', credentials: 'include',
+        headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ did: null }),
+      });
+      if (!response.ok) throw new Error('Could not switch back. Try again.');
+      setActingAs(null);
+      const cards = await load();
+      setPersonalSwitchTarget(cards?.find(card => card.status === 'pending')?.proposalId ?? null);
+    } catch {
+      notify('err', 'Could not switch back. Try again.');
+    } finally {
+      setSwitchingPersonal(false);
+    }
+  }, [load, notify]);
 
   // #2367: a sibling form (static-bearer knock) just staged a card — re-fetch
   // now so its `#<anchor>` hand-off link has a target without waiting a poll.
@@ -1533,6 +1561,7 @@ export function useRunApprovals(prepareCommand = prepareSignedSessionCommand) {
 
   return {
     approvals, loading, busyId, isOperator, actAs, reachActAsAllowed, decisionsLocked: actAs !== null,
+    personalInbox, switchingPersonal, personalSwitchTarget, handleReturnToPersonal,
     error: flash?.type === 'err' ? flash.msg : null, flash,
     refresh: load, handleDecide, handleArchive,
     revealedBearer, setRevealedBearer, revealedClaimCode, setRevealedClaimCode,
@@ -1542,8 +1571,8 @@ export function useRunApprovals(prepareCommand = prepareSignedSessionCommand) {
 
 function OperatorApprovalsPanelInner() {
   const searchParams = useSearchParams();
-  const deepLinkedProposalId = searchParams.get('proposalId');
   const controller = useRunApprovals();
+  const deepLinkedProposalId = controller.personalSwitchTarget ?? searchParams.get('proposalId');
   const {
     approvals, loading, busyId, isOperator, actAs, reachActAsAllowed, refresh: load, handleDecide, handleArchive,
   } = controller;
@@ -1572,6 +1601,10 @@ function OperatorApprovalsPanelInner() {
       </div>
 
       <ApprovalControllerNotices controller={controller} />
+      {actAs && controller.personalInbox && (
+        <PersonalApprovalsNotice attention={controller.personalInbox} busy={controller.switchingPersonal}
+          onSwitch={() => void controller.handleReturnToPersonal()} />
+      )}
 
       <ApprovalInbox
         approvals={approvals}

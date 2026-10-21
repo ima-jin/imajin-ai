@@ -30,12 +30,12 @@ export function JinNavEntry({ href, identityDid }: Readonly<{ href: string; iden
           signal: controller.signal,
         });
         const data = response.ok ? await response.json() as {
-          canAccess?: boolean; pending?: number;
+          canAccess?: boolean; pending?: number; personalInbox?: { pending: number };
         } : null;
         if (generation !== requestGeneration) return;
         setAttention(data ? {
           canAccess: data.canAccess === true,
-          pending: data.pending ?? 0,
+          pending: (data.pending ?? 0) + (data.personalInbox?.pending ?? 0),
         } : null);
       } catch (error) {
         if (generation !== requestGeneration) return;
