@@ -118,12 +118,12 @@ function GrantCardView({
   const surplus = surplusIds(card);
   return (
     <div className={surplus.length > 0 ? 'border border-gray-800 bg-[var(--bg-surface)] p-4 space-y-2' : 'rounded-lg border border-gray-800 p-4 space-y-2'} data-testid="grant-card">
-      <div className={surplus.length > 0 ? 'flex flex-wrap items-center justify-between gap-3' : 'flex items-center justify-between gap-3'}>
-        <div className={surplus.length > 0 ? 'flex flex-wrap items-center gap-2 min-w-0' : 'flex items-center gap-2 min-w-0'}>
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div className="flex items-center gap-2 min-w-0 flex-wrap">
           <span className="px-1.5 py-0.5 rounded text-xs font-mono bg-indigo-900/40 text-indigo-300 whitespace-nowrap">
             {SOURCE_LABELS[card.source]}
           </span>
-          <span className={surplus.length > 0 ? 'font-mono text-xs text-gray-200 break-all' : 'font-mono text-xs text-gray-200 truncate'} title={card.grantee}>{card.grantee}</span>
+          <span className="font-mono text-xs text-gray-200 break-all" title={card.grantee}>{card.grantee}</span>
         </div>
         {statusBadge(card.status)}
       </div>
@@ -174,7 +174,7 @@ function GrantCardView({
       {surplus.length === 0 && card.revocable && card.revoke && (
         <div className="pt-1">
           {confirming ? (
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <span className="text-xs text-gray-400">Revoke this grant?</span>
               <button
                 type="button"
