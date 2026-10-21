@@ -1,339 +1,143 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-// ─── Mocks ──────────────────────────────────────────────────────────────────
-// vi.mock factories are hoisted; all referenced variables must come from vi.hoisted.
-
-vi.mock('next/server', () => ({
-  NextResponse: {
-    json: (body: unknown, init?: { status?: number }) =>
-      new Response(JSON.stringify(body), {
-        status: init?.status ?? 200,
-        headers: { 'Content-Type': 'application/json' },
-      }),
-  },
+const h = vi.hoisted(() => ({
+  where: vi.fn(),
+  auth: vi.fn(),
+  validate: vi.fn(),
+  upsert: vi.fn(),
+  promote: vi.fn(),
+  membership: vi.fn(),
 }));
-
-vi.mock('nanoid', () => ({ nanoid: () => 'testid0000000000' }));
-const membership = vi.hoisted(() => vi.fn());
-vi.mock('@/src/lib/kernel/app-membership', () => ({ addConsentedApp: membership }));
-
-const {
-  mockAppSelectWhere,
-  mockAttestationSelectWhere,
-  mockDbSelect,
-  mockAttestationInsertValues,
-  mockDbInsert,
-  mockRequireAuth,
-  mockPromoteActorOnGrant,
-  mockRevokeAttestationOnce,
-  mockProjectAppAuthorizationGrant,
-  ATTESTATIONS_TABLE,
-  REGISTRY_APPS_TABLE,
-} = vi.hoisted(() => {
-  const ATTESTATIONS_TABLE = {
-    id: 'attestations.id',
-    payload: 'attestations.payload',
-    issuerDid: 'attestations.issuerDid',
-    subjectDid: 'attestations.subjectDid',
-    type: 'attestations.type',
-    revokedAt: 'attestations.revokedAt',
-  };
-  const REGISTRY_APPS_TABLE = {
-    id: 'registryApps.id',
-    appDid: 'registryApps.appDid',
-    publicKey: 'registryApps.publicKey',
-    status: 'registryApps.status',
-    requestedScopes: 'registryApps.requestedScopes',
-    callbackUrl: 'registryApps.callbackUrl',
-    name: 'registryApps.name',
-    logoUrl: 'registryApps.logoUrl',
-  };
-
-  // Two distinct `.select().from(X).where(...)` call sites in the route (app
-  // lookup vs. existing-consent lookup) are routed to separate mocks keyed by
-  // the table identity passed to `.from(...)`, so each can be configured
-  // independently per test.
-  const mockAppSelectWhere = vi.fn();
-  const mockAttestationSelectWhere = vi.fn();
-  const mockDbFrom = vi.fn((table: unknown) =>
-    table === ATTESTATIONS_TABLE
-      ? { where: mockAttestationSelectWhere }
-      : { where: mockAppSelectWhere }
-  );
-  const mockDbSelect = vi.fn(() => ({ from: mockDbFrom }));
-
-  const mockAttestationInsertValues = vi.fn().mockResolvedValue(undefined);
-  const mockDbInsert = vi.fn(() => ({ values: mockAttestationInsertValues }));
-
-  const mockRequireAuth = vi.fn();
-  const mockPromoteActorOnGrant = vi.fn().mockResolvedValue(undefined);
-  const mockRevokeAttestationOnce = vi.fn().mockResolvedValue({ revoked: true });
-  const mockProjectAppAuthorizationGrant = vi.fn().mockResolvedValue(undefined);
-
-  return {
-    mockAppSelectWhere,
-    mockAttestationSelectWhere,
-    mockDbSelect,
-    mockAttestationInsertValues,
-    mockDbInsert,
-    mockRequireAuth,
-    mockPromoteActorOnGrant,
-    mockRevokeAttestationOnce,
-    mockProjectAppAuthorizationGrant,
-    ATTESTATIONS_TABLE,
-    REGISTRY_APPS_TABLE,
-  };
-});
-
 vi.mock('@/src/db', () => ({
-  db: { select: mockDbSelect, insert: mockDbInsert },
-  attestations: ATTESTATIONS_TABLE,
-  registryApps: REGISTRY_APPS_TABLE,
+  db: { select: () => ({ from: () => ({ where: h.where }) }) },
+  registryApps: { id: 'id' },
 }));
-
-vi.mock('drizzle-orm', () => ({
-  eq: (...args: unknown[]) => ({ eq: args }),
-  and: (...args: unknown[]) => ({ and: args }),
-  isNull: (...args: unknown[]) => ({ isNull: args }),
-}));
-
-vi.mock('@/src/lib/auth/revoke-attestation', () => ({
-  revokeAttestationOnce: mockRevokeAttestationOnce,
-}));
-
 vi.mock('@imajin/auth', () => ({
-  requireAuth: mockRequireAuth,
-  validateScopes: (scopes: string[]) => ({ valid: scopes, invalid: [] }),
-  canonicalize: (v: unknown) => JSON.stringify(v),
-  crypto: { signSync: () => 'sig' },
-  // Mirrors packages/auth/src/acting-did.ts precedence (#1717/#1735): a route
-  // that regresses to reading `identity.id` directly instead of threading the
-  // whole identity through `resolveActingDid` fails these tests.
+  requireAuth: h.auth,
+  validateScopes: h.validate,
   resolveActingDid: (identity: { id: string; actingFor?: string; actingAs?: string }) =>
     identity.actingFor ?? identity.actingAs ?? identity.id,
 }));
-
 vi.mock('@imajin/logger', () => ({
-  withLogger: (_service: string, handler: (req: unknown, ctx: unknown) => unknown) =>
-    (req: unknown) =>
-      handler(req, { log: { error: vi.fn(), info: vi.fn(), warn: vi.fn() }, correlationId: 'test-cor-id' }),
-  createLogger: () => ({ error: vi.fn(), info: vi.fn(), warn: vi.fn() }),
+  withLogger: (_service: string, handler: unknown) => handler,
+  createLogger: () => ({ error: vi.fn(), warn: vi.fn(), info: vi.fn() }),
 }));
-
-vi.mock('@/src/lib/auth/promote-actor', () => ({
-  promoteActorOnGrant: mockPromoteActorOnGrant,
-}));
-
-vi.mock('@/src/lib/auth/app-authorization-grant', () => ({
-  projectAppAuthorizationGrant: mockProjectAppAuthorizationGrant,
-}));
-
-// ─── Subject under test ──────────────────────────────────────────────────────
+vi.mock('@/src/lib/auth/upsert-app-authorization', () => ({ upsertAppAuthorization: h.upsert }));
+vi.mock('@/src/lib/auth/promote-actor', () => ({ promoteActorOnGrant: h.promote }));
+vi.mock('@/src/lib/kernel/app-membership', () => ({ addConsentedApp: h.membership }));
 
 import { POST } from '../route';
 
-// ─── Fixtures ────────────────────────────────────────────────────────────────
-
-const PERSONAL_DID = 'did:imajin:ryan-personal';
-const BUSINESS_DID = 'did:imajin:agrifortress';
-const APP_PUBLIC_KEY = 'a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f9';
-
-const APP_ROW = {
-  id: 'app_4MbCYrndTWiJjMPe',
-  slug: 'coffee',
-  appDid: 'did:imajin:wjLjV7nSWNZLTUqnhKRUiBrnGG8mKK7q9WXpNEnV2SM',
-  publicKey: APP_PUBLIC_KEY,
-  status: 'active',
-  requestedScopes: ['profile:read'],
-  callbackUrl: 'https://app.example.com/callback',
-  name: 'AgriFortress App',
-  logoUrl: null,
+const PERSONAL_DID = 'did:imajin:person';
+const BUSINESS_DID = 'did:imajin:business';
+const APP = {
+  id: 'app_test', slug: 'coffee', appDid: 'did:imajin:app',
+  publicKey: 'a1'.repeat(32), status: 'active', requestedScopes: ['profile:read'],
+  callbackUrl: 'https://app.example.test/callback', name: 'Test app', logoUrl: null,
+  visibility: 'public',
 };
-
-function makeRequest(body: Record<string, unknown>): Request {
+function request(body: unknown = { appId: APP.id, scopes: ['profile:read'] }) {
   return new Request('https://kernel.test/api/auth/authorize', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
+    method: 'POST', body: JSON.stringify(body),
+  }) as never;
 }
-
 beforeEach(() => {
   vi.clearAllMocks();
-  process.env.AUTH_PRIVATE_KEY = 'test-private-key';
-  mockRequireAuth.mockResolvedValue({ identity: { id: PERSONAL_DID } });
-  mockAppSelectWhere.mockResolvedValue([APP_ROW]);
-  mockAttestationSelectWhere.mockResolvedValue([]); // no existing consent by default
-  mockAttestationInsertValues.mockResolvedValue(undefined);
-  mockPromoteActorOnGrant.mockResolvedValue(undefined);
-  mockRevokeAttestationOnce.mockResolvedValue({ revoked: true });
-  mockProjectAppAuthorizationGrant.mockResolvedValue(undefined);
+  vi.stubEnv('AUTH_PRIVATE_KEY', 'test-private-key');
+  h.auth.mockResolvedValue({ identity: { id: PERSONAL_DID } });
+  h.where.mockResolvedValue([APP]);
+  h.validate.mockImplementation((scopes: string[]) => ({ valid: scopes, invalid: [] }));
+  h.upsert.mockResolvedValue('att_shared');
 });
+afterEach(() => vi.unstubAllEnvs());
 
-describe('POST /api/auth/authorize (#1735)', () => {
-  it('restores membership on repeat consent and renews expired grants', async () => {
-    mockAttestationSelectWhere.mockResolvedValue([{ id: 'existing', payload: { scopes: ['profile:read'] } }]);
-    const repeated = await POST(makeRequest({ appId: APP_ROW.id, scopes: ['profile:read'] }) as never);
-    expect((await repeated.json()).attestationId).toBe('existing');
-    expect(membership).toHaveBeenCalledWith(PERSONAL_DID, 'coffee');
-    mockAttestationSelectWhere.mockResolvedValue([{ id: 'expired', expiresAt: new Date(0), payload: { scopes: ['profile:read'] } }]);
-    const fresh = await POST(makeRequest({ appId: APP_ROW.id, scopes: ['profile:read'] }) as never);
-    expect((await fresh.json()).attestationId).not.toBe('expired');
-    expect(membership).toHaveBeenCalledTimes(2);
-  });
-  it('promotes the app with its real Ed25519 public key, not a label/sentinel', async () => {
-    const res = await POST(makeRequest({ appId: APP_ROW.id, scopes: ['profile:read'] }) as never);
-
-    expect(res.status).toBe(201);
-    expect(mockPromoteActorOnGrant).toHaveBeenCalledOnce();
-    const input = mockPromoteActorOnGrant.mock.calls[0][0] as Record<string, unknown>;
-    expect(input.publicKey).toBe(APP_PUBLIC_KEY);
-    expect(input.publicKey).not.toMatch(/^agent_/);
-    expect(membership).toHaveBeenCalledWith(PERSONAL_DID, 'coffee');
-  });
-
-  it('owns the promoted actor under the acting-for (business) DID, not the caller personal DID', async () => {
-    mockRequireAuth.mockResolvedValue({ identity: { id: PERSONAL_DID, actingFor: BUSINESS_DID } });
-
-    const res = await POST(makeRequest({ appId: APP_ROW.id, scopes: ['profile:read'] }) as never);
-
-    expect(res.status).toBe(201);
-    const input = mockPromoteActorOnGrant.mock.calls[0][0] as Record<string, unknown>;
-    expect(input.ownerDid).toBe(BUSINESS_DID);
-  });
-
-  it('owns the promoted actor under the raw session DID when not acting for anyone', async () => {
-    const res = await POST(makeRequest({ appId: APP_ROW.id, scopes: ['profile:read'] }) as never);
-
-    expect(res.status).toBe(201);
-    const input = mockPromoteActorOnGrant.mock.calls[0][0] as Record<string, unknown>;
-    expect(input.ownerDid).toBe(PERSONAL_DID);
-  });
-
-  it('still records the app.authorized attestation (regression: grant-of-record unaffected)', async () => {
-    await POST(makeRequest({ appId: APP_ROW.id, scopes: ['profile:read'] }) as never);
-
-    expect(mockAttestationInsertValues).toHaveBeenCalledOnce();
-    const attestation = mockAttestationInsertValues.mock.calls[0][0] as Record<string, unknown>;
-    expect(attestation.subjectDid).toBe(APP_ROW.appDid);
-    expect(attestation.type).toBe('app.authorized');
-  });
-
-  it('returns 404 when the app does not exist', async () => {
-    mockAppSelectWhere.mockResolvedValue([]);
-    const res = await POST(makeRequest({ appId: 'app_missing', scopes: [] }) as never);
-    expect(res.status).toBe(404);
-    expect(mockPromoteActorOnGrant).not.toHaveBeenCalled();
-  });
-
-  it('returns 403 when the app has been revoked', async () => {
-    mockAppSelectWhere.mockResolvedValue([{ ...APP_ROW, status: 'revoked' }]);
-    const res = await POST(makeRequest({ appId: APP_ROW.id, scopes: [] }) as never);
-    expect(res.status).toBe(403);
-    expect(mockPromoteActorOnGrant).not.toHaveBeenCalled();
-  });
-});
-
-describe('POST /api/auth/authorize — channel_links projection on consent (#1803)', () => {
-  it('projects the granted scopes into channel_links, attributed to the raw session DID', async () => {
-    const res = await POST(makeRequest({ appId: APP_ROW.id, scopes: ['profile:read'] }) as never);
-
-    expect(res.status).toBe(201);
-    expect(mockProjectAppAuthorizationGrant).toHaveBeenCalledOnce();
-    expect(mockProjectAppAuthorizationGrant).toHaveBeenCalledWith({
-      ownerDid: PERSONAL_DID,
-      appDid: APP_ROW.appDid,
-      scopes: ['profile:read'],
+describe('POST /api/auth/authorize — shared consent seam (#3008)', () => {
+  it('delegates validated scopes and returns the helper string ID', async () => {
+    h.validate.mockReturnValue({ valid: ['profile:read'], invalid: [] });
+    const response = await POST(request({ appId: APP.id, scopes: ['input-normalized-by-validator'] }));
+    expect(response.status).toBe(201);
+    expect(await response.json()).toEqual({ attestationId: 'att_shared', userDid: PERSONAL_DID });
+    expect(h.upsert).toHaveBeenCalledOnce();
+    expect(h.upsert).toHaveBeenCalledWith({
+      ownerDid: PERSONAL_DID, appDid: APP.appDid, appId: APP.id,
+      callbackUrl: APP.callbackUrl, scopes: ['profile:read'], privateKey: 'test-private-key',
     });
+    expect(h.promote).toHaveBeenCalledWith(expect.objectContaining({
+      ownerDid: PERSONAL_DID, publicKey: APP.publicKey, adapter: 'keypair',
+    }));
+    expect(h.membership).toHaveBeenCalledWith(PERSONAL_DID, 'coffee');
   });
 
-  it('projects under the raw session DID even when acting for a business identity (matches the attestation issuerDid)', async () => {
-    mockRequireAuth.mockResolvedValue({ identity: { id: PERSONAL_DID, actingFor: BUSINESS_DID } });
-
-    await POST(makeRequest({ appId: APP_ROW.id, scopes: ['profile:read'] }) as never);
-
-    expect(mockProjectAppAuthorizationGrant).toHaveBeenCalledWith(
-      expect.objectContaining({ ownerDid: PERSONAL_DID }),
-    );
+  it.each(['actingFor', 'actingAs'])('keeps consent under the session DID while promoting under %s', async (field) => {
+    h.auth.mockResolvedValue({ identity: { id: PERSONAL_DID, [field]: BUSINESS_DID } });
+    expect((await POST(request())).status).toBe(201);
+    expect(h.upsert).toHaveBeenCalledWith(expect.objectContaining({ ownerDid: PERSONAL_DID }));
+    expect(h.promote).toHaveBeenCalledWith(expect.objectContaining({ ownerDid: BUSINESS_DID }));
+    expect(h.membership).toHaveBeenCalledWith(PERSONAL_DID, APP.slug);
   });
 
-  it('re-affirms the projection on a no-op re-submit (same scope set reused)', async () => {
-    mockAttestationSelectWhere.mockResolvedValue([
-      { id: 'att_existing0000', payload: { scopes: ['profile:read'] } },
-    ]);
-
-    const res = await POST(makeRequest({ appId: APP_ROW.id, scopes: ['profile:read'] }) as never);
-
-    expect(res.status).toBe(201);
-    expect(mockProjectAppAuthorizationGrant).toHaveBeenCalledWith({
-      ownerDid: PERSONAL_DID,
-      appDid: APP_ROW.appDid,
-      scopes: ['profile:read'],
-    });
+  it('restores membership on repeat consent, using the same helper ID without route-level grant writes', async () => {
+    for (let i = 0; i < 2; i++) {
+      expect((await (await POST(request())).json()).attestationId).toBe('att_shared');
+    }
+    expect(h.upsert).toHaveBeenCalledTimes(2);
+    expect(h.membership).toHaveBeenCalledTimes(2);
+    expect(h.where).toHaveBeenCalledTimes(2); // registry only; live grants belong to the helper
   });
 
-  it('does not project anything when the app lookup fails', async () => {
-    mockAppSelectWhere.mockResolvedValue([]);
-    await POST(makeRequest({ appId: 'app_missing', scopes: [] }) as never);
-    expect(mockProjectAppAuthorizationGrant).not.toHaveBeenCalled();
-  });
-});
-
-describe('POST /api/auth/authorize — re-consent supersession (#1795)', () => {
-  const EXISTING_ATTESTATION_ID = 'att_existing0000';
-  // App must have both scopes registered for the "scopes changed" cases below.
-  const APP_ROW_WITH_CONNECTIONS_SCOPE = {
-    ...APP_ROW,
-    requestedScopes: ['profile:read', 'connections:read'],
-  };
-
-  it('reuses the existing attestation when the approved scope set is unchanged', async () => {
-    mockAttestationSelectWhere.mockResolvedValue([
-      { id: EXISTING_ATTESTATION_ID, payload: { scopes: ['profile:read'] } },
-    ]);
-
-    const res = await POST(makeRequest({ appId: APP_ROW.id, scopes: ['profile:read'] }) as never);
-    const body = await res.json();
-
-    expect(res.status).toBe(201);
-    expect(body.attestationId).toBe(EXISTING_ATTESTATION_ID);
-    expect(mockRevokeAttestationOnce).not.toHaveBeenCalled();
-    expect(mockAttestationInsertValues).not.toHaveBeenCalled();
-    expect(mockPromoteActorOnGrant).toHaveBeenCalledOnce();
+  it('does not publish membership or promote if the atomic grant fails', async () => {
+    h.upsert.mockRejectedValueOnce(new Error('projection failed'));
+    await expect(POST(request())).rejects.toThrow('projection failed');
+    expect(h.membership).not.toHaveBeenCalled();
+    expect(h.promote).not.toHaveBeenCalled();
   });
 
-  it('revokes the old attestation exactly once and mints a new one when scopes change', async () => {
-    mockAppSelectWhere.mockResolvedValue([APP_ROW_WITH_CONNECTIONS_SCOPE]);
-    mockAttestationSelectWhere.mockResolvedValue([
-      { id: EXISTING_ATTESTATION_ID, payload: { scopes: ['profile:read'] } },
-    ]);
-
-    const res = await POST(
-      makeRequest({ appId: APP_ROW.id, scopes: ['profile:read', 'connections:read'] }) as never,
-    );
-    const body = await res.json();
-
-    expect(res.status).toBe(201);
-    expect(body.attestationId).not.toBe(EXISTING_ATTESTATION_ID);
-    expect(mockRevokeAttestationOnce).toHaveBeenCalledOnce();
-    expect(mockRevokeAttestationOnce).toHaveBeenCalledWith(
-      expect.objectContaining({ attestationId: EXISTING_ATTESTATION_ID }),
-    );
-    expect(mockAttestationInsertValues).toHaveBeenCalledOnce();
+  it('rejects unauthenticated callers before any grant or lookup', async () => {
+    h.auth.mockResolvedValue({ error: 'Unauthorized', status: 401 });
+    expect((await POST(request())).status).toBe(401);
+    expect(h.where).not.toHaveBeenCalled();
+    expect(h.upsert).not.toHaveBeenCalled();
   });
 
-  it('still mints the new attestation when a concurrent request already won the revoke race', async () => {
-    mockAppSelectWhere.mockResolvedValue([APP_ROW_WITH_CONNECTIONS_SCOPE]);
-    mockAttestationSelectWhere.mockResolvedValue([
-      { id: EXISTING_ATTESTATION_ID, payload: { scopes: ['profile:read'] } },
-    ]);
-    mockRevokeAttestationOnce.mockResolvedValue({ revoked: false });
+  it.each([
+    [{ scopes: [] }, 400],
+    [{ appId: APP.id, scopes: 'profile:read' }, 400],
+  ])('rejects malformed input %j without consent', async (body, status) => {
+    expect((await POST(request(body))).status).toBe(status);
+    expect(h.upsert).not.toHaveBeenCalled();
+  });
 
-    const res = await POST(
-      makeRequest({ appId: APP_ROW.id, scopes: ['profile:read', 'connections:read'] }) as never,
-    );
+  it('rejects invalid JSON without consent', async () => {
+    const response = await POST(new Request('https://kernel.test/api/auth/authorize', {
+      method: 'POST', body: '{',
+    }) as never);
+    expect(response.status).toBe(400);
+    expect(h.upsert).not.toHaveBeenCalled();
+  });
 
-    expect(res.status).toBe(201);
-    expect(mockAttestationInsertValues).toHaveBeenCalledOnce();
+  it('rejects unknown scopes without calling the helper', async () => {
+    h.validate.mockReturnValue({ valid: [], invalid: ['bogus:scope'] });
+    expect((await POST(request({ appId: APP.id, scopes: ['bogus:scope'] }))).status).toBe(400);
+    expect(h.upsert).not.toHaveBeenCalled();
+  });
+
+  it('rejects valid but unregistered scopes without calling the helper', async () => {
+    expect((await POST(request({ appId: APP.id, scopes: ['connections:read'] }))).status).toBe(400);
+    expect(h.upsert).not.toHaveBeenCalled();
+  });
+
+  it.each([['missing', [], 404], ['revoked', [{ ...APP, status: 'revoked' }], 403]] as const)(
+    'rejects a %s app without calling the helper', async (_name, rows, status) => {
+      h.where.mockResolvedValue(rows);
+      expect((await POST(request())).status).toBe(status);
+      expect(h.upsert).not.toHaveBeenCalled();
+      expect(h.promote).not.toHaveBeenCalled();
+    },
+  );
+
+  it('fails closed without a signing key', async () => {
+    vi.stubEnv('AUTH_PRIVATE_KEY', '');
+    expect((await POST(request())).status).toBe(500);
+    expect(h.upsert).not.toHaveBeenCalled();
   });
 });

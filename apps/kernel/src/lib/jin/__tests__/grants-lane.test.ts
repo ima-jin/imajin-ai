@@ -48,6 +48,96 @@ const {
   };
 });
 
+describe('live app authorization grouping (#3008)', () => {
+  const now = Date.parse('2026-10-20T12:00:00.000Z');
+  function app(overrides: Partial<AppAuthorizationSummary> = {}): AppAuthorizationSummary {
+    return {
+      attestationId: 'att_1', appDid: 'did:imajin:karaoke', appName: 'Karaoke',
+      scopes: ['profile:read'], authorizedAt: '2026-10-20T10:00:00.000Z',
+      revokedAt: null, expiresAt: null, ...overrides,
+    };
+  }
+
+  it('collapses ten live grants to newest plus nine exact surplus ids without mutating input', () => {
+    const apps = Array.from({ length: 10 }, (_, index) => app({
+      attestationId: `att_${index}`,
+      authorizedAt: `2026-10-20T10:0${index}:00.000Z`,
+      scopes: [`scope:${index}`],
+    }));
+    const before = structuredClone(apps);
+    const cards = normalizeAppAuthorizations(apps, now);
+    expect(cards).toHaveLength(1);
+    expect(cards[0]).toMatchObject({
+      id: 'app-authorization:att_9', appDid: 'did:imajin:karaoke',
+      capabilities: ['scope:9'], surplusGrantIds: ['att_8', 'att_7', 'att_6', 'att_5', 'att_4', 'att_3', 'att_2', 'att_1', 'att_0'],
+      revoke: { method: 'POST', path: '/api/auth/revoke', body: { attestationId: 'att_9' } },
+    });
+    expect(apps).toEqual(before);
+  });
+
+  it('groups by DID despite renamed labels and never combines equal labels across DIDs', () => {
+    const cards = normalizeAppAuthorizations([
+      app({ attestationId: 'a', appName: 'Old Karaoke' }),
+      app({ attestationId: 'b' }),
+      app({ attestationId: 'other', appDid: 'did:imajin:other' }),
+    ], now);
+    expect(cards).toHaveLength(2);
+    expect(cards.find(card => card.appDid === 'did:imajin:karaoke')).toMatchObject({
+      grantee: 'Karaoke', surplusGrantIds: ['a'],
+    });
+    expect(cards.find(card => card.appDid === 'did:imajin:other')?.surplusGrantIds).toBeUndefined();
+  });
+
+  it('compares actual instants, then greatest attestation id for tied issue times regardless of input order', () => {
+    const apps = [
+      app({ attestationId: 'z', authorizedAt: '2026-10-20T11:00:00+02:00' }),
+      app({ attestationId: 'b', authorizedAt: '2026-10-20T10:00:00Z' }),
+      app({ attestationId: 'a', authorizedAt: '2026-10-20T10:00:00.000Z' }),
+    ];
+    for (const input of [apps, [...apps].reverse()]) {
+      expect(normalizeAppAuthorizations(input, now)[0]).toMatchObject({
+        id: 'app-authorization:b', surplusGrantIds: ['a', 'z'],
+      });
+    }
+  });
+
+  it('excludes revoked and expired (including exactly now) from live count and cleanup', () => {
+    const cards = normalizeAppAuthorizations([
+      app({ attestationId: 'live' }),
+      app({ attestationId: 'future', expiresAt: '2026-10-20T12:00:00.001Z' }),
+      app({ attestationId: 'expired', expiresAt: '2026-10-20T11:59:59.999Z' }),
+      app({ attestationId: 'boundary', expiresAt: '2026-10-20T12:00:00.000Z' }),
+      app({ attestationId: 'revoked', revokedAt: '2026-10-20T11:00:00.000Z' }),
+      app({ attestationId: 'both', revokedAt: '2026-10-20T11:00:00.000Z', expiresAt: '2026-10-20T11:00:00.000Z' }),
+    ], now);
+    expect(cards).toHaveLength(5);
+    expect(cards.find(card => card.status === 'active')).toMatchObject({
+      id: 'app-authorization:live', surplusGrantIds: ['future'],
+    });
+    expect(cards.filter(card => card.status === 'expired')).toHaveLength(2);
+    expect(cards.filter(card => card.status === 'revoked')).toHaveLength(2);
+    for (const card of cards.filter(card => card.status !== 'active')) {
+      expect(card.revocable).toBe(false);
+      expect(card.revoke).toBeNull();
+      expect(card.surplusGrantIds).toBeUndefined();
+    }
+  });
+
+  it('preserves the existing single-grant revoke shape and handles no grants', () => {
+    expect(normalizeAppAuthorizations([], now)).toEqual([]);
+    const [card] = normalizeAppAuthorizations([app()], now);
+    expect(card.surplusGrantIds).toBeUndefined();
+    expect(card).toMatchObject({ status: 'active', revocable: true, revoke: { body: { attestationId: 'att_1' } } });
+  });
+
+  it('uses deterministic case-sensitive id ordering rather than locale collation', () => {
+    const cards = normalizeAppAuthorizations([
+      app({ attestationId: 'att_A' }), app({ attestationId: 'att_a' }),
+    ], now);
+    expect(cards[0]).toMatchObject({ id: 'app-authorization:att_a', surplusGrantIds: ['att_A'] });
+  });
+});
+
 vi.mock('@/src/db', () => ({
   db: { select: mockDbSelect },
   identities: { id: 'identities.id', subtype: 'identities.subtype', scope: 'identities.scope' },
@@ -66,6 +156,7 @@ vi.mock('@/src/db', () => ({
     payload: 'attestations.payload',
     issuedAt: 'attestations.issuedAt',
     revokedAt: 'attestations.revokedAt',
+    expiresAt: 'attestations.expiresAt',
   },
   registryApps: { appDid: 'registryApps.appDid', name: 'registryApps.name' },
 }));
@@ -103,6 +194,8 @@ import {
   listAppAuthorizationsForOwner,
   listGrantsForOperator,
   listAuthGrantsForDelegator,
+  normalizeAppAuthorizations,
+  type AppAuthorizationSummary,
 } from '../grants-lane';
 import { listImportOwners } from '@/src/lib/vault/import-authority';
 
@@ -144,11 +237,13 @@ describe('listAppAuthorizationsForOwner', () => {
         payload: { scopes: ['supply:read'] },
         issuedAt: new Date('2026-02-01T00:00:00.000Z'),
         revokedAt: null,
+        expiresAt: null,
       },
     ]);
     pushWhereResult([{ appDid: 'did:imajin:app1', name: 'Muse Code' }]);
 
     const result = await listAppAuthorizationsForOwner(OPERATOR_DID);
+    expect(mockDbSelect).toHaveBeenCalledWith(expect.objectContaining({ expiresAt: 'attestations.expiresAt' }));
 
     expect(result).toEqual([
       {
@@ -158,6 +253,7 @@ describe('listAppAuthorizationsForOwner', () => {
         scopes: ['supply:read'],
         authorizedAt: '2026-02-01T00:00:00.000Z',
         revokedAt: null,
+        expiresAt: null,
       },
     ]);
   });
@@ -178,6 +274,20 @@ describe('listAppAuthorizationsForOwner', () => {
     const result = await listAppAuthorizationsForOwner(OPERATOR_DID);
     expect(result).toEqual([]);
     expect(mockWhereQueue).toHaveBeenCalledTimes(1);
+  });
+
+  it('reads persisted expiration through to non-live normalization', async () => {
+    pushWhereResult([{
+      attestationId: 'expired', appDid: 'did:imajin:app', payload: null,
+      issuedAt: new Date('2026-10-20T10:00:00.000Z'), revokedAt: null,
+      expiresAt: new Date('2026-10-20T12:00:00.000Z'),
+    }]);
+    pushWhereResult([]);
+    const apps = await listAppAuthorizationsForOwner(OPERATOR_DID);
+    expect(apps[0].expiresAt).toBe('2026-10-20T12:00:00.000Z');
+    expect(normalizeAppAuthorizations(apps, Date.parse(apps[0].expiresAt!))[0]).toMatchObject({
+      status: 'expired', revocable: false, revoke: null,
+    });
   });
 });
 

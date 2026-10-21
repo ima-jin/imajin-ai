@@ -22,9 +22,12 @@ const h = vi.hoisted(() => ({
   projectCalls: [] as Row[],
   projectShouldThrow: false,
   membership: vi.fn(),
+  upsert: vi.fn(),
+  effectiveDid: 'did:imajin:business',
 }));
 
 vi.mock('@/src/lib/kernel/app-membership', () => ({ addConsentedApp: h.membership }));
+vi.mock('@/src/lib/auth/upsert-app-authorization', () => ({ upsertAppAuthorization: h.upsert }));
 
 vi.mock('next/server', () => ({
   NextResponse: {
@@ -63,6 +66,7 @@ vi.mock('@/src/db', () => {
       return Object.assign(Promise.resolve(rows), { limit: async () => rows });
     },
   });
+
   return {
     db: {
       select: () => ({ from: selectFrom }),
@@ -85,7 +89,7 @@ vi.mock('@imajin/auth', () => ({
 }));
 
 vi.mock('@/app/auth/lib/get-effective-did', () => ({
-  getEffectiveDid: async () => ({ sessionDid: h.sessionDid }),
+  getEffectiveDid: async () => ({ sessionDid: h.sessionDid, effectiveDid: h.effectiveDid }),
 }));
 
 vi.mock('@imajin/logger', () => ({
@@ -140,6 +144,7 @@ function consentBody(overrides: Record<string, unknown> = {}) {
 
 beforeEach(() => {
   h.sessionDid = OWNER;
+  h.upsert.mockReset().mockResolvedValue('att_shared');
   h.existingAttestation = null;
   h.insertedCodes = [];
   h.projectCalls = [];
@@ -182,19 +187,60 @@ describe('POST /oauth/authorize — consent commit auto-publishes granted scopes
     expect(h.insertedCodes).toHaveLength(1);
   });
 
-  it('calls the projection again on re-consent (reusing the existing attestation)', async () => {
-    h.existingAttestation = { id: 'att_existing', revokedAt: null };
+  it('binds each new code to the helper-returned reusable attestation ID', async () => {
+    h.upsert.mockResolvedValue('att_existing');
     const res = await callPost(consentBody());
     expect(res.status).toBe(200);
+    expect(h.insertedCodes[0].attestationId).toBe('att_existing');
     expect(projectConsentedScopes).toHaveBeenCalledOnce();
     expect(h.membership).toHaveBeenCalledWith(OWNER, 'coffee');
   });
-
-  it('renews expired consent instead of reusing the expired grant', async () => {
-    h.existingAttestation = { id: 'att_expired', expiresAt: new Date(0) };
+  it('delegates validated scopes to the shared helper under the session DID, not the effective DID', async () => {
+    h.clientRow = { ...h.clientRow, requestedScopes: [SCOPE_A] };
     expect((await callPost(consentBody())).status).toBe(200);
-    expect(h.insertedCodes[0].attestationId).not.toBe('att_expired');
+    expect(h.upsert).toHaveBeenCalledOnce();
+    expect(h.upsert).toHaveBeenCalledWith({
+      ownerDid: OWNER, appDid: CLIENT_APP_DID, appId: 'app_test',
+      callbackUrl: CALLBACK, scopes: [SCOPE_A], privateKey: 'test-key',
+    });
+    expect(h.insertedCodes[0]).toMatchObject({
+      attestationId: 'att_shared', userDid: OWNER, scope: SCOPE_A,
+    });
     expect(h.membership).toHaveBeenCalledWith(OWNER, 'coffee');
+  });
+
+  it.each(['totally:unknown', 'not:allowed'])('rejects unknown scopes %j without granting', async (scope) => {
+    expect((await callPost(consentBody({ scope }))).status).toBe(400);
+    expect(h.upsert).not.toHaveBeenCalled();
+    expect(h.insertedCodes).toEqual([]);
+  });
+
+  it('rejects a supported scope not registered by the client without granting', async () => {
+    h.clientRow = { ...h.clientRow, requestedScopes: [SCOPE_A] };
+    expect((await callPost(consentBody({ scope: SCOPE_B }))).status).toBe(400);
+    expect(h.upsert).not.toHaveBeenCalled();
+  });
+
+  it('does not call the helper when default scopes resolve to an empty registered set', async () => {
+    h.clientRow = { ...h.clientRow, requestedScopes: [] };
+    expect((await callPost(consentBody({ scope: '' }))).status).toBe(400);
+    expect(h.upsert).not.toHaveBeenCalled();
+  });
+
+  it('rejects an absent session without invoking the shared helper', async () => {
+    h.sessionDid = null;
+    expect((await callPost(consentBody())).status).toBe(401);
+    expect(h.upsert).not.toHaveBeenCalled();
+    expect(h.membership).not.toHaveBeenCalled();
+    expect(h.insertedCodes).toEqual([]);
+  });
+
+  it('never issues a code or publishes connector consent when the atomic app grant fails', async () => {
+    h.upsert.mockRejectedValue(new Error('app projection failed'));
+    await expect(callPost(consentBody())).rejects.toThrow('app projection failed');
+    expect(h.membership).not.toHaveBeenCalled();
+    expect(h.insertedCodes).toEqual([]);
+    expect(projectConsentedScopes).not.toHaveBeenCalled();
   });
 
   it('is non-fatal: a projection failure still returns a successful consent commit', async () => {

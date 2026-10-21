@@ -49,6 +49,7 @@ vi.mock('@/src/db', () => ({
 vi.mock('drizzle-orm', () => ({
   eq: (...args: unknown[]) => ({ eq: args }),
   and: (...args: unknown[]) => ({ and: args }),
+  or: (...args: unknown[]) => ({ or: args }),
   isNull: (...args: unknown[]) => ({ isNull: args }),
   ne: (...args: unknown[]) => ({ ne: args }),
 }));
@@ -129,9 +130,23 @@ describe('revokeAttestationOnce (#1795)', () => {
     expect(mocks.insertValuesMock).toHaveBeenCalledOnce();
   });
 
+  it('uses the supplied transaction for claim, signed proof and refresh-token invalidation', async () => {
+    mocks.updateReturningMock.mockResolvedValueOnce([{ subjectDid: SUBJECT_DID }]);
+    const transaction = {
+      update: vi.fn(() => ({ set: mocks.updateSetMock })),
+      insert: vi.fn(() => ({ values: mocks.insertValuesMock })),
+    };
+    await revokeAttestationOnce({
+      attestationId: ATTESTATION_ID, revokedByDid: ISSUER_DID, privateKey: 'test-private-key',
+    }, transaction as never);
+    expect(transaction.update).toHaveBeenCalledTimes(2);
+    expect(transaction.insert).toHaveBeenCalledOnce();
+    expect(mocks.updateMock).not.toHaveBeenCalled();
+    expect(mocks.insertMock).not.toHaveBeenCalled();
+  });
+
   // #1790: bilateral attestations must be immune to unilateral revoke/cancel
-  // by construction, not by coincidence — an explicit guard in the CAS
-  // itself, not merely absence of a mutation path.
+  // by construction, not by coincidence — an explicit guard in the CAS.
   it('guards the compare-and-swap with an explicit exclusion of bilateral rows', async () => {
     mocks.updateReturningMock.mockResolvedValueOnce([]);
 
@@ -143,8 +158,11 @@ describe('revokeAttestationOnce (#1795)', () => {
 
     // The claim UPDATE's `.where(and(eq(...), isNull(...), ne(...)))` call
     // must include a `ne` condition excluding attestationStatus = 'bilateral'.
-    const whereClause = mocks.updateWhereMock.mock.calls[0][0] as { and: Array<{ ne?: unknown[] }> };
-    const neCondition = whereClause.and.find((condition) => 'ne' in condition);
+    type Condition = { ne?: unknown[]; or?: Condition[] };
+    const whereClause = mocks.updateWhereMock.mock.calls[0][0] as { and: Condition[] };
+    // Accept a null-safe OR around the exclusion as well as a bare inequality.
+    const neCondition = whereClause.and.flatMap(condition => condition.or ?? [condition])
+      .find((condition) => 'ne' in condition);
     expect(neCondition).toEqual({ ne: ['attestations.attestationStatus', 'bilateral'] });
   });
 });

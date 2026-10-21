@@ -58,15 +58,15 @@ export async function projectAppAuthorizationGrant(opts: {
   ownerDid: string;
   appDid: string;
   scopes: readonly string[];
-}): Promise<void> {
+}, database: Pick<typeof db, 'insert' | 'update'> = db): Promise<void> {
   const { ownerDid, appDid, scopes } = opts;
 
   if (scopes.length === 0) {
-    await revokeAppAuthorizationGrant({ ownerDid, appDid });
+    await revokeAppAuthorizationGrant({ ownerDid, appDid }, database);
     return;
   }
 
-  await db
+  await database
     .insert(channelLinks)
     .values({
       id: generateId('clink'),
@@ -92,10 +92,10 @@ export async function projectAppAuthorizationGrant(opts: {
 export async function revokeAppAuthorizationGrant(opts: {
   ownerDid: string;
   appDid: string;
-}): Promise<void> {
+}, database: Pick<typeof db, 'update'> = db): Promise<void> {
   const { ownerDid, appDid } = opts;
 
-  await db
+  await database
     .update(channelLinks)
     .set({ status: 'revoked', revokedAt: new Date() })
     .where(
