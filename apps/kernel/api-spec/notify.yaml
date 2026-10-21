@@ -2,7 +2,23 @@ openapi: "3.1.0"
 info:
   title: imajin notify
   version: "2.0.0"
-  description: Centralized notifications, preferences, event broadcasts, and interest subscriptions. Runs as a kernel service at /{service}/api/... on a shared node domain. Port 3008/7008, schema notify.
+  description: |
+    Centralized notifications, preferences, event broadcasts, and interest subscriptions.
+    Runs as a kernel service at /{service}/api/... on a shared node domain. Port 3008/7008, schema notify.
+
+    Direct connection requests publish connection.requested and use the
+    connection:request-received template. One notification is stored per request;
+    email is optional and requires a verified recipient email and enabled email
+    preferences. Direct-request emails are limited to one per sender–recipient
+    pair per 24 hours; requests within that window remain in-app only. Mail
+    failure or missing mail configuration does not fail the connection request.
+    Cancel, decline, and accept do not send request emails.
+
+    The template identifies the requester name, handle and acting DID, and names
+    the person sending on behalf of an organization. Accepting grants no
+    membership, roster access, or account access. The accept/decline link is an
+    absolute /connections#incoming-requests URL. Recipient email addresses are
+    resolved privately, never included in event payloads or notification data.
 servers:
   - url: https://{node}.imajin.ai/{service}
     description: production node
@@ -236,7 +252,7 @@ paths:
           in: path
           required: true
           schema: { type: string }
-          description: Notification scope (e.g. chat.message, pay.received, connection.request)
+          description: Notification scope (e.g. chat:mention, connection:request-received). Connection request received is configurable in both notification settings screens.
       responses:
         "200":
           description: Preference for scope

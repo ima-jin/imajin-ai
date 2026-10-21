@@ -79,6 +79,7 @@ describe('org connection requests', () => {
     const onConnected = vi.fn();
     render(<ConnectionRequests onConnected={onConnected} />);
     expect(screen.getByRole('region', { name: 'Incoming connection requests' }).textContent).toContain('The Business');
+    expect(screen.getByRole('region', { name: 'Incoming connection requests' }).id).toBe('incoming-requests');
     expect(screen.getByText(ORG)).toBeDefined();
     fireEvent.click(screen.getByRole('button', { name: action === 'accept' ? 'Accept' : 'Decline' }));
     await waitFor(() => expect(screen.getByRole('status').textContent).toContain(action === 'accept' ? 'accepted' : 'declined'));

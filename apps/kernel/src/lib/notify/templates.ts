@@ -441,7 +441,42 @@ function ticketRegistrationReminderHtml(data: Record<string, any>): string {
 // Templates Array
 // =============================================================================
 
+const CONNECTION_REQUEST_ACCESS = 'Accepting creates a connection only. It grants no membership, roster access, or account access.';
+
+function connectionRequester(data: Record<string, unknown>): string {
+  const rawHandle = typeof data.fromHandle === 'string' ? data.fromHandle.replace(/^@/, '') : '';
+  const name = data.fromName || (rawHandle ? `@${rawHandle}` : data.fromDid) || 'Someone';
+  const handle = rawHandle && data.fromName ? ` (@${rawHandle})` : '';
+  const did = data.fromDid && name !== data.fromDid ? ` · ${data.fromDid}` : '';
+  return `${name}${handle}${did}`;
+}
+
+function connectionRequestBody(data: Record<string, unknown>): string {
+  const actor = data.actorDid && data.actorDid !== data.fromDid
+    ? ` Sent by ${data.actorName || data.actorDid} on behalf of ${data.fromName || data.fromDid}.`
+    : '';
+  const note = data.note ? ` Note: ${data.note}` : '';
+  return `${connectionRequester(data)} wants to connect with you.${actor} ${CONNECTION_REQUEST_ACCESS}${note}`;
+}
+
 export const templates: NotifyTemplate[] = [
+  {
+    scope: 'connection:request-received',
+    urgency: 'normal',
+    title: (data) => `${data.fromName || data.fromHandle || data.fromDid || 'Someone'} wants to connect`,
+    body: connectionRequestBody,
+    email: {
+      subject: (data) => `Connection request from ${data.fromName || data.fromHandle || data.fromDid || 'Someone'}`,
+      html: (data) => {
+        const url = escapeHtml(`${buildPublicUrlAbsolute('kernel').replace(/\/$/, '')}/connections#incoming-requests`);
+        const body = escapeHtml(connectionRequestBody(data));
+        return simpleEmailHtml(
+          'New connection request',
+          `<span style="overflow-wrap:anywhere;word-break:break-word;">${body}</span><br><br><a href="${url}" style="color:#f97316;text-decoration:none;font-weight:600;">Accept or decline the connection request &rarr;</a>`,
+        );
+      },
+    },
+  },
   {
     scope: "market:sale",
     urgency: "normal",
