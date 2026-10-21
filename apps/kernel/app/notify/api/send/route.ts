@@ -20,6 +20,7 @@ import { recordApprovalRequested } from '@/src/lib/notify/operator-approvals-ser
 import { resolveApprovalAddressee } from '@/src/lib/notify/approval-addressing';
 import { authenticateNotifySender, type NotifySender } from '@/src/lib/notify/service-auth';
 import { pushWebNotificationToOperator } from '@/src/lib/notify/web-push';
+import { CONNECTION_REQUEST_SCOPE, deliverConnectionRequestEmail, sanitizeConnectionRequestData } from '@/src/lib/notify/connection-request-email';
 
 export function OPTIONS(request: NextRequest) {
   return corsOptions(request);
@@ -97,9 +98,10 @@ async function resolveAndSendEmail(
   template: import('@/src/lib/notify/templates').NotifyTemplate,
   log: { error: (obj: Record<string, unknown>, msg: string) => void },
   context: { notifId: string; sender: NotifySender; scope: string },
+  verifiedEmail?: string,
 ): Promise<EmailDeliveryResult> {
   const { notifId, sender, scope } = context;
-  const recipientEmail = await resolveRecipientEmail(to, data);
+  const recipientEmail = verifiedEmail ?? await resolveRecipientEmail(to, data);
   if (!recipientEmail) {
     return { delivered: false, emailResolved: false, error: 'No email address found for recipient' };
   }
@@ -324,6 +326,29 @@ async function resolveEmailChannel(
   return { channels: emailResult.delivered ? ['email'] : [], emailResult };
 }
 
+/** The specialized helper records email under the same lock as its quota check. */
+async function resolveConnectionRequestEmail(
+  emailEnabled: boolean | null,
+  template: NotifyTemplate | undefined,
+  to: string,
+  data: Record<string, unknown>,
+  log: { error: (obj: Record<string, unknown>, msg: string) => void },
+  context: { notifId: string; sender: NotifySender; scope: string },
+): Promise<EmailDeliveryResult | null> {
+  if (!emailEnabled || !template?.email) return null;
+  try {
+    return await deliverConnectionRequestEmail({
+      recipientDid: to,
+      fromDid: data.fromDid,
+      notificationId: context.notifId,
+      deliver: (email) => resolveAndSendEmail(to, data, template, log, context, email),
+    });
+  } catch {
+    log.error({ id: context.notifId }, 'Connection request email delivery unavailable');
+    return { delivered: false, emailResolved: false, error: 'Email delivery unavailable' };
+  }
+}
+
 export const POST = withLogger('kernel', async (request, { log }) => {
   const cors = corsHeaders(request);
 
@@ -344,7 +369,8 @@ export const POST = withLogger('kernel', async (request, { log }) => {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400, headers: cors });
   }
 
-  const { to, scope, data = {} } = body;
+  const { to, scope } = body;
+  const data = sanitizeConnectionRequestData(scope, body.data ?? {});
   if (!to || !scope) {
     return NextResponse.json({ error: 'Missing required fields: to, scope' }, { status: 400, headers: cors });
   }
@@ -408,7 +434,11 @@ export const POST = withLogger('kernel', async (request, { log }) => {
   // Send email if enabled and template has email config (#1854: the result
   // is a structured outcome, not a boolean, so the response below can be
   // honest about whether the email leg actually delivered).
-  const { channels: emailChannels, emailResult } = await resolveEmailChannel(emailEnabled, template, recipientDid, data, log, { notifId: id, sender, scope });
+  const emailDelivery = scope === CONNECTION_REQUEST_SCOPE
+    ? { channels: [], emailResult: null }
+    : await resolveEmailChannel(emailEnabled, template, recipientDid, data, log, { notifId: id, sender, scope });
+  const { channels: emailChannels } = emailDelivery;
+  let { emailResult } = emailDelivery;
 
   const channelsSent: string[] = [...inAppChannels, ...emailChannels];
 
@@ -418,6 +448,9 @@ export const POST = withLogger('kernel', async (request, { log }) => {
       .update(notifications)
       .set({ channelsSent })
       .where(eq(notifications.id, id));
+  }
+  if (scope === CONNECTION_REQUEST_SCOPE) {
+    emailResult = await resolveConnectionRequestEmail(emailEnabled, template, recipientDid, data, log, { notifId: id, sender, scope });
   }
 
   // #2059 — persist the proposal lifecycle row alongside the notification.

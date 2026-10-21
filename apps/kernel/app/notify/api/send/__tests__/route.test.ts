@@ -8,6 +8,12 @@
  * preference suppresses it, and a failed push still returns 200.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+const { mockEmailSql } = vi.hoisted(() => ({ mockEmailSql: vi.fn() }));
+vi.mock('@imajin/db', () => ({
+  getClient: () => ({
+    begin: async (_isolation: string, callback: (tx: unknown) => Promise<unknown>) => callback({ unsafe: mockEmailSql }),
+  }),
+}));
 
 // ─── Mocks ───────────────────────────────────────────────────────────────────
 
@@ -17,6 +23,92 @@ const { mockInsertValues, mockSelectLimit, mockUpdateWhere, mockDbUpdate } = vi.
   const mockUpdateWhere = vi.fn().mockResolvedValue(undefined);
   const mockDbUpdate = vi.fn(() => ({ set: vi.fn(() => ({ where: mockUpdateWhere })) }));
   return { mockInsertValues, mockSelectLimit, mockUpdateWhere, mockDbUpdate };
+});
+describe('connection request verified email policy (#3013)', () => {
+  const scope = 'connection:request-received';
+  function requestBody() {
+    return { to: RECIPIENT, scope, data: { fromDid: 'did:imajin:requester', email: 'malicious@example.com', inviteId: 'inv_request' } };
+  }
+  beforeEach(() => {
+    vi.mocked(getTemplate).mockReturnValue({ ...emailTemplate(), scope });
+  });
+  function verifiedRecipient() {
+    mockEmailSql
+      .mockResolvedValueOnce([]) // advisory lock
+      .mockResolvedValueOnce([{ value: 'verified@example.com' }])
+      .mockResolvedValueOnce([]); // no prior successful email
+  }
+
+  it('strips payload email from stored/WS data and sends only to a verified credential', async () => {
+    verifiedRecipient();
+    const res = await POST(makeReq(requestBody()));
+    expect(await res.json()).toMatchObject({ sent: true, emailResolved: true });
+    expect(insertedRow().data).toEqual({ fromDid: 'did:imajin:requester', inviteId: 'inv_request' });
+    expect(pushedFrame().data).toEqual(insertedRow().data);
+    expect(sendEmail).toHaveBeenCalledWith(expect.objectContaining({ to: 'verified@example.com', purpose: 'notifications' }));
+    expect(mockInsertValues).toHaveBeenCalledOnce();
+    expect(mockSelectLimit).toHaveBeenCalledOnce(); // preferences only, never profiles/identities
+    expect(mockEmailSql.mock.calls.at(-1)?.[0]).toContain('UPDATE notify.notifications');
+    expect(recordedChannels()).toEqual(['inapp', 'ws']); // email appended under lock, never overwritten
+  });
+
+  it.each(['absent', 'unverified'])('keeps in-app and never trusts payload/profile email when credential is %s', async () => {
+    const res = await POST(makeReq(requestBody()));
+    expect(res.status).toBe(200);
+    expect(sendEmail).not.toHaveBeenCalled();
+    expect(mockEmailSql.mock.calls[1][0]).toContain('verified_at IS NOT NULL');
+    expect(mockSelectLimit).toHaveBeenCalledOnce();
+    expect(mockInsertValues).toHaveBeenCalledOnce();
+    expect(recordedChannels()).toEqual(['inapp', 'ws']);
+  });
+
+  it('respects email opt-out without losing in-app notification', async () => {
+    mockSelectLimit.mockResolvedValueOnce([{ email: false, inapp: true }]);
+    await POST(makeReq(requestBody()));
+    expect(sendEmail).not.toHaveBeenCalled();
+    expect(mockEmailSql).not.toHaveBeenCalled();
+    expect(recordedChannels()).toEqual(['inapp', 'ws']);
+  });
+
+  it.each([
+    { success: false, error: 'provider unavailable' },
+    { success: false, error: 'mail_not_configured' },
+  ])('does not record email when delivery fails: %s', async (result) => {
+    verifiedRecipient();
+    vi.mocked(sendEmail).mockResolvedValueOnce(result);
+    const res = await POST(makeReq(requestBody()));
+    expect(await res.json()).toMatchObject({ sent: false, emailResolved: true });
+    expect(mockEmailSql).toHaveBeenCalledTimes(3);
+    expect(mockInsertValues).toHaveBeenCalledOnce();
+    expect(recordedChannels()).toEqual(['inapp', 'ws']);
+  });
+
+  it('isolates thrown provider and database errors from the in-app leg', async () => {
+    verifiedRecipient();
+    vi.mocked(sendEmail).mockRejectedValueOnce(new Error('provider unavailable'));
+    const res = await POST(makeReq(requestBody()));
+    expect(await res.json()).toMatchObject({ sent: false });
+    expect(recordedChannels()).toEqual(['inapp', 'ws']);
+    mockEmailSql.mockRejectedValueOnce(new Error('database unavailable'));
+    const next = await POST(makeReq(requestBody()));
+    expect(next.status).toBe(200);
+    expect(await next.json()).toMatchObject({ sent: false, error: 'Email delivery unavailable' });
+  });
+
+  it('skips duplicate email while retaining one new notification row', async () => {
+    mockEmailSql.mockResolvedValueOnce([]).mockResolvedValueOnce([{ value: 'verified@example.com' }]).mockResolvedValueOnce([{ exists: 1 }]);
+    await POST(makeReq(requestBody()));
+    expect(sendEmail).not.toHaveBeenCalled();
+    expect(mockInsertValues).toHaveBeenCalledOnce();
+    expect(recordedChannels()).toEqual(['inapp', 'ws']);
+  });
+
+  it('does not enter email policy without an email template', async () => {
+    vi.mocked(getTemplate).mockReturnValue(undefined);
+    await POST(makeReq(requestBody()));
+    expect(mockEmailSql).not.toHaveBeenCalled();
+    expect(recordedChannels()).toEqual(['inapp', 'ws']);
+  });
 });
 describe('Reach principal in-app and phone delivery (#2588)', () => {
   function reachBody() {
@@ -242,6 +334,7 @@ function recordedChannels(): string[] {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mockEmailSql.mockReset().mockResolvedValue([]);
   mockInsertValues.mockResolvedValue(undefined);
   mockSelectLimit.mockResolvedValue([]); // no preferences row → email + inapp default on
   mockUpdateWhere.mockResolvedValue(undefined);
