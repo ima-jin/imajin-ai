@@ -13,6 +13,7 @@ const h = vi.hoisted(() => ({
   promote: vi.fn(),
   project: vi.fn(),
   revoke: vi.fn(),
+  upsert: vi.fn(),
 }));
 
 vi.mock('@/src/db', async () => {
@@ -56,6 +57,7 @@ vi.mock('@/src/lib/kernel/app-membership', () => ({ addConsentedApp: h.add }));
 vi.mock('@/src/lib/auth/promote-actor', () => ({ promoteActorOnGrant: h.promote }));
 vi.mock('@/src/lib/auth/revoke-attestation', () => ({ revokeAttestationOnce: h.revoke }));
 vi.mock('@/src/lib/auth/app-authorization-grant', () => ({ projectAppAuthorizationGrant: h.project }));
+vi.mock('@/src/lib/auth/upsert-app-authorization', () => ({ upsertAppAuthorization: h.upsert }));
 vi.mock('@/src/lib/kernel/consent-scope-projection', () => ({ projectConsentedScopes: h.project }));
 
 import { POST as keypairConsent } from '../route';
@@ -97,6 +99,7 @@ beforeAll(async () => {
 afterAll(async () => { await client?.close(); });
 beforeEach(async () => {
   vi.clearAllMocks();
+  h.upsert.mockResolvedValue('att_shared');
   h.sessionDid = 'person';
   h.actingFor = undefined;
   h.failMembership = false;
@@ -127,6 +130,7 @@ async function assertNoConsentEffects() {
   expect(h.promote).not.toHaveBeenCalled();
   expect(h.project).not.toHaveBeenCalled();
   expect(h.revoke).not.toHaveBeenCalled();
+  expect(h.upsert).not.toHaveBeenCalled();
   expect((await client.query('SELECT * FROM auth.oauth_authorization_codes')).rows).toEqual([]);
 }
 
@@ -158,6 +162,9 @@ describe.each(lanes)('$name private sign-in audience', (lane) => {
     if (viewer === 'owner') h.sessionDid = 'owner';
     else await client.exec("INSERT INTO auth.identity_members VALUES ('owner','person',NULL)");
     expect((await consent()).status).toBe(lane.success);
+    expect(h.upsert).toHaveBeenCalledWith(expect.objectContaining({
+      ownerDid: h.sessionDid, appDid: 'app-did', scopes: ['media:read'],
+    }));
     expect(h.add).toHaveBeenCalledWith(h.sessionDid, 'private-app');
   });
 
