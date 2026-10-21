@@ -169,7 +169,7 @@ describe('node-issued-only types (#2081)', () => {
     expect(h.mockInsertValues).not.toHaveBeenCalled();
     expect(h.mockPublish).not.toHaveBeenCalled();
   });
-  it.each(['onboard.link.sent', 'onboard.link.requested'])('rejects a caller-forged %s event', async (type) => {
+  it.each(['onboard.link.sent', 'onboard.link.requested', 'cloudflare.mutation'])('rejects a caller-forged %s event', async (type) => {
     const res = await POST(makeReq(baseBody({ type })));
     expect(res.status).toBe(403);
     expect(h.mockInsertValues).not.toHaveBeenCalled();

@@ -31,4 +31,29 @@ describe('published horizon API contract', () => {
     expect(spec.components.schemas.Horizon.properties.depth.readOnly).toBe(true);
     expect(spec.components.schemas.StepUpdate.properties).not.toHaveProperty('zone');
   });
+  it('documents ref-only issue binding without dropping the optional OUTCOME regex', () => {
+    const issue = spec.components.schemas.StepUpdate.properties.issue;
+    expect(issue.required).toEqual(['ref']);
+    expect(issue.properties.outcome.pattern).toBe(String.raw`^OUTCOME\b`);
+    expect(issue.description).toContain('never invented');
+  });
+  it('publishes the signed kernel-root receipt path and non-disclosing responses', () => {
+    const receipt = spec.paths['/api/loops/receipts'].post;
+    expect(receipt.operationId).toBe('lookupLoopReceipt');
+    expect(receipt.security).toEqual([]);
+    expect(receipt.servers[0].url).toBe('https://{node}.imajin.ai');
+    expect(receipt.requestBody.content['application/json'].schema.$ref).toBe('#/components/schemas/LoopReceiptRequest');
+    const schemas = spec.components.schemas;
+    expect(schemas.LoopReceiptRequest.required).toEqual(['type', 'payload', 'publisherDid', 'signature']);
+    expect(schemas.LoopReceiptRequest.properties.type.const).toBe('loop.receipt');
+    const payload = schemas.LoopReceiptRequest.properties.payload;
+    expect(payload.required).toEqual(['loopId', 'principal', 'envelopeHash', 'at']);
+    expect(payload.additionalProperties).toBe(false);
+    expect(payload.properties.envelopeHash.pattern).toBe('^[0-9a-f]{64}$');
+    expect(payload.properties.at.description).toContain('original envelope at is never changed');
+    expect(schemas.LoopReceipt.required).toEqual(['status', 'eventId']);
+    expect(schemas.LoopReceiptNotFound.properties.status.const).toBe('not_found');
+    expect(Object.keys(receipt.responses)).toEqual(expect.arrayContaining(['200', '400', '404', '413', '500']));
+    expect(receipt.responses['404'].content['application/json'].schema.$ref).toBe('#/components/schemas/LoopReceiptNotFound');
+  });
 });

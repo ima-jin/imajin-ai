@@ -38,6 +38,7 @@ const KERNEL_EXTENSION_SCOPES = [
   'agent:reach',
   'loops:publish',
   'evidence:publish',
+  'cloudflare:read', 'cloudflare:dns', 'cloudflare:cache', 'cloudflare:ssl', 'cloudflare:custom-hostnames',
 ];
 
 describe('GRANT_SCOPE_REGISTRY structure', () => {

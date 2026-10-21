@@ -3,6 +3,8 @@ import type { Logger } from '@imajin/logger';
 import { db, assets, identities, attestationSignatures, type NewAttestationSignature } from '@/src/db';
 import { eq } from 'drizzle-orm';
 import { verifyDocumentSignatureToken } from '@/src/lib/auth/document-signatures';
+import { copyDocumentToSigner, type DocumentStore } from './document-copies';
+// Document agreements retain the issuing DID separately from the acting human.
 
 interface ValidationFailure {
   status: number;
@@ -13,6 +15,7 @@ interface CallerIdentity {
   publicKey: string;
   name: string | null;
   handle: string | null;
+  scope?: string;
 }
 
 interface DocumentRequestInput {
@@ -128,7 +131,7 @@ async function validateAssetOwnership(
 
 async function loadCallerIdentityForDocument(callerDid: string): Promise<CallerIdentityResult> {
   const [callerIdentity] = await db
-    .select({ publicKey: identities.publicKey, name: identities.name, handle: identities.handle })
+    .select({ publicKey: identities.publicKey, name: identities.name, handle: identities.handle, scope: identities.scope })
     .from(identities)
     .where(eq(identities.id, callerDid))
     .limit(1);
@@ -173,7 +176,15 @@ export async function validateDocumentRequestInput(params: {
 
   const fieldsResult = parseRequiredDocumentFields(body);
   if (!fieldsResult.ok) return fieldsResult;
-  const { title, documentAssetId, documentHash, signerDids, authorJws } = fieldsResult.fields;
+  const { title, documentAssetId, documentHash, authorJws } = fieldsResult.fields;
+  const signerDids = [...new Set(fieldsResult.fields.signerDids)].filter((did) => did !== callerDid);
+  if (signerDids.length === 0) {
+    return { ok: false, failure: { status: 400, error: 'At least one distinct counterparty required' } };
+  }
+  const payload = parseOptionalDocumentPayload(body);
+  if (payload?.documentHash !== undefined && payload.documentHash !== documentHash) {
+    return { ok: false, failure: { status: 400, error: 'Document payload hash mismatch' } };
+  }
 
   const ownershipResult = await validateAssetOwnership(documentAssetId, documentHash, callerDid);
   if (!ownershipResult.ok) return ownershipResult;
@@ -194,7 +205,7 @@ export async function validateDocumentRequestInput(params: {
       documentAssetId,
       documentHash,
       signerDids,
-      payload: parseOptionalDocumentPayload(body),
+      payload,
       authorJws,
       expiry: typeof body.expiry === 'string' ? body.expiry : undefined,
       callerIdentity,
@@ -222,7 +233,7 @@ export function buildDocumentSignatureRows(params: {
       status: 'signed',
       role: 'creator',
     },
-    ...signerDids.map((did) => ({
+    ...[...new Set(signerDids)].filter((did) => did !== creatorDid).map((did) => ({
       id: genId('sig'),
       attestationId,
       signerDid: did,
@@ -236,6 +247,31 @@ export function buildDocumentSignatureRows(params: {
 
 export function getCreatorDisplayName(callerIdentity: CallerIdentity, callerDid: string): string {
   return callerIdentity.handle ? `@${callerIdentity.handle}` : callerIdentity.name || callerDid;
+}
+export function buildDocumentPayload(params: {
+  payload?: Record<string, unknown>;
+  title: string;
+  documentHash: string;
+  creatorDid: string;
+  actingHumanDid: string;
+  signerDids: string[];
+  authorJws: string;
+  issuerScope?: string;
+  amends?: string;
+}) {
+  return {
+    ...params.payload,
+    title: params.title,
+    documentHash: params.documentHash,
+    orgDid: params.issuerScope === 'business' ? params.creatorDid : null,
+    counterpartyDids: params.signerDids,
+    actingHumanDid: params.actingHumanDid,
+    ...(params.amends ? { amends: params.amends } : {}),
+    signedBy: { [params.creatorDid]: {
+      actingHumanDid: params.actingHumanDid,
+      signatureModel: params.authorJws.split('.').length === 3 ? 'did-key' : 'node-witness',
+    } },
+  };
 }
 
 export interface SignatureCounts {
@@ -311,6 +347,9 @@ export async function finalizeDocumentAttestation(params: {
   callerIdentity: CallerIdentity;
   genId: (prefix: string) => string;
   log: LoggerLike;
+  store?: DocumentStore;
+  notify?: boolean;
+  documentHash?: string;
 }) {
   const {
     attestationId,
@@ -324,6 +363,7 @@ export async function finalizeDocumentAttestation(params: {
     log,
   } = params;
 
+  const store = params.store ?? db;
   const sigRows = buildDocumentSignatureRows({
     attestationId,
     creatorDid,
@@ -331,11 +371,16 @@ export async function finalizeDocumentAttestation(params: {
     signerDids,
     genId,
   });
-  await db.insert(attestationSignatures).values(sigRows);
-  await db.update(assets).set({ immutable: true }).where(eq(assets.id, documentAssetId));
+  await store.insert(attestationSignatures).values(sigRows);
+  await store.update(assets).set({ immutable: true }).where(eq(assets.id, documentAssetId));
+  const [asset] = await store.select().from(assets).where(eq(assets.id, documentAssetId)).limit(1);
+  if (params.documentHash !== undefined && asset?.hash !== params.documentHash) {
+    throw new Error('Document asset changed during creation');
+  }
+  if (asset) await copyDocumentToSigner(asset, creatorDid, attestationId, { store, required: true });
 
   const creatorName = getCreatorDisplayName(callerIdentity, creatorDid);
-  publishDocumentCreatedNotifications({
+  if (params.notify !== false) publishDocumentCreatedNotifications({
     attestationId,
     documentAssetId,
     creatorDid,
@@ -345,7 +390,7 @@ export async function finalizeDocumentAttestation(params: {
     log,
   });
 
-  return db
+  return store
     .select()
     .from(attestationSignatures)
     .where(eq(attestationSignatures.attestationId, attestationId));

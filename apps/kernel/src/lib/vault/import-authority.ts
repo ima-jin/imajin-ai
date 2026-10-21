@@ -8,7 +8,7 @@ import type { DbExecutor } from './index';
 export interface ImportOwner { did: string; name: string }
 
 /** Scope is checked on current membership, never on the act-as cookie's cached role. */
-export async function listImportOwners(personDid: string, executor: DbExecutor = db): Promise<ImportOwner[]> {
+export async function listImportOwners(personDid: string, executor: DbExecutor = db, service: 'vault' | 'auth' = 'vault'): Promise<ImportOwner[]> {
   const memberships = await executor.select({
     identityDid: identityMembers.identityDid, allowedServices: identityMembers.allowedServices,
   }).from(identityMembers).innerJoin(identities, eq(identities.id, identityMembers.identityDid)).where(and(
@@ -19,7 +19,7 @@ export async function listImportOwners(personDid: string, executor: DbExecutor =
     isNull(identities.suspendedAt),
   ));
   const dids = [...new Set([personDid, ...memberships
-    .filter(row => !row.allowedServices || row.allowedServices.includes('vault'))
+    .filter(row => !row.allowedServices || row.allowedServices.includes(service))
     .map(row => row.identityDid)])];
   const rows = await executor.select({ did: identities.id, name: identities.name })
     .from(identities).where(inArray(identities.id, dids));
@@ -27,8 +27,8 @@ export async function listImportOwners(personDid: string, executor: DbExecutor =
   return dids.map(did => ({ did, name: names.get(did) || did }));
 }
 
-export async function controlsImportOwner(personDid: string, ownerDid: string, executor: DbExecutor = db): Promise<boolean> {
-  return (await listImportOwners(personDid, executor)).some(owner => owner.did === ownerDid);
+export async function controlsImportOwner(personDid: string, ownerDid: string, executor: DbExecutor = db, service: 'vault' | 'auth' = 'vault'): Promise<boolean> {
+  return (await listImportOwners(personDid, executor, service)).some(owner => owner.did === ownerDid);
 }
 
 export async function isImportHuman(did: string, executor: DbExecutor = db): Promise<boolean> {

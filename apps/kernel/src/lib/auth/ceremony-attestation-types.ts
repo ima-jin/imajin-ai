@@ -5,6 +5,13 @@
  * authorize minting it.
  */
 export function ceremonyAttestationRejection(type: string): string | null {
+  if (type === 'cloudflare.mutation') return `Attestation type "${type}" requires the Cloudflare connector`;
+  if (type === 'agreement' || type === 'agreement.revoked') {
+    return `Attestation type "${type}" requires the document agreement ceremony`;
+  }
+  if (type.startsWith('delegation.grant.')) {
+    return `Attestation type "${type}" requires the delegation grant ceremony`;
+  }
   if (type === 'key.rotated') return `Attestation type "${type}" is node-issued only`;
   if (type === 'connection.relationship.label.changed') {
     return `Attestation type "${type}" requires the connection relationship ceremony`;

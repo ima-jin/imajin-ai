@@ -10,7 +10,7 @@ export function GET(request: NextRequest) {
   const cors = corsHeaders(request);
 
   return NextResponse.json({
-    services: SERVICES.map((s) => {
+    services: [...SERVICES.map((s) => {
       const url = buildPublicUrl(s.name);
       const isExternal = !!(s.externalUrl || s.wwwPath);
       return {
@@ -24,6 +24,10 @@ export function GET(request: NextRequest) {
         ...(isExternal && { externalUrl: url }),
         ...(!isExternal && s.name !== "kernel" && { spec: `${url}/api/spec` }),
       };
-    }),
+    }), {
+      name: "cloudflare", label: "Cloudflare", description: "Verified-zone operations through kernel-held credentials",
+      icon: "cloud", visibility: "public", category: "kernel",
+      url: "/cloudflare", spec: "/cloudflare/api/spec",
+    }],
   }, { headers: cors });
 }

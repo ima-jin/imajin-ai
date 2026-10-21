@@ -5,8 +5,15 @@
  */
 
 export const ATTESTATION_TYPES = [
+  // #2997 — node-signed grant authority changes; org delegator and human actor.
+  'delegation.grant.issued',
+  'delegation.grant.renewed',
+  'delegation.grant.revoked',
+  'delegation.grant.capability_added',
+  'delegation.grant.capability_revoked',
   'domain.verified',
   'domain.revoked',
+  'cloudflare.mutation',
   'mail.sent',
   'event.attendance',
   'institution.verified',
@@ -50,6 +57,8 @@ export const ATTESTATION_TYPES = [
   'app.authorized',
   'app.revoked',
   'document.created',
+  'agreement',
+  'agreement.revoked',
   'document.signed',
   'document.executed',
   'document.declined',
@@ -298,12 +307,19 @@ export type AttestationType = typeof ATTESTATION_TYPES[number];
  * excluded from any "pending your countersignature" view or query.
  */
 export const MECHANICAL_ATTESTATION_TYPES = [
+  'agreement.revoked',
+  'delegation.grant.issued',
+  'delegation.grant.renewed',
+  'delegation.grant.revoked',
+  'delegation.grant.capability_added',
+  'delegation.grant.capability_revoked',
   'connection.relationship.label.changed',
   'group.member.added',
   'group.member.removed',
   'group.member.role.changed',
   'domain.verified',
   'domain.revoked',
+  'cloudflare.mutation',
   'mail.sent',
   'identity.owner.transferred',
   // #2894 — unilateral read provenance, never awaiting a countersignature.

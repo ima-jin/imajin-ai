@@ -574,6 +574,7 @@ file: ``- `path` — role``.
 - `apps/kernel/app/auth/.well-known/kernel-signing-key/route.ts` — S2
 - `apps/corpus/src/middleware/access-claim.ts` — S2 (verifier; public keys only)
 - `apps/kernel/src/lib/auth/emit-mechanical-attestation.ts` — S3
+- `apps/kernel/src/lib/auth/revoke-agreement.ts` — S3 (requires configured node signing; prepares a canonical node-witnessed `agreement.revoked` event atomically with the retained agreement tombstone)
 - `apps/kernel/src/lib/domains/signing.ts` — S3 (DNS domain verification/revocation; organization issuance uses its own vault-granted key)
 - `apps/kernel/src/lib/auth/emit-recovery-attestation.ts` — S3
 - `apps/kernel/src/lib/pay/payment-requests/attestations.ts` — S3
@@ -632,6 +633,9 @@ file: ``- `path` — role``.
 - `apps/kernel/src/lib/vault/mint-authority.ts` — D2
 - `apps/kernel/src/lib/vault/import-authority.ts` — D2 (node identity comparison only; real human/group ownership remains independently checked)
 - `apps/kernel/src/lib/vault/import.ts` — D2/S3 (v2 static-secret custody and node-attested, human-countersigned import/rotation)
+- `apps/kernel/app/api/vault/import/route.ts` — D2 (pins Cloudflare credential consumer to this kernel node; never releases token material)
+- `apps/kernel/src/lib/cloudflare/authority.ts` — D2 (node consumer identifier for verified-domain credential resolution; edge authority remains owner-granted)
+- `apps/kernel/src/lib/vault/cloudflare-import.ts` — D2 (checks node-only token custody against exact verified zone ownership)
 - `apps/kernel/src/lib/vault/group-key.ts` — D2/D3/S3 (explicit node-key configuration gate; countersigned group-to-node custody, wrapped-key revoke and transactional signed audit)
 - `apps/kernel/src/lib/vault/internal-secret.ts` — D2
 - `apps/kernel/src/lib/vault/internal-secret-revoke.ts` — D2

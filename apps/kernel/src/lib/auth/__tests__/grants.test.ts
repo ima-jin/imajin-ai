@@ -18,7 +18,7 @@ const { grantsStore, capsStore, eventsStore, GRANTS_TABLE, CAPS_TABLE, EVENTS_TA
   const GRANTS_TABLE = {
     __table: 'grants',
     id: 'id', agentDid: 'agentDid', delegatorDid: 'delegatorDid', audience: 'audience',
-    onBehalfOf: 'onBehalfOf', issuedAt: 'issuedAt', expiresAt: 'expiresAt', status: 'status',
+    pendingRevocationAudits: 'pendingRevocationAudits', onBehalfOf: 'onBehalfOf', issuedAt: 'issuedAt', expiresAt: 'expiresAt', status: 'status',
     revokedAt: 'revokedAt', lastUsedAt: 'lastUsedAt', createdAt: 'createdAt', updatedAt: 'updatedAt',
   };
   const CAPS_TABLE = {
@@ -38,6 +38,7 @@ const { grantsStore, capsStore, eventsStore, GRANTS_TABLE, CAPS_TABLE, EVENTS_TA
 function storeFor(table: { __table: string }): Map<string, Row> {
   if (table.__table === 'grants') return grantsStore;
   if (table.__table === 'caps') return capsStore;
+  if (table.__table === 'attestations') return new Map();
   return eventsStore;
 }
 
@@ -97,7 +98,8 @@ function queryable(rows: Row[]) {
     then: p.then.bind(p),
     catch: p.catch.bind(p),
     finally: p.finally.bind(p),
-    limit: (n: number) => Promise.resolve(rows.slice(0, n)),
+    limit: (n: number) => queryable(rows.slice(0, n)),
+    for: () => p,
     returning: (projection?: Record<string, string>) => Promise.resolve(project(rows, projection)),
     orderBy: (spec?: DescSpec) => Promise.resolve(sortByDesc(rows, spec)),
   };
@@ -157,10 +159,18 @@ vi.mock('@/src/db', () => ({
     delete: deleteFrom,
     update: updateTable,
     select: selectFrom,
+    transaction: (callback: (tx: unknown) => Promise<unknown>) => callback({
+      insert: insertInto, delete: deleteFrom, update: updateTable, select: selectFrom,
+    }),
   },
   delegationGrants: GRANTS_TABLE,
   delegationGrantCapabilities: CAPS_TABLE,
   delegationGrantEvents: EVENTS_TABLE,
+  attestations: { __table: 'attestations' },
+}));
+
+vi.mock('../emit-mechanical-attestation', () => ({
+  prepareMechanicalAttestation: async () => ({ id: 'att_fixture', issuedAt: new Date() }),
 }));
 
 vi.mock('@/src/lib/kernel/id', () => {
@@ -169,6 +179,7 @@ vi.mock('@/src/lib/kernel/id', () => {
 });
 
 vi.mock('@imajin/logger', () => ({ createLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }) }));
+vi.mock('@/src/lib/vault/import-authority', () => ({ controlsImportOwner: vi.fn().mockResolvedValue(false) }));
 
 // #2394 — attest:<appId>:<type> validation is DB-heavy (app registry +
 // attestation-type vocabulary) and already covered end-to-end in
@@ -196,6 +207,17 @@ const DELEGATOR = 'did:imajin:ryan';
 const AGENT = 'did:imajin:matchmaker-agent';
 const OTHER_AGENT = 'did:imajin:other-agent';
 const TARGET = 'did:imajin:contact-x';
+
+describe('Cloudflare grant audiences', () => {
+  it('refuses all-zone or person-targeted audiences and refuses adding Cloudflare to an unbounded grant', async () => {
+    for (const audience of [{ type: 'all' }, { type: 'dids', values: [TARGET] }]) {
+      expect(await issueGrant({ delegatorDid: DELEGATOR, agentDid: AGENT, capabilities: ['cloudflare:dns'], audience })).toMatchObject({ status: 400 });
+    }
+    const created = await issueGrant({ delegatorDid: DELEGATOR, agentDid: AGENT, capabilities: ['messages:read'], audience: { type: 'all' } });
+    if ('error' in created) throw new Error('Expected a normal grant');
+    expect(await addGrantCapability({ grantId: created.grant.grantId, capability: 'cloudflare:dns', requestedBy: DELEGATOR })).toMatchObject({ status: 400 });
+  });
+});
 
 beforeEach(() => {
   grantsStore.clear();

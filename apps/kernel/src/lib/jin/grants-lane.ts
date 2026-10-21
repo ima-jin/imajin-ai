@@ -56,6 +56,8 @@ import { listGrantDetailsForDelegator } from '@/src/lib/auth/grants';
 import { listVaultKeyCards } from '@/src/lib/vault';
 import { mintedKeyField } from '@/src/lib/vault/mint';
 import { listDelegateGrantBearersForPrincipal } from '@/src/lib/access/delegate-grant';
+import { listImportOwners } from '@/src/lib/vault/import-authority';
+import { isCloudflareZoneAudience } from '@/src/lib/cloudflare/contract';
 
 export type GrantSourceKind =
   | 'auth-grant'
@@ -81,6 +83,8 @@ export interface RevokeAction {
 export interface GrantCard {
   id: string;
   source: GrantSourceKind;
+  delegatorDid?: string;
+  history?: { event: string; actorDid: string; createdAt: string; capability: string | null }[];
   /** Agent DID / OAuth client label / bearer client label — never a secret value. */
   grantee: string;
   /** Non-secret capability/scope labels — a purpose string for vault, a coarse role for legacy membership. */
@@ -198,6 +202,8 @@ function normalizeAuthGrants(grants: Awaited<ReturnType<typeof listGrantDetailsF
     return {
       id: `auth-grant:${grant.grantId}`,
       source: 'auth-grant',
+      delegatorDid: grant.delegatorDid,
+      history: grant.history,
       grantee: grant.agentDid,
       capabilities: activeCapabilities.length > 0 ? activeCapabilities : ['(no active capabilities)'],
       issuedAt: grant.issuedAt,
@@ -209,6 +215,12 @@ function normalizeAuthGrants(grants: Awaited<ReturnType<typeof listGrantDetailsF
       revoke: grant.status === 'revoked' ? null : { method: 'DELETE', path: `/auth/api/grants/${encodeURIComponent(grant.grantId)}` },
     };
   });
+}
+
+/** Org controllers may read their org's auth grants, never node-operator vault/app sources. */
+export async function listAuthGrantsForDelegator(delegatorDid: string): Promise<GrantCard[]> {
+  const grants = await listGrantDetailsForDelegator(delegatorDid);
+  return normalizeAuthGrants(grants).sort((a, b) => (b.issuedAt ?? '').localeCompare(a.issuedAt ?? ''));
 }
 
 function normalizeLegacyMemberships(memberships: LegacyAgentMembership[]): GrantCard[] {
@@ -316,9 +328,18 @@ function normalizeAppAuthorizations(apps: AppAuthorizationSummary[]): GrantCard[
  * function does no authorization of its own, matching every other /jin/api
  * service function's split of "gate at the route, read in the service".
  */
+async function ownedZoneGrants(operatorDid: string) {
+  const owners = await listImportOwners(operatorDid);
+  const groups = await Promise.all(owners.map(async owner => {
+    const grants = await listGrantDetailsForDelegator(owner.did);
+    return owner.did === operatorDid ? grants : grants.filter(grant => isCloudflareZoneAudience(grant.audience));
+  }));
+  return groups.flat();
+}
+
 export async function listGrantsForOperator(operatorDid: string): Promise<GrantCard[]> {
   const [authGrants, legacyMemberships, vaultKeyCards, accessBearers, appAuthorizations] = await Promise.all([
-    listGrantDetailsForDelegator(operatorDid),
+    ownedZoneGrants(operatorDid),
     listLegacyAgentMemberships(operatorDid),
     listVaultKeyCards(),
     listDelegateGrantBearersForPrincipal(operatorDid),

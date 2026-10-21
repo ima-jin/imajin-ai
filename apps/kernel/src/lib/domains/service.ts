@@ -12,6 +12,7 @@ export { DomainError, normalizeDomain } from './normalize';
 export type DomainBinding = Pick<DomainBindingRow,
   'domain' | 'zoneOwner' | 'siteOwner' | 'appDid' | 'method' | 'status' | 'attestation' | 'verifiedAt' | 'checkedAt'>;
 type Transaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
+type DomainReader = Pick<typeof db, 'select'>;
 const log = createLogger('kernel:domains');
 const resolver = new Resolver({ timeout: 3000, tries: 1 });
 const RESERVED_LABELS = new Set([
@@ -47,11 +48,11 @@ function binding(row: DomainBindingRow): DomainBinding {
   const { domain, zoneOwner, siteOwner, appDid, method, status, attestation, verifiedAt, checkedAt } = row;
   return { domain, zoneOwner, siteOwner, appDid, method, status, attestation, verifiedAt, checkedAt };
 }
-async function hasCurrentSiteOwner(row: DomainBindingRow): Promise<boolean> {
+async function hasCurrentSiteOwner(row: DomainBindingRow, reader: DomainReader = db): Promise<boolean> {
   // Cron checks after 24h; reads expire DNS evidence at 48h even if cron stops.
   if (row.method === 'dns-txt' && (!row.checkedAt || row.checkedAt.getTime() < Date.now() - 48 * 60 * 60 * 1000)) return false;
   if (!row.appDid) return true;
-  const [app] = await db.select(APP_DOMAIN_AUTHORITY).from(registryApps).where(and(
+  const [app] = await reader.select(APP_DOMAIN_AUTHORITY).from(registryApps).where(and(
     eq(registryApps.appDid, row.appDid), eq(registryApps.status, 'active'), eq(registryApps.ownerDid, row.siteOwner),
   )).limit(1);
   return Boolean(app && appAuthorizesDomain(app, row.domain, row.zoneOwner, row.method === 'imajin-issued'));
@@ -223,12 +224,14 @@ export async function listDomains(did: string, publicOnly = false): Promise<Doma
   return current.filter((row): row is DomainBinding => row !== null);
 }
 
-export async function resolveVerifiedDomain(input: string): Promise<DomainBinding | null> {
+export async function resolveVerifiedDomain(input: string, reader: DomainReader = db, lock: 'share' | 'update' = 'share'): Promise<DomainBinding | null> {
   const domain = normalizeDomain(input);
-  const [row] = await db.select().from(domainBindings).where(and(
+  const query = reader.select().from(domainBindings).where(and(
     eq(domainBindings.domain, domain), eq(domainBindings.status, 'verified'), isNotNull(domainBindings.attestation),
   )).limit(1);
-  return row && await hasCurrentSiteOwner(row) ? binding(row) : null;
+  // Import holds the verified binding until its grant transaction commits.
+  const [row] = await (reader === db ? query : query.for(lock));
+  return row && await hasCurrentSiteOwner(row, reader) ? binding(row) : null;
 }
 
 /** Grandfathered rows are routing-only and NEVER ownership or vault evidence. */

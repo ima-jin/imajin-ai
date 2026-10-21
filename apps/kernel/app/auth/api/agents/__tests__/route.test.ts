@@ -52,6 +52,7 @@ const {
     return fn(tx);
   });
 
+
   const mockRequireAuth = vi.fn();
   const mockListGrantDetailsForDelegator = vi.fn().mockResolvedValue([]);
 
@@ -189,6 +190,8 @@ beforeEach(() => {
 
 describe('POST /auth/api/agents (#1717)', () => {
   it('owns the new agent under the raw session DID when not acting for anyone', async () => {
+    pushSelectResult([]);
+    pushSelectResult([{ scope: 'actor' }]);
     const res = await POST(makePostRequest({ handle: 'my-bot' }));
 
     expect(res.status).toBe(201);
@@ -200,21 +203,21 @@ describe('POST /auth/api/agents (#1717)', () => {
     expect(reverseRow.identityDid).toBe(PERSONAL_DID);
   });
 
-  it('owns the new agent under the acting-for DID, not the caller personal DID', async () => {
+  it('creates an org-serving identity without either membership link', async () => {
     mockRequireAuth.mockResolvedValue({ identity: { id: PERSONAL_DID, actingFor: BUSINESS_DID } });
+    pushSelectResult([]);
+    pushSelectResult([{ scope: 'business' }]);
 
     const res = await POST(makePostRequest({ handle: 'business-bot' }));
 
     expect(res.status).toBe(201);
-    const ownerRow = mockTxInsertValues.mock.calls[1][0] as Record<string, unknown>;
-    expect(ownerRow.memberDid).toBe(BUSINESS_DID);
-    expect(ownerRow.addedBy).toBe(BUSINESS_DID);
-    const reverseRow = mockTxInsertValues.mock.calls[2][0] as Record<string, unknown>;
-    expect(reverseRow.identityDid).toBe(BUSINESS_DID);
-    expect(reverseRow.memberDid).toMatch(/^did:imajin:/);
+    expect(mockTxInsertValues).toHaveBeenCalledOnce();
+    expect(mockTxInsertValues.mock.calls[0][0]).toMatchObject({ subtype: 'agent', scope: 'actor' });
   });
 
   it('reports a transaction failure instead of claiming a partial creation succeeded', async () => {
+    pushSelectResult([]);
+    pushSelectResult([{ scope: 'actor' }]);
     mockTxInsertValues
       .mockResolvedValueOnce(undefined)
       .mockRejectedValueOnce(new Error('membership insert failed'));
@@ -230,6 +233,27 @@ describe('POST /auth/api/agents (#1717)', () => {
 });
 
 describe('GET /auth/api/agents (#1717 acting-for scoping)', () => {
+  it('requires auth service access and returns the authenticated org delegator context', async () => {
+    mockRequireAuth.mockResolvedValue({ identity: { id: PERSONAL_DID, actingAs: BUSINESS_DID, actingAsRole: 'owner' } });
+    pushSelectResult([]); // owned agents
+    pushSelectResult([]); // accepted knocks
+    pushSelectResult([{ name: 'Agrifortress' }]); // delegator label only
+    const request = makeGetRequest();
+    const res = await GET(request);
+    expect(mockRequireAuth).toHaveBeenCalledWith(request, { service: 'auth' });
+    expect(mockListGrantDetailsForDelegator).toHaveBeenCalledWith(BUSINESS_DID);
+    expect((await res.json()).delegator).toEqual({
+      did: BUSINESS_DID, name: 'Agrifortress', isOrganization: true, actorDid: PERSONAL_DID,
+    });
+  });
+
+  it('returns an auth-service denial before reading any agents', async () => {
+    mockRequireAuth.mockResolvedValue({ error: 'Not authorized to act as this group', status: 403 });
+    const res = await GET(makeGetRequest());
+    expect(res.status).toBe(403);
+    expect(mockDbSelect).not.toHaveBeenCalled();
+    expect(mockListGrantDetailsForDelegator).not.toHaveBeenCalled();
+  });
   it('lists agents owned by the acting-for DID, not the caller personal DID', async () => {
     mockRequireAuth.mockResolvedValue({ identity: { id: PERSONAL_DID, actingFor: BUSINESS_DID } });
 
@@ -245,7 +269,10 @@ describe('GET /auth/api/agents (#1717 acting-for scoping)', () => {
     const res = await GET(makeGetRequest());
 
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ agents: [] });
+    expect(await res.json()).toEqual({
+      agents: [],
+      delegator: { did: PERSONAL_DID, name: null, isOrganization: false, actorDid: PERSONAL_DID },
+    });
   });
 });
 

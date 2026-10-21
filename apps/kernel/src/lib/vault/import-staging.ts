@@ -9,6 +9,7 @@ import {
 } from '@/src/lib/apps/secret-staging';
 import { appSecretsKind } from '@/src/lib/apps/secrets-kind';
 import type { OperatorApprovalCard } from '@/src/lib/notify/operator-approvals-service';
+import type { CloudflareImport } from '@/src/lib/cloudflare/contract';
 
 export interface ImportDetail {
   [key: string]: unknown;
@@ -19,6 +20,7 @@ export interface ImportDetail {
   label: string | null;
   expiresAt: string | null;
   replacesField: string | null;
+  cloudflare?: CloudflareImport;
 }
 
 export function importFingerprint(value: string): string {

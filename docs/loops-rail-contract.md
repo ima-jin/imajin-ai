@@ -1,4 +1,5 @@
 # Loop registry rail — publisher-authorization contract (#2358, epic #2288/#2290, #2295, #2296, #2338)
+Horizon bridge ruling #2931: issue-ref-only bindings and publisher-scoped envelope receipts.
 Horizon step entries extend this signed rail under #2878; #2879 binds claims to
 the existing surface leases. Runs rendering remains separate (#2880).
 ## Horizon steps (#2878, parent #2313 decision a)
@@ -18,7 +19,7 @@ The type-specific data, with no other type-specific block permitted, is:
 | Event | Signed data |
 | --- | --- |
 | `step.queued` | `step: {stepKind: "code" \| "human" \| "ops", intention, rank, repository?, exitConditions}`; `state` must be `queued` |
-| `step.updated` | nonempty `update: {rank?, intention?, issue?: {ref, outcome}, briefRef?, provisionRef?, designRef?}` |
+| `step.updated` | nonempty `update: {rank?, intention?, issue?: {ref, outcome?}, briefRef?, provisionRef?, designRef?}` |
 | `step.claimed` | `claim: {leaseId, holderDid, expiresAt}`; holder DID must equal the actual signer |
 | `step.started`, `step.progress`, `step.blocked`, `step.finished` | no extra block; derive `running`, `running`, `blocked`, `finished` respectively |
 | `step.observed` | `observation: {conditionId, evidence}` |
@@ -26,7 +27,11 @@ The type-specific data, with no other type-specific block permitted, is:
 
 `rank` is finite, lower first; ties use exact `stepId`. No automatic rank
 normalization or 12-item truncation occurs. Text facts are nonblank and bounded
-to 2000 characters. `outcome` must start with `OUTCOME`; refs are assertions,
+to 2000 characters. `issue.ref` binds the issue independently of OUTCOME.
+When present, `outcome` must match `/^OUTCOME\b/`; it is never required or
+invented. A ref-only binding satisfies matching `issue_closed` evidence exactly
+like a ref+OUTCOME binding, and a supplied real OUTCOME remains projected.
+Refs are assertions,
 not URLs the kernel fetches. A code declaration requires `repository` in
 `owner/repo` form. Updates are sparse and cannot replace exit conditions or kind.
 The earliest queued declaration by `(occurred_at, id)` wins, including on retry.
@@ -67,7 +72,7 @@ by rank then id. Each carries its declaration, sharpening facts, projected
 use detail for the horizon. For explicit audit reads only, HTTP
 `?includeExited=true` / MCP `include_exited: true` includes completed steps
 with `state: "exited"` and `zone: "done"`, without changing non-done `depth`.
-No new MCP scope or HTTP endpoint is needed.
+No new MCP scope is needed; publisher receipt lookup is documented below.
 
 Zones are **read projection only**, in precedence order:
 
@@ -76,9 +81,11 @@ Zones are **read projection only**, in precedence order:
 2. `past`: this item's issue is closed but at least one exit remains open.
 3. `head`: `kernel.surface_lease` holds a live, unreleased `step:<stepId>`
    lease for this loop and principal.
-4. `near`: issue/OUTCOME, brief, provision and settled-design refs all exist.
-5. `middle`: issue/OUTCOME exists.
+4. `near`: issue ref + OUTCOME, brief, provision and settled-design refs all exist.
+5. `middle`: issue ref + OUTCOME exists.
 6. `tail`: one-line intention only.
+
+A ref-only binding stays `tail`, but still satisfies matching `issue_closed` (→ `past`).
 
 Input `zone`, `depth`, derived `state: "exited"` and step `output` are rejected.
 Other common-envelope state labels are observational only; they cannot override
@@ -137,6 +144,55 @@ The referenced workspace bridge is outside this repository and no settled
 bridge field-shape ruling was attached to #2878 at dispatch. This contract is
 the explicit kernel wire seam for the later plugin sync (#2881); it does not
 claim to have inspected or modified an agent's local horizon files.
+### Envelope receipts and stale outbox recovery (#2931)
+
+`POST /api/loops/receipts` is a kernel-root route, **not** `/jin/api/loops/...`.
+It accepts `{type: "loop.receipt", payload: {loopId, principal, envelopeHash, at},
+publisherDid, signature}`. Sign `canonicalize({type, payload})` with the
+publisher's own DID key; `signature` is the same `{keyId, alg: "ed25519", sig}`
+as ingest. The current registered-key resolver, node-witness path and live
+`loops:publish` delegation check are the same as ingest. A session cookie,
+principal delegation alone or possession of a hash cannot read someone else's
+receipt. Lookup is read-only: it never publishes a step, fetches a harness,
+renews a lease, or updates history.
+
+`envelopeHash` is lowercase SHA-256 hex of the UTF-8 `canonicalize` output for
+the **original parsed ingest request**:
+`{type, payload, publisherDid, signature: {keyId, alg, sig}}`.
+Use the original signed wire payload with all absent/null/extension fields
+unchanged, and lowercase `signature.keyId` and `signature.sig` (as ingest does).
+Do not hash HTTP whitespace, the lookup request, a redacted payload, or stored
+`publisherProof` metadata. This is the existing `loopObservationId` digest;
+the stored id is `signed-loop:<envelopeHash>`. All newly ingested lifecycle
+events use this deterministic id as steps, surfaces and signed completions
+already did. No schema change or backfill of legacy random lifecycle ids occurs.
+
+The lookup's `at` is fresh and bounded by `SIGNED_MESSAGE_MAX_AGE` (five minutes)
+and `FUTURE_TOLERANCE`, independently of the original envelope's age. The signed
+loop, principal, hash and actual publisher DID all scope the SQL read; the
+owning loop must still belong to that principal.
+
+- **200**: `{status: "accepted", eventId: "signed-loop:<hash>"}` using the
+  immutable stored event id (this rail has no sequence number).
+- **404**: `{status: "not_found"}` for unknown hashes, other publishers'
+  hashes (including another delegate of the same principal), wrong loops,
+  wrong principals or denied/revoked publishing scope. These cases are
+  intentionally identical and expose no event details.
+- **400**: malformed request, stale/future lookup timestamp, unknown/rotated
+  publisher key or invalid signature. **413**: request over 1 MiB.
+- **500**: lookup/auth storage unavailable; never treat this as not accepted.
+
+A durable publisher retains the exact signed outbox envelope across a timeout
+or restart. If delivery is ambiguous, sign a **separate fresh receipt request**
+for that envelope's hash. On `accepted`, reconcile the outbox against the
+returned event id without publishing anything. On `not_found`, retain the
+original envelope and fail closed; it is not permission to restamp or invent
+a new observation (and not a guarantee that an in-flight ingest cannot finish).
+Retry lookup after transient errors. Ingest still rejects **every** stale
+envelope before publication, including an exact stored one; use receipts for
+stale reconciliation. No replay window is widened and no fresh original `at`
+is fabricated. The discoverable wire schemas are in `/jin/api/spec`
+(`apps/kernel/api-spec/jin.yaml`).
 
 ## Surface leases (#2405)
 

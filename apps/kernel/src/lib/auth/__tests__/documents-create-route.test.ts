@@ -23,9 +23,10 @@ const mocks = vi.hoisted(() => {
   };
 });
 
-vi.mock('@/src/lib/auth/middleware', () => ({
-  requireAuth: mocks.requireAuthMock,
+vi.mock('@/src/lib/auth/document-authorization', () => ({
+  requireDocumentActor: mocks.requireAuthMock,
 }));
+vi.mock('@/src/lib/auth/document-copies', () => ({ copyDocumentToSigner: vi.fn() }));
 
 vi.mock('@/src/lib/auth/document-signatures', () => ({
   verifyDocumentSignatureToken: mocks.verifyDocumentSignatureTokenMock,
@@ -43,17 +44,17 @@ vi.mock('@imajin/config', () => ({
   corsHeaders: vi.fn(() => ({})),
 }));
 
-vi.mock('@/src/db', () => ({
-  db: {
+vi.mock('@/src/db', () => {
+  const store = {
     select: mocks.selectMock,
     insert: mocks.insertMock,
     update: mocks.updateMock,
-  },
-  attestations: {},
-  attestationSignatures: {},
-  identities: {},
-  assets: {},
-}));
+  };
+  return {
+    db: { ...store, transaction: async (fn: (tx: typeof store) => Promise<unknown>) => fn(store) },
+    attestations: {}, attestationSignatures: {}, identities: {}, assets: {},
+  };
+});
 
 import { POST } from '../../../../app/auth/api/documents/route';
 
@@ -77,6 +78,7 @@ describe('POST /auth/api/documents', () => {
           { publicKey: 'f'.repeat(64), handle: 'alice', name: 'Alice' },
         ])
       )
+      .mockImplementationOnce(() => makeWhereResult([{ hash: 'bafy-hash-1' }]))
       .mockImplementationOnce(() =>
         makeWhereResult([
           { id: 'sig_1', signerDid: 'did:imajin:alice', status: 'signed' },
@@ -92,7 +94,7 @@ describe('POST /auth/api/documents', () => {
       },
     ]);
     mocks.updateWhereMock.mockResolvedValue(undefined);
-    mocks.requireAuthMock.mockResolvedValue({ sub: 'did:imajin:alice' });
+    mocks.requireAuthMock.mockResolvedValue({ effectiveDid: 'did:imajin:alice', actingHumanDid: 'did:imajin:alice' });
     mocks.verifyDocumentSignatureTokenMock.mockResolvedValue(true);
     mocks.publishMock.mockResolvedValue(undefined);
   });

@@ -41,6 +41,7 @@ export interface CronManifest {
 export const KERNEL_CRON_MANIFEST: CronManifest = {
   app: 'kernel',
   jobs: [
+    { path: '/api/cron/grant-audit-retry', schedule: '* * * * *', noOverlap: true },
     { path: '/api/cron/domain-recheck', schedule: '17 * * * *', noOverlap: true },
     { path: '/api/cron/vault-grant-expiry', schedule: '0 * * * *', noOverlap: true },
     { path: '/api/cron/quickbooks-reconcile', schedule: '0 */6 * * *', noOverlap: true },

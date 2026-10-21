@@ -9,7 +9,10 @@ const path = spec.paths['/api/vault/import'];
 describe('vault import API contract (#2260)', () => {
   it('documents explicit owning identity, consumer, purpose and write-only input', () => {
     const body = path.post.requestBody.content['application/json'].schema;
-    expect(body.required).toEqual(['ownerDid', 'purpose', 'consumerDid', 'secret']);
+    expect(body.required).toEqual(['ownerDid', 'secret']);
+    expect(body.anyOf).toEqual([{ required: ['purpose', 'consumerDid'] }, { required: ['cloudflare'] }]);
+    expect(body.properties.cloudflare.$ref).toBe('#/components/schemas/CloudflareAuthority');
+    expect(spec.components.schemas.CloudflareAuthority.required).toEqual(['domain', 'zoneId', 'granteeDid', 'capabilities']);
     expect(body.additionalProperties).toBe(false);
     expect(body.properties.secret.writeOnly).toBe(true);
     expect(body.properties.purpose.maxLength).toBe(200);

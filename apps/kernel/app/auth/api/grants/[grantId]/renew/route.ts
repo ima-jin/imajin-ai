@@ -9,13 +9,14 @@
  * Body: { ttlMs?: number }  // clamped to [default, max] lease bounds
  */
 import { NextResponse } from 'next/server';
-import { requireAuth, authErrorResponse } from '@imajin/auth';
+import { authErrorResponse } from '@imajin/auth';
+import { requireGrantPrincipal } from '@/src/lib/auth/grant-principal';
 import { renewGrant } from '@/src/lib/auth/grants';
 
 export async function POST(request: Request, props: { params: Promise<{ grantId: string }> }) {
   const { grantId } = await props.params;
 
-  const authResult = await requireAuth(request);
+  const authResult = await requireGrantPrincipal(request);
   if ('error' in authResult) {
     return authErrorResponse(authResult);
   }
@@ -29,7 +30,7 @@ export async function POST(request: Request, props: { params: Promise<{ grantId:
     // Empty/absent body is fine — renewal falls back to the default TTL.
   }
 
-  const result = await renewGrant({ grantId, requestedBy, ttlMs });
+  const result = await renewGrant({ grantId, requestedBy, actorDid: authResult.identity.id, ttlMs });
   if ('error' in result) {
     return NextResponse.json({ error: result.error }, { status: result.status });
   }

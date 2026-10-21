@@ -50,6 +50,12 @@ export function isImportedKeyField(field: string): boolean {
   return vaultFieldNamespace(field) === IMPORTED_KEY_NAMESPACE;
 }
 
+/** Immutable Cloudflare imports stay private even if a grant purpose is relabeled. */
+export function isCloudflareImportedKeyField(field: string): boolean {
+  const parsed = parseVaultFieldName(field);
+  return parsed.ok && parsed.value.namespace === IMPORTED_KEY_NAMESPACE && parsed.value.name.startsWith('cfimport_');
+}
+
 /** Human-readable rule, for UI hints and 400 messages. */
 export const VAULT_FIELD_NAME_RULE =
   'letters, digits, and . _ - only, optionally namespaced as <namespace>:<name> with no empty parts (e.g. GH_TOKEN, github-org-provisioning, internal-secret:<purpose>)';

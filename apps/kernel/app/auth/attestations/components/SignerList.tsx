@@ -55,7 +55,7 @@ export default function SignerList({ signers, sessionDid }: Readonly<Props>) {
       {signers.map((signer) => (
         <div
           key={signer.id}
-          className="flex items-center gap-3 px-3 py-2 bg-black/20 rounded-lg"
+          className="flex flex-wrap items-center gap-3 px-3 py-2 bg-black/20 rounded-lg"
         >
           <span className="text-sm" title={statusLabel(signer.status)}>
             {statusIcon(signer.status)}

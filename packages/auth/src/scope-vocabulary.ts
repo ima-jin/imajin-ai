@@ -646,6 +646,14 @@ export const SCOPE_VOCABULARY = [
   // #2905: the cascade sees private-app repository lineage, so this is NOT
   // serviceEligible. Grant via the countersigned apps:service-scopes card.
   { scope: 'registry:template-read', connector: null, label: 'Discover registered apps and join readiness for template update cascades' },
+  // App-token scope is only a transport fence. The connector independently
+  // checks the verified zone owner's live zone-DID delegation on every call.
+  // No serviceEligible flag: requests alone cannot mint these service scopes.
+  { scope: 'cloudflare:read', connector: null, label: 'Read Cloudflare zones delegated to this app DID' },
+  { scope: 'cloudflare:dns', connector: null, label: 'Edit DNS and proxy records in delegated Cloudflare zones' },
+  { scope: 'cloudflare:cache', connector: null, label: 'Propose cache rules for delegated Cloudflare zones' },
+  { scope: 'cloudflare:ssl', connector: null, label: 'Read SSL mode in delegated Cloudflare zones' },
+  { scope: 'cloudflare:custom-hostnames', connector: null, label: 'Manage custom hostnames in delegated Cloudflare zones' },
 ] as const satisfies readonly ScopeVocabularyEntry[];
 
 /** Every scope string in the vocabulary, as a literal union. */

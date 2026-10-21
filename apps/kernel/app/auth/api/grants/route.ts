@@ -27,29 +27,24 @@
  * Returns: { grant: DelegationGrant, introAttributionTerms?: IntroAttributionTermsRecord }
  */
 import { NextResponse } from 'next/server';
-import { requireAuth, authErrorResponse, agentCardUrl } from '@imajin/auth';
+import { authErrorResponse, type Identity } from '@imajin/auth';
+import { requireGrantPrincipal } from '@/src/lib/auth/grant-principal';
 import { issueGrant, listGrantsForDelegator } from '@/src/lib/auth/grants';
 import { recordIntroAttributionTerms } from '@/src/lib/fair/intro-attribution';
 import { validateIntroAttributionSplitBps, type IntroAttributionSplitBps } from '@imajin/fair';
+import { controlsImportOwner } from '@/src/lib/vault/import-authority';
+async function mayIssueCloudflareGrant(identity: Identity, delegatorDid: string, capabilities: string[]): Promise<boolean> {
+  if (!capabilities.some(capability => capability.startsWith('cloudflare:')) || delegatorDid === identity.id) return true;
+  return controlsImportOwner(identity.id, delegatorDid);
+}
 
 export async function POST(request: Request) {
-  const authResult = await requireAuth(request);
+  const authResult = await requireGrantPrincipal(request);
   if ('error' in authResult) {
     return authErrorResponse(authResult);
   }
   const { identity } = authResult;
 
-  if (identity.actingFor) {
-    // `onboarding` (#1899): the agent-delegation caller here is itself an
-    // agent's own key being told it lacks the standing to self-grant.
-    return NextResponse.json(
-      {
-        error: 'Grants must be issued by the delegator principal directly, not while acting under agent delegation',
-        onboarding: agentCardUrl(),
-      },
-      { status: 403 },
-    );
-  }
   const delegatorDid = identity.actingAs ?? identity.id;
 
   let body: Record<string, unknown>;
@@ -78,6 +73,9 @@ export async function POST(request: Request) {
   if (!Array.isArray(capabilities) || !capabilities.every((c) => typeof c === 'string')) {
     return NextResponse.json({ error: 'capabilities must be an array of strings' }, { status: 400 });
   }
+  if (!(await mayIssueCloudflareGrant(identity, delegatorDid, capabilities))) {
+    return authErrorResponse({ error: 'Current zone owner authority required', status: 403 });
+  }
 
   // Validate the intro-attribution split BEFORE issuing the grant (#1886): a
   // malformed offer must never leave a grant behind with no way to declare
@@ -91,6 +89,7 @@ export async function POST(request: Request) {
 
   const result = await issueGrant({
     delegatorDid,
+    actorDid: identity.id,
     agentDid,
     capabilities,
     audience,
@@ -120,7 +119,7 @@ export async function POST(request: Request) {
 }
 
 export async function GET(request: Request) {
-  const authResult = await requireAuth(request);
+  const authResult = await requireGrantPrincipal(request);
   if ('error' in authResult) {
     return authErrorResponse(authResult);
   }

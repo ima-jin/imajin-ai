@@ -36,7 +36,7 @@ beforeEach(async () => {
 describe('verified zone owner vault credential resolution', () => {
   it('follows verified binding to zone owner, never site owner or node env, using existing grant fetch', async () => {
     expect(await resolveDomainCredential('example.com', 'did:edge', 'dns.cloudflare')).toBe('scoped credential');
-    expect(state.fetch).toHaveBeenCalledWith({ grantId: 'correct', granteeDid: 'did:edge' });
+    expect(state.fetch).toHaveBeenCalledWith({ grantId: 'correct', granteeDid: 'did:edge', kernelCredentialUse: true });
   });
   it('never fetches for unverified/revoked/legacy binding or wrong purpose/grantee', async () => {
     state.resolve.mockResolvedValueOnce(null);

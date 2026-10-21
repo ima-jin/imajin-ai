@@ -100,7 +100,9 @@ function installFetch(agents: AgentFixture[], provisions: ProvisionFixture[], ov
       if (url.includes(suffix) && impl) return impl(url, init);
     }
     if (url.endsWith('/auth/api/agents') && method === 'GET') {
-      return { ok: true, status: 200, json: async () => ({ agents }) } as unknown as Response;
+      return { ok: true, status: 200, json: async () => ({
+        agents, delegator: { did: OWNER, name: 'Ryan', isOrganization: false, actorDid: OWNER },
+      }) } as unknown as Response;
     }
     if (url.endsWith('/auth/api/session')) {
       return { ok: true, status: 200, json: async () => ({ did: OWNER, handle: 'ryan' }) } as unknown as Response;

@@ -1,0 +1,12 @@
+.cloudflare-surface {
+  --bg-base: #0a0a0f;
+  --bg-surface: #12121a;
+  --bg-elevated: #1a1a26;
+  --bg-input: #15151f;
+  --text-primary: #f0f0f5;
+  --text-secondary: #9393a8;
+  --sunset-purple: #8b5cf6;
+  --error: #ef4444;
+  background: var(--bg-surface);
+  color: var(--text-primary);
+}

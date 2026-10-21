@@ -2,10 +2,11 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // ─── Mocks ───────────────────────────────────────────────────────────────────
 
-const { mockRequireAuth, mockGetOperatorDid, mockListGrantsForOperator } = vi.hoisted(() => ({
+const { mockRequireAuth, mockGetOperatorDid, mockListGrantsForOperator, mockListAuthGrantsForDelegator } = vi.hoisted(() => ({
   mockRequireAuth: vi.fn(),
   mockGetOperatorDid: vi.fn(),
   mockListGrantsForOperator: vi.fn(),
+  mockListAuthGrantsForDelegator: vi.fn(),
 }));
 
 const OPERATOR_DID = 'did:imajin:operator';
@@ -28,8 +29,51 @@ vi.mock('@/src/lib/notify/operator-approvals', async (importOriginal) => {
   return { ...actual, getOperatorDid: mockGetOperatorDid };
 });
 
+describe('org grant view (#2997)', () => {
+  const orgDid = 'did:imajin:business';
+
+  it.each(['owner', 'admin'])('allows an org %s to read auth grants only, including when the human is the operator', async (actingAsRole) => {
+    mockRequireAuth.mockResolvedValue({ identity: { id: OPERATOR_DID, actingAs: orgDid, actingAsRole, subtype: 'human' } });
+    const req = makeReq();
+    const res = await GET(req as Parameters<typeof GET>[0]);
+    expect(res.status).toBe(200);
+    expect(mockRequireAuth).toHaveBeenCalledWith(req, { service: 'auth' });
+    expect(await res.json()).toEqual({
+      isOperator: false, canManageGrants: true, delegatorDid: orgDid, actorDid: OPERATOR_DID,
+      grants: [{ id: 'auth-grant:org-g1' }],
+    });
+    expect(mockListAuthGrantsForDelegator).toHaveBeenCalledWith(orgDid);
+    expect(mockListGrantsForOperator).not.toHaveBeenCalled();
+    expect(mockGetOperatorDid).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { actingAsRole: 'maintainer' },
+    { actingAsRole: 'member' },
+    { actingAsRole: 'agent' },
+    { actingAsRole: 'owner', subtype: 'agent' },
+    { actingAsRole: 'owner', actingFor: orgDid },
+    {},
+  ])('refuses a disallowed org principal: %j', async (claims) => {
+    mockRequireAuth.mockResolvedValue({ identity: { id: OPERATOR_DID, actingAs: orgDid, ...claims } });
+    const res = await GET(makeReq() as Parameters<typeof GET>[0]);
+    expect(res.status).toBe(403);
+    expect(mockListAuthGrantsForDelegator).not.toHaveBeenCalled();
+    expect(mockListGrantsForOperator).not.toHaveBeenCalled();
+  });
+
+  it('honors an allowed_services auth rejection without reading either projection', async () => {
+    mockRequireAuth.mockResolvedValue({ error: 'Not authorized to act as this group', status: 403 });
+    const res = await GET(makeReq() as Parameters<typeof GET>[0]);
+    expect(res.status).toBe(403);
+    expect(mockListAuthGrantsForDelegator).not.toHaveBeenCalled();
+    expect(mockListGrantsForOperator).not.toHaveBeenCalled();
+  });
+});
+
 vi.mock('@/src/lib/jin/grants-lane', () => ({
   listGrantsForOperator: mockListGrantsForOperator,
+  listAuthGrantsForDelegator: mockListAuthGrantsForDelegator,
 }));
 
 // ─── Subject ─────────────────────────────────────────────────────────────────
@@ -56,6 +100,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   mockGetOperatorDid.mockResolvedValue(OPERATOR_DID);
   mockListGrantsForOperator.mockResolvedValue([{ id: 'auth-grant:g1' }]);
+  mockListAuthGrantsForDelegator.mockResolvedValue([{ id: 'auth-grant:org-g1' }]);
 });
 
 describe('OPTIONS /jin/api/grants', () => {

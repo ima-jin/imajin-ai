@@ -98,6 +98,11 @@ async function runProposalExecutionIfApplicable(
   if (decision !== 'approve') {
     return {};
   }
+  if (card.source === 'cloudflare') {
+    const { executeCloudflareApproval } = await import('@/src/lib/cloudflare/approvals');
+    const execution = await executeCloudflareApproval(card);
+    return execution.ok ? {} : { error: execution.error };
+  }
   if (card.source === 'vault') {
     const execution = await executeVaultApproval(card);
     if (execution.ok) return {};

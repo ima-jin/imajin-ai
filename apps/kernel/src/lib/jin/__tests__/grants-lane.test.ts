@@ -69,6 +69,9 @@ vi.mock('@/src/db', () => ({
   },
   registryApps: { appDid: 'registryApps.appDid', name: 'registryApps.name' },
 }));
+vi.mock('@/src/lib/vault/import-authority', () => ({
+  listImportOwners: vi.fn(async (did: string) => [{ did, name: did }]),
+}));
 
 vi.mock('drizzle-orm', () => ({
   and: (...args: unknown[]) => ({ and: args }),
@@ -99,7 +102,9 @@ import {
   listLegacyAgentMemberships,
   listAppAuthorizationsForOwner,
   listGrantsForOperator,
+  listAuthGrantsForDelegator,
 } from '../grants-lane';
+import { listImportOwners } from '@/src/lib/vault/import-authority';
 
 const OPERATOR_DID = 'did:imajin:operator';
 
@@ -176,7 +181,43 @@ describe('listAppAuthorizationsForOwner', () => {
   });
 });
 
+describe('listAuthGrantsForDelegator (#2997)', () => {
+  it('reads only the org auth source, preserving human history and org delegator', async () => {
+    const delegatorDid = 'did:imajin:org';
+    const history = [{ event: 'issued', actorDid: 'did:imajin:owner', createdAt: '2026-03-01T00:00:00.000Z', capability: null }];
+    mockListGrantDetailsForDelegator.mockResolvedValue([
+      { grantId: 'older', delegatorDid, history, agentDid: 'did:imajin:bot', capabilities: [], issuedAt: '2026-01-01T00:00:00.000Z', lastUsedAt: null, status: 'revoked' },
+      { grantId: 'newer', delegatorDid, history, agentDid: 'did:imajin:bot', capabilities: [{ capability: 'messages:write', status: 'active' }], issuedAt: '2026-03-01T00:00:00.000Z', lastUsedAt: null, status: 'active' },
+    ]);
+    const cards = await listAuthGrantsForDelegator(delegatorDid);
+    expect(mockListGrantDetailsForDelegator).toHaveBeenCalledWith(delegatorDid);
+    expect(cards.map((card) => card.id)).toEqual(['auth-grant:newer', 'auth-grant:older']);
+    expect(cards[0]).toMatchObject({ source: 'auth-grant', delegatorDid, history, revocable: true });
+    expect(cards[1]).toMatchObject({ revocable: false, revoke: null });
+    expect(mockDbSelect).not.toHaveBeenCalled();
+    expect(mockListVaultKeyCards).not.toHaveBeenCalled();
+    expect(mockListDelegateGrantBearersForPrincipal).not.toHaveBeenCalled();
+  });
+});
+
 describe('listGrantsForOperator', () => {
+  it('shows group zone grants through the existing revoke lane, but not unrelated group grants', async () => {
+    vi.mocked(listImportOwners).mockResolvedValueOnce([
+      { did: OPERATOR_DID, name: 'Operator' }, { did: 'did:imajin:group', name: 'Group' },
+    ]);
+    mockListGrantDetailsForDelegator.mockImplementation(async (did: string) => did === OPERATOR_DID ? [] : [
+      { grantId: 'zone-grant', agentDid: 'did:web:external.example', capabilities: [{ capability: 'cloudflare:dns', status: 'active' }],
+        audience: { type: 'dids', values: [`did:imajin:cloudflare-${'a'.repeat(32)}`] }, issuedAt: '2026-10-20T00:00:00Z', status: 'active' },
+      { grantId: 'other-grant', agentDid: 'did:imajin:other', capabilities: [{ capability: 'messages:read', status: 'active' }],
+        audience: { type: 'all' }, issuedAt: '2026-10-20T00:00:00Z', status: 'active' },
+    ]);
+    const cards = await listGrantsForOperator(OPERATOR_DID);
+    expect(cards).toHaveLength(1);
+    expect(cards[0]).toMatchObject({
+      grantee: 'did:web:external.example', capabilities: ['cloudflare:dns'],
+      revoke: { method: 'DELETE', path: '/auth/api/grants/zone-grant' },
+    });
+  });
   it('normalizes every source into one sorted GrantCard list', async () => {
     mockListGrantDetailsForDelegator.mockResolvedValue([
       {

@@ -1,11 +1,20 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { AppSecretsPanel } from '../app-secrets-panel';
+import { ProvisionedAppsList } from '../provisioned-apps-list';
+import { provisionReissueAnchorId } from '../provision-anchor';
 
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 const app = {
   appDid: 'did:imajin:fake-app', slug: 'fake-app', name: 'Fake app', active: true, claimed: true,
+  claimExpiresAt: null,
+  provenance: {
+    created: { at: '2026-10-13T00:00:00Z', by: 'did:imajin:registrar' },
+    provisioned: { at: '2026-10-13T01:00:00Z', proposedBy: 'did:imajin:proposer', approvedBy: 'did:imajin:approver' },
+    claimed: { at: '2026-10-13T02:00:00Z', by: 'fixture-host.example' },
+    lastSeen: { at: '2026-10-14T00:00:02Z', by: 'did:imajin:fake-app' },
+  },
   secrets: [{ name: 'SESSION_SECRET', kind: 'random-32B', status: 'active', timeline: [
     { phase: 'minted', at: '2026-10-14T00:00:00Z', operatorDid: 'did:imajin:fake-operator', via: 'fake-proposal' },
     { phase: 'granted', at: '2026-10-14T00:00:01Z' },
@@ -75,13 +84,22 @@ describe('AppSecretsPanel', () => {
       ...app, claimed: false, secrets: [{ name: 'DATABASE_URL', kind: 'operator-supplied', status: 'missing', timeline: [] }],
     }] })));
     render(<AppSecretsPanel />);
-    await screen.findByText('unclaimed');
+    await screen.findByText('awaiting claim');
     expect(screen.queryByLabelText('New value for DATABASE_URL')).toBeNull();
   });
   it.each([
     null, {}, { apps: null }, { apps: 'bad' }, { apps: [null] },
     { apps: [{ ...app, secrets: undefined }] },
     { apps: [{ ...app, claimed: 'true' }] },
+    { apps: [{ ...app, claimExpiresAt: 123 }] },
+    { apps: [{ ...app, claimExpiresAt: 'not-a-date' }] },
+    ...[null, [], {}, 'bad', { ...app.provenance, created: null },
+      { ...app.provenance, provisioned: { at: null, proposedBy: null } },
+      { ...app.provenance, claimed: { at: {}, by: null } },
+      { ...app.provenance, lastSeen: { at: null, by: [] } },
+      { ...app.provenance, created: { at: '', by: null } },
+      { ...app.provenance, lastSeen: { at: 'not-a-date', by: null } },
+    ].map((provenance) => ({ apps: [{ ...app, provenance }] })),
     { apps: [{ ...app, secrets: [{ ...app.secrets[0], timeline: null }] }] },
     { apps: [{ ...app, secrets: [{ ...app.secrets[0], timeline: [{ phase: 'minted', at: {} }] }] }] },
   ])('fails closed on malformed metadata without throwing or offering controls', async (body) => {
@@ -91,6 +109,68 @@ describe('AppSecretsPanel', () => {
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
     expect(container.textContent).toBe('');
     expect(screen.queryAllByRole('button')).toHaveLength(0);
+  });
+  it('shows the four timestamped provenance lines with distinct identities', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({ apps: [app] })));
+    render(<AppSecretsPanel />);
+    await screen.findByText('Created');
+    for (const [label, timestamp, identities] of [
+      ['Created', app.provenance.created.at, ['did:imajin:registrar']],
+      ['Provisioned', app.provenance.provisioned.at, ['did:imajin:proposer', 'did:imajin:approver']],
+      ['Claimed', app.provenance.claimed.at, ['fixture-host.example']],
+      ['Last seen', app.provenance.lastSeen.at, ['did:imajin:fake-app']],
+    ] as const) {
+      const line = screen.getByText(label, { exact: true }).parentElement!;
+      expect(line.querySelector('time')?.dateTime).toBe(timestamp);
+      for (const identity of identities) expect(line.textContent).toContain(identity);
+    }
+  });
+  it.each([undefined, {
+    created: { at: null, by: null },
+    provisioned: { at: null, proposedBy: null, approvedBy: null },
+    claimed: { at: null, by: null },
+    lastSeen: { at: null, by: null },
+  }])('keeps all legacy provenance lines explicit without inventing history', async (provenance) => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({ apps: [{ ...app, provenance }] })));
+    render(<AppSecretsPanel />);
+    await screen.findByText('Created');
+    for (const label of ['Created', 'Provisioned', 'Claimed', 'Last seen']) {
+      const line = screen.getByText(label, { exact: true }).parentElement!;
+      expect(line.textContent).toContain('unknown (pre-#3006 row)');
+      expect(line.querySelector('time')).toBeNull();
+    }
+  });
+  it.each([
+    ['2020-01-02T03:04:05Z', 'expired'],
+    ['2099-01-02T03:04:05Z', 'expires'],
+    [null, 'expires'],
+  ])('shows actual claim expiry %s and links to the existing reissue control without mutating', async (claimExpiresAt, state) => {
+    const fetchMock = vi.fn().mockResolvedValue(Response.json({ apps: [{
+      ...app, claimed: false, claimExpiresAt,
+      provenance: { ...app.provenance, claimed: { at: null, by: null } },
+      secrets: [...app.secrets, { name: 'DATABASE_URL', kind: 'operator-supplied', status: 'missing', timeline: [] }],
+    }] }));
+    vi.stubGlobal('fetch', fetchMock);
+    const onReissue = vi.fn();
+    render(<><AppSecretsPanel /><ProvisionedAppsList
+      apps={[{ slug: app.slug, appDid: null, repoUrl: null, claimed: false }]}
+      reissueBusy={false} onReissue={onReissue} /></>);
+    const panel = await screen.findByTestId('app-secrets-panel');
+    expect(within(panel).getByText(/not claimed yet/)).toBeDefined();
+    const expiry = within(panel).getByText(new RegExp(`Claim code ${state}`));
+    expect(expiry.textContent).toContain(claimExpiresAt ?? 'unknown (pre-#3006 row)');
+    expect(expiry.querySelector('time')?.dateTime ?? null).toBe(claimExpiresAt);
+    expect(within(panel).queryAllByRole('button')).toHaveLength(0);
+    expect(within(panel).queryByLabelText('New value for DATABASE_URL')).toBeNull();
+    const link = within(panel).getByRole('link', { name: 'Reissue claim code' });
+    const button = screen.getByRole('button', { name: 'Reissue claim code' });
+    expect(link.getAttribute('href')).toBe(`#${button.id}`);
+    expect(button.id).toBe(provisionReissueAnchorId(app.slug));
+    fireEvent.click(link);
+    expect(onReissue).not.toHaveBeenCalled();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    fireEvent.click(button);
+    expect(onReissue).toHaveBeenCalledTimes(1);
   });
   it('renders names/recipes and signed lifecycle, and Rotate only proposes without a reveal', async () => {
     const fetchMock = vi.fn().mockResolvedValueOnce(Response.json({ apps: [app] }))
@@ -133,7 +213,7 @@ describe('AppSecretsPanel', () => {
   it('shows unclaimed provisions but offers no secret mutation controls', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({ apps: [{ ...app, claimed: false }] })));
     render(<AppSecretsPanel />);
-    await screen.findByText('unclaimed');
+    await screen.findByText('awaiting claim');
     expect(screen.queryAllByRole('button')).toHaveLength(0);
   });
   it('renders nothing for nonoperators', async () => {

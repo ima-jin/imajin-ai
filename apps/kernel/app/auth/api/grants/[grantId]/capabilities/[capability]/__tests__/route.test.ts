@@ -64,7 +64,7 @@ describe('DELETE /auth/api/grants/:grantId/capabilities/:capability', () => {
     expect(revokeGrantCapabilityMock).toHaveBeenCalledWith({
       grantId: GRANT_ID,
       capability: CAPABILITY,
-      requestedBy: DELEGATOR,
+      requestedBy: DELEGATOR, actorDid: DELEGATOR,
     });
   });
 
@@ -107,7 +107,7 @@ describe('PUT /auth/api/grants/:grantId/capabilities/:capability (#2108)', () =>
     expect(addGrantCapabilityMock).toHaveBeenCalledWith({
       grantId: GRANT_ID,
       capability: CAPABILITY,
-      requestedBy: DELEGATOR,
+      requestedBy: DELEGATOR, actorDid: DELEGATOR,
     });
   });
 

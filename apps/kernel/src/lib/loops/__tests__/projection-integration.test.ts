@@ -6,7 +6,7 @@ vi.mock('@imajin/db', () => ({ getClient: () => sql }));
 import { loopProjectionReactor, LoopOwnershipConflictError } from '../../../../../../packages/bus/src/reactors/loop-projection';
 import type { BusEvent } from '../../../../../../packages/bus/src/types';
 import { getLoopWithHistory } from '../query';
-import { STEP_ISSUE_UPDATE, queuedStep, stepEvent, closureStep, releaseStep, deployedStep } from './horizon-fixtures';
+import { STEP_ISSUE, STEP_ISSUE_UPDATE, queuedStep, stepEvent, closureStep, releaseStep, deployedStep } from './horizon-fixtures';
 
 const pg = new PGlite();
 function taggedSql(executor: Pick<PGlite, 'query'>) {
@@ -41,6 +41,52 @@ async function project(type: string, at: string, refs?: Record<string, string>, 
 }
 
 describe('real loop projection SQL', () => {
+  it('persists ref-only bindings and rebuilds closure/release/deploy conditions without an invented OUTCOME', async () => {
+    const queue = queuedStep();
+    const owner = queue.principal;
+    const loopId = 'ref-only-binding';
+    await project('loop.started', queue.occurredAt, undefined, { loopId, principal: owner });
+    const persist = async (event: ReturnType<typeof stepEvent>) =>
+      loopProjectionReactor({
+        ...event, id: `${loopId}:${event.id}`, loopId, payload: { ...event.payload, loopId }, subject: owner, scope: 'loop',
+      }, {});
+    const facts = [
+      queue,
+      stepEvent('step.updated', 1, { update: { issue: { ref: STEP_ISSUE } } }),
+      stepEvent('step.finished', 2),
+      closureStep(),
+    ];
+    for (const event of facts.slice(0, 2)) await persist(event);
+    expect((await getLoopWithHistory(loopId, owner))?.horizon.steps[0]).toMatchObject({
+      issue: { ref: STEP_ISSUE }, state: 'queued', zone: 'tail',
+    });
+    await persist(facts[2]);
+    expect((await getLoopWithHistory(loopId, owner))?.horizon.steps[0]).toMatchObject({
+      issue: { ref: STEP_ISSUE }, state: 'finished', zone: 'tail', openExitConditions: ['closed', 'released', 'prod'],
+    });
+    await persist(facts[3]);
+    const beforeRestart = await getLoopWithHistory(loopId, owner);
+    expect(beforeRestart?.horizon).toMatchObject({ depth: 1, steps: [{
+      issue: { ref: STEP_ISSUE }, state: 'finished', zone: 'past', openExitConditions: ['released', 'prod'],
+    }] });
+    expect(beforeRestart?.horizon.steps[0].conditions.map(condition => condition.satisfied)).toEqual([true, false, false]);
+    const persistedUpdate = beforeRestart?.events.find(event => event.type === 'step.updated');
+    expect(persistedUpdate?.payload.update).toEqual({ issue: { ref: STEP_ISSUE } });
+    expect(persistedUpdate?.payload).toEqual({ ...facts[1].payload, loopId });
+    expect(beforeRestart?.horizon.steps[0].issue).not.toHaveProperty('outcome');
+    sql.mockImplementation(taggedSql(pg));
+    expect((await getLoopWithHistory(loopId, owner))?.horizon).toEqual(beforeRestart?.horizon);
+    await persist(releaseStep());
+    expect((await getLoopWithHistory(loopId, owner))?.horizon.steps[0].openExitConditions).toEqual(['prod']);
+    await persist(deployedStep());
+    expect((await getLoopWithHistory(loopId, owner))?.horizon.depth).toBe(0);
+    const audit = await getLoopWithHistory(loopId, owner, true);
+    expect(audit?.horizon.steps[0]).toMatchObject({
+      issue: { ref: STEP_ISSUE }, state: 'exited', zone: 'done', openExitConditions: [],
+    });
+    expect(audit?.horizon.steps[0].issue).not.toHaveProperty('outcome');
+    expect(audit?.loop.state).toBe('loop.started');
+  });
   it('persists and rebuilds ranked horizon facts, deduplicates retry, and keeps the parent lifecycle unchanged', async () => {
     const queue = queuedStep();
     const owner = queue.principal;

@@ -130,7 +130,7 @@ function summarise(service: string, text: string): ApiSpecSummary {
   return {
     service,
     endpoint: specEndpoint(service),
-    label: SERVICE_LABELS.get(service) ?? getConnector(service)?.name ?? null,
+    label: SERVICE_LABELS.get(service) ?? getConnector(service)?.name ?? stringOrNull(parsed.info?.title),
     title: stringOrNull(parsed.info?.title),
     version: stringOrNull(parsed.info?.version),
     paths:

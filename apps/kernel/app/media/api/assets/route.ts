@@ -345,6 +345,9 @@ export async function POST(request: NextRequest) {
       mimeType,
       context,
       baseUrl,
+      ...(context?.app === "auth" && context.feature === "signed"
+        ? { dedup: false, access: "private" }
+        : {}),
     });
   } catch (err) {
     log.error({ err: String(err) }, "Asset creation failed");
