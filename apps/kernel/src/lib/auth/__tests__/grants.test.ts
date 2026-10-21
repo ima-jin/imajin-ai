@@ -516,7 +516,7 @@ describe('whole-grant revocation', () => {
 
 describe('renewGrant — leases, not perpetual authority', () => {
   it('extends the expiry of an active grant', async () => {
-    // Issue with a short lease, then renew with the (much longer) default —
+    // Issue with a short lease, then renew with an explicit longer lease —
     // the renewed expiry must be unambiguously later than the original.
     const issued = await issueGrant({
       delegatorDid: DELEGATOR,
@@ -528,9 +528,38 @@ describe('renewGrant — leases, not perpetual authority', () => {
     if (!('grant' in issued)) throw new Error('expected grant');
     const originalExpiry = new Date(issued.grant.expiry).getTime();
 
-    const renewed = await renewGrant({ grantId: issued.grant.grantId, requestedBy: DELEGATOR });
+    const renewed = await renewGrant({ grantId: issued.grant.grantId, requestedBy: DELEGATOR, ttlMs: 60_000 });
     if (!('grantId' in renewed)) throw new Error('expected renewal');
     expect(new Date(renewed.expiresAt).getTime()).toBeGreaterThan(originalExpiry);
+  });
+
+  it('keeps the original lease, then the last chosen lease, across repeated renewals', async () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date('2026-10-01T00:00:00Z'));
+      const issued = await issueGrant({ delegatorDid: DELEGATOR, agentDid: AGENT, capabilities: ['messages:write'], audience: { type: 'all' }, ttlMs: 7 * 86400000 });
+      if (!('grant' in issued)) throw new Error('expected grant');
+      const renew = (ttlMs?: number) => renewGrant({ grantId: issued.grant.grantId, requestedBy: DELEGATOR, ttlMs });
+      vi.advanceTimersByTime(86400000);
+      expect(await renew()).toMatchObject({ expiresAt: new Date(Date.now() + 7 * 86400000).toISOString() });
+      vi.advanceTimersByTime(86400000);
+      expect(await renew(30 * 86400000)).toMatchObject({ expiresAt: new Date(Date.now() + 30 * 86400000).toISOString() });
+      vi.advanceTimersByTime(86400000);
+      expect(await renew()).toMatchObject({ expiresAt: new Date(Date.now() + 30 * 86400000).toISOString() });
+      expect(grantsStore.get(issued.grant.grantId)?.issuedAt).toEqual(new Date(issued.grant.issuedAt));
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it.each([31 * 86400000, Number.MAX_VALUE])('clamps an explicit renewal lease of %s to 30 days', async ttlMs => {
+    const issued = await issueGrant({ delegatorDid: DELEGATOR, agentDid: AGENT, capabilities: ['messages:write'], audience: { type: 'all' } });
+    if (!('grant' in issued)) throw new Error('expected grant');
+    const now = Date.now();
+    const renewed = await renewGrant({ grantId: issued.grant.grantId, requestedBy: DELEGATOR, ttlMs });
+    if (!('expiresAt' in renewed)) throw new Error('expected renewal');
+    expect(Date.parse(renewed.expiresAt) - now).toBeGreaterThanOrEqual(30 * 86400000);
+    expect(Date.parse(renewed.expiresAt) - Date.now()).toBeLessThanOrEqual(30 * 86400000);
   });
 
   it('rejects renewal from anyone other than the issuing delegator', async () => {

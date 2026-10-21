@@ -20,6 +20,7 @@ interface GrantCardFixture {
   surplusGrantIds?: string[];
   capabilities: string[];
   issuedAt: string | null;
+  expiresAt?: string;
   lastUsedAt: string | null;
   ackState: 'used' | 'failed' | 'discarded' | 'pending' | null;
   ackEvidence: { kind?: string; ref?: string; note?: string } | null;
@@ -116,6 +117,15 @@ describe('operator gate', () => {
 });
 
 describe('normalization rendering', () => {
+  it('warns on an expiring operator approvals grant and links to renewal', async () => {
+    installFetch({ grantsResponse: { isOperator: true, grants: [grant({
+      capabilities: ['operator:approvals'], expiresAt: new Date(Date.now() + 3 * 3600000).toISOString(),
+    })] } });
+    render(<GrantsPanel />);
+    expect(await screen.findByRole('alert')).toBeDefined();
+    expect(screen.getByText(/Operator approvals expires in 3h/)).toBeDefined();
+    expect(screen.getByRole('link', { name: 'Renew grant →' }).getAttribute('href')).toBe('/auth/agents');
+  });
   it('renders one card per grant, with source label, grantee, capabilities, and status', async () => {
     installFetch({
       grantsResponse: {

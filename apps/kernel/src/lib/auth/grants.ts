@@ -38,6 +38,7 @@ import {
 import { validateAttestDelegationCapabilities } from './attest-delegation';
 import type { DbExecutor } from '@/src/lib/vault/index';
 import { isCloudflareZoneAudience } from '@/src/lib/cloudflare/contract';
+import { previousGrantLeaseMs } from './grant-lease';
 
 const log = createLogger('kernel');
 
@@ -113,6 +114,7 @@ async function recordGrantEvent(tx: DbExecutor, params: {
   delegatorDid: string;
   actorDid: string;
   capability?: string;
+  occurredAt?: Date;
 }, audit?: PendingGrantRevocationAudit): Promise<void> {
   const { prepareMechanicalAttestation } = await import('./emit-mechanical-attestation');
   const attestation = await prepareMechanicalAttestation({
@@ -120,7 +122,7 @@ async function recordGrantEvent(tx: DbExecutor, params: {
     type: `delegation.grant.${params.event}`,
     contextId: params.grantId,
     contextType: 'delegation_grant',
-    payload: { ...params, ...(audit ? { occurredAt: audit.occurredAt } : {}) },
+    payload: { ...params, ...(params.occurredAt ? { occurredAt: params.occurredAt.toISOString() } : {}), ...(audit ? { occurredAt: audit.occurredAt } : {}) },
   }, audit ? `att_${audit.id}` : undefined);
   await tx.insert(delegationGrantEvents).values({
     id: audit?.id ?? generateId('gevt'),
@@ -128,7 +130,7 @@ async function recordGrantEvent(tx: DbExecutor, params: {
     event: params.event,
     capability: params.capability ?? null,
     actorDid: params.actorDid,
-    createdAt: audit ? new Date(audit.occurredAt) : attestation.issuedAt,
+    createdAt: audit ? new Date(audit.occurredAt) : (params.occurredAt ?? attestation.issuedAt),
   });
   await tx.insert(attestations).values(attestation);
 }
@@ -270,9 +272,9 @@ async function requireGrantDelegator(tx: DbExecutor, params: {
   action: string;
   requireActiveError?: string;
   actorDid?: string;
-}): Promise<{ delegatorDid: string; agentDid: string; status: string; audience: unknown; pendingRevocationAudits: PendingGrantRevocationAudit[] } | LibError> {
+}): Promise<{ delegatorDid: string; agentDid: string; status: string; audience: unknown; issuedAt: Date; expiresAt: Date; pendingRevocationAudits: PendingGrantRevocationAudit[] } | LibError> {
   const [grant] = await tx
-    .select({ delegatorDid: delegationGrants.delegatorDid, agentDid: delegationGrants.agentDid, status: delegationGrants.status, audience: delegationGrants.audience, pendingRevocationAudits: delegationGrants.pendingRevocationAudits })
+    .select({ delegatorDid: delegationGrants.delegatorDid, agentDid: delegationGrants.agentDid, status: delegationGrants.status, audience: delegationGrants.audience, issuedAt: delegationGrants.issuedAt, expiresAt: delegationGrants.expiresAt, pendingRevocationAudits: delegationGrants.pendingRevocationAudits })
     .from(delegationGrants)
     .where(eq(delegationGrants.id, params.grantId))
     .limit(1)
@@ -445,14 +447,23 @@ export function renewGrant(params: {
     });
     if ('error' in grant) return grant;
 
-    const expiresAt = new Date(Date.now() + clampTtlMs(params.ttlMs));
+    const history = await tx.select({ event: delegationGrantEvents.event, createdAt: delegationGrantEvents.createdAt })
+      .from(delegationGrantEvents)
+      .where(and(eq(delegationGrantEvents.grantId, params.grantId), eq(delegationGrantEvents.event, 'renewed')));
+    const ttlMs = params.ttlMs ?? previousGrantLeaseMs({
+      issuedAt: grant.issuedAt.toISOString(),
+      expiresAt: grant.expiresAt.toISOString(),
+      history: history.map(entry => ({ event: entry.event, createdAt: entry.createdAt.toISOString() })),
+    });
+    const renewedAt = new Date();
+    const expiresAt = new Date(renewedAt.getTime() + clampTtlMs(ttlMs));
 
     await tx
       .update(delegationGrants)
-      .set({ expiresAt, updatedAt: new Date() })
+      .set({ expiresAt, updatedAt: renewedAt })
       .where(eq(delegationGrants.id, params.grantId));
 
-    await recordGrantEvent(tx, { grantId: params.grantId, event: 'renewed', delegatorDid: grant.delegatorDid, actorDid: params.actorDid ?? params.requestedBy });
+    await recordGrantEvent(tx, { grantId: params.grantId, event: 'renewed', delegatorDid: grant.delegatorDid, actorDid: params.actorDid ?? params.requestedBy, occurredAt: renewedAt });
 
     return { grantId: params.grantId, expiresAt: expiresAt.toISOString() };
   });

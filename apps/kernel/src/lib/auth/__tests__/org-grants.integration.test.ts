@@ -114,7 +114,7 @@ async function assertSignedEvent(grantId: string, event: string, capability?: st
   expect(row.payload).toEqual({
     grantId, delegatorDid: ORG, actorDid: HUMAN, event,
     ...(capability ? { capability } : {}),
-    ...(['revoked', 'capability_revoked'].includes(event) ? { occurredAt: expect.any(String) } : {}),
+    ...(['renewed', 'revoked', 'capability_revoked'].includes(event) ? { occurredAt: expect.any(String) } : {}),
   });
   const signedMessage = canonicalize({
     subject_did: row.subjectDid, type: row.type, context_id: row.contextId,
@@ -185,6 +185,25 @@ afterEach(() => {
 });
 
 describe('organization grant acceptance (#2997)', () => {
+  it('passes TTL through the real route, clamps at 30 days and preserves that lease on no-choice renewal', async () => {
+    const grant = await issuedGrant();
+    const ttlMs = 30 * 86400000;
+    const first = await renew(request('POST', { body: { ttlMs: ttlMs * 2 } }), grantParams(grant.grantId));
+    expect(first.status).toBe(200);
+    const { grant: renewed } = await first.json();
+    const anchor = await harness.client.query<{ created_at: Date }>(
+      "SELECT created_at FROM auth.delegation_grant_events WHERE grant_id = $1 AND event = 'renewed'", [grant.grantId],
+    );
+    expect(Date.parse(renewed.expiresAt) - anchor.rows[0].created_at.getTime()).toBe(ttlMs);
+    const second = await renew(request('POST'), grantParams(grant.grantId));
+    expect(second.status).toBe(200);
+    const { grant: preserved } = await second.json();
+    const row = await harness.client.query<{ expires_at: Date; updated_at: Date }>(
+      'SELECT expires_at, updated_at FROM auth.delegation_grants WHERE id = $1', [grant.grantId],
+    );
+    expect(row.rows[0].expires_at.getTime() - row.rows[0].updated_at.getTime()).toBe(ttlMs);
+    expect(preserved.expiresAt).toBe(row.rows[0].expires_at.toISOString());
+  });
   it.each([
     ['revoke', 'signing'], ['remove', 'signing'],
     ['revoke', 'attestation'], ['remove', 'attestation'],

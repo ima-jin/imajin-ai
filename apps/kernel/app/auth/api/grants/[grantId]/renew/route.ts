@@ -6,7 +6,7 @@
  * and only while it is still active — a revoked grant must be re-issued, not
  * resurrected via renewal.
  *
- * Body: { ttlMs?: number }  // clamped to [default, max] lease bounds
+ * Body: { ttlMs?: number }  // positive TTL capped at max; absent preserves the last lease
  */
 import { NextResponse } from 'next/server';
 import { authErrorResponse } from '@imajin/auth';
@@ -24,10 +24,19 @@ export async function POST(request: Request, props: { params: Promise<{ grantId:
 
   let ttlMs: number | undefined;
   try {
-    const body = await request.json();
-    if (typeof body?.ttlMs === 'number') ttlMs = body.ttlMs;
+    const text = await request.text();
+    const body = text.trim() ? JSON.parse(text) : {};
+    if (body === null || typeof body !== 'object' || Array.isArray(body)) {
+      return NextResponse.json({ error: 'Body must be an object' }, { status: 400 });
+    }
+    if (body.ttlMs !== undefined) {
+      if (typeof body.ttlMs !== 'number' || !Number.isFinite(body.ttlMs) || body.ttlMs <= 0) {
+        return NextResponse.json({ error: 'ttlMs must be a positive finite number' }, { status: 400 });
+      }
+      ttlMs = body.ttlMs;
+    }
   } catch {
-    // Empty/absent body is fine — renewal falls back to the default TTL.
+    return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
   }
 
   const result = await renewGrant({ grantId, requestedBy, actorDid: authResult.identity.id, ttlMs });
