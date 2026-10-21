@@ -80,7 +80,7 @@ describe('POST /auth/api/grants/:grantId/renew', () => {
     expect(renewGrantMock).toHaveBeenCalledWith({ grantId: GRANT_ID, requestedBy: DELEGATOR, actorDid: DELEGATOR, ttlMs: 60000 });
   });
 
-  it.each([0, -1, '30d', null, 1e400])('rejects invalid TTL %s without renewing', async (ttlMs) => {
+  it.each([0, -1, '30d', null, Number.POSITIVE_INFINITY])('rejects invalid TTL %s without renewing', async (ttlMs) => {
     requireAuthMock.mockResolvedValue({ identity: { id: DELEGATOR } });
     expect((await POST(makeRequest({ ttlMs }), params())).status).toBe(400);
     expect(renewGrantMock).not.toHaveBeenCalled();

@@ -19,6 +19,6 @@ export function operatorGrantExpiryWarning(grant: {
   capabilities: string[];
 }, now = Date.now()): string | null {
   const remaining = Date.parse(grant.expiresAt) - now;
-  if (grant.status === 'revoked' || !grant.capabilities.includes('operator:approvals') || remaining <= 0 || remaining > GRANT_DEFAULT_TTL) return null;
+  if (grant.status === 'revoked' || !grant.capabilities.includes('operator:approvals') || !Number.isFinite(remaining) || remaining <= 0 || remaining > GRANT_DEFAULT_TTL) return null;
   return `Operator approvals expires in ${Math.ceil(remaining / (60 * 60 * 1000))}h — renew to keep approvals working.`;
 }

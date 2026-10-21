@@ -26,6 +26,9 @@ describe('previousGrantLeaseMs', () => {
 });
 
 describe('operatorGrantExpiryWarning', () => {
+  it('does not render a warning for a malformed legacy expiry', () => {
+    expect(operatorGrantExpiryWarning({ status: 'active', capabilities: ['operator:approvals'], expiresAt: 'invalid' }, NOW)).toBeNull();
+  });
   it.each([
     ['active', ['operator:approvals'], DAY, true],
     ['active', ['operator:approvals'], 1, true],
