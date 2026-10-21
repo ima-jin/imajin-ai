@@ -44,13 +44,11 @@ describe('Cloudflare operations', () => {
     expect(fetchMock.mock.calls[0][1].credentials).toBe('include');
     expect(document.querySelector('input[type=password]')).toBeNull();
   });
-  it('changes individual proxy state with an explicit checkbox', async () => {
+  it('shows proxy state without offering single-record proxy PATCH controls', async () => {
     const fetchMock = await openZone();
-    fireEvent.click(screen.getByRole('checkbox', { name: 'Proxy www.example.com through Cloudflare' }));
-    await idle();
-    expect(fetchMock.mock.calls[1][0]).toContain('/dns/record-1?domain=example.com');
-    expect(fetchMock.mock.calls[1][1].method).toBe('PATCH');
-    expect(body(fetchMock, 1)).toEqual({ proxied: true });
+    expect(screen.queryByRole('checkbox', { name: 'Proxy www.example.com through Cloudflare' })).toBeNull();
+    expect(screen.getByText(/Current proxy: DNS-only/)).toBeDefined();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
   it('previews before requesting approval, preserves changes and refreshes the existing inbox', async () => {
     const refresh = vi.fn();
@@ -88,12 +86,13 @@ describe('Cloudflare operations', () => {
     fireEvent.change(screen.getByLabelText('Record content'), { target: { value: '192.0.2.2' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save DNS record' }));
     await idle();
-    expect(body(fetchMock, 1)).toEqual({ type: 'A', name: 'new.example.com', content: '192.0.2.2', ttl: 1, proxied: false });
+    expect(body(fetchMock, 1)).toEqual({ type: 'A', name: 'new.example.com', content: '192.0.2.2', ttl: 1 });
     fireEvent.click(screen.getByRole('button', { name: 'Edit www.example.com' }));
     fireEvent.change(screen.getByLabelText('Record content'), { target: { value: '192.0.2.3' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save DNS record' }));
     await idle();
     expect(fetchMock.mock.calls[3][1].method).toBe('PATCH');
+    expect(body(fetchMock, 3)).not.toHaveProperty('proxied');
     fireEvent.click(screen.getByRole('button', { name: 'Delete www.example.com' }));
     expect(fetchMock).toHaveBeenCalledTimes(5);
     fireEvent.click(screen.getByRole('button', { name: 'Confirm DNS deletion' }));

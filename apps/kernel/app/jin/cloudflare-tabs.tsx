@@ -16,9 +16,7 @@ export function CloudflareDnsTab({ model }: Readonly<{ model: CloudflareModel }>
           <p className="break-all font-mono text-xs">{record.content} · TTL {record.ttl}</p>
           <label className="flex min-h-11 items-center gap-2 text-sm"><input type="checkbox" checked={selected.includes(record.id)} disabled={busy || record.proxiable === false || !['A', 'AAAA', 'CNAME'].includes(record.type)}
             onChange={(event) => { setSelected(event.target.checked ? [...selected, record.id] : selected.filter((id) => id !== record.id)); setPreview(null); }} />Select {record.name}</label>
-          <label className="flex min-h-11 items-center gap-2 text-sm"><input type="checkbox" checked={record.proxied ?? false}
-            disabled={busy || record.proxiable === false || !['A', 'AAAA', 'CNAME'].includes(record.type)}
-            onChange={(event) => void mutate(`dns/${encodeURIComponent(record.id)}`, 'PATCH', { proxied: event.target.checked })} />Proxy {record.name} through Cloudflare</label>
+          <p className="text-sm">Current proxy: {record.proxied ? 'Proxied' : 'DNS-only'}. Change through a previewed approval plan, never a single-record toggle.</p>
           <div className="flex flex-wrap gap-2"><button type="button" disabled={busy} className={cfButton} onClick={() => setEditing(record)}>Edit {record.name}</button>
             <button type="button" disabled={busy} className={cfButton} onClick={() => setDeleting(record)}>Delete {record.name}</button></div>
         </article>)}</div>
