@@ -61,7 +61,7 @@ beforeAll(async () => {
   pg = new PGlite();
   state.db = drizzle(pg, { schema });
   await pg.exec('CREATE SCHEMA auth; CREATE SCHEMA kernel; CREATE SCHEMA operator;');
-  await pg.exec(await readFile(new URL('../../../../../../migrations/0099_delegation_grants.sql', import.meta.url), 'utf8'));
+  await pg.exec(await readFile(new URL('../../../../../../migrations/archive/pre-kernel-baseline/0099_delegation_grants.sql', import.meta.url), 'utf8'));
   await pg.exec(`ALTER TABLE auth.delegation_grants ADD COLUMN last_used_at timestamptz;
     CREATE TABLE auth.identities (id text PRIMARY KEY, public_key text, scope text, tier text);
     CREATE TABLE kernel.vault_delegation_grants (
