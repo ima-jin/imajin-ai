@@ -37,6 +37,7 @@ import { isLiveAppAuthorization } from '@/src/lib/auth/live-app-authorization';
 const log = createLogger('kernel');
 
 const MAX_CLOCK_SKEW_MS = 60_000;
+
 async function resolveAuthorization(appDid: string, selector: string, byPrincipal: boolean) {
   const rows = await db.select().from(attestations).where(and(
     eq(byPrincipal ? attestations.issuerDid : attestations.id, selector),
@@ -47,15 +48,7 @@ async function resolveAuthorization(appDid: string, selector: string, byPrincipa
   return byPrincipal ? rows.find(row => isLiveAppAuthorization(row, now)) : rows[0];
 }
 
-export async function POST(request: NextRequest) {
-  const cors = corsHeaders(request);
-
-  let body: Record<string, unknown>;
-  try {
-    body = await request.json();
-  } catch {
-    return NextResponse.json({ error: 'Invalid JSON' }, { status: 400, headers: cors });
-  }
+function validateMintRequest(body: Record<string, unknown>) {
 
   const { appDid, attestationId, principalDid, scope, aud, nonce, timestamp, signature } = body as {
     appDid?: string;
@@ -70,27 +63,38 @@ export async function POST(request: NextRequest) {
 
   const selector = principalDid ?? attestationId;
   if (!appDid || !selector || !nonce || !timestamp || !signature) {
-    return NextResponse.json(
-      { error: 'appDid, attestationId or principalDid, nonce, timestamp, signature are required' },
-      { status: 400, headers: cors }
-    );
+    return { error: 'appDid, attestationId or principalDid, nonce, timestamp, signature are required', status: 400 };
   }
   if (typeof selector !== 'string' || (principalDid !== undefined && attestationId !== undefined)) {
-    return NextResponse.json(
-      { error: 'Provide exactly one of attestationId or principalDid as a non-empty string' },
-      { status: 400, headers: cors }
-    );
+    return { error: 'Provide exactly one of attestationId or principalDid as a non-empty string', status: 400 };
   }
 
   if (nonce.length < 16) {
-    return NextResponse.json({ error: 'nonce too short' }, { status: 400, headers: cors });
+    return { error: 'nonce too short', status: 400 };
   }
 
   // Freshness: reject stale/future timestamps (replay window bound)
   const ts = Date.parse(timestamp);
   if (Number.isNaN(ts) || Math.abs(Date.now() - ts) > MAX_CLOCK_SKEW_MS) {
-    return NextResponse.json({ error: 'timestamp outside allowed window' }, { status: 401, headers: cors });
+    return { error: 'timestamp outside allowed window', status: 401 };
   }
+  return { appDid, selector, byPrincipal: principalDid !== undefined, scope, aud, nonce, timestamp, signature };
+}
+
+export async function POST(request: NextRequest) {
+  const cors = corsHeaders(request);
+
+  let body: Record<string, unknown>;
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ error: 'Invalid JSON' }, { status: 400, headers: cors });
+  }
+  const mint = validateMintRequest(body);
+  if ('error' in mint) {
+    return NextResponse.json({ error: mint.error }, { status: mint.status, headers: cors });
+  }
+  const { appDid, selector, byPrincipal, scope, aud, nonce, timestamp, signature } = mint;
 
   // Proof of possession: app must sign with its own key. Resolve the public
   // key from registry.apps — the source of truth for developer app keys
@@ -133,9 +137,9 @@ export async function POST(request: NextRequest) {
   }
 
   // Validate the user's authorization attestation (same checks as /apps/validate)
-  const att = await resolveAuthorization(appDid, selector, principalDid !== undefined);
+  const att = await resolveAuthorization(appDid, selector, byPrincipal);
 
-  if (!att && principalDid !== undefined) {
+  if (!att && byPrincipal) {
     return NextResponse.json(
       { code: 'no_live_grant', error: `Re-grant ${app.name} on /jin → Grants` },
       { status: 403, headers: cors }
