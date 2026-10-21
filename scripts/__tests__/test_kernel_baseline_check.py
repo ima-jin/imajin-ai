@@ -217,11 +217,12 @@ class RecordedLedgerTests(unittest.TestCase):
                         return "\n".join(f"{file.name} — {status}" for file in files
                                          if file != missing or db != f"recorded_{environment}")
                     stack.enter_context(patch.object(CHECK, "verify_adoption", side_effect=output))
+                    scratch = Mock()
                     if missing is None:
-                        CHECK.recorded_ledger_checks(Mock())
+                        CHECK.recorded_ledger_checks(scratch)
                     else:
                         with self.assertRaisesRegex(RuntimeError, missing.name):
-                            CHECK.recorded_ledger_checks(Mock())
+                            CHECK.recorded_ledger_checks(scratch)
 
 
 if __name__ == "__main__":
