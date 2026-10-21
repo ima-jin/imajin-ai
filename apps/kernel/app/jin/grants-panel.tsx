@@ -64,7 +64,7 @@ function formatDate(iso: string | null): string {
 
 function statusBadge(status: string) {
   const cls = status === 'active' ? 'bg-green-900/50 text-green-300' : 'bg-gray-800 text-gray-500';
-  return <span className={`px-1.5 py-0.5 text-xs ${cls}`}>{status}</span>;
+  return <span className={`px-1.5 py-0.5 rounded text-xs ${cls}`}>{status}</span>;
 }
 
 // S3358: avoid nested ternary by resolving the toggle glyph up front.
@@ -82,7 +82,7 @@ function AckBadge({ ackState, evidence }: Readonly<{ ackState: DeferredAckState;
         type="button"
         onClick={() => setExpanded((v) => !v)}
         disabled={!hasEvidence}
-        className={`px-1.5 py-0.5 ${ACK_STATE_STYLES[ackState]} ${hasEvidence ? 'cursor-pointer' : 'cursor-default'}`}
+        className={`px-1.5 py-0.5 rounded ${ACK_STATE_STYLES[ackState]} ${hasEvidence ? 'cursor-pointer' : 'cursor-default'}`}
       >
         {ackState}{ackToggleGlyph(hasEvidence, expanded)}
       </button>
@@ -116,19 +116,19 @@ function GrantCardView({
 }>) {
   const surplus = surplusIds(card);
   return (
-    <div className="border border-gray-800 bg-[var(--bg-surface)] p-4 space-y-2" data-testid="grant-card">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex flex-wrap items-center gap-2 min-w-0">
-          <span className="px-1.5 py-0.5 text-xs font-mono bg-indigo-900/40 text-indigo-300 whitespace-nowrap">
+    <div className={surplus.length > 0 ? 'border border-gray-800 bg-[var(--bg-surface)] p-4 space-y-2' : 'rounded-lg border border-gray-800 p-4 space-y-2'} data-testid="grant-card">
+      <div className={surplus.length > 0 ? 'flex flex-wrap items-center justify-between gap-3' : 'flex items-center justify-between gap-3'}>
+        <div className={surplus.length > 0 ? 'flex flex-wrap items-center gap-2 min-w-0' : 'flex items-center gap-2 min-w-0'}>
+          <span className="px-1.5 py-0.5 rounded text-xs font-mono bg-indigo-900/40 text-indigo-300 whitespace-nowrap">
             {SOURCE_LABELS[card.source]}
           </span>
-          <span className="font-mono text-xs text-gray-200 break-all" title={card.grantee}>{card.grantee}</span>
+          <span className={surplus.length > 0 ? 'font-mono text-xs text-gray-200 break-all' : 'font-mono text-xs text-gray-200 truncate'} title={card.grantee}>{card.grantee}</span>
         </div>
         {statusBadge(card.status)}
       </div>
       {surplus.length > 0 && (
         <div className="space-y-2">
-          <p className="font-mono text-sm text-gray-200">{card.grantee} · {surplus.length + 1} live grants · keep newest</p>
+          <p className="font-mono text-sm text-gray-200">{card.grantee} · {surplus.length + 1} live grants · keep newest, revoke {surplus.length}</p>
           <p className="text-xs text-gray-500 break-all">{card.appDid}</p>
           <button
             type="button"
@@ -160,7 +160,7 @@ function GrantCardView({
 
       <div className="text-xs text-gray-500 break-all">
         <span className="uppercase tracking-wide mr-2">Capabilities</span>
-        <span className="font-mono text-gray-400 break-words">{card.capabilities.join(', ') || '—'}</span>
+        <span className="font-mono text-gray-400">{card.capabilities.join(', ') || '—'}</span>
       </div>
 
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-500">
@@ -173,13 +173,13 @@ function GrantCardView({
       {surplus.length === 0 && card.revocable && card.revoke && (
         <div className="pt-1">
           {confirming ? (
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="flex items-center gap-2">
               <span className="text-xs text-gray-400">Revoke this grant?</span>
               <button
                 type="button"
                 onClick={() => onConfirmRevoke(card)}
                 disabled={busy}
-                className="min-h-11 px-2.5 py-1 text-xs font-mono bg-red-900/40 text-red-300 hover:bg-red-800/60 disabled:opacity-40"
+                className="px-2.5 py-1 rounded text-xs font-medium bg-red-900/40 text-red-300 hover:bg-red-800/60 disabled:opacity-40"
               >
                 {busy ? '…' : 'Yes, revoke'}
               </button>
@@ -187,7 +187,7 @@ function GrantCardView({
                 type="button"
                 onClick={onCancelRevoke}
                 disabled={busy}
-                className="min-h-11 px-2.5 py-1 text-xs font-mono bg-gray-700 text-gray-200 hover:bg-gray-600 disabled:opacity-40"
+                className="px-2.5 py-1 rounded text-xs font-medium bg-gray-700 text-gray-200 hover:bg-gray-600 disabled:opacity-40"
               >
                 Cancel
               </button>
@@ -197,7 +197,7 @@ function GrantCardView({
               type="button"
               onClick={() => onRevokeClick(card)}
               disabled={busy}
-              className="min-h-11 px-2.5 py-1 text-xs font-mono bg-red-900/40 text-red-300 hover:bg-red-800/60 disabled:opacity-40"
+              className="px-2.5 py-1 rounded text-xs font-medium bg-red-900/40 text-red-300 hover:bg-red-800/60"
             >
               Revoke
             </button>

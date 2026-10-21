@@ -56,7 +56,7 @@ describe('duplicate app grant cleanup (#3008)', () => {
     const older = Array.from({ length: 9 }, (_, i) => `old-${i}`);
     const spy = installCleanupTransport({ card: duplicates({ surplusGrantIds: older }) });
     render(<GrantsPanel />);
-    expect(await screen.findByText('Karaoke · 10 live grants · keep newest')).toBeDefined();
+    expect(await screen.findByText('Karaoke · 10 live grants · keep newest, revoke 9')).toBeDefined();
     expect(screen.queryByRole('button', { name: 'Revoke' })).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Revoke 9 older grants' }));
 
@@ -69,6 +69,9 @@ describe('duplicate app grant cleanup (#3008)', () => {
     }
     expect(screen.queryByText(/live grants/)).toBeNull();
     expect(screen.getByRole('button', { name: 'Revoke' })).toBeDefined();
+    expect(screen.getByTestId('grant-card').className).toBe('rounded-lg border border-gray-800 p-4 space-y-2');
+    expect(screen.getByRole('button', { name: 'Revoke' }).className)
+      .toBe('px-2.5 py-1 rounded text-xs font-medium bg-red-900/40 text-red-300 hover:bg-red-800/60');
     expect(spy.mock.calls.filter(([input]) => input === '/jin/api/grants')).toHaveLength(2);
   });
 
@@ -87,7 +90,7 @@ describe('duplicate app grant cleanup (#3008)', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Revoke 2 older grants' }));
     expect(await screen.findByRole('alert')).toHaveProperty('textContent',
       '1 of 2 older grants could not be confirmed revoked. Newest kept. Grants refreshed; retry remaining older grants.');
-    expect(screen.getByText('Karaoke · 2 live grants · keep newest')).toBeDefined();
+    expect(screen.getByText('Karaoke · 2 live grants · keep newest, revoke 1')).toBeDefined();
     fireEvent.click(screen.getByRole('button', { name: 'Revoke 1 older grant' }));
     await waitFor(() => expect(spy.mock.calls.filter(([input]) => input === '/api/auth/revoke')).toHaveLength(3));
     const sentIds = spy.mock.calls.filter(([input]) => input === '/api/auth/revoke')
