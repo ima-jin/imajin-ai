@@ -19,10 +19,11 @@ export function createGrantsFixtureTransport(): typeof fetch {
     revocable: true,
     revoke: { method: 'POST', path: '/api/auth/revoke', body: { attestationId: ids[9] } },
   };
-  return async (input, init) => {
+  return (input, init) => Promise.resolve().then(() => {
     if (process.env.NODE_ENV !== 'development') throw new Error('Grants fixture is development-only');
     if (input === '/api/auth/revoke' && init?.method === 'POST') {
-      const { attestationId } = JSON.parse(String(init.body)) as { attestationId: string };
+      if (typeof init.body !== 'string') return Response.json({ error: 'Expected fixture JSON body' }, { status: 400 });
+      const { attestationId } = JSON.parse(init.body) as { attestationId: string };
       if (!ids.includes(attestationId)) return Response.json({ error: 'Unknown fixture grant' }, { status: 404 });
       if (revoked.has(attestationId)) return Response.json({ error: 'Already revoked' }, { status: 409 });
       revoked.add(attestationId);
@@ -50,5 +51,5 @@ export function createGrantsFixtureTransport(): typeof fetch {
       return Response.json({ isOperator: true, grants });
     }
     throw new Error('Unexpected fixture request; no network request was sent');
-  };
+  });
 }

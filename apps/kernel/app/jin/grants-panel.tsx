@@ -30,6 +30,7 @@ import { useFlashNotice } from './use-flash-notice';
 import Link from 'next/link';
 import type { GrantCard, GrantSourceKind, DeferredAckState, GrantAckEvidence } from '@/src/lib/jin/grants-lane';
 import styles from './grants-panel.module.css';
+import { forEachSequential } from '@/src/lib/async/sequential';
 
 const defaultTransport: typeof fetch = (...args) => fetch(...args);
 
@@ -337,7 +338,7 @@ export function GrantsPanel({ transport = defaultTransport }: Readonly<{ transpo
     mutationRef.current = true;
     setBusyId(card.id);
     let failed = 0;
-    for (const attestationId of ids) {
+    await forEachSequential(ids, async attestationId => {
       try {
         const res = await transport('/api/auth/revoke', {
           method: 'POST',
@@ -350,7 +351,7 @@ export function GrantsPanel({ transport = defaultTransport }: Readonly<{ transpo
       } catch {
         failed += 1;
       }
-    }
+    });
     const refreshed = await load(true);
     if (failed > 0) {
       notify('err', `${failed} of ${ids.length} older grants could not be confirmed revoked. Newest kept. ${refreshed ? 'Grants refreshed; retry remaining older grants.' : 'Refresh failed; refresh before retrying.'}`);
@@ -412,9 +413,9 @@ export function GrantsPanel({ transport = defaultTransport }: Readonly<{ transpo
       </div>
 
       {flash && (
-        <div role={flash.type === 'err' ? 'alert' : 'status'} className={`mb-3 px-3 py-2 text-xs font-medium ${flash.type === 'ok' ? 'bg-green-900/40 text-green-300' : 'bg-red-900/40 text-red-300'}`}>
+        <output role={flash.type === 'err' ? 'alert' : undefined} className={`block mb-3 px-3 py-2 text-xs font-medium ${flash.type === 'ok' ? 'bg-green-900/40 text-green-300' : 'bg-red-900/40 text-red-300'}`}>
           {flash.msg}
-        </div>
+        </output>
       )}
 
       {renderCardsList(loading, visible, actions)}

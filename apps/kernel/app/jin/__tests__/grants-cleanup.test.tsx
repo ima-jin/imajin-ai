@@ -147,6 +147,7 @@ describe('duplicate app grant cleanup (#3008)', () => {
     fireEvent.click(button);
     fireEvent.click(button);
     expect((button as HTMLButtonElement).disabled).toBe(true);
+    await waitFor(() => expect(spy.mock.calls.filter(([input]) => input === '/api/auth/revoke')).toHaveLength(1));
     const calls = spy.mock.calls.filter(([input]) => input === '/api/auth/revoke');
     expect(calls).toHaveLength(1);
     expect(JSON.parse(String(calls[0][1]?.body))).toEqual({ attestationId: 'old-a' });

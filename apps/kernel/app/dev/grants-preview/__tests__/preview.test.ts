@@ -38,6 +38,9 @@ describe('grants development fixture preview', () => {
     expect((await transport('/api/auth/revoke', {
       method: 'POST', body: JSON.stringify({ attestationId: 'real-grant' }),
     })).status).toBe(404);
+    expect((await transport('/api/auth/revoke', {
+      method: 'POST', body: new URLSearchParams({ attestationId: 'fixture-karaoke-9' }),
+    })).status).toBe(400);
     await expect(transport('/api/auth/consent', { method: 'POST' })).rejects.toThrow('no network request');
   });
 
