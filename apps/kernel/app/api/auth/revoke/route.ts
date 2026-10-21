@@ -7,10 +7,10 @@
  * Body: { attestationId }
  * Returns: { ok: true }
  *
- * Revocation itself is delegated to revokeAttestationOnce() (#1795), which
- * atomically claims the attestation (compare-and-swap on revokedAt) before
- * writing anything — so a retry storm or concurrent revoke calls against the
- * same attestation can never produce more than one `app.revoked` record.
+ * The shared revokeAppAuthorization transaction takes the same pair lock
+ * as consent and uses revokeAttestationOnce's compare-and-swap (#1795).
+ * Signed revocation and refresh invalidation commit with a projection of
+ * the newest surviving grant, or a disconnected projection if none remain.
  */
 
 import { NextRequest, NextResponse } from 'next/server';

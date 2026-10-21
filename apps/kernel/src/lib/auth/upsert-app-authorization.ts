@@ -74,9 +74,10 @@ export function upsertAppAuthorization(consent: Consent): Promise<string> {
     const reuse = newest && sameScopes(grantScopes(newest.payload), scopes);
     const surplus = reuse ? grants.slice(1) : grants;
     for (const grant of surplus) {
-      await revokeAttestationOnce({
+      const result = await revokeAttestationOnce({
         attestationId: grant.id, revokedByDid: consent.ownerDid, privateKey: consent.privateKey,
       }, tx);
+      if (!result.revoked) throw new Error('App authorization changed; retry consent');
     }
     const id = reuse ? newest.id : await mintGrant(tx, consent, scopes);
     await projectAppAuthorizationGrant({ ownerDid: consent.ownerDid, appDid: consent.appDid, scopes }, tx);

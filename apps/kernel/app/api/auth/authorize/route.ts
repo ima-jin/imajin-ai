@@ -8,12 +8,10 @@
  * Returns: { attestationId }
  * #3008: consent must converge to one live grant per (principal, app).
  *
- * Re-consent (#1795): when the caller already holds an active grant for this
- * app, an identical scope set reuses that attestation (no churn on duplicate
- * submits); a changed scope set supersedes it — the old attestation is
- * revoked exactly once (via the same compare-and-swap helper the explicit
- * disconnect flow uses), then a fresh attestation is minted and its id
- * returned so the caller's session picks up the new grant.
+ * Re-consent (#3008): identical scope sets reuse the newest live grant;
+ * changed scopes supersede every live grant. The shared upsert serializes
+ * each principal/app pair and signs every surplus revocation atomically
+ * with the surviving grant's channel_links projection.
  */
 
 import { NextRequest, NextResponse } from 'next/server';

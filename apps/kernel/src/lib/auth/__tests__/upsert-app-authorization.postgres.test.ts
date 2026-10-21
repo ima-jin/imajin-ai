@@ -223,6 +223,13 @@ describe.skipIf(!adminUrl)('shared app consent — disposable real PostgreSQL (#
     expect(refresh.revokedAt).toBeInstanceOf(Date);
   });
 
+  it('does not revoke a bilateral row or commit a second grant when revocation is refused', async () => {
+    await seed('protected', ['profile:read'], { attestationStatus: 'bilateral' });
+    const before = await state();
+    await expect(upsertAppAuthorization(consent)).rejects.toThrow('retry consent');
+    expect(await state()).toEqual(before);
+  });
+
   it('never reuses expired or revoked rows, even if those rows are newest', async () => {
     await seed('expired', ['media:read'], { expiresAt: new Date(0), issuedAt: new Date('2099-01-01') });
     await seed('revoked', ['media:read'], { revokedAt: new Date(), issuedAt: new Date('2099-01-02') });

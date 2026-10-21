@@ -58,6 +58,14 @@ describe('shared app consent behavioral seam (#3008)', () => {
     expect(h.transaction).toHaveBeenCalledOnce();
   });
 
+  it('does not mint or project when a live surplus row cannot be revoked', async () => {
+    h.rows = [grant('protected', ['profile:read'])];
+    h.revoke.mockResolvedValue({ revoked: false });
+    await expect(upsertAppAuthorization(consent)).rejects.toThrow('retry consent');
+    expect(h.values).not.toHaveBeenCalled();
+    expect(h.project).not.toHaveBeenCalled();
+  });
+
   it.each([
     [['media:read', 'profile:read'], ['profile:read', 'media:read']],
     [['media:read', 'media:read'], ['media:read']],
