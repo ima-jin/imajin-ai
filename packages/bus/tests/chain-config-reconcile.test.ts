@@ -10,6 +10,16 @@ vi.mock('@imajin/db', () => ({
 import { getChainConfig } from '../src/config';
 
 describe('chain config DEFAULTS reconcile (#1873, #1874)', () => {
+  it('connection.requested delivers only through generic notify without duplicating invited evidence (#3013)', async () => {
+    const cfg = await getChainConfig('connection.requested', 'connections');
+    expect(cfg.source).toBe('defaults');
+    expect(cfg.reactors).toEqual([
+      { type: 'notify', config: { scope: 'connection:request-received' }, enabled: true },
+    ]);
+    expect((await getChainConfig('connection.invited', 'connections')).reactors).toEqual([
+      { type: 'attestation', config: { attestationType: 'connection.invited' }, enabled: true },
+    ]);
+  });
   it('order.completed includes supply-recorder before settle (#1873)', async () => {
     const cfg = await getChainConfig('order.completed', 'supply');
     const types = cfg.reactors.map((r) => r.type);
