@@ -97,6 +97,7 @@ class AdoptionCheckTests(unittest.TestCase):
         self.files = []
         CHECK.verify_adoption(self.scratch, "restored")
         CHECK.apply_migration.assert_not_called()
+        self.assertFalse(any(call.args[2] for call in CHECK.all_data.call_args_list if len(call.args) > 2))
 
     def test_already_adopted_baseline_is_preserved(self):
         self.states["restored"]["ledger"].insert(0, {
@@ -140,6 +141,53 @@ class AdoptionCheckTests(unittest.TestCase):
         ]
         with self.assertRaisesRegex(RuntimeError, "object identities"):
             CHECK.verify_adoption(self.scratch, "restored")
+
+    def test_data_mismatch_against_replay_fails(self):
+        CHECK.all_data.side_effect = lambda scratch, db, normalize_seeds=False: db
+        with self.assertRaisesRegex(RuntimeError, "all pending post-cut"):
+            CHECK.verify_adoption(self.scratch, "restored")
+
+    def test_extension_mismatch_against_replay_fails(self):
+        def sql(db, content):
+            return db if content == CHECK.EXTENSIONS else self.sql(db, content)
+        self.scratch.sql.side_effect = sql
+        with self.assertRaisesRegex(RuntimeError, "all pending post-cut"):
+            CHECK.verify_adoption(self.scratch, "restored")
+
+    def test_missing_baseline_row_fails(self):
+        def sql(db, content):
+            return "0" if "count(*)" in content else self.sql(db, content)
+        self.scratch.sql.side_effect = sql
+        with self.assertRaisesRegex(RuntimeError, "exactly one baseline"):
+            CHECK.verify_adoption(self.scratch, "restored")
+
+    def test_wrong_baseline_checksum_fails(self):
+        self.mutation = lambda state: state["ledger"][0].update(checksum="wrong")
+        with self.assertRaisesRegex(RuntimeError, "only the baseline"):
+            CHECK.verify_adoption(self.scratch, "restored")
+
+    def test_second_run_ledger_timestamp_rewrite_fails(self):
+        def mutate(state):
+            if self.calls == 2:
+                state["ledger"][0]["applied_at"] = "changed"
+        self.mutation = mutate
+        with self.assertRaisesRegex(RuntimeError, "Repeated adoption"):
+            CHECK.verify_adoption(self.scratch, "restored")
+
+
+class DataComparisonTests(unittest.TestCase):
+    def test_normalizes_only_declared_static_seeds_for_independent_replay(self):
+        with patch.object(CHECK, "run", return_value="raw non-seed data") as run, \
+                patch.object(CHECK, "seed_rows", return_value=[]) as seeds:
+            scratch = Mock(container="scratch")
+            self.assertEqual(CHECK.all_data(scratch, "db", True), "raw non-seed data[]")
+            for table in CHECK.SEEDS:
+                self.assertIn(f"--exclude-table-data={table}", run.call_args.args)
+            seeds.assert_called_once_with(scratch, "db")
+            seeds.reset_mock()
+            self.assertEqual(CHECK.all_data(scratch, "db"), "raw non-seed data")
+            self.assertFalse(any(arg.startswith("--exclude-table-data=") for arg in run.call_args.args))
+            seeds.assert_not_called()
 
 
 class RecordedLedgerTests(unittest.TestCase):

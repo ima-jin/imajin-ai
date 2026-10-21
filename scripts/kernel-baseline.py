@@ -7,6 +7,7 @@ import pathlib
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
 import time
 import uuid
@@ -292,21 +293,7 @@ def relation_identities(scratch, db):
     return {name: (oid, node) for name, oid, node in (row.split("|") for row in rows.splitlines())}
 
 
-def verify_adoption(scratch, db, files=None):
-    files = post_cut_files() if files is None else files
-    historical = ledger_state(scratch, db)
-    tracked = {row["filename"] for row in historical}
-    pending = [file for file in files if file.name not in tracked]
-    missing_post = {file.name: hashlib.sha256(file.read_bytes()).hexdigest()
-                    for file in pending}
-    original_identities = relation_identities(scratch, db)
-    # Clone the restored history/data, then independently replay every pending
-    # root migration. Adoption itself adds no DDL; post-cut SQL legitimately can.
-    expected = f"expected_{uuid.uuid4().hex}"
-    scratch.sql("postgres", f"CREATE DATABASE {expected} TEMPLATE {db}")
-    for file in pending:
-        apply_migration(scratch, expected, file)
-    first = migrate(scratch, db)
+def verify_replayed_state(scratch, db, expected, pending, original_identities):
     if (scratch.dump(db) != scratch.dump(expected)
             or all_data(scratch, db, bool(pending)) != all_data(scratch, expected, bool(pending))
             or scratch.sql(db, EXTENSIONS) != scratch.sql(expected, EXTENSIONS)):
@@ -316,6 +303,10 @@ def verify_adoption(scratch, db, files=None):
     if any(adopted_identities.get(name) != identity for name, identity in original_identities.items()
            if replayed_identities.get(name) == identity):
         raise RuntimeError("Adoption changed object identities untouched by pending post-cut migrations")
+
+
+def verify_adopted_ledger(scratch, db, historical, pending):
+    tracked = {row["filename"] for row in historical}
     adopted = ledger_state(scratch, db)
     if [row for row in adopted if row["filename"] in tracked] != historical:
         raise RuntimeError("Adoption changed historical ledger rows")
@@ -323,20 +314,41 @@ def verify_adoption(scratch, db, files=None):
     if count.strip() != "1":
         raise RuntimeError("Adoption must record exactly one baseline row")
     additions = {row["filename"]: row["checksum"] for row in adopted if row["filename"] not in tracked}
-    expected_additions = dict(missing_post)
+    expected_additions = {file.name: hashlib.sha256(file.read_bytes()).hexdigest() for file in pending}
     if BASELINE not in tracked:
         expected_additions[BASELINE] = hashlib.sha256((MIGRATIONS / BASELINE).read_bytes()).hexdigest()
     if additions != expected_additions:
         raise RuntimeError("Adoption must record only the baseline and all pending canonical post-cut rows")
+
+
+def verify_repeat(scratch, db):
     # After pending SQL has run, the second invocation must be a strict no-op,
     # including object identities, row xmin, raw data and the entire ledger.
     before = (snapshot(scratch, db), scratch.dump(db), all_data(scratch, db),
-              scratch.sql(db, EXTENSIONS), adopted)
+              scratch.sql(db, EXTENSIONS), ledger_state(scratch, db))
     migrate(scratch, db)
     after = (snapshot(scratch, db), scratch.dump(db), all_data(scratch, db),
              scratch.sql(db, EXTENSIONS), ledger_state(scratch, db))
     if after != before:
         raise RuntimeError("Repeated adoption changed ledger, object identities, data or schema")
+
+
+def verify_adoption(scratch, db, files=None):
+    files = post_cut_files() if files is None else files
+    historical = ledger_state(scratch, db)
+    tracked = {row["filename"] for row in historical}
+    pending = [file for file in files if file.name not in tracked]
+    original_identities = relation_identities(scratch, db)
+    # Clone the restored history/data, then independently replay every pending
+    # root migration. Adoption itself adds no DDL; post-cut SQL legitimately can.
+    expected = f"expected_{uuid.uuid4().hex}"
+    scratch.sql("postgres", f"CREATE DATABASE {expected} TEMPLATE {db}")
+    for file in pending:
+        apply_migration(scratch, expected, file)
+    first = migrate(scratch, db)
+    verify_replayed_state(scratch, db, expected, pending, original_identities)
+    verify_adopted_ledger(scratch, db, historical, pending)
+    verify_repeat(scratch, db)
     return first
 
 
@@ -465,6 +477,9 @@ def main():
     args = parser.parse_args()
     if (args.mode == "restore") != (args.dump is not None):
         parser.error("restore requires --dump; other modes never accept external data")
+    if args.mode == "check":
+        run(sys.executable, str(ROOT / "scripts/__tests__/test_kernel_baseline_check.py"))
+        print("PASS: adoption check unit regressions", flush=True)
     ARCHIVE.mkdir(parents=True, exist_ok=True)
     files = history_files(args.mode)
     scratch = Scratch()
