@@ -267,9 +267,10 @@ def snapshot(scratch, db, ignore_filenames=()):
         JOIN pg_namespace n ON n.oid=c.relnamespace
         WHERE n.nspname NOT IN ('pg_catalog','information_schema','pg_toast','public')
         ORDER BY 1,2;
-        SELECT xmin::text,to_jsonb(t) FROM chat.conversation_reads_v2 t;
-        SELECT xmin::text,to_jsonb(t) FROM events.events t;
     """)
+    for table in ("chat.conversation_reads_v2", "events.events"):
+        if scratch.sql(db, f"SELECT to_regclass('{table}') IS NOT NULL").strip() == "t":
+            objects += scratch.sql(db, f"SELECT xmin::text,to_jsonb(t) FROM {table} t")
     ignored = {BASELINE, *ignore_filenames}
     ledger = [row for row in ledger_state(scratch, db) if row["filename"] not in ignored]
     return objects + json.dumps(ledger, sort_keys=True)

@@ -176,6 +176,15 @@ class AdoptionCheckTests(unittest.TestCase):
 
 
 class DataComparisonTests(unittest.TestCase):
+    def test_snapshot_samples_existing_tables_but_allows_kernel_only_init(self):
+        scratch = Mock()
+        scratch.sql.side_effect = ["objects", "t", "chat rows", "f"]
+        with patch.object(CHECK, "ledger_state", return_value=[]):
+            self.assertEqual(CHECK.snapshot(scratch, "fresh"), "objectschat rows[]")
+        queries = [call.args[1] for call in scratch.sql.call_args_list]
+        self.assertIn("SELECT xmin::text,to_jsonb(t) FROM chat.conversation_reads_v2 t", queries)
+        self.assertNotIn("SELECT xmin::text,to_jsonb(t) FROM events.events t", queries)
+
     def test_normalizes_only_declared_static_seeds_for_independent_replay(self):
         with patch.object(CHECK, "run", return_value="raw non-seed data") as run, \
                 patch.object(CHECK, "seed_rows", return_value=[]) as seeds:
