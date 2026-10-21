@@ -221,7 +221,9 @@ def verify(scratch, content):
         scratch.sql("fresh", file.read_text())
     if scratch.dump("full_history") != scratch.dump("fresh"):
         raise RuntimeError("Baseline plus post-cut migrations differs from full-history replay")
-    print("PASS: baseline plus post-cut 0216 matches full replay through 0216", flush=True)
+    if seed_rows(scratch, "full_history") != seed_rows(scratch, "fresh"):
+        raise RuntimeError("Baseline plus post-cut static seeds differ from full-history replay")
+    print("PASS: baseline plus all post-cut migrations matches full replay through the last root migration", flush=True)
 
 
 def install_runner(scratch):
@@ -271,33 +273,70 @@ def snapshot(scratch, db, ignore_filenames=()):
     ledger = [row for row in ledger_state(scratch, db) if row["filename"] not in ignored]
     return objects + json.dumps(ledger, sort_keys=True)
 
-def all_data(scratch, db):
+def all_data(scratch, db, normalize_seeds=False):
     dump = run(DOCKER, "exec", scratch.container, "pg_dump", "-U", "postgres",
                "-d", db, "--data-only", "--no-owner", "--no-privileges",
-               "--exclude-table=public._migrations*")
-    return "\n".join(line for line in dump.splitlines()
+               "--exclude-table=public._migrations*",
+               *([f"--exclude-table-data={table}" for table in SEEDS] if normalize_seeds else []))
+    data = "\n".join(line for line in dump.splitlines()
                      if not line.startswith(("\\restrict ", "\\unrestrict ")))
+    return data + (json.dumps(seed_rows(scratch, db)) if normalize_seeds else "")
+
+def relation_identities(scratch, db):
+    rows = scratch.sql(db, """
+        SELECT n.nspname || '.' || c.relname, c.oid, c.relfilenode FROM pg_class c
+        JOIN pg_namespace n ON n.oid=c.relnamespace
+        WHERE n.nspname NOT IN ('pg_catalog','information_schema','pg_toast','public')
+        ORDER BY 1
+    """)
+    return {name: (oid, node) for name, oid, node in (row.split("|") for row in rows.splitlines())}
 
 
-def verify_adoption(scratch, db):
-    tracked = {row["filename"] for row in ledger_state(scratch, db)}
+def verify_adoption(scratch, db, files=None):
+    files = post_cut_files() if files is None else files
+    historical = ledger_state(scratch, db)
+    tracked = {row["filename"] for row in historical}
+    pending = [file for file in files if file.name not in tracked]
     missing_post = {file.name: hashlib.sha256(file.read_bytes()).hexdigest()
-                    for file in post_cut_files() if file.name not in tracked}
-    before = snapshot(scratch, db, missing_post)
-    catalog = scratch.dump(db)
-    data = all_data(scratch, db)
-    extensions = scratch.sql(db, EXTENSIONS)
+                    for file in pending}
+    original_identities = relation_identities(scratch, db)
+    # Clone the restored history/data, then independently replay every pending
+    # root migration. Adoption itself adds no DDL; post-cut SQL legitimately can.
+    expected = f"expected_{uuid.uuid4().hex}"
+    scratch.sql("postgres", f"CREATE DATABASE {expected} TEMPLATE {db}")
+    for file in pending:
+        apply_migration(scratch, expected, file)
     first = migrate(scratch, db)
-    migrate(scratch, db)
-    if (snapshot(scratch, db, missing_post) != before or scratch.dump(db) != catalog
-            or all_data(scratch, db) != data or scratch.sql(db, EXTENSIONS) != extensions):
-        raise RuntimeError("Adoption changed historical ledger, object identities, data or schema")
+    if (scratch.dump(db) != scratch.dump(expected)
+            or all_data(scratch, db, bool(pending)) != all_data(scratch, expected, bool(pending))
+            or scratch.sql(db, EXTENSIONS) != scratch.sql(expected, EXTENSIONS)):
+        raise RuntimeError("Adoption differs from restored history plus all pending post-cut migrations")
+    replayed_identities = relation_identities(scratch, expected)
+    adopted_identities = relation_identities(scratch, db)
+    if any(adopted_identities.get(name) != identity for name, identity in original_identities.items()
+           if replayed_identities.get(name) == identity):
+        raise RuntimeError("Adoption changed object identities untouched by pending post-cut migrations")
+    adopted = ledger_state(scratch, db)
+    if [row for row in adopted if row["filename"] in tracked] != historical:
+        raise RuntimeError("Adoption changed historical ledger rows")
     count = scratch.sql(db, f"SELECT count(*) FROM public._migrations WHERE filename='{BASELINE}'")
     if count.strip() != "1":
         raise RuntimeError("Adoption must record exactly one baseline row")
-    checksums = {row["filename"]: row["checksum"] for row in ledger_state(scratch, db)}
-    if any(checksums.get(name) != checksum for name, checksum in missing_post.items()):
-        raise RuntimeError("Missing post-cut migrations were not recorded with canonical checksums")
+    additions = {row["filename"]: row["checksum"] for row in adopted if row["filename"] not in tracked}
+    expected_additions = dict(missing_post)
+    if BASELINE not in tracked:
+        expected_additions[BASELINE] = hashlib.sha256((MIGRATIONS / BASELINE).read_bytes()).hexdigest()
+    if additions != expected_additions:
+        raise RuntimeError("Adoption must record only the baseline and all pending canonical post-cut rows")
+    # After pending SQL has run, the second invocation must be a strict no-op,
+    # including object identities, row xmin, raw data and the entire ledger.
+    before = (snapshot(scratch, db), scratch.dump(db), all_data(scratch, db),
+              scratch.sql(db, EXTENSIONS), adopted)
+    migrate(scratch, db)
+    after = (snapshot(scratch, db), scratch.dump(db), all_data(scratch, db),
+             scratch.sql(db, EXTENSIONS), ledger_state(scratch, db))
+    if after != before:
+        raise RuntimeError("Repeated adoption changed ledger, object identities, data or schema")
     return first
 
 
@@ -312,10 +351,10 @@ def recorded_ledger_checks(scratch):
         replay(scratch, files, db, overrides)
         output = verify_adoption(scratch, db)
         expected = "already applied" if environment == "dev" else "applying..."
-        post_filename = post_cut_files()[0].name
-        if f"{post_filename} — {expected}" not in output:
-            raise RuntimeError(f"{environment}: post-cut apply/skip behavior differs")
-        print(f"PASS: recorded {environment} ledger variants adopt unchanged; 0216 {expected}", flush=True)
+        for file in post_cut_files():
+            if f"{file.name} — {expected}" not in output:
+                raise RuntimeError(f"{environment}: {file.name} post-cut apply/skip behavior differs")
+        print(f"PASS: recorded {environment} ledger variants preserved; all post-cut files {expected}", flush=True)
     replay(scratch, history_files("check"), "unrecorded", {"0001_seed.sql": "0" * 64})
     before = snapshot(scratch, "unrecorded")
     try:
@@ -378,12 +417,22 @@ def runner_checks(scratch):
             pass
         else:
             raise RuntimeError(f"Untracked {db} database was not refused")
-    scratch_file(scratch, "/verify/migrations/9999_baseline_probe.sql",
-                 "-- owner: kernel\nCREATE TABLE kernel.baseline_probe(id integer);")
-    migrate(scratch, "restored")
-    migrate(scratch, "initialized")
-    migrate(scratch, "restored")
-    print("PASS: actual runner fresh/repeat, dump-restore adoption, OIDs/data/ledger preservation, partial/checksum/untracked refusal, post-cut migration", flush=True)
+    with tempfile.TemporaryDirectory() as temporary:
+        probes = []
+        for name, content in (
+            ("9998_baseline_probe.sql", "CREATE TABLE kernel.baseline_probe(id integer);"),
+            ("9999_baseline_probe_column.sql", "ALTER TABLE kernel.baseline_probe ADD COLUMN label text;"),
+        ):
+            file = pathlib.Path(temporary) / name
+            file.write_text("-- owner: kernel\n" + content)
+            scratch_file(scratch, f"/verify/migrations/{name}", file.read_text())
+            probes.append(file)
+        # Start without a baseline row so both schema changes run on adoption.
+        scratch.sql("postgres", "CREATE DATABASE multiple_post_cut TEMPLATE history")
+        verify_adoption(scratch, "multiple_post_cut", post_cut_files() + probes)
+        verify_adoption(scratch, "initialized", post_cut_files() + probes)
+    print("PASS: two schema-changing post-cut files replay on adoption and repeat without mutation", flush=True)
+    print("PASS: actual runner fresh/repeat, dump-restore adoption, data/ledger preservation, partial/checksum/untracked refusal, all post-cut migrations", flush=True)
 def restore_check(scratch, dump):
     install_runner(scratch)
     scratch.sql("postgres", "CREATE DATABASE supplied_restore")
@@ -391,7 +440,7 @@ def restore_check(scratch, dump):
     run(DOCKER, "exec", scratch.container, "pg_restore", "-U", "postgres",
         "-d", "supplied_restore", "--no-owner", "--no-privileges", "--exit-on-error", "/restore.dump")
     verify_adoption(scratch, "supplied_restore")
-    print("PASS: supplied restore adopted twice; catalog, object IDs, all data and historical ledger preserved", flush=True)
+    print("PASS: supplied restore plus all pending post-cut migrations matches replay; historical ledger preserved; repeat is mutation-free", flush=True)
 
 
 def post_cut_files():

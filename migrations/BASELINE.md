@@ -18,7 +18,10 @@ Cycle **v0.8.26**, revised after Jin's real-restore review: the cut absorbs
 **`0216_restore_conversation_members_unique.sql` remains unchanged at root**,
 outside the baseline inventory. After adoption the runner applies it if absent
 from the ledger (prod-shaped), or skips its existing row (dev-shaped).
-Missing history through 0215 is never tolerated. The next new number is 0217.
+The same rule applies to **every** later root migration, including 0217 and
+0218: replay pending files in filename order and skip recorded ones.
+Missing history through 0215 is never tolerated. Choose the next free number
+above the last root migration on main; do not move the cut for this check fix.
 
 #2865 closed via PR #2990 (0216), but Jin's actual dev-restore run on the
 previous head failed closed on recorded checksum drift. **Jin must rerun that
@@ -98,7 +101,9 @@ owners/ACLs, patch-version comments or random psql restrict tokens. All other
 DDL/session settings remain. Baseline-only and full-history kernel catalog
 dumps and normalized static seed content must match. The required `public.pgcrypto`
 extension is installed explicitly and its version/schema inventory is compared
-separately; the public ledger itself is not baseline-managed DDL.
+separately; the public ledger itself is not baseline-managed DDL. Fresh baseline
+plus **all** post-cut root files must match full-history replay through the last
+root file, including normalized static seeds.
 
 ### Required seed rows (and only these)
 All populated kernel tables on **empty-history replay** are inventoried;
@@ -170,12 +175,22 @@ python3 scripts/kernel-baseline.py restore --dump "$DEV_RESTORE_DUMP"
 The command restores the supplied file into a new network-isolated container
 using `pg_restore --no-owner --no-privileges --exit-on-error`, then runs the
 actual migration runner twice, with a localhost URL only inside that container.
-It compares pre/post kernel DDL, kernel/app relation OIDs/relfilenodes,
-representative row xmin, all non-ledger table data/sequence values, and every
-historical ledger filename/checksum/timestamp. Exactly one baseline row must
-exist; a previously absent 0216 row is added only after its idempotent SQL runs.
-Existing 0216 rows are preserved and skipped. It does not deploy or modify
-the source DB/backup.
+Before running the runner, it clones the restored scratch database and independently
+replays **every pending post-cut root file** on that reference, in filename order.
+The adopted kernel DDL, extension inventory and non-ledger data/sequence values
+must match that reference, not the untouched restore: 0217 changes schema and
+0218 changes static seed data. For this independent replay comparison only, the
+existing static-seed ID/timestamp normalization above handles generated UUIDs
+and `now()`; non-seed data is not normalized. With no pending files, data is
+compared raw. Existing relation OIDs/relfilenodes untouched by pending SQL must
+survive. Every existing ledger row (including IDs/checksums/timestamps and
+already-recorded post-cut rows) must remain byte-for-byte unchanged.
+Exactly one baseline row must exist; the only new ledger rows are that baseline
+(if absent) and **all** genuinely pending files with canonical checksums.
+Existing post-cut files are skipped. After the first run, the second run must
+preserve raw schema/data, relation OIDs/relfilenodes, representative row xmin and
+the entire ledger without normalization. It does not deploy or modify the source
+DB/backup.
 
 If the server has no Docker (as in Jin's reviewed run), use the established
 operator `pg_dump -Fc` / `pg_restore --no-owner --no-privileges --exit-on-error`
@@ -188,13 +203,15 @@ node scripts/migrate.mjs --owner kernel
 node scripts/migrate.mjs --owner kernel
 ```
 
-Compare scratch-only before/after schema/data/OIDs and all existing ledger
-rows, allowing only a baseline row and, for a prod-shaped restore, a newly
-applied 0216 row. Never point these commands at live dev/prod or rewrite a
-historical checksum. Jin owns and records the real-data rerun.
+Compare scratch-only schema/data against an independent copy with every pending
+post-cut migration replayed, and verify all existing ledger rows are unchanged.
+Allow only a baseline row plus canonical rows for the pending post-cut files,
+not just 0216. Check the second run is a strict no-op. Never point these commands
+at live dev/prod or rewrite a historical checksum. Jin owns and records the
+real-data rerun.
 
 Expected final line:
-`PASS: supplied restore adopted twice; catalog, object IDs, all data and historical ledger preserved`
+`PASS: supplied restore plus all pending post-cut migrations matches replay; historical ledger preserved; repeat is mutation-free`
 
 Failure means stop and leave the PR unmerged. Attach only a sanitized error
 and exact SHA to #2525, never backup contents/rows/credentials. Investigate
@@ -207,8 +224,13 @@ does not establish the real dev-restore acceptance.
 ## CI and rollback
 The baseline job checks reproducibility, baseline-only init, catalog/seeds,
 no app schemas, actual runner fresh/repeat, synthetic dump/restore adoption,
-data/OID/ledger preservation, partial/checksum/untracked refusal and a post-cut
-migration. Seed-drift regressions replay the archive. Ownership tests reject
+data/OID/ledger preservation, partial/checksum/untracked refusal and all post-cut
+migrations. Recorded prod-shaped fixtures apply every post-cut file; dev-shaped
+fixtures skip every recorded file. Two additional schema-changing scratch files
+(create a table, then add a column) prove N > 1, without adding root migrations.
+Unit regressions reject an omitted later file, ledger rewrites/extra rows/wrong
+checksums, unexpected identity changes and repeat-run mutation.
+Seed-drift regressions replay the archive. Ownership tests reject
 app DDL/DML/search-path leaks and archive tampering against original main bytes,
 not merely a mutable manifest.
 

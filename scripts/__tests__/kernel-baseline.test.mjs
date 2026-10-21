@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import { baselineAction, migrationChecksum } from '../lib/kernel-baseline.mjs';
 
 const manifest = {
@@ -7,6 +9,9 @@ const manifest = {
   migrations: [{ filename: '0001_seed.sql', checksum: 'a' }, { filename: '0201_reconcile.sql', checksum: 'b' }],
 };
 const full = () => new Map(manifest.migrations.map(entry => [entry.filename, entry.checksum]));
+it('verifies all-post-cut replay, ledger preservation and repeat-run checks', () => {
+  execFileSync('python3', [fileURLToPath(new URL('./test_kernel_baseline_check.py', import.meta.url))], { stdio: 'pipe' });
+});
 
 describe('kernel baseline adoption', () => {
   it('initializes only an empty untracked database', () => {
