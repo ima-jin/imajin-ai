@@ -180,6 +180,13 @@ describe('app secret execution', () => {
   });
 });
 describe('metadata and manifest preview', () => {
+  it('returns no cards and reads no secret metadata when both ledgers are empty', async () => {
+    mocks.select.mockReset().mockReturnValue([]);
+    mocks.list.mockClear();
+    expect(await listOperatorAppSecrets()).toEqual([]);
+    expect(mocks.list).not.toHaveBeenCalled();
+    expect(mocks.select).toHaveBeenCalledTimes(3);
+  });
   it('reads operator-supplied names and kinds through the real manifest validator', async () => {
     const { fetchAppManifest } = await vi.importActual<typeof import('@/src/lib/github/org-provisioning')>('@/src/lib/github/org-provisioning');
     mocks.manifest.mockImplementation(fetchAppManifest);

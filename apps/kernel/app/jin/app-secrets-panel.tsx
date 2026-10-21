@@ -3,15 +3,10 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { AppDeclaredSecretStatus } from '@/src/lib/apps/self-secrets';
 import type { AppSecretAction } from '@/src/lib/apps/secrets-kind';
+import type { AppSecretsProvenance } from '@/src/lib/apps/secrets-metadata';
 import { approvalCardAnchorId, requestApprovalsRefresh } from './approval-anchor';
 import { provisionReissueAnchorId } from './provision-anchor';
 
-interface AppProvenance {
-  created: { at: string | null; by: string | null };
-  provisioned: { at: string | null; proposedBy: string | null; approvedBy: string | null };
-  claimed: { at: string | null; by: string | null };
-  lastSeen: { at: string | null; by: string | null };
-}
 
 interface AppSecretCard {
   appDid: string | null;
@@ -21,7 +16,7 @@ interface AppSecretCard {
   claimed: boolean;
   // Optional only for older metadata responses; new API responses include both.
   claimExpiresAt?: string | null;
-  provenance?: AppProvenance;
+  provenance?: AppSecretsProvenance;
   secrets: AppDeclaredSecretStatus[];
 }
 
@@ -199,7 +194,7 @@ export function AppSecretsPanel() {
       {notice && <output className="block text-xs text-amber-300">{notice}{proposalId && (
         <> <a className="underline" href={`#${approvalCardAnchorId(proposalId)}`}>Review proposal</a></>
       )}</output>}
-      {apps.length === 0 && <p className="text-xs text-gray-500">No registered or provisioned apps yet.</p>}
+      {apps.length === 0 && <p className="text-xs text-gray-500">No apps on the self-secret rail yet.</p>}
       {apps.map((app) => (
         <article key={app.appDid ?? app.slug} className="min-w-0 border border-gray-800 p-3 space-y-2">
           <h3 className="font-mono text-sm font-medium">{app.name} <span className={`text-xs ${app.claimed ? 'text-green-400' : 'text-amber-400'}`}>{app.claimed ? 'claimed' : 'awaiting claim'}</span></h3>

@@ -13,6 +13,9 @@ import { appSecretsKind, isAppSecretsKind } from './secrets-kind';
 import { consumeAppSecret } from './secret-staging';
 import { getOperatorDid } from '@/src/lib/notify/operator-approvals';
 import type { OperatorAppSecrets } from './secrets-metadata';
+function provenanceIdentity(value: string | null | undefined): string | null {
+  return value?.trim() || null;
+}
 
 export function sameSecretDeclarations(a: AppSecretDeclaration[], b: AppSecretDeclaration[]): boolean {
   const canonical = (list: AppSecretDeclaration[]) => JSON.stringify([...list].sort((x, y) => x.name.localeCompare(y.name)));
@@ -98,12 +101,12 @@ export async function listOperatorAppSecrets(): Promise<OperatorAppSecrets[]> {
       appDid: app.appDid, slug: app.slug, name: app.name, active: app.active, claimed: Boolean(claimed),
       claimExpiresAt: claim?.expiresAt.toISOString() ?? null,
       provenance: {
-        created: { at: app.createdAt?.toISOString() ?? null, by: app.ownerDid },
+        created: { at: app.createdAt?.toISOString() ?? null, by: provenanceIdentity(app.ownerDid) },
         provisioned: {
           at: (provision?.registeredAt ?? provision?.createdAt)?.toISOString() ?? null,
-          proposedBy: approval?.proposedBy ?? null, approvedBy: approval?.approvedBy ?? null,
+          proposedBy: provenanceIdentity(approval?.proposedBy), approvedBy: provenanceIdentity(approval?.approvedBy),
         },
-        claimed: { at: claimed?.claimedAt?.toISOString() ?? null, by: claimed?.claimedByHost ?? null },
+        claimed: { at: claimed?.claimedAt?.toISOString() ?? null, by: provenanceIdentity(claimed?.claimedByHost) },
         lastSeen: { at: fetched?.at ?? null, by: fetched ? app.appDid : null },
       },
       secrets,

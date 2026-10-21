@@ -144,7 +144,10 @@ describe('app secret operator routes', () => {
     const metadata = {
       appDid, slug: 'fake-app', name: 'Fake app', active: true, claimed: false,
       claimExpiresAt: '2026-10-15T00:00:00Z', provenance,
-      secrets: [{ ...declaration, status: 'active', timeline: [{ phase: 'fetched', at: '2026-10-14T01:00:00Z' }] }],
+      secrets: [{ ...declaration, status: 'active', timeline: [
+        { phase: 'fetched', at: '2026-10-14T01:00:00Z' },
+        { phase: 'granted', at: '2026-10-14T00:00:00Z', operatorDid: 'did:imajin:fake-operator', via: 'fixture-approval', grantId: 'fixture-grant' },
+      ] }],
     };
     const privateFields = { value: 'OBVIOUSLY_FAKE_VALUE', claimCode: 'OBVIOUSLY_FAKE_CODE', codeHash: 'OBVIOUSLY_FAKE_HASH' };
     mocks.list.mockResolvedValue([{

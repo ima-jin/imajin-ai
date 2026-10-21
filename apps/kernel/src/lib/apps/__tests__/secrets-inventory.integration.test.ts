@@ -65,7 +65,8 @@ afterAll(async () => { await client?.close(); });
 async function seedApps() {
   for (const slug of ['claimed', 'awaiting', 'legacy-claim', 'revoked-key', 'no-code', 'dcr', 'legacy-das', 'first-party', 'retired']) {
     await client.query('INSERT INTO registry.apps VALUES ($1,$2,$2,$3,$4,$5)', [
-      did(slug), slug, slug === 'retired' ? 'revoked' : 'active', did('registrar'), at,
+      did(slug), slug, slug === 'retired' ? 'revoked' : 'active',
+      slug === 'legacy-claim' ? ' ' : did('registrar'), slug === 'legacy-claim' ? null : at,
     ]);
   }
   for (const slug of ['claimed', 'awaiting', 'revoked-key', 'no-code', 'retired', 'orphan']) {
@@ -152,6 +153,7 @@ describe('self-secret inventory against real Postgres semantics', () => {
     expect(awaiting).toMatchObject({ claimed: false, claimExpiresAt: '2026-10-15T00:15:00.000Z' });
     const legacy = apps.find((app) => app.slug === 'legacy-claim')!;
     expect(legacy).toMatchObject({ claimed: false, claimExpiresAt: expires });
+    expect(legacy.provenance.created).toEqual({ at: null, by: null });
     expect(legacy.provenance.provisioned).toEqual({ at: null, proposedBy: null, approvedBy: null });
     expect(apps.find((app) => app.slug === 'revoked-key')).toMatchObject({ claimed: false, claimExpiresAt: null });
     expect(apps.find((app) => app.slug === 'no-code')).toMatchObject({ claimed: false, claimExpiresAt: null });
