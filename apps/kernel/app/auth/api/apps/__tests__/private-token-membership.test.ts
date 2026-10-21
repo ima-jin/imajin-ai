@@ -2,12 +2,15 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vites
 import { PGlite } from '@electric-sql/pglite';
 import { drizzle, type PgliteDatabase } from 'drizzle-orm/pglite';
 import { NextRequest } from 'next/server';
+import { generateKeypair, crypto as authCrypto } from '@imajin/auth';
 
 const h = vi.hoisted(() => ({
   database: undefined as PgliteDatabase | undefined,
+  principal: 'person',
   failMembership: false,
   failRegistry: false,
   mint: vi.fn(),
+  verify: vi.fn(),
 }));
 
 vi.mock('@/src/db', async () => {
@@ -39,7 +42,7 @@ vi.mock('@imajin/config', () => ({
   corsHeaders: () => ({ 'Access-Control-Allow-Origin': 'https://app.example.test' }),
 }));
 vi.mock('@/src/lib/auth/jwt', () => ({ createAppToken: h.mint }));
-vi.mock('@/src/lib/auth/crypto', () => ({ verifySignature: async () => true }));
+vi.mock('@/src/lib/auth/crypto', () => ({ verifySignature: h.verify }));
 vi.mock('@/src/lib/auth/require-internal-api-key', () => ({ requireInternalApiKey: async () => null }));
 
 import { POST as keypairToken } from '../token/route';
@@ -62,7 +65,9 @@ beforeAll(async () => {
     CREATE TABLE auth.identity_members (identity_did text, member_did text, removed_at timestamptz);
     CREATE TABLE registry.apps (
       id text, app_did text, public_key text, status text, requested_scopes jsonb,
-      visibility text, owner_did text, sign_in_audience text
+      visibility text, owner_did text, sign_in_audience text, name text,
+      tier text, slug text, provides_scopes jsonb, depends_on jsonb,
+      act_as_allowed boolean, token_audiences text[]
     );
     CREATE TABLE auth.attestations (
       id text, issuer_did text, subject_did text, type text, context_id text,
@@ -88,9 +93,11 @@ beforeAll(async () => {
 afterAll(async () => { await client?.close(); });
 beforeEach(async () => {
   vi.clearAllMocks();
+  h.principal = 'person';
   h.failMembership = false;
   h.failRegistry = false;
   h.mint.mockResolvedValue('signed.app.jwt');
+  h.verify.mockResolvedValue(true);
   await client.exec(`
     TRUNCATE auth.identities, auth.identity_members, registry.apps, auth.attestations,
       auth.oauth_authorization_codes, auth.oauth_refresh_tokens;
@@ -99,8 +106,9 @@ beforeEach(async () => {
     INSERT INTO auth.attestations (id,issuer_did,subject_did,type,payload)
       VALUES ('grant','person','app-did','app.authorized','{"scopes":["profile:read"]}');
   `);
-  await client.query(`INSERT INTO registry.apps VALUES
-    ('app_test','app-did','public-key','active',$1,'private','owner','members')`,
+  await client.query(`INSERT INTO registry.apps
+    (id,app_did,public_key,status,requested_scopes,visibility,owner_did,sign_in_audience,name,token_audiences)
+    VALUES ('app_test','app-did','public-key','active',$1,'private','owner','members','Test app',ARRAY['app_test'])`,
   [JSON.stringify([MCP_SCOPES[0]])]);
   await client.query(`INSERT INTO auth.oauth_authorization_codes
     (id,code_hash,client_id,user_did,redirect_uri,scope,code_challenge,code_challenge_method,attestation_id,expires_at)
@@ -130,6 +138,10 @@ const lanes = [
     appDid: 'app-did', attestationId: 'grant', nonce: 'n'.repeat(16),
     timestamp: new Date().toISOString(), signature: 'test-signature',
   })) },
+  { name: 'principal mint', refused: 403, call: () => keypairToken(jsonRequest('/auth/api/apps/token', {
+    appDid: 'app-did', principalDid: h.principal, nonce: 'n'.repeat(16),
+    timestamp: new Date().toISOString(), signature: 'test-signature',
+  })) },
   { name: 'validate', refused: 403, call: () => validate(jsonRequest('/auth/api/apps/validate', {
     appDid: 'app-did', attestationId: 'grant',
   })) },
@@ -145,13 +157,180 @@ async function assertNoTokenEffects() {
     .toEqual([{ id: 'grant', revoked_at: null }]);
 }
 
+function principalBody(overrides: Record<string, unknown> = {}) {
+  return {
+    appDid: 'app-did', principalDid: 'person', nonce: 'n'.repeat(16),
+    timestamp: new Date().toISOString(), signature: 'test-signature', ...overrides,
+  };
+}
+
+function mintPrincipal(overrides: Record<string, unknown> = {}) {
+  return keypairToken(jsonRequest('/auth/api/apps/token', principalBody(overrides)));
+}
+
+describe('live principal mint (#3040)', () => {
+  it('mints the same claims and response as by ID, without narrowing or with scope/aud', async () => {
+    await client.exec(`UPDATE auth.attestations SET payload = '{"scopes":["profile:read","infer:chat"]}'`);
+    const before = await client.query('SELECT * FROM auth.attestations');
+    for (const options of [{}, { scope: 'profile:read', aud: 'app_test' }]) {
+      const byPrincipal = await mintPrincipal(options);
+      expect(byPrincipal.status).toBe(200);
+      const claims = h.mint.mock.lastCall![0];
+      const byId = await mintPrincipal({ ...options, principalDid: undefined, attestationId: 'grant' });
+      expect(byId.status).toBe(200);
+      expect(await byPrincipal.json()).toEqual(await byId.json());
+      expect(h.mint.mock.lastCall![0]).toEqual(claims);
+      expect(claims).toEqual({
+        sub: 'person', azp: 'app-did', attestationId: 'grant',
+        scope: options.scope ?? 'profile:read infer:chat', aud: options.aud,
+      });
+    }
+    expect(await client.query('SELECT * FROM auth.attestations')).toEqual(before);
+  });
+
+  it('finds the new live grant on the next identical request after re-consent', async () => {
+    const body = principalBody();
+    expect((await keypairToken(jsonRequest('/auth/api/apps/token', body))).status).toBe(200);
+    await client.exec(`
+      UPDATE auth.attestations SET revoked_at = NOW() WHERE id = 'grant';
+      INSERT INTO auth.attestations (id,issuer_did,subject_did,type,payload,expires_at)
+        VALUES ('new-grant','person','app-did','app.authorized',
+          '{"scopes":["profile:read","infer:chat"]}', NOW() + INTERVAL '1 hour');
+    `);
+    expect((await keypairToken(jsonRequest('/auth/api/apps/token', body))).status).toBe(200);
+    expect(h.mint.mock.lastCall![0]).toMatchObject({
+      sub: 'person', attestationId: 'new-grant', scope: 'profile:read infer:chat',
+    });
+    expect((await client.query('SELECT id, revoked_at IS NOT NULL AS revoked FROM auth.attestations ORDER BY id')).rows)
+      .toEqual([{ id: 'grant', revoked: true }, { id: 'new-grant', revoked: false }]);
+  });
+
+  it.each([
+    ['none', "UPDATE auth.attestations SET issuer_did = 'other'"],
+    ['revoked', 'UPDATE auth.attestations SET revoked_at = NOW()'],
+    ['expired', "UPDATE auth.attestations SET expires_at = NOW() - INTERVAL '1 second'"],
+    ['wrong app', "UPDATE auth.attestations SET subject_did = 'other-app'"],
+    ['wrong type', "UPDATE auth.attestations SET type = 'other.type'"],
+  ])('refuses %s with a stable recovery message and no token', async (_name, sql) => {
+    await client.exec(sql);
+    const res = await mintPrincipal();
+    expect(res.status).toBe(403);
+    expect(await res.json()).toEqual({ code: 'no_live_grant', error: 'Re-grant Test app on /jin → Grants' });
+    expect(res.headers.get('Access-Control-Allow-Origin')).toBe('https://app.example.test');
+    expect(h.mint).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { principalDid: undefined },
+    { principalDid: '' },
+    { principalDid: null },
+    { principalDid: 123 },
+    { principalDid: ['person'] },
+    { principalDid: {} },
+    { attestationId: 'grant' },
+    { attestationId: '' },
+    { attestationId: null },
+    { principalDid: undefined, attestationId: 123 },
+  ])('rejects an invalid or ambiguous selector: %j', async (overrides) => {
+    expect((await mintPrincipal(overrides)).status).toBe(400);
+    expect(h.verify).not.toHaveBeenCalled();
+    expect(h.mint).not.toHaveBeenCalled();
+  });
+
+  it('rejects a grant expiring exactly now using the shared live-grant rule', async () => {
+    const now = Date.now();
+    await client.query('UPDATE auth.attestations SET expires_at = $1', [new Date(now).toISOString()]);
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(now);
+    try {
+      const response = await mintPrincipal();
+      expect(response.status).toBe(403);
+      expect((await response.json()).code).toBe('no_live_grant');
+      expect(h.mint).not.toHaveBeenCalled();
+    } finally {
+      clock.mockRestore();
+    }
+  });
+
+  it.each([
+    [{ nonce: 'short' }, 400],
+    [{ timestamp: 'invalid' }, 401],
+    [{ timestamp: '2000-01-01T00:00:00.000Z' }, 401],
+    [{ timestamp: '2100-01-01T00:00:00.000Z' }, 401],
+    [{ signature: '' }, 400],
+    [{ appDid: '' }, 400],
+  ])('preserves request validation for %j', async (overrides, status) => {
+    expect((await mintPrincipal(overrides)).status).toBe(status);
+    expect(h.mint).not.toHaveBeenCalled();
+  });
+
+  it('accepts only a registered-key signature covering the requested principal', async () => {
+    const { verifySignature } = await vi.importActual<typeof import('@/src/lib/auth/crypto')>('@/src/lib/auth/crypto');
+    h.verify.mockImplementation(verifySignature);
+    const appKeys = generateKeypair();
+    const otherKeys = generateKeypair();
+    await client.query('UPDATE registry.apps SET public_key = $1', [appKeys.publicKey]);
+    const body = principalBody();
+    const challenge = (selector: string) => `${body.appDid}:${selector}:${body.nonce}:${body.timestamp}`;
+    for (const [selector, key, status] of [
+      ['person', appKeys.privateKey, 200],
+      ['grant', appKeys.privateKey, 401],
+      ['other', appKeys.privateKey, 401],
+      ['person', otherKeys.privateKey, 401],
+    ] as const) {
+      h.mint.mockClear();
+      const response = await keypairToken(jsonRequest('/auth/api/apps/token', {
+        ...body, signature: authCrypto.signSync(challenge(selector), key),
+      }));
+      expect(response.status).toBe(status);
+      expect(h.mint).toHaveBeenCalledTimes(status === 200 ? 1 : 0);
+    }
+    const byId = await keypairToken(jsonRequest('/auth/api/apps/token', {
+      ...body, principalDid: undefined, attestationId: 'grant',
+      signature: authCrypto.signSync(challenge('grant'), appKeys.privateKey),
+    }));
+    expect(byId.status).toBe(200);
+  });
+
+  it.each(['revoked', 'pending'])('rejects a %s app on both paths', async (status) => {
+    await client.query('UPDATE registry.apps SET status = $1', [status]);
+    expect((await mintPrincipal()).status).toBe(403);
+    expect((await mintPrincipal({ principalDid: undefined, attestationId: 'grant' })).status).toBe(403);
+    expect(h.verify).not.toHaveBeenCalled();
+    expect(h.mint).not.toHaveBeenCalled();
+  });
+
+  it('rejects an unknown app', async () => {
+    expect((await mintPrincipal({ appDid: 'unknown' })).status).toBe(404);
+    expect(h.mint).not.toHaveBeenCalled();
+  });
+
+  it.each([{}, { principalDid: undefined, attestationId: 'grant' }])('enforces scope and audience for %j', async (selector) => {
+    expect((await mintPrincipal({ ...selector, scope: 'infer:chat' })).status).toBe(403);
+    const response = await mintPrincipal({ ...selector, aud: 'unknown' });
+    expect(response.status).toBe(403);
+    expect((await response.json()).error).toBe('app_not_registered');
+    expect(h.mint).not.toHaveBeenCalled();
+  });
+
+  it('preserves by-ID missing and revoked errors', async () => {
+    const missing = await mintPrincipal({ principalDid: undefined, attestationId: 'missing' });
+    expect(missing.status).toBe(404);
+    expect(await missing.json()).toEqual({ error: 'Authorization not found' });
+    await client.exec('UPDATE auth.attestations SET revoked_at = NOW()');
+    const revoked = await mintPrincipal({ principalDid: undefined, attestationId: 'grant' });
+    expect(revoked.status).toBe(403);
+    expect(await revoked.json()).toEqual({ error: 'Authorization has been revoked' });
+    expect(h.mint).not.toHaveBeenCalled();
+  });
+});
+
 describe.each(lanes)('$name live private membership (#2984)', (lane) => {
   async function refused() {
     const response = await lane.call();
     expect(response.status).toBe(lane.refused);
     expect(JSON.stringify(await response.json())).toContain('owning identity and current members');
     if (lane.name.startsWith('OAuth')) expect(response.headers.get('Cache-Control')).toBe('no-store');
-    if (lane.name === 'keypair mint') {
+    if (lane.name.endsWith('mint')) {
       expect(response.headers.get('Access-Control-Allow-Origin')).toBe('https://app.example.test');
     }
     await assertNoTokenEffects();
@@ -159,6 +338,7 @@ describe.each(lanes)('$name live private membership (#2984)', (lane) => {
 
   it.each(['member', 'owner'])('accepts the current %s', async (principal) => {
     if (principal === 'owner') {
+      h.principal = 'owner';
       await client.exec(`
         UPDATE auth.attestations SET issuer_did = 'owner';
         UPDATE auth.oauth_authorization_codes SET user_did = 'owner';

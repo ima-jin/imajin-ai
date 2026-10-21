@@ -1968,6 +1968,11 @@ paths:
         keypair — an Ed25519 signature over `${appDid}:${attestationId}:${nonce}:${timestamp}`
         — and the kernel validates the user's `app.authorized` attestation for that app
         before minting. No cookie or bearer auth: the signature IS the authentication.
+        Alternatively send `principalDid` instead of `attestationId` and sign
+        `${appDid}:${principalDid}:${nonce}:${timestamp}`. The kernel resolves that
+        principal's single live (not revoked, not expired) `app.authorized` grant
+        for this app at mint time. Re-consent on /jin replaces the grant without
+        a client change. Supply exactly one of the two selectors.
 
         `nonce` must be at least 16 characters (client-generated); `timestamp` must be an
         ISO-8601 string within 60s of server time (replay-window bound). The app's public
@@ -1981,15 +1986,21 @@ paths:
           application/json:
             schema:
               type: object
-              required: [appDid, attestationId, nonce, timestamp, signature]
+              required: [appDid, nonce, timestamp, signature]
+              oneOf:
+                - required: [attestationId]
+                  not: { required: [principalDid] }
+                - required: [principalDid]
+                  not: { required: [attestationId] }
               properties:
                 appDid: { type: string, description: "The app's registered DID" }
-                attestationId: { type: string, description: "The user's app.authorized attestation for this app" }
+                attestationId: { type: string, minLength: 1, description: "The user's app.authorized attestation for this app (legacy by-ID path)" }
+                principalDid: { type: string, minLength: 1, description: "The consenting principal whose live app.authorized grant is resolved at mint time" }
                 scope: { type: string, description: "Optional single scope to narrow to (must already be granted)" }
                 aud: { type: string, description: "Optional target service" }
                 nonce: { type: string, minLength: 16, description: "Client-generated, >= 16 chars" }
                 timestamp: { type: string, format: date-time, description: "Must be within 60s of server time" }
-                signature: { type: string, description: "Ed25519 hex signature over `${appDid}:${attestationId}:${nonce}:${timestamp}`" }
+                signature: { type: string, description: "Ed25519 hex signature over `${appDid}:${attestationId}:${nonce}:${timestamp}` or, by principal, `${appDid}:${principalDid}:${nonce}:${timestamp}`" }
       responses:
         "200":
           description: App token minted
@@ -1997,7 +2008,7 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/AppTokenMintResult" }
         "400":
-          description: Missing required field, or nonce shorter than 16 chars
+          description: Missing required field, invalid or ambiguous grant selector, or nonce shorter than 16 chars
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
@@ -2012,6 +2023,9 @@ paths:
             requested scope was not granted, or (#1990) an explicitly supplied
             `aud` does not resolve to an active registry.apps row — in the
             latter case the body is the stable AppNotRegisteredError shape.
+            Private-app membership checks apply to both mint paths. By principal,
+            no live grant (none, revoked, expired) returns
+            `{code: "no_live_grant", error: "Re-grant <app name> on /jin → Grants"}`.
           content:
             application/json:
               schema:

@@ -47,6 +47,27 @@ describe('OAuth connector specifications (#2365)', () => {
   });
 });
 
+describe('auth.yaml app token selectors (#3040)', () => {
+  const auth = parse(readFileSync(join(KERNEL_ROOT, 'api-spec/auth.yaml'), 'utf-8'));
+  const mint = auth.paths['/api/apps/token'].post;
+
+  it('documents both exclusive signed request shapes', () => {
+    const schema = mint.requestBody.content['application/json'].schema;
+    expect(schema.required).toEqual(['appDid', 'nonce', 'timestamp', 'signature']);
+    expect(schema.oneOf).toEqual([
+      { required: ['attestationId'], not: { required: ['principalDid'] } },
+      { required: ['principalDid'], not: { required: ['attestationId'] } },
+    ]);
+    for (const selector of ['attestationId', 'principalDid']) {
+      expect(schema.properties[selector]).toMatchObject({ type: 'string', minLength: 1 });
+      expect(schema.properties.signature.description).toContain(`\${appDid}:\${${selector}}:\${nonce}:\${timestamp}`);
+    }
+    expect(mint.description).toContain('not revoked, not expired');
+    expect(mint.responses['403'].description).toContain('no_live_grant');
+    expect(mint.responses['403'].description).toContain('Re-grant <app name> on /jin → Grants');
+  });
+});
+
 describe('auth.yaml identity search contract (#2780)', () => {
   const auth = parse(readFileSync(join(KERNEL_ROOT, 'api-spec/auth.yaml'), 'utf-8'));
   const search = auth.paths['/api/search']?.get;

@@ -6,18 +6,19 @@
  * around as a long-lived bearer.
  *
  * The app proves possession of its keypair (signature over a challenge that
- * includes the attestationId + a fresh nonce + timestamp), the kernel validates
+ * includes the attestationId or principalDid + a fresh nonce + timestamp), the kernel validates
  * the user's `app.authorized` attestation, then mints a ~10min EdDSA token that
  * downstream services verify locally against the kernel public key.
  *
  * Body: {
  *   appDid: string,
- *   attestationId: string,
+ *   attestationId?: string,  // exactly one of attestationId or principalDid
+ *   principalDid?: string,   // resolve this principal's live grant at mint time
  *   scope?: string,          // optional single scope to narrow to (must be granted)
  *   aud?: string,            // optional target service
  *   nonce: string,           // client-generated, >= 16 chars
  *   timestamp: string,       // ISO; must be within 60s
- *   signature: string        // ed25519 hex over `${appDid}:${attestationId}:${nonce}:${timestamp}`
+ *   signature: string        // ed25519 hex over `${appDid}:${attestationId OR principalDid}:${nonce}:${timestamp}`
  * }
  * Returns: { token, expiresIn, scopes }
  */
@@ -31,10 +32,20 @@ import { createAppToken } from '@/src/lib/auth/jwt';
 import { resolveActiveAppByAudience, appNotRegisteredResponse } from '@/src/lib/kernel/app-registry';
 import { createLogger } from '@imajin/logger';
 import { canConsentToApp, PRIVATE_APP_CONSENT_ERROR } from '@/src/lib/kernel/app-consent';
+import { isLiveAppAuthorization } from '@/src/lib/auth/live-app-authorization';
 
 const log = createLogger('kernel');
 
 const MAX_CLOCK_SKEW_MS = 60_000;
+async function resolveAuthorization(appDid: string, selector: string, byPrincipal: boolean) {
+  const rows = await db.select().from(attestations).where(and(
+    eq(byPrincipal ? attestations.issuerDid : attestations.id, selector),
+    eq(attestations.subjectDid, appDid),
+    eq(attestations.type, 'app.authorized'),
+  ));
+  const now = Date.now();
+  return byPrincipal ? rows.find(row => isLiveAppAuthorization(row, now)) : rows[0];
+}
 
 export async function POST(request: NextRequest) {
   const cors = corsHeaders(request);
@@ -46,9 +57,10 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400, headers: cors });
   }
 
-  const { appDid, attestationId, scope, aud, nonce, timestamp, signature } = body as {
+  const { appDid, attestationId, principalDid, scope, aud, nonce, timestamp, signature } = body as {
     appDid?: string;
     attestationId?: string;
+    principalDid?: string;
     scope?: string;
     aud?: string;
     nonce?: string;
@@ -56,9 +68,16 @@ export async function POST(request: NextRequest) {
     signature?: string;
   };
 
-  if (!appDid || !attestationId || !nonce || !timestamp || !signature) {
+  const selector = principalDid ?? attestationId;
+  if (!appDid || !selector || !nonce || !timestamp || !signature) {
     return NextResponse.json(
-      { error: 'appDid, attestationId, nonce, timestamp, signature are required' },
+      { error: 'appDid, attestationId or principalDid, nonce, timestamp, signature are required' },
+      { status: 400, headers: cors }
+    );
+  }
+  if (typeof selector !== 'string' || (principalDid !== undefined && attestationId !== undefined)) {
+    return NextResponse.json(
+      { error: 'Provide exactly one of attestationId or principalDid as a non-empty string' },
       { status: 400, headers: cors }
     );
   }
@@ -83,6 +102,7 @@ export async function POST(request: NextRequest) {
   const [app] = await db
     .select({
       publicKey: registryApps.publicKey,
+      name: registryApps.name,
       status: registryApps.status,
       visibility: registryApps.visibility,
       ownerDid: registryApps.ownerDid,
@@ -106,23 +126,21 @@ export async function POST(request: NextRequest) {
     return appNotRegisteredResponse(request);
   }
 
-  const challenge = `${appDid}:${attestationId}:${nonce}:${timestamp}`;
+  const challenge = `${appDid}:${selector}:${nonce}:${timestamp}`;
   const pop = await verifySignature(challenge, signature, app.publicKey);
   if (!pop) {
     return NextResponse.json({ error: 'Invalid proof-of-possession signature' }, { status: 401, headers: cors });
   }
 
   // Validate the user's authorization attestation (same checks as /apps/validate)
-  const [att] = await db
-    .select()
-    .from(attestations)
-    .where(
-      and(
-        eq(attestations.id, attestationId),
-        eq(attestations.subjectDid, appDid),
-        eq(attestations.type, 'app.authorized'),
-      )
+  const att = await resolveAuthorization(appDid, selector, principalDid !== undefined);
+
+  if (!att && principalDid !== undefined) {
+    return NextResponse.json(
+      { code: 'no_live_grant', error: `Re-grant ${app.name} on /jin → Grants` },
+      { status: 403, headers: cors }
     );
+  }
 
   if (!att) {
     return NextResponse.json({ error: 'Authorization not found' }, { status: 404, headers: cors });
@@ -149,7 +167,7 @@ export async function POST(request: NextRequest) {
     azp: appDid,
     scope: grantedScopes.join(' '),
     aud,
-    attestationId,
+    attestationId: att.id,
   });
 
   log.info({ appDid, userDid: att.issuerDid, scopes: grantedScopes }, 'minted app token');
