@@ -45,5 +45,5 @@ if [[ ${#FILTERS[@]} -eq 0 ]]; then
 fi
 
 printf 'Affected unit-test directory: %s\n' "${FILTERS[@]}"
-pnpm exec vitest run "${FILTERS[@]}" --passWithNoTests \
+pnpm --silent test:agent "${FILTERS[@]}" --passWithNoTests \
   --exclude '**/e2e/**' --exclude '**/*.e2e.*' --exclude '**/*-e2e.*'

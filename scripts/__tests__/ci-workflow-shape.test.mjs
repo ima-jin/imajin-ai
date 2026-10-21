@@ -131,7 +131,7 @@ function runsTurbo(job) {
   return steps(job).some((s) => {
     if (typeof s.run !== 'string') return false;
     if (/\bturbo\b/.test(s.run)) return true;
-    return wired.some((name) => new RegExp(`\\bpnpm (run )?${name}\\b`).test(s.run));
+    return wired.some((name) => new RegExp(`\\bpnpm (?:--silent )?(?:run )?${name}\\b`).test(s.run));
   });
 }
 
@@ -172,7 +172,8 @@ describe('turbo local cache on the self-hosted container jobs (#2605)', () => {
   it('does not run the coverage-producing Test job through turbo (Sonar coverage stays complete)', () => {
     const test = loadWorkflow('ci.yml').jobs.test;
     expect(runsTurbo(test)).toBe(false);
-    expect(steps(test).some((s) => s.run === 'pnpm test:coverage')).toBe(true);
+    expect(steps(test).some((s) => s.run === 'pnpm --silent test:agent --coverage')).toBe(true);
+    expect(rootPackage.scripts['test:agent']).not.toMatch(/\bturbo\b/);
     expect(rootPackage.scripts['test:coverage']).not.toMatch(/\bturbo\b/);
     expect(rootPackage.scripts.test).not.toMatch(/\bturbo\b/);
   });

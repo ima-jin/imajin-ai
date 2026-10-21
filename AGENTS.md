@@ -1,5 +1,20 @@
 # imajin-ai project rules
 
+## Agent output discipline (#3014)
+
+While iterating, run only affected test files (including tests importing changed
+code). At the end, run the full suite once via `pnpm test:agent`. Its Vitest
+reporter prints one passing summary, or only failures with their own console
+output. `pnpm test:run` selects that reporter automatically with `WARP_AGENT=1`
+or `CI` set; plain `pnpm test` is unchanged for humans. Use `pnpm --silent
+test:agent` to suppress pnpm's own script banner as well. Coverage remains
+available with `pnpm --silent test:agent --coverage` (lcov for Sonar).
+
+Use `build:agent`, `lint:agent`, and `typecheck:agent` for Turbo's errors-only
+task logs. Install with `pnpm install --frozen-lockfile --reporter=silent` in
+Warp setup. Redirect long output to a file and grep that file; never dump the
+whole install/build/test log into agent context.
+
 ## GitHub CLI on Windows (PowerShell)
 
 **NEVER** pass multi-line body text inline to `gh` commands on Windows. PowerShell 5.1 mangles multi-line strings and backtick/quote escaping at `&&` boundaries, producing garbled PR and issue bodies.
