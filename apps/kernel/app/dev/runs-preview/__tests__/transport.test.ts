@@ -10,6 +10,16 @@ beforeEach(() => { vi.stubEnv('NODE_ENV', 'development'); vi.stubGlobal('crypto'
 afterEach(() => { vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
 
 describe('development-only Runs transport', () => {
+  it.each(['active', 'unpublished', 'drained'])('provides labeled horizon status fixtures for %s', async state => {
+    const fixture = await createRunsPreviewTransport(state);
+    const status = await (await fixture.fetcher('/jin/api/runs/horizon-status')).json();
+    expect(status.isOperator).toBe(true);
+    if (state === 'unpublished') expect(status.lastStepEventAt).toBeNull();
+    else expect(Number.isFinite(Date.parse(status.lastStepEventAt))).toBe(true);
+    const detail = await (await fixture.fetcher('/jin/api/runs/fixture-session')).json();
+    expect(detail.detail.horizon.depth).toBe(state === 'active' ? 12 : 0);
+    fixture.dispose();
+  });
   it('projects twelve steps in all five zones and acquires a requested lease only after the delayed agent observation', async () => {
     const fixture = await createRunsPreviewTransport();
     vi.stubGlobal('fetch', fixture.fetcher);

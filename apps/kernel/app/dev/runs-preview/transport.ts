@@ -69,7 +69,7 @@ function fixtureApproval(proposalId: string, approvalId: string): OperatorApprov
 }
 
 /** Local fixture only. All API calls are intercepted; production code and auth are unchanged. */
-export async function createRunsPreviewTransport() {
+export async function createRunsPreviewTransport(horizonState = 'active') {
   if (process.env.NODE_ENV !== 'development') throw new Error('Development fixture only');
   const principalKey = crypto.getRandomValues(new Uint8Array(32));
   const kernelKey = crypto.getRandomValues(new Uint8Array(32));
@@ -79,6 +79,7 @@ export async function createRunsPreviewTransport() {
   const agentPublic = await ed.getPublicKeyAsync(agentKey);
   const loops = [fixtureLoop('fixture-session', 'openclaw.session'), fixtureLoop('fixture-warp', 'warp.run')];
   const horizon = createHorizonFixture('fixture-session', principal, agent);
+  const lastStepEventAt = horizonState === 'unpublished' ? null : new Date().toISOString();
   loops[0].state = 'blocked';
   loops[0].lastEventType = 'loop.blocked';
   const events: LoopEventJson[] = fixtureOutputs().map((output, index) => ({
@@ -165,6 +166,7 @@ export async function createRunsPreviewTransport() {
       },
     }] });
     if (url.pathname === '/jin/api/runs') return json({ isOperator: true, page: { loops, hasNextPage: false, nextCursor: null } });
+    if (url.pathname === '/jin/api/runs/horizon-status') return json({ isOperator: true, lastStepEventAt });
     const match = /^\/jin\/api\/runs\/([^/]+)(\/commands)?$/.exec(url.pathname);
     if (!match) return json({ error: 'Fixture has no external transport' }, 404);
     const loopId = decodeURIComponent(match[1]);
@@ -172,7 +174,7 @@ export async function createRunsPreviewTransport() {
     const loop = loops.find((item) => item.loopId === loopId);
     if (!loop) return json({ error: 'Not found' }, 404);
     return json({ isOperator: true, detail: { loop, events: events.filter((event) => event.loopId === loopId),
-      horizon: loopId === 'fixture-session' ? horizon.read() : { steps: [], depth: 0, targetDepth: 12 } },
+      horizon: loopId === 'fixture-session' && horizonState === 'active' ? horizon.read() : { steps: [], depth: 0, targetDepth: 12 } },
       commandTarget: { available: loop.kind !== 'warp.run', agentDid: agent } });
   };
   return { fetcher, proofs, bindingProofs, agentPublicKey: ed.etc.bytesToHex(agentPublic),
@@ -186,7 +188,8 @@ export async function createRunsPreviewTransport() {
 }
 
 export async function installRunsPreview() {
-  const fixture = await createRunsPreviewTransport();
+  const requested = new URLSearchParams(window.location.search).get('horizon');
+  const fixture = await createRunsPreviewTransport(requested === 'unpublished' || requested === 'drained' ? requested : 'active');
   const previousFetch = globalThis.fetch;
   globalThis.fetch = fixture.fetcher;
   const client: SessionCommandClient = {

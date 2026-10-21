@@ -558,6 +558,16 @@ paths:
         and rolls back. Direct responses contain public DID/name/handle, no email.
         Direct creation is limited to 20 requests per minute for both the
         authenticated actor and effective DID; 429 includes Retry-After.
+        After commit, connection.requested routes through the generic notify
+        reactor at scope connection:request-received for in-app and optional
+        email delivery. It carries only public requester/act-as actor identity,
+        invite references, note and an absolute /connections#incoming-requests
+        link; no email address or delivery result is returned to the sender.
+        Verified email credentials and notification preferences govern email;
+        at most one successful email per sender/recipient pair in 24 hours.
+        Delivery failure never rolls back a saved request or changes its 201.
+        This delivery event creates no additional connection.invited attestation
+        and grants no membership authority. Link and email invites are unchanged.
       security:
         - cookieAuth: []
       requestBody:

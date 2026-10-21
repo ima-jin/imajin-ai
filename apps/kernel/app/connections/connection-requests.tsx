@@ -54,7 +54,7 @@ function PendingRequests({
 }>) {
   if (requests.length === 0) return null;
   return (
-    <section aria-label={incoming ? 'Incoming connection requests' : 'Sent connection requests'} className="space-y-3">
+    <section id={incoming ? 'incoming-requests' : undefined} aria-label={incoming ? 'Incoming connection requests' : 'Sent connection requests'} className="space-y-3">
       <h3 className="text-sm font-mono text-gray-300">{incoming ? 'Incoming requests' : 'Sent requests · awaiting acceptance'}</h3>
       {requests.map((request) => (
         <div key={request.code} className="flex flex-wrap items-center gap-3 border border-white/10 p-3">

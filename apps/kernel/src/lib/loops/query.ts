@@ -18,6 +18,19 @@
 import { getClient } from '@imajin/db';
 import { serializeLoop, serializeLoopEvent, type LoopJson, type LoopEventJson, type RawLoopRow, type RawLoopEventRow } from './serialize';
 import { projectHorizon, type Horizon, type HorizonLease } from './horizon';
+import { STEP_EVENT_TYPES } from './step-types';
+
+/** Latest signed step activity for this principal, including already-exited steps. */
+export async function getLastStepEventAt(principal: string): Promise<string | null> {
+  const sql = getClient();
+  const rows = (await sql`
+    SELECT max(occurred_at) AS last_step_event_at
+    FROM kernel.loop_events
+    WHERE principal = ${principal} AND type = ANY(${STEP_EVENT_TYPES}::text[])
+  `) as unknown as Array<{ last_step_event_at: Date | string | null }>;
+  const at = rows[0]?.last_step_event_at;
+  return at == null ? null : new Date(at).toISOString();
+}
 
 export interface ListLoopsFilters {
   principal: string;

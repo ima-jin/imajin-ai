@@ -1,0 +1,9 @@
+.panel {
+  --bg-surface: #12121a;
+}
+
+.preview {
+  --bg-base: #0a0a0f;
+  background: var(--bg-base);
+  color: #f0f0f5;
+}

@@ -159,6 +159,24 @@ describe('{{field}} interpolation', () => {
 // ─── Payload pass-through ────────────────────────────────────────────────────
 
 describe('notification data', () => {
+  it('routes a direct request to its recipient with address-free requester and actor metadata (#3013)', async () => {
+    const payload = {
+      inviteId: 'inv_direct', code: 'direct-code', fromDid: 'did:imajin:business',
+      fromHandle: 'business', fromName: 'Business', actorDid: PRINCIPAL, actorName: 'Owner',
+      note: 'Let us connect', url: 'https://node.example.com/connections#incoming-requests',
+    };
+    await notifyReactor({
+      type: 'connection.requested', issuer: payload.fromDid, subject: 'did:imajin:recipient',
+      scope: 'connections', payload,
+    }, { scope: 'connection:request-received' });
+    expect(mockSend).toHaveBeenCalledTimes(1);
+    expect(sent()).toMatchObject({
+      to: 'did:imajin:recipient', scope: 'connection:request-received',
+      data: { ...payload, eventType: 'connection.requested', issuer: payload.fromDid, subject: 'did:imajin:recipient' },
+    });
+    expect(sent().data).not.toHaveProperty('email');
+    expect(mockInterest).not.toHaveBeenCalled();
+  });
   it('carries the full event payload so a woken agent can act without a read-back', async () => {
     await notifyReactor(completedEvent(), COMPLETED_CONFIG);
 

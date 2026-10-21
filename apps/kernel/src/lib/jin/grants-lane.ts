@@ -87,6 +87,10 @@ export interface GrantCard {
   history?: { event: string; actorDid: string; createdAt: string; capability: string | null }[];
   /** Agent DID / OAuth client label / bearer client label — never a secret value. */
   grantee: string;
+  /** Stable app identity; labels are presentation only. */
+  appDid?: string;
+  /** Only live surplus attestations, never the surviving card's attestation. */
+  surplusGrantIds?: string[];
   /** Non-secret capability/scope labels — a purpose string for vault, a coarse role for legacy membership. */
   capabilities: string[];
   issuedAt: string | null;
@@ -148,6 +152,7 @@ export interface AppAuthorizationSummary {
   scopes: string[];
   authorizedAt: string;
   revokedAt: string | null;
+  expiresAt: string | null;
 }
 
 /**
@@ -166,6 +171,7 @@ export async function listAppAuthorizationsForOwner(ownerDid: string): Promise<A
       payload: attestations.payload,
       issuedAt: attestations.issuedAt,
       revokedAt: attestations.revokedAt,
+      expiresAt: attestations.expiresAt,
     })
     .from(attestations)
     .where(and(eq(attestations.issuerDid, ownerDid), eq(attestations.type, 'app.authorized')));
@@ -190,6 +196,7 @@ export async function listAppAuthorizationsForOwner(ownerDid: string): Promise<A
       scopes: Array.isArray(payload?.scopes) ? payload.scopes : [],
       authorizedAt: row.issuedAt.toISOString(),
       revokedAt: row.revokedAt ? row.revokedAt.toISOString() : null,
+      expiresAt: row.expiresAt ? row.expiresAt.toISOString() : null,
     };
   });
 }
@@ -305,20 +312,51 @@ function normalizeAccessBearers(bearers: Awaited<ReturnType<typeof listDelegateG
   }));
 }
 
-function normalizeAppAuthorizations(apps: AppAuthorizationSummary[]): GrantCard[] {
-  return apps.map((app) => ({
+/** One live card per app DID; historical and expired grants remain individual records. */
+export function normalizeAppAuthorizations(apps: AppAuthorizationSummary[], now = Date.now()): GrantCard[] {
+  const cards: GrantCard[] = [];
+  const liveByAppDid = new Map<string, AppAuthorizationSummary[]>();
+  const sorted = [...apps].sort((a, b) => {
+    const issuedOrder = Date.parse(b.authorizedAt) - Date.parse(a.authorizedAt);
+    if (issuedOrder) return issuedOrder;
+    if (a.attestationId === b.attestationId) return 0;
+    return a.attestationId < b.attestationId ? 1 : -1;
+  });
+
+  for (const app of sorted) {
+    const expired = app.expiresAt !== null && Date.parse(app.expiresAt) <= now;
+    if (app.revokedAt || expired) {
+      cards.push(appAuthorizationCard(app, app.revokedAt ? 'revoked' : 'expired'));
+      continue;
+    }
+    const group = liveByAppDid.get(app.appDid) ?? [];
+    group.push(app);
+    liveByAppDid.set(app.appDid, group);
+  }
+
+  for (const group of liveByAppDid.values()) {
+    const card = appAuthorizationCard(group[0], 'active');
+    if (group.length > 1) card.surplusGrantIds = group.slice(1).map(app => app.attestationId);
+    cards.push(card);
+  }
+  return cards;
+}
+
+function appAuthorizationCard(app: AppAuthorizationSummary, status: string): GrantCard {
+  return {
     id: `app-authorization:${app.attestationId}`,
     source: 'app-authorization',
     grantee: app.appName,
+    appDid: app.appDid,
     capabilities: app.scopes,
     issuedAt: app.authorizedAt,
     lastUsedAt: null,
     ackState: null,
     ackEvidence: null,
-    status: app.revokedAt ? 'revoked' : 'active',
-    revocable: !app.revokedAt,
-    revoke: app.revokedAt ? null : { method: 'POST', path: '/api/auth/revoke', body: { attestationId: app.attestationId } },
-  }));
+    status,
+    revocable: status === 'active',
+    revoke: status === 'active' ? { method: 'POST', path: '/api/auth/revoke', body: { attestationId: app.attestationId } } : null,
+  };
 }
 
 /**

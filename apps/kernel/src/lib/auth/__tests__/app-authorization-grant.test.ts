@@ -90,6 +90,32 @@ describe('projectAppAuthorizationGrant', () => {
     expect(conflictOpts.set).toMatchObject({ scopes: ['supply:read', 'profile:read'], status: 'active', revokedAt: null });
   });
 
+  it('uses the supplied transaction for projection instead of the default database', async () => {
+    const transaction = {
+      insert: vi.fn(() => ({ values: mocks.valuesMock })),
+      update: vi.fn(() => ({ set: mocks.setMock })),
+    };
+    await projectAppAuthorizationGrant({
+      ownerDid: OWNER_DID, appDid: APP_DID, scopes: ['supply:read'],
+    }, transaction as never);
+    expect(transaction.insert).toHaveBeenCalledWith(CHANNEL_LINKS_TABLE);
+    expect(mocks.insertMock).not.toHaveBeenCalled();
+    expect(mocks.updateMock).not.toHaveBeenCalled();
+  });
+
+  it('threads the supplied transaction through the empty-scope revoke path', async () => {
+    const transaction = {
+      insert: vi.fn(() => ({ values: mocks.valuesMock })),
+      update: vi.fn(() => ({ set: mocks.setMock })),
+    };
+    await projectAppAuthorizationGrant({
+      ownerDid: OWNER_DID, appDid: APP_DID, scopes: [],
+    }, transaction as never);
+    expect(transaction.update).toHaveBeenCalledWith(CHANNEL_LINKS_TABLE);
+    expect(transaction.insert).not.toHaveBeenCalled();
+    expect(mocks.updateMock).not.toHaveBeenCalled();
+  });
+
   it('revokes the row instead of upserting when scopes is empty', async () => {
     await projectAppAuthorizationGrant({ ownerDid: OWNER_DID, appDid: APP_DID, scopes: [] });
 

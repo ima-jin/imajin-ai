@@ -25,7 +25,8 @@ function step(stepId: string, zone: HorizonStep['zone'], rank = 1): HorizonStep 
 }
 
 function envelope(steps: HorizonStep[] = [], available = true, depth = steps.length) {
-  return { isOperator: true, detail: { horizon: { steps, depth, targetDepth: 12 } satisfies Horizon },
+  return { isOperator: true, lastStepEventAt: '2026-10-18T12:00:00.000Z',
+    detail: { horizon: { steps, depth, targetDepth: 12 } satisfies Horizon },
     commandTarget: { available } };
 }
 
@@ -83,6 +84,64 @@ describe('Runs horizon observations', () => {
     for (const item of screen.getAllByTestId('horizon-step')) expect(item.className).toContain('min-w-0');
   });
 
+  it('shows one unpublished line with never, no zones or below-target even with no loops', async () => {
+    const fetcher = vi.fn().mockResolvedValue(response({ isOperator: true, lastStepEventAt: null }));
+    vi.stubGlobal('fetch', fetcher);
+    const { container } = mount([]);
+    await screen.findByText("No horizon steps published yet · the harness horizon sync (#2881) hasn't reported · last step never");
+    expect(screen.getByLabelText('Horizon depth').textContent).toBe('0 / 12');
+    expect(within(screen.getByRole('region', { name: 'Runs horizon' })).queryAllByRole('region')).toHaveLength(0);
+    expect(screen.queryByText(/Below target/)).toBeNull();
+    expect(screen.queryByText(/Horizon drained/)).toBeNull();
+    expect(container.querySelector('time')).toBeNull();
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(fetcher).toHaveBeenCalledWith('/jin/api/runs/horizon-status', {
+      credentials: 'include', cache: 'no-store', signal: expect.any(AbortSignal),
+    });
+  });
+
+  it.each([{ steps: [] }, { steps: [step('exited', 'done')] }])('shows drained with the last event and depth, whether done steps are omitted or included (%j)', async ({ steps }) => {
+    fixture(steps, true, 0);
+    mount();
+    await screen.findByText(/Horizon drained · last step/);
+    expect(screen.getByText('2026-10-18T12:00:00.000Z').getAttribute('datetime')).toBe('2026-10-18T12:00:00.000Z');
+    expect(screen.getByLabelText('Horizon depth').textContent).toBe('0 / 12');
+    expect(screen.queryByText(/No horizon steps published yet/)).toBeNull();
+    expect(screen.queryByText(/Below target/)).toBeNull();
+    expect(screen.queryAllByTestId('horizon-step')).toHaveLength(0);
+    expect(screen.queryByRole('region', { name: 'tail steps' })).toBeNull();
+  });
+
+  it('does not declare the whole horizon drained while older runs are unloaded', async () => {
+    fixture([]);
+    mount(['loop-1'], undefined, true);
+    await screen.findByText(/No horizon steps in loaded runs · last step/);
+    expect(screen.queryByText(/Horizon drained/)).toBeNull();
+    expect(screen.getByText(/Loaded runs only/)).toBeDefined();
+  });
+
+  it('keeps active projections visible even if publication status races with a new step', async () => {
+    const fetcher = vi.fn().mockImplementation((url: string) => Promise.resolve(response(url.endsWith('/horizon-status')
+      ? { isOperator: true, lastStepEventAt: null } : envelope([step('new', 'tail')]))));
+    vi.stubGlobal('fetch', fetcher);
+    mount();
+    await screen.findByText('Intention new');
+    expect(screen.getByText(/Below target/)).toBeDefined();
+    expect(screen.queryByText(/No horizon steps published yet/)).toBeNull();
+    expect(screen.queryByText(/Horizon drained/)).toBeNull();
+  });
+
+  it('does not infer unpublished or drained while loading or when the status read fails', async () => {
+    const pending = deferred<Response>();
+    vi.stubGlobal('fetch', vi.fn().mockReturnValue(pending.promise));
+    mount([]);
+    expect(screen.getByText('Loading horizon…')).toBeDefined();
+    expect(screen.queryByText(/No horizon steps published yet|Horizon drained|Below target/)).toBeNull();
+    await act(async () => { pending.resolve(response({}, 500)); });
+    expect(screen.getByRole('alert')).toBeDefined();
+    expect(screen.queryByText(/No horizon steps published yet|Horizon drained|Below target/)).toBeNull();
+  });
+
   it('keeps ref-only legacy facts honest, uses tail intentions and opens the exact encoded loop', async () => {
     const refOnly = { ...step('legacy', 'middle'), issue: { ref: 'org/repo#77' } } as HorizonStep;
     fixture([refOnly, { ...step('fuzzy', 'tail'), issue: { ref: 'hidden-ref', outcome: 'OUTCOME hidden tail detail' } }]);
@@ -98,13 +157,13 @@ describe('Runs horizon observations', () => {
   });
 
   it.each([0, 5, 12, 15])('reports observed depth %s without filling or capping it', async depth => {
-    fixture([], true, depth);
+    fixture(depth ? [step('visible', 'tail')] : [], true, depth);
     mount();
     await waitFor(() => expect(screen.queryByText('Loading horizon…')).toBeNull());
     expect(screen.getByLabelText('Horizon depth').textContent).toBe(`${depth} / 12`);
-    if (depth < 12) expect(screen.getByText(`Below target · ${12 - depth} more steps to reach 12. The horizon is not full yet.`)).toBeDefined();
+    if (depth > 0 && depth < 12) expect(screen.getByText(`Below target · ${12 - depth} more steps to reach 12. The horizon is not full yet.`)).toBeDefined();
     else expect(screen.queryByText(/Below target/)).toBeNull();
-    expect(screen.queryAllByTestId('horizon-step')).toHaveLength(0);
+    expect(screen.queryAllByTestId('horizon-step')).toHaveLength(depth ? 1 : 0);
   });
 
   it.each([
@@ -231,7 +290,7 @@ describe('Signed horizon claim requests', () => {
     mount();
     fireEvent.click(await screen.findByRole('button', { name: 'Sign & claim ready' }));
     expect((await screen.findByRole('alert')).textContent).toBe('A signing key is required in this browser.');
-    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(fetcher).toHaveBeenCalledTimes(2);
     expect(screen.getByRole('button', { name: 'Sign & claim ready' }).hasAttribute('disabled')).toBe(false);
   });
 
@@ -276,6 +335,71 @@ describe('Signed horizon claim requests', () => {
 });
 
 describe('Horizon polling lifecycle', () => {
+  it.each([undefined, 'not-a-date', 7])('rejects incomplete status %s without publishing partial projections', async lastStepEventAt => {
+    vi.stubGlobal('fetch', vi.fn((url: string) => Promise.resolve(response(url.endsWith('/horizon-status')
+      ? { isOperator: true, lastStepEventAt } : envelope([step('unconfirmed', 'near')])))));
+    mount();
+    await screen.findByRole('alert');
+    expect(screen.queryByText('Intention unconfirmed')).toBeNull();
+    expect(screen.queryByText(/No horizon steps published yet|Horizon drained|Below target/)).toBeNull();
+  });
+
+  it.each([401, 403, 'nonoperator', 500, 'network'])('keeps status failure %s separate from no producer and recovers', async status => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    let failed = false;
+    const fetcher = vi.fn((url: string) => {
+      if (!url.endsWith('/horizon-status')) return Promise.resolve(response(envelope([step('ready', 'near')])));
+      if (failed && status === 'network') return Promise.reject(new Error('offline'));
+      if (failed) return Promise.resolve(status === 'nonoperator' ? response({ isOperator: false }) : response({}, Number(status)));
+      return Promise.resolve(response({ isOperator: true, lastStepEventAt: '2026-10-18T08:00:00-04:00' }));
+    });
+    vi.stubGlobal('fetch', fetcher);
+    const hook = renderHook(() => useRunsHorizon(['first'], denied));
+    await waitFor(() => expect(hook.result.current.loading).toBe(false));
+    expect(hook.result.current.lastStepEventAt).toBe('2026-10-18T12:00:00.000Z');
+    failed = true;
+    await poll();
+    expect(hook.result.current.error).toContain('claims disabled');
+    expect(hook.result.current.runs[0].horizon.depth).toBe(1);
+    expect(hook.result.current.lastStepEventAt).toBe('2026-10-18T12:00:00.000Z');
+    expect(denied).toHaveBeenCalledTimes(status === 401 || status === 403 || status === 'nonoperator' ? 1 : 0);
+    failed = false;
+    await poll();
+    expect(hook.result.current.error).toBe('');
+  });
+
+  it('polls unpublished → active → drained without a reload', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    let steps: HorizonStep[] = [];
+    let lastStepEventAt: string | null = null;
+    vi.stubGlobal('fetch', vi.fn((url: string) => Promise.resolve(response(url.endsWith('/horizon-status')
+      ? { isOperator: true, lastStepEventAt } : envelope(steps)))));
+    mount();
+    await screen.findByText(/No horizon steps published yet/);
+    steps = [step('published', 'tail')];
+    lastStepEventAt = '2026-10-18T12:00:00.000Z';
+    await poll();
+    expect(screen.getByText('Intention published')).toBeDefined();
+    expect(screen.queryByText(/No horizon steps published yet/)).toBeNull();
+    steps = [];
+    await poll();
+    expect(screen.getByText(/Horizon drained · last step/)).toBeDefined();
+    expect(screen.queryByText(/Below target/)).toBeNull();
+  });
+
+  it.each(['success', 'denied', 'failure'])('aborts a pending status read and ignores late %s', async outcome => {
+    const pending = deferred<Response>();
+    const fetcher = vi.fn().mockReturnValue(pending.promise);
+    vi.stubGlobal('fetch', fetcher);
+    const hook = renderHook(() => useRunsHorizon([], denied));
+    await waitFor(() => expect(fetcher).toHaveBeenCalledOnce());
+    const signal = fetcher.mock.calls[0][1].signal as AbortSignal;
+    hook.unmount();
+    expect(signal.aborted).toBe(true);
+    await act(async () => { pending.resolve(outcome === 'success' ? response({ isOperator: true, lastStepEventAt: null })
+      : response({}, outcome === 'denied' ? 403 : 500)); });
+    expect(denied).not.toHaveBeenCalled();
+  });
   it.each([401, 403, 'nonoperator'])('notifies the owner when authorization is revoked (%s)', async status => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     const fetcher = fixture([step('sensitive', 'near')]);
@@ -287,12 +411,13 @@ describe('Horizon polling lifecycle', () => {
     expect(screen.getByRole('button', { name: 'Sign & claim sensitive' }).hasAttribute('disabled')).toBe(true);
   });
 
-  it('settles an empty selection without fetching and reports absent horizons as unavailable', async () => {
-    const fetcher = vi.fn().mockResolvedValue(response({ isOperator: true, detail: {} }));
+  it('reads status even for an empty selection and reports absent horizons as unavailable', async () => {
+    const fetcher = vi.fn().mockResolvedValue(response({ isOperator: true, detail: {}, lastStepEventAt: null }));
     vi.stubGlobal('fetch', fetcher);
     const hook = renderHook(({ ids }) => useRunsHorizon(ids, denied), { initialProps: { ids: [] as string[] } });
     await waitFor(() => expect(hook.result.current.loading).toBe(false));
-    expect(fetcher).not.toHaveBeenCalled();
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(hook.result.current.lastStepEventAt).toBeNull();
     hook.rerender({ ids: ['legacy'] });
     await waitFor(() => expect(hook.result.current.loading).toBe(false));
     expect(hook.result.current.runs).toEqual([]);
@@ -325,7 +450,7 @@ describe('Horizon polling lifecycle', () => {
     await poll();
     expect(fetcher).toHaveBeenCalledTimes(6);
     await act(async () => { pending.resolve(response(envelope())); });
-    expect(fetcher).toHaveBeenCalledTimes(8);
+    expect(fetcher).toHaveBeenCalledTimes(9);
     expect(hook.result.current.runs.map(run => run.loopId)).toEqual(ids);
     const signal = fetcher.mock.calls[0][1].signal as AbortSignal;
     expect(fetcher.mock.calls[0]).toEqual(['/jin/api/runs/loop-0', {
@@ -334,7 +459,7 @@ describe('Horizon polling lifecycle', () => {
     hook.unmount();
     expect(signal.aborted).toBe(true);
     await poll();
-    expect(fetcher).toHaveBeenCalledTimes(8);
+    expect(fetcher).toHaveBeenCalledTimes(9);
   });
 
   it('does not start the next batch after unmount while the first batch is pending', async () => {
@@ -366,7 +491,7 @@ describe('Horizon polling lifecycle', () => {
     expect(hook.result.current.error).toContain('claims disabled');
     expect(hook.result.current.loading).toBe(false);
     await poll();
-    expect(fetcher).toHaveBeenCalledTimes(4);
+    expect(fetcher).toHaveBeenCalledTimes(5);
     expect(hook.result.current.error).toBe('');
     expect(hook.result.current.runs.map(run => run.loopId)).toEqual(['first', 'second']);
   });

@@ -13,7 +13,14 @@ import * as graph from '@/src/db/schemas/connections';
 import * as notify from '@/src/db/schemas/notify';
 import * as profile from '@/src/db/schemas/profile';
 
-const mocks = vi.hoisted(() => ({ db: null as unknown, effective: vi.fn(), actor: vi.fn(), sign: vi.fn(), push: vi.fn(), rate: vi.fn() }));
+const mocks = vi.hoisted(() => ({
+  db: null as unknown, effective: vi.fn(), actor: vi.fn(), sign: vi.fn(), push: vi.fn(), rate: vi.fn(),
+  publish: vi.fn(), error: vi.fn(),
+}));
+vi.mock('@imajin/logger', async (original) => ({
+  ...await original<typeof import('@imajin/logger')>(),
+  createLogger: () => ({ error: mocks.error, info: vi.fn(), warn: vi.fn(), debug: vi.fn() }),
+}));
 vi.mock('@imajin/config', async (original) => ({
   ...await original<typeof import('@imajin/config')>(), rateLimit: mocks.rate,
 }));
@@ -37,7 +44,7 @@ vi.mock('@/src/lib/kernel/session', () => ({
   getSessionForDid: async (did: string) => ({ did, tier: 'established', handle: 'business' }),
   getSessionFromCookies: async () => ({ did: 'did:dfos:person', handle: 'Person' }),
 }));
-vi.mock('@imajin/bus', () => ({ publish: vi.fn(async () => undefined) }));
+vi.mock('@imajin/bus', () => ({ publish: mocks.publish }));
 vi.mock('@/src/lib/mail/send', () => ({ sendKernelEmail: vi.fn() }));
 vi.mock('@/src/lib/auth/claimable-stub', () => ({
   resolveOrMintInviteTarget: vi.fn(), withNoDisclosure: (row: unknown) => row,
@@ -105,7 +112,9 @@ beforeEach(async () => {
   mocks.effective.mockResolvedValue({ ok: true, effectiveDid: org, via: 'session', composedBy: null });
   mocks.actor.mockResolvedValue({ identity: { id: 'did:imajin:owner', actingAs: org } });
   mocks.push.mockResolvedValue(false);
+  mocks.publish.mockResolvedValue({});
   mocks.rate.mockReturnValue({ limited: false });
+  vi.stubEnv('NEXT_PUBLIC_CONNECTIONS_URL', 'https://node.example.com/connections');
   const real = await vi.importActual<typeof import('@/src/lib/auth/emit-mechanical-attestation')>('@/src/lib/auth/emit-mechanical-attestation');
   mocks.sign.mockImplementation((input) => real.prepareMechanicalAttestation(input, undefined, {
     issuerDid: 'did:imajin:node', privateKey: signingKeys.privateKey,
@@ -113,6 +122,7 @@ beforeEach(async () => {
   await database.insert(auth.identities).values([
     { id: org, scope: 'business', publicKey: 'org-key', tier: 'established', handle: 'business', name: 'Business' },
     { id: person, scope: 'actor', publicKey: 'person-key', tier: 'preliminary', handle: 'Person', name: 'Person' },
+    { id: controller, scope: 'actor', publicKey: 'owner-key', tier: 'established', handle: 'owner', name: 'Owner' },
   ]);
 });
 
@@ -145,12 +155,63 @@ describe('direct requests persisted lifecycle', () => {
     expect(await response.json()).toMatchObject({ invite: { toDid: person, toHandle: 'Person', delivery: 'direct', maxUses: 1 } });
     expect(await database.select().from(graph.connections)).toHaveLength(0);
     expect(await database.select().from(graph.podMembersInConnections)).toHaveLength(0);
-    expect(await database.select().from(notify.notifications)).toHaveLength(1);
-    const [event] = await database.select().from(auth.attestations);
+    // Delivery persistence belongs to notify.send, not the producer transaction.
+    expect(await database.select().from(notify.notifications)).toHaveLength(0);
+    const events = await database.select().from(auth.attestations);
+    expect(events).toHaveLength(1);
+    const [event] = events;
     expect(event).toMatchObject({ type: 'connection.invited', payload: {
       fromDid: org, toDid: person, actorDid: 'did:imajin:owner', composedBy: null,
     } });
     expect(verifyEvent(event)).toBe(true);
+    const invite = await storedInvite();
+    expect(mocks.publish).toHaveBeenCalledTimes(1);
+    expect(mocks.publish).toHaveBeenCalledWith('connection.requested', {
+      issuer: org, subject: person, scope: 'connections',
+      payload: {
+        inviteId: invite.id, code: invite.code, fromDid: org, fromHandle: 'business', fromName: 'Business',
+        actorDid: controller, actorName: 'Owner', note: null,
+        url: 'https://node.example.com/connections#incoming-requests',
+      },
+    });
+  });
+  it('publishes only after signed request commit and preserves the direct response allowlist', async () => {
+    await database.update(auth.identities).set({ contactEmail: 'recipient@example.com' }).where(eq(auth.identities.id, person));
+    const committed: unknown[] = [];
+    mocks.publish.mockImplementationOnce(async () => {
+      committed.push(await storedInvite(), await database.select().from(auth.attestations));
+      return {};
+    });
+    const response = await create({ toDid: person, note: 'Let us connect', email: 'ignored@example.com' });
+    expect(response.status).toBe(201);
+    expect(committed[0]).toMatchObject({ delivery: 'direct', status: 'pending' });
+    expect(committed[1]).toHaveLength(1);
+    const json = await response.json();
+    expect(Object.keys(json)).toEqual(['invite']);
+    expect(Object.keys(json.invite).sort()).toEqual([
+      'id', 'code', 'fromDid', 'fromHandle', 'toDid', 'note', 'delivery', 'status',
+      'maxUses', 'usedCount', 'createdAt', 'acceptedAt', 'expiresAt', 'toHandle', 'toName',
+    ].sort());
+    expect(mocks.publish.mock.calls[0][1].payload.note).toBe('Let us connect');
+    expect(JSON.stringify([json, mocks.publish.mock.calls])).not.toContain('@example.com');
+    expect(mocks.push).not.toHaveBeenCalled();
+  });
+  it('keeps a committed request and its sole attestation when publishing fails', async () => {
+    mocks.publish.mockRejectedValueOnce(new Error('bus unavailable'));
+    expect((await create()).status).toBe(201);
+    expect(await storedInvite()).toMatchObject({ status: 'pending', delivery: 'direct' });
+    expect(await database.select().from(auth.attestations)).toHaveLength(1);
+    expect(mocks.error).toHaveBeenCalledWith(
+      { err: 'Error: bus unavailable' }, 'Direct request notification publish failed',
+    );
+    expect(await database.select().from(notify.notifications)).toHaveLength(0);
+  });
+  it('does not invent an act-as actor name for a personal request', async () => {
+    asRecipient();
+    expect((await create({ toDid: org })).status).toBe(201);
+    expect(mocks.publish.mock.calls[0][1].payload).toMatchObject({
+      fromDid: person, fromName: 'Person', actorDid: person, actorName: null,
+    });
   });
   it('accepts only named authenticated recipient and commits pod, pair, status and signed evidence together', async () => {
     await create();
@@ -167,6 +228,7 @@ describe('direct requests persisted lifecycle', () => {
     for (const event of await database.select().from(auth.attestations)) expect(verifyEvent(event)).toBe(true);
     expect((await transition('accept')).status).toBe(410);
     expect(await (await listIncomingDirectInvites(person)).json()).toEqual({ invites: [] });
+    expect(mocks.publish).toHaveBeenCalledTimes(1);
   });
   it.each(['decline', 'cancel'] as const)('%s is role-bound and terminal without a connection', async (action) => {
     await create();
@@ -184,6 +246,7 @@ describe('direct requests persisted lifecycle', () => {
     expect((await create()).status).toBe(409);
     asRecipient();
     expect((await create({ toDid: org })).status).toBe(409);
+    expect(mocks.publish).toHaveBeenCalledTimes(1);
   });
   it('rejects active pairs, self, missing, soft and suspended targets', async () => {
     expect((await create({ toDid: org })).status).toBe(400);
@@ -201,6 +264,7 @@ describe('direct requests persisted lifecycle', () => {
     expect((await create()).status).toBe(503);
     expect(await database.select().from(graph.invitesInConnections)).toHaveLength(0);
     expect(await database.select().from(notify.notifications)).toHaveLength(0);
+    expect(mocks.publish).not.toHaveBeenCalled();
     await create(); asRecipient();
     mocks.sign.mockRejectedValueOnce(new Error('signing unavailable'));
     expect((await transition('accept')).status).toBe(503);
@@ -339,6 +403,7 @@ describe.each(['header', 'cookie'] as const)('direct request service gate (%s ac
       expect(await Promise.all(tables.map((table) => database.select().from(table)))).toEqual(before);
       expect(mocks.sign).not.toHaveBeenCalled();
       expect(mocks.push).not.toHaveBeenCalled();
+      expect(mocks.publish).not.toHaveBeenCalled();
     });
   });
 });

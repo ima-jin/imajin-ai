@@ -42,4 +42,16 @@ describe('served connections /spec relationship contract (#2945)', () => {
     expect(paths['/api/connections/{did}'].delete.operationId).toBe('disconnect');
     expect(paths['/api/connections/{podId}']).toBeUndefined();
   });
+
+  it('documents address-free direct request delivery without changing its response shape (#3013)', async () => {
+    const create = (await spec()).paths['/api/invites'].post;
+    expect(create.description).toContain('connection.requested');
+    expect(create.description).toContain('connection:request-received');
+    expect(create.description).toContain('/connections#incoming-requests');
+    expect(create.description).toContain('no email address or delivery result is returned');
+    expect(create.description).toContain('201');
+    expect(create.description).toContain('no additional connection.invited attestation');
+    expect(create.responses['201'].content['application/json'].schema.properties)
+      .not.toHaveProperty('emailSent');
+  });
 });

@@ -360,6 +360,19 @@ export interface BusEventMap {
     context_type: string;
     delivery: string;
   };
+  /** Post-commit delivery only; the producer already stored connection.invited. Never carries email addresses. */
+  'connection.requested': {
+    inviteId: string;
+    code: string;
+    fromDid: string;
+    fromHandle: string | null;
+    fromName: string;
+    actorDid: string;
+    /** Human behind act-as, or null for a personal request. */
+    actorName: string | null;
+    note: string | null;
+    url: string;
+  };
   'payment.refund': {
     paymentId: string;
     amount: number;
