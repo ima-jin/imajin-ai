@@ -42,6 +42,7 @@ const SCOPE_GROUPS = [
   {
     label: 'Connections',
     scopes: [
+      { scope: 'connection:request-received', label: 'Connection request received' },
       { scope: 'connection:invite-accepted', label: 'Invitation accepted' },
     ],
   },
@@ -139,9 +140,9 @@ export default function SettingsPage() {
               {group.scopes.map(({ scope, label }) => {
                 const pref = getPref(scope);
                 return (
-                  <div key={scope} className="flex items-center justify-between px-4 py-3">
+                  <div key={scope} className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between px-4 py-3">
                     <span className="text-sm text-zinc-200">{label}</span>
-                    <div className="flex items-center gap-6">
+                    <div className="flex shrink-0 items-center gap-6">
                       <label htmlFor={`settings-inapp-${scope}`} className="flex items-center gap-2 cursor-pointer">
                         <span className="text-xs text-zinc-500">In-app</span>
                         <button type="button"

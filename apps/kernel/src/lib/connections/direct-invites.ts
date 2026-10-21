@@ -3,11 +3,11 @@ import { NextResponse } from 'next/server';
 import { and, eq, isNull, ne, or, sql, desc } from 'drizzle-orm';
 import { requireAuth, resolveEffectiveDid } from '@imajin/auth';
 import { createLogger } from '@imajin/logger';
-import { rateLimit } from '@imajin/config';
-import { db, identities, invites, connections, pods, podMembers, attestations, notifications, preferences } from '@/src/db';
+import { buildPublicUrlAbsolute, rateLimit } from '@imajin/config';
+import { publish } from '@imajin/bus';
+import { db, identities, invites, connections, pods, podMembers, attestations } from '@/src/db';
 import { prepareMechanicalAttestation } from '@/src/lib/auth/emit-mechanical-attestation';
 import { generateId } from '@/src/lib/kernel/id';
-import { buildNotificationFrame, pushNotificationToDid } from '@/src/lib/notify/ws-push';
 
 type Transaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
 type Invite = typeof invites.$inferSelect;
@@ -93,21 +93,6 @@ async function signedEvent(tx: Transaction, invite: Invite, actor: Actor, type: 
   await tx.insert(attestations).values(row);
 }
 
-/** Persist the in-app notification with the request; push only after commit. */
-async function requestNotification(tx: Transaction, invite: Invite, name: string) {
-  const [pref] = await tx.select().from(preferences).where(and(
-    eq(preferences.did, invite.toDid!), eq(preferences.scope, 'connection.invited'),
-  )).limit(1);
-  const row = {
-    id: generateId('ntf_'), recipientDid: invite.toDid!, scope: 'connection.invited',
-    urgency: 'normal', title: `${name} sent you a connection request`,
-    body: 'Open Connections to accept or decline.', data: { code: invite.code, fromDid: invite.fromDid, url: '/connections' },
-    channelsSent: pref?.inapp === false ? [] : ['inapp'], read: false, createdAt: new Date(),
-  };
-  await tx.insert(notifications).values(row);
-  return pref?.inapp === false ? null : row;
-}
-
 export async function createDirectInvite(request: Request, body: Record<string, unknown>) {
   const actor = await resolveActor(request);
   const throttled = directRequestRateLimit(actor);
@@ -142,6 +127,9 @@ export async function createDirectInvite(request: Request, body: Record<string, 
     if (pending) throw new DirectInviteError('A connection request is already pending', 409);
     const [sender] = await tx.select({ handle: identities.handle, name: identities.name })
       .from(identities).where(eq(identities.id, actor.did)).limit(1);
+    const [actingIdentity] = actor.actorDid === actor.did ? [] : await tx.select({
+      name: identities.name, handle: identities.handle,
+    }).from(identities).where(eq(identities.id, actor.actorDid)).limit(1);
     const [invite] = await tx.insert(invites).values({
       id: generateId('inv_'), code: randomBytes(12).toString('hex'),
       fromDid: actor.did, fromHandle: sender.handle, toDid: recipient.did,
@@ -149,12 +137,26 @@ export async function createDirectInvite(request: Request, body: Record<string, 
       note: typeof body.note === 'string' ? body.note : null,
     }).returning();
     await signedEvent(tx, invite, actor, 'connection.invited');
-    const notification = await requestNotification(tx, invite, sender.name || sender.handle || actor.did);
-    return { invite, notification };
+    return {
+      invite, fromName: sender.name || sender.handle || actor.did,
+      actorName: actor.actorDid === actor.did ? null : actingIdentity?.name || actingIdentity?.handle || actor.actorDid,
+    };
   });
-  if (result.notification) {
-    void pushNotificationToDid(recipient.did, buildNotificationFrame(result.notification))
-      .catch((error: unknown) => log.error({ err: String(error) }, 'Direct request notification push failed'));
+  // Delivery is post-commit and best effort. The generic notify reactor owns
+  // preferences, verified-address resolution, persistence and push; no email
+  // address or delivery outcome is disclosed to this caller.
+  try {
+    await publish('connection.requested', {
+      issuer: actor.did, subject: recipient.did, scope: 'connections',
+      payload: {
+        inviteId: result.invite.id, code: result.invite.code,
+        fromDid: actor.did, fromHandle: result.invite.fromHandle, fromName: result.fromName,
+        actorDid: actor.actorDid, actorName: result.actorName, note: result.invite.note,
+        url: `${buildPublicUrlAbsolute('connections').replace(/\/$/, '')}#incoming-requests`,
+      },
+    });
+  } catch (error) {
+    log.error({ err: String(error) }, 'Direct request notification publish failed');
   }
   return NextResponse.json({
     invite: { ...publicDirectInvite(result.invite), toHandle: recipient.handle, toName: recipient.name },

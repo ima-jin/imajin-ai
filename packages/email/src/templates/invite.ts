@@ -1,5 +1,6 @@
 import { APP_DISPLAY_NAME } from '@imajin/config';
 import { emailWrapper } from './base';
+import { escapeHtml } from '../escape-html';
 
 interface TrustGraphInviteData {
   inviterName: string;
@@ -11,8 +12,8 @@ interface TrustGraphInviteData {
 
 export function trustGraphInviteEmail(data: TrustGraphInviteData): string {
   const inviterDisplay = data.inviterHandle
-    ? `@${data.inviterHandle}`
-    : data.inviterName;
+    ? `@${escapeHtml(data.inviterHandle)}`
+    : escapeHtml(data.inviterName);
 
   const noteSection = data.note
     ? `
@@ -20,7 +21,7 @@ export function trustGraphInviteEmail(data: TrustGraphInviteData): string {
           <tr>
             <td style="background-color:#111111;padding:0 32px 24px;">
               <blockquote style="margin:0;padding:16px 20px;background-color:#1a1a1a;border-left:3px solid #3f3f46;border-radius:0 6px 6px 0;">
-                <p style="margin:0;font-size:14px;color:#a1a1aa;line-height:1.6;font-style:italic;">"${data.note}"</p>
+                <p style="margin:0;font-size:14px;color:#a1a1aa;line-height:1.6;font-style:italic;">"${escapeHtml(data.note)}"</p>
                 <p style="margin:8px 0 0;font-size:12px;color:#52525b;">— ${inviterDisplay}</p>
               </blockquote>
             </td>
@@ -28,7 +29,7 @@ export function trustGraphInviteEmail(data: TrustGraphInviteData): string {
     : '';
 
   const expirySection = data.expiresAt
-    ? `<p style="margin:12px 0 0;font-size:13px;color:#52525b;line-height:1.5;">This invitation expires on ${data.expiresAt}.</p>`
+    ? `<p style="margin:12px 0 0;font-size:13px;color:#52525b;line-height:1.5;">This invitation expires on ${escapeHtml(data.expiresAt)}.</p>`
     : '';
 
   const content = `
@@ -43,7 +44,7 @@ export function trustGraphInviteEmail(data: TrustGraphInviteData): string {
           <!-- CTA Button -->
           <tr>
             <td style="background-color:#111111;padding:24px 32px;text-align:center;">
-              <a href="${data.inviteUrl}" style="display:inline-block;background-color:#ffffff;color:#000000;padding:14px 32px;border-radius:6px;text-decoration:none;font-weight:600;font-size:15px;letter-spacing:-0.2px;">Accept Invitation →</a>
+              <a href="${escapeHtml(data.inviteUrl)}" style="display:inline-block;background-color:#ffffff;color:#000000;padding:14px 32px;border-radius:6px;text-decoration:none;font-weight:600;font-size:15px;letter-spacing:-0.2px;">Accept Invitation →</a>
               ${expirySection}
             </td>
           </tr>

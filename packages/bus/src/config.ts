@@ -227,6 +227,10 @@ const DEFAULTS: Record<string, ReactorConfig[]> = {
   'connection.invited': [
     { type: 'attestation', config: { attestationType: 'connection.invited' }, enabled: true },
   ],
+  // #3013 / migration 0218: delivery only; never mint a second invited attestation.
+  'connection.requested': [
+    { type: 'notify', config: { scope: 'connection:request-received' }, enabled: true },
+  ],
   'payment.refund': [
     { type: 'emit', config: {}, enabled: true },
   ],
