@@ -11,6 +11,7 @@
 import type { ProvisionedApp } from './provisioned-apps';
 import { ProvisionedAppScopes } from './provisioned-app-scopes';
 import { AppEmittableEvents } from './app-emittable-events';
+import { provisionReissueAnchorId } from './provision-anchor';
 
 function ProvisionedAppRow({
   app,
@@ -18,16 +19,17 @@ function ProvisionedAppRow({
   onReissue,
 }: Readonly<{ app: ProvisionedApp; reissueBusy: boolean; onReissue: (app: ProvisionedApp) => void }>) {
   return (
-    <li className="flex flex-wrap items-center gap-2 text-xs" data-testid="provisioned-app" data-slug={app.slug}>
-      <span className="font-mono text-gray-200">{app.slug}</span>
+    <li className="flex min-w-0 flex-wrap items-center gap-2 text-xs [overflow-wrap:anywhere]" data-testid="provisioned-app" data-slug={app.slug}>
+      <span className="min-w-0 font-mono text-gray-200">{app.slug}</span>
       <span className={app.claimed ? 'text-green-400' : 'text-amber-400'}>{app.claimed ? 'claimed' : 'unclaimed'}</span>
       {!app.claimed && (
         <button
+          id={provisionReissueAnchorId(app.slug)}
           type="button"
           onClick={() => onReissue(app)}
           disabled={reissueBusy}
           data-testid="provisioned-app-reissue"
-          className="ml-auto px-2.5 py-1 rounded text-xs font-medium bg-amber-800/60 text-amber-100 hover:bg-amber-700/60 disabled:opacity-40"
+          className="ml-auto scroll-mt-24 px-2.5 py-1 text-xs font-medium bg-amber-800/60 text-amber-100 hover:bg-amber-700/60 disabled:opacity-40"
         >
           {reissueBusy ? 'Proposing…' : 'Reissue claim code'}
         </button>

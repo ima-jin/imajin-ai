@@ -4,6 +4,14 @@ import { useCallback, useEffect, useState } from 'react';
 import type { AppDeclaredSecretStatus } from '@/src/lib/apps/self-secrets';
 import type { AppSecretAction } from '@/src/lib/apps/secrets-kind';
 import { approvalCardAnchorId, requestApprovalsRefresh } from './approval-anchor';
+import { provisionReissueAnchorId } from './provision-anchor';
+
+interface AppProvenance {
+  created: { at: string | null; by: string | null };
+  provisioned: { at: string | null; proposedBy: string | null; approvedBy: string | null };
+  claimed: { at: string | null; by: string | null };
+  lastSeen: { at: string | null; by: string | null };
+}
 
 interface AppSecretCard {
   appDid: string | null;
@@ -11,7 +19,54 @@ interface AppSecretCard {
   slug: string | null;
   active: boolean;
   claimed: boolean;
+  // Optional only for older metadata responses; new API responses include both.
+  claimExpiresAt?: string | null;
+  provenance?: AppProvenance;
   secrets: AppDeclaredSecretStatus[];
+}
+
+const UNKNOWN_PROVENANCE = 'unknown (pre-#3006 row)';
+
+function ProvenanceTime({ at }: Readonly<{ at?: string | null }>) {
+  return at ? <time dateTime={at}>{at}</time> : UNKNOWN_PROVENANCE;
+}
+
+function AppProvenanceLines({ app }: Readonly<{ app: AppSecretCard }>) {
+  const provenance = app.provenance;
+  return (
+    <dl className="space-y-1 text-xs text-gray-400 [overflow-wrap:anywhere]">
+      <div><dt className="inline font-mono text-gray-300">Created</dt><dd className="inline">
+        {' · '}<ProvenanceTime at={provenance?.created.at} />{' · registrar '}
+        <span className="font-mono">{provenance?.created.by ?? UNKNOWN_PROVENANCE}</span>
+      </dd></div>
+      <div><dt className="inline font-mono text-gray-300">Provisioned</dt><dd className="inline">
+        {' · '}<ProvenanceTime at={provenance?.provisioned.at} />{' · proposed by '}
+        <span className="font-mono">{provenance?.provisioned.proposedBy ?? UNKNOWN_PROVENANCE}</span>
+        {' · approved by '}<span className="font-mono">{provenance?.provisioned.approvedBy ?? UNKNOWN_PROVENANCE}</span>
+      </dd></div>
+      <div><dt className="inline font-mono text-gray-300">Claimed</dt><dd className="inline">
+        {!app.claimed && !provenance?.claimed.at ? ' · not claimed yet' : <>{' · '}<ProvenanceTime at={provenance?.claimed.at} /></>}
+        {' · host '}<span className="font-mono">{provenance?.claimed.by ?? UNKNOWN_PROVENANCE}</span>
+      </dd></div>
+      <div><dt className="inline font-mono text-gray-300">Last seen</dt><dd className="inline">
+        {' · '}<ProvenanceTime at={provenance?.lastSeen.at} />{' · by '}
+        <span className="font-mono">{provenance?.lastSeen.by ?? UNKNOWN_PROVENANCE}</span>
+      </dd></div>
+    </dl>
+  );
+}
+
+function AwaitingClaim({ app }: Readonly<{ app: AppSecretCard }>) {
+  const expired = app.claimExpiresAt && Date.parse(app.claimExpiresAt) <= Date.now();
+  return (
+    <div className="space-y-1 text-xs text-gray-400">
+      <p>Claim code {expired ? 'expired' : 'expires'}{' · '}<ProvenanceTime at={app.claimExpiresAt} /></p>
+      {app.slug && <a href={`#${provisionReissueAnchorId(app.slug)}`} className="inline-block py-2 text-amber-300 underline">
+        Reissue claim code
+      </a>}
+      <p>Claim the app before proposing secret changes.</p>
+    </div>
+  );
 }
 
 function OperatorSecretEntry({ name, active, busy, submit }: Readonly<{
@@ -66,7 +121,25 @@ function isAppSecretCard(value: unknown): value is AppSecretCard {
   return (value.appDid === null || typeof value.appDid === 'string')
     && (value.slug === null || typeof value.slug === 'string') && typeof value.name === 'string'
     && typeof value.active === 'boolean' && typeof value.claimed === 'boolean'
+    && (value.claimExpiresAt === undefined || isNullableTimestamp(value.claimExpiresAt))
+    && (value.provenance === undefined || isAppProvenance(value.provenance))
     && Array.isArray(value.secrets) && value.secrets.every(isSecretMetadata);
+}
+function isNullableString(value: unknown): boolean {
+  return value === null || (typeof value === 'string' && value.trim().length > 0);
+}
+function isNullableTimestamp(value: unknown): boolean {
+  return value === null || (typeof value === 'string' && Number.isFinite(Date.parse(value)));
+}
+function isAppProvenance(value: unknown): boolean {
+  if (!isRecord(value)) return false;
+  const provisioned = value.provisioned;
+  return ['created', 'claimed', 'lastSeen'].every((key) => {
+    const line = value[key];
+    return isRecord(line) && isNullableTimestamp(line.at) && isNullableString(line.by);
+  }) && isRecord(provisioned)
+    && isNullableTimestamp(provisioned.at)
+    && ['proposedBy', 'approvedBy'].every((key) => isNullableString(provisioned[key]));
 }
 
 /** No reveal. Submitted values leave the field immediately and never enter React state. */
@@ -116,7 +189,7 @@ export function AppSecretsPanel() {
   };
   if (apps === null) return null;
   return (
-    <section className="mt-8 space-y-3" data-testid="app-secrets-panel">
+    <section className="mt-8 min-w-0 space-y-3 [overflow-wrap:anywhere]" data-testid="app-secrets-panel">
       <h2 className="text-base font-semibold text-gray-100">App secrets</h2>
       <p className="text-xs text-gray-500">
         Names and status only — no reveal. Sync reads the app manifest; all changes require your signature.
@@ -128,14 +201,15 @@ export function AppSecretsPanel() {
       )}</output>}
       {apps.length === 0 && <p className="text-xs text-gray-500">No registered or provisioned apps yet.</p>}
       {apps.map((app) => (
-        <article key={app.appDid ?? app.slug} className="rounded-lg border border-gray-800 p-3 space-y-2">
-          <h3 className="text-sm font-medium">{app.name} <span className="text-xs text-gray-500">{app.claimed ? 'claimed' : 'unclaimed'}</span></h3>
+        <article key={app.appDid ?? app.slug} className="min-w-0 border border-gray-800 p-3 space-y-2">
+          <h3 className="font-mono text-sm font-medium">{app.name} <span className={`text-xs ${app.claimed ? 'text-green-400' : 'text-amber-400'}`}>{app.claimed ? 'claimed' : 'awaiting claim'}</span></h3>
           <p className="text-xs font-mono text-gray-500">{app.appDid ?? 'Awaiting registry identity'}</p>
+          <AppProvenanceLines app={app} />
           {app.active && app.claimed && app.appDid && app.slug && (
             <button type="button" disabled={busy} className="text-xs text-amber-300 disabled:opacity-40"
               onClick={() => void propose(app.appDid!, 'sync')}>Sync manifest secrets</button>
           )}
-          {!app.claimed && <p className="text-xs text-gray-500">Claim the app before proposing secret changes.</p>}
+          {!app.claimed && <AwaitingClaim app={app} />}
           {app.secrets.length === 0 && <p className="text-xs text-gray-500">No registered self-secret declarations.</p>}
           {app.secrets.map((secret) => (
             <div key={secret.name} className="border-t border-gray-800 pt-2 space-y-1">
