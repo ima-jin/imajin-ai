@@ -29,7 +29,9 @@ export async function createOrgGrantHarness() {
     );
   `);
   for (const name of ['0099_delegation_grants.sql', '0104_delegation_grant_audit.sql', '0217_grant_revocation_audit_retry.sql', '0217_grant_revocation_audit_retry.sql']) {
-    await client.exec(await readFile(new URL(`../../../../../../migrations/${name}`, import.meta.url), 'utf8'));
+    // Pre-baseline history lives in the archive (#2525); post-baseline files stay at the root.
+    const dir = name.startsWith('0217_') ? 'migrations/' : 'migrations/archive/pre-kernel-baseline/';
+    await client.exec(await readFile(new URL(`../../../../../../${dir}${name}`, import.meta.url), 'utf8'));
   }
   const db = drizzle(client, { schema });
   return {

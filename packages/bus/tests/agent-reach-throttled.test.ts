@@ -93,7 +93,7 @@ describe('Reach throttling audit contract (#2599)', () => {
   });
 
   it('seeds the identical awaited audit-only fallback and synchronizes agent overrides', async () => {
-    const sql = readFileSync(new URL('../../../migrations/0207_seed_agent_reach_throttled_chain.sql', import.meta.url), 'utf8');
+    const sql = readFileSync(new URL('../../../migrations/archive/pre-kernel-baseline/0207_seed_agent_reach_throttled_chain.sql', import.meta.url), 'utf8');
     const literal = sql.match(/'(\[[^\n]+\])'::jsonb/)?.[1];
     expect(literal).toBeDefined();
     const config = await getChainConfig('agent.reach.throttled', 'agent');

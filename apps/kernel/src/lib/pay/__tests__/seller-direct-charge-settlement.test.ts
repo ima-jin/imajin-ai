@@ -70,7 +70,7 @@ async function receipt(transactionId: string) {
 beforeAll(async () => {
   harness = await createPgliteLedgerHarness();
   // The shared balance harness predates transaction provenance in migration 0170.
-  const migration = readFileSync(new URL('../../../../../../migrations/0170_emission_config.sql', import.meta.url), 'utf8');
+  const migration = readFileSync(new URL('../../../../../../migrations/archive/pre-kernel-baseline/0170_emission_config.sql', import.meta.url), 'utf8');
   const transactionAlter = migration.match(/ALTER TABLE pay\.transactions[\s\S]*?;/)?.[0];
   if (!transactionAlter) throw new Error('Transaction provenance migration statement not found');
   await harness.client.exec(transactionAlter);

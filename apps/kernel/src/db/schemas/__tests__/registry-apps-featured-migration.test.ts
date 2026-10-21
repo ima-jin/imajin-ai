@@ -4,7 +4,7 @@ import { PGlite } from '@electric-sql/pglite';
 
 vi.setConfig({ testTimeout: 30_000, hookTimeout: 30_000 });
 const migration = readFileSync(
-  new URL('../../../../../../migrations/0203_registry_apps_featured.sql', import.meta.url), 'utf8',
+  new URL('../../../../../../migrations/archive/pre-kernel-baseline/0203_registry_apps_featured.sql', import.meta.url), 'utf8',
 );
 let client: PGlite;
 afterEach(async () => { await client?.close(); });

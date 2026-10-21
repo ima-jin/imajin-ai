@@ -79,12 +79,12 @@ beforeAll(async () => {
   database = new PGlite();
   await database.waitReady;
   const migration = readFileSync(fileURLToPath(new URL(
-    '../../../../../../migrations/0195_reach_envelopes.sql', import.meta.url,
+    '../../../../../../migrations/archive/pre-kernel-baseline/0195_reach_envelopes.sql', import.meta.url,
   )), 'utf8');
   await database.exec(migration);
   await database.exec('CREATE TABLE auth.identities (registered_by_app_did text,id text PRIMARY KEY)');
   await database.exec(readFileSync(new URL(
-    '../../../../../../migrations/0198_foreign_agent_stubs.sql', import.meta.url,
+    '../../../../../../migrations/archive/pre-kernel-baseline/0198_foreign_agent_stubs.sql', import.meta.url,
   ), 'utf8'));
 });
 afterAll(async () => { await database?.close(); });

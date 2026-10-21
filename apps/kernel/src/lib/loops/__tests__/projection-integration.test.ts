@@ -21,8 +21,8 @@ beforeAll(async () => {
       event_type text, scope text, reactors jsonb, enabled boolean, updated_at timestamptz,
       UNIQUE(event_type, scope)
     );`);
-  await pg.exec(readFileSync(new URL('../../../../../../migrations/0157_loops_rail.sql', import.meta.url), 'utf8'));
-  await pg.exec(readFileSync(new URL('../../../../../../migrations/0194_surface_lease.sql', import.meta.url), 'utf8'));
+  await pg.exec(readFileSync(new URL('../../../../../../migrations/archive/pre-kernel-baseline/0157_loops_rail.sql', import.meta.url), 'utf8'));
+  await pg.exec(readFileSync(new URL('../../../../../../migrations/archive/pre-kernel-baseline/0194_surface_lease.sql', import.meta.url), 'utf8'));
   sql.mockImplementation(taggedSql(pg));
   Object.assign(sql, {
     begin: (work: (tx: ReturnType<typeof taggedSql>) => Promise<void>) =>

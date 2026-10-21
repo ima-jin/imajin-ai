@@ -6,7 +6,13 @@
 
 ## Quick Reference
 
-All migrations live in `migrations/` at the repo root. Plain SQL, sequentially numbered, fully idempotent.
+Active migrations in this repository are **kernel-only**: generated
+`migrations/0001_kernel_baseline.sql`, followed by migrations numbered above
+the historical cut in `migrations/kernel-baseline.json`. Archived mixed-owner
+history is audit-only; app migrations live in app repositories.
+See [the baseline runbook](../migrations/BASELINE.md) for generation,
+verified ledger adoption, seed inventory and Jin's isolated restore commands.
+The baseline's idempotency is transactional ledger-based, not repeated DDL.
 
 ```bash
 # Run pending migrations
@@ -15,18 +21,16 @@ node scripts/migrate.mjs
 # Or via wrapper
 ./scripts/migrate.sh
 
-# Run only one owner's migrations (#1991 phase 2a) — see migrations/OWNERSHIP.md
-# for what "owned solely by <app>" and "shared" mean, and why this doesn't
-# yet give any app true isolation (most owners still depend on 0001_seed.sql).
-node scripts/migrate.mjs --owner <app>
-node scripts/migrate.mjs --owner <app> --include-shared
+# Explicit kernel filter (equivalent to the default in this repository)
+node scripts/migrate.mjs --owner kernel
 ```
 
 ### Adding a Migration
 
-1. Create `migrations/NNNN_description.sql` (next sequential number)
+1. Create `migrations/NNNN_description.sql` (next number above the archived cut and active files)
 2. All DDL must be idempotent (`IF NOT EXISTS`, `IF EXISTS`, `DO $$ ... EXCEPTION ...`)
 3. Use schema-qualified names (`auth.identities`, not `identities`)
+   and `-- owner: kernel`; app-owned SQL belongs in its app repository.
 4. Commit — it runs automatically on next deploy
 
 ### Scaffolding from Schema Changes
@@ -40,18 +44,19 @@ npx drizzle-kit generate
 ### New Environment Setup
 
 ```bash
-# Fresh DB: run all migrations
+# Fresh DB: baseline, then post-cut migrations
 node scripts/migrate.mjs
 
-# Existing DB: seed tracking table first
-node scripts/seed-migrations.mjs
+# Existing DB: verify the complete matching historical ledger, mark baseline
+# applied without DDL, then apply only post-cut migrations
 node scripts/migrate.mjs
 ```
 
 ### Rules
 
 - **Never use `drizzle-kit push`.** Always use migration files.
-- **All DDL is idempotent.** No exceptions.
+- **Post-cut DDL is idempotent.** The generated baseline executes once atomically
+  with its tracking row; adoption never executes baseline DDL.
 - **One migration file per schema change.** Don't let two agents work on the same migration.
 - **Schema-qualified names everywhere.** `auth.identities`, not `identities`.
 - **Forward-only. Migrations are additive; no down-scripts.** A column or table may be dropped only
@@ -62,9 +67,12 @@ node scripts/migrate.mjs
 
 ### Tracking
 
-`public._migrations` table with filename + SHA-256 checksum. Runner warns but skips on changed checksums (DDL is idempotent, so re-running is safe).
+`public._migrations` stores filename + SHA-256. Baseline and adoption-history
+checksum mismatches fail closed. Post-cut files retain the legacy warn/skip
+behavior. Never edit applied SQL or blindly seed tracking; the old
+`seed-migrations.mjs` path is disabled in baseline layout.
 
-This table is shared across every mode: `--owner <app>` only changes which
+Historically this table was shared across every mode: `--owner <app>` only changed which
 files a given run reads from disk, never how a run records what it
 applied. A database migrated exclusively with the plain no-flag command
 and a database migrated by running every owner's `--owner` slice once each

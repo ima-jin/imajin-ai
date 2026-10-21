@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import {
   parseStatements,
   stripSqlComments,
@@ -145,6 +145,7 @@ describe('buildOwnershipMap', () => {
   function makeMigrationsDir(files) {
     const dir = mkdtempSync(join(tmpdir(), 'ownership-map-'));
     for (const [filename, content] of Object.entries(files)) {
+      mkdirSync(dirname(join(dir, filename)), { recursive: true });
       writeFileSync(join(dir, filename), content, 'utf8');
     }
     return dir;
@@ -188,6 +189,58 @@ describe('buildOwnershipMap', () => {
     });
     const entries = buildOwnershipMap(dir);
     expect(entries.get('table:coffee.pages').firstMigration).toBe('0001_seed.sql');
+  });
+
+  const baselineManifest = JSON.stringify({
+    filename: '0001_kernel_baseline.sql',
+    archive: 'archive/pre-kernel-baseline',
+  });
+
+  it('audits archived app origins and skips only the generated baseline', () => {
+    const dir = makeMigrationsDir({
+      'kernel-baseline.json': baselineManifest,
+      'archive/pre-kernel-baseline/0001_seed.sql': 'CREATE TABLE coffee.pages (id INT); CREATE TABLE auth.identities (id INT);',
+      '0001_kernel_baseline.sql': 'CREATE TABLE auth.identities (id INT); CREATE TABLE kernel.generated_only (id INT);',
+      '0202_future.sql': 'CREATE TABLE kernel.new_table (id INT);',
+    });
+    const entries = buildOwnershipMap(dir);
+    expect(entries.get('table:coffee.pages')).toMatchObject({ owner: 'coffee', firstMigration: '0001_seed.sql' });
+    expect(entries.get('table:auth.identities')).toMatchObject({ owner: 'kernel', firstMigration: '0001_seed.sql' });
+    expect(entries.get('table:kernel.new_table')).toMatchObject({ owner: 'kernel', firstMigration: '0202_future.sql' });
+    expect(entries.has('table:kernel.generated_only')).toBe(false);
+  });
+
+  it('replays archive creates/renames/drops before active post-cut SQL', () => {
+    const dir = makeMigrationsDir({
+      'kernel-baseline.json': baselineManifest,
+      'archive/pre-kernel-baseline/0001_seed.sql': 'CREATE TABLE coffee.old_name (id INT); CREATE TABLE kernel.removed (id INT);',
+      'archive/pre-kernel-baseline/0002_rename.sql': 'ALTER TABLE coffee.old_name RENAME TO pages;',
+      'archive/pre-kernel-baseline/0003_drop.sql': 'DROP TABLE kernel.removed;',
+      '0001_kernel_baseline.sql': 'CREATE TABLE kernel.removed (id INT);',
+      '0202_future.sql': 'CREATE TABLE kernel.removed (id INT);',
+    });
+    const entries = buildOwnershipMap(dir);
+    expect(entries.has('table:coffee.old_name')).toBe(false);
+    expect(entries.get('table:coffee.pages').firstMigration).toBe('0001_seed.sql');
+    expect(entries.get('table:kernel.removed').firstMigration).toBe('0202_future.sql');
+  });
+
+  it('does not silently ignore a missing archive when a manifest activates auditing', () => {
+    const dir = makeMigrationsDir({
+      'kernel-baseline.json': baselineManifest,
+      '0001_kernel_baseline.sql': 'CREATE TABLE auth.identities (id INT);',
+    });
+    expect(() => buildOwnershipMap(dir)).toThrow();
+  });
+
+  it('preserves explicit file-list callers', () => {
+    const dir = makeMigrationsDir({
+      '0001_seed.sql': 'CREATE TABLE coffee.pages (id INT);',
+      '0002_other.sql': 'CREATE TABLE auth.identities (id INT);',
+    });
+    const entries = buildOwnershipMap(dir, ['0002_other.sql']);
+    expect(entries.has('table:coffee.pages')).toBe(false);
+    expect(entries.get('table:auth.identities').firstMigration).toBe('0002_other.sql');
   });
 });
 

@@ -20,7 +20,7 @@ vi.mock('@imajin/db', () => ({ getClient: mocked.getClient }));
 vi.setConfig({ testTimeout: 30_000, hookTimeout: 30_000 });
 
 const migration = readFileSync(fileURLToPath(new URL(
-  '../../../../../../migrations/0195_reach_envelopes.sql', import.meta.url,
+  '../../../../../../migrations/archive/pre-kernel-baseline/0195_reach_envelopes.sql', import.meta.url,
 )), 'utf8');
 
 let database: PGlite;
@@ -91,7 +91,7 @@ beforeAll(async () => {
   await database.exec(migration);
   await database.exec('CREATE TABLE auth.identities (registered_by_app_did text,id text PRIMARY KEY)');
   await database.exec(readFileSync(new URL(
-    '../../../../../../migrations/0198_foreign_agent_stubs.sql', import.meta.url,
+    '../../../../../../migrations/archive/pre-kernel-baseline/0198_foreign_agent_stubs.sql', import.meta.url,
   ), 'utf8'));
   await database.exec(`CREATE TABLE auth.attestations (
     id text PRIMARY KEY, issuer_did text NOT NULL, subject_did text NOT NULL,

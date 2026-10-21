@@ -36,7 +36,7 @@ const DROP = '0181_pay_transactions_drop_stripe_id.sql';
 function findMigrationsDir(): string {
   let dir = dirname(fileURLToPath(import.meta.url));
   for (let i = 0; i < 12; i++) {
-    const candidate = join(dir, 'migrations');
+    const candidate = join(dir, 'migrations/archive/pre-kernel-baseline');
     if (existsSync(join(candidate, DROP))) return candidate;
     dir = dirname(dir);
   }

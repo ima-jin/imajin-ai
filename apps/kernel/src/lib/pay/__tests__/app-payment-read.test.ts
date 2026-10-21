@@ -75,7 +75,7 @@ async function registration(values: { status?: string; approved?: string[] } = {
 beforeAll(async () => {
   harness = await createPgliteLedgerHarness();
   for (const migration of ['0007_registry_apps.sql', '0179_registry_apps_approved_service_scopes.sql']) {
-    await harness.client.exec(readFileSync(new URL(`../../../../../../migrations/${migration}`, import.meta.url), 'utf8'));
+    await harness.client.exec(readFileSync(new URL(`../../../../../../migrations/archive/pre-kernel-baseline/${migration}`, import.meta.url), 'utf8'));
   }
   for (const appDid of [APP, OTHER_APP]) {
     await harness.client.query(

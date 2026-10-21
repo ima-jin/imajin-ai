@@ -25,7 +25,7 @@ const h = vi.hoisted(() => {
   function findMigrationsDir(): string {
     let dir = dirname(fileURLToPath(import.meta.url));
     for (let i = 0; i < 12; i++) {
-      const candidate = join(dir, 'migrations');
+      const candidate = join(dir, 'migrations/archive/pre-kernel-baseline');
       if (existsSync(join(candidate, '0175_pay_payment_request_paid_by_did.sql'))) return candidate;
       dir = dirname(dir);
     }

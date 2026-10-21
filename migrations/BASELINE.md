@@ -1,400 +1,241 @@
-# Kernel Baseline Squash — Dry-Run Plan (#1991 phase 3)
+# Kernel baseline squash (#2525, #1991 phase 3)
 
-**Status: no squash executed.** The ownership-exit verification below uses
-disposable PostgreSQL built from root history, not a live dev restore.
-The historical squash design remains dry-run documentation only and belongs
-to #2525 (blocked by #2517). Do not execute a squash as part of #1991.
+## Scope and current cut
+Kernel schemas: `auth`, `chat`, `connections`, `consent_requests`, `github`,
+`inference`, `kernel`, `media`, `money`, `notify`, `operator`, `pay`, `profile`,
+`registry`, `relay`, `usage`, `www`. App schemas/ledgers belong in app repos.
+Fresh kernel init does not initialize coffee, dykil, events, learn, links or
+market; existing app schemas/data are never dropped.
 
-## #1991 — dykil exits to its own repository (October 14 ruling)
+DECISION ruled a (Ryan, 2026-10-16 19:25): kernel migrations may merge before
+squash; the final cut absorbs everything on main. The old no-in-flight gate
+is superseded. #1991 and #2517 are closed. `kernel-baseline.json` records the
+exact cut and checksums. Future migrations use numbers above its highest
+historical number, not `0002`.
 
-Ryan lifted the deferral **for dykil** on October 14. This supersedes the
-older per-app-directory gating discussion below, not the squash gate.
-[`ima-jin/dykil#24`](https://github.com/ima-jin/dykil/pull/24) owns the
-`dykil` schema baseline and future migrations. Its runner uses
-`APP_DB_SCHEMA=dykil` and `dykil._migrations`, never `public._migrations`.
-Matching existing tables are adopted by recording the baseline checksum,
-**without replaying DDL**; fresh databases build from the app baseline.
-This is ownership of the legacy schema, not a return to table-backed
-application behavior: surveys/responses remain signed documents/attestations.
+Cycle **v0.8.26**, revised after Jin's real-restore review: the cut absorbs
+**212** historical files through **`0215_registry_apps_sign_in_audience.sql`**.
+**`0216_restore_conversation_members_unique.sql` remains unchanged at root**,
+outside the baseline inventory. After adoption the runner applies it if absent
+from the ledger (prod-shaped), or skips its existing row (dev-shaped).
+The same rule applies to **every** later root migration, including 0217 and
+0218: replay pending files in filename order and skip recorded ones.
+Missing history through 0215 is never tolerated. Choose the next free number
+above the last root migration on main; do not move the cut for this check fix.
 
-`ownership.json.externalSchemas` records the repository boundary for dykil
-and already-pruned coffee, learn and market. New root migrations touching
-these schemas fail even with an app-owner header/shared-file allowlist
-entry. This does not assert the other apps adopted dykil's runner.
+#2865 closed via PR #2990 (0216), but Jin's actual dev-restore run on the
+previous head failed closed on recorded checksum drift. **Jin must rerun that
+real-data proof on the revised head before enqueueing.** This agent has no
+server access. Synthetic fixtures are not a claim of real-restore success.
+No constraint renames or package version changes are part of this correction.
 
-All root SQL (`0001_seed.sql`, `0008`, `0025`, `0026`, etc.) remains
-byte-identical and replayable, and historical table-owner/origin rows stay.
-Shared files can still create/touch dykil during full fresh root bootstrap;
-this transitional overlap is **not** new migration authority. The events
-joins in `0025`/`0026` are never copied into dykil's baseline, and root ledger
-rows never move to the app ledger. Pruning never drops the schema/data.
-Runtime access (#2542) and legacy import (#2522) remain separate.
+## Known name-only drift
+The operator's [#2865 evidence](https://github.com/ima-jin/imajin-ai/issues/2865#issuecomment-6293833427)
+records identical definitions but six different names (prod → fresh baseline):
+- `auth.identity_chains`: `identity_chains_did_fkey` → `identity_chains_did_identities_id_fk`.
+- `chat.conversation_members`: `conversation_members_conversation_did_fkey` → `conversation_members_conversation_did_conversations_v2_did_fk`.
+- `chat.conversation_reads_v2`: `conversation_reads_v2_conversation_did_fkey` → `conversation_reads_v2_conversation_did_conversations_v2_did_fk`.
+- `chat.message_reactions_v2`: `message_reactions_v2_message_id_fkey` → `message_reactions_v2_message_id_messages_v2_id_fk`.
+- `chat.messages_v2`: `messages_v2_conversation_did_fkey` → `messages_v2_conversation_did_conversations_v2_did_fk`.
+- `registry.interests`: `interests_scope_key` → `interests_scope_unique`.
+These names are not changed here and are separate from ledger checksums.
 
-### Effect on the eventual kernel baseline
+## Recorded historical checksum drift
+Authority: Jin's [CHANGES_REQUESTED review](https://github.com/ima-jin/imajin-ai/pull/2886#pullrequestreview-5591517061),
+2026-10-20. `kernel-baseline.json.acceptedHistoricalChecksums` records **only**
+these exact extra SHA-256 values, per filename, with `observedIn`, `reason`
+and `evidence`. Four were observed on both dev/prod; four only on dev:
+- `0001_seed.sql` — dev/prod: `9d75ca47c372992e02a178b5d6001ee3689e77b8fa94ad14fa1cdf75843d8aea`
+- `0010_logs_cleanup.sql` — dev/prod: `455f387dd93c5f36843d5a278840e593556f5590d8973e8b9346dc2b67021a39`
+- `0039_seed_bus_chain_configs.sql` — dev/prod: `cc5ed2c9bafb8b1f2b8ab04d9149f2ede9706c3a74d8f8cc9d45cee032b28a59`
+- `0042_seed_calendar_chain_configs.sql` — dev/prod: `a17b873c79706f08e4996784f3fa18af13f6fb2744311a3516cb02374bb659dc`
+- `0056_consent_grants.sql` — dev: `89e67ab66003769e9e05bd7ec2865c97a16a6573d1018647f57785433fcc1775`
+- `0057_profile_field_visibility.sql` — dev: `c1c675e6f4ea6362bcfb9dd0e805bcb458a449afc46b8fa8e9382bc5f0e7cfc7`
+- `0068_inference_engine.sql` — dev: `16edc9b984bbf7e4f512aa638ec52734a939682eb8e8ea67a2dc326aaee0d5d8`
+- `0071_inference_attestation_signatures.sql` — dev: `bdf060a42f7594f281194eebcfd03b5308116ad3440f5e296dd451caf533b43a`
 
-The future kernel baseline must omit **all of `dykil`**, including its
-ledger. Dykil initializes its own schema on fresh nodes and adopts existing
-ones without reconstruction. The kernel-only dump selection below already
-excludes all app schemas. Do not archive/split shared history now: #2525
-must account for every remaining app and shared-file dependency before
-retiring any history. The dykil baseline alone is not permission to delete it.
+The legacy runner warned and skipped changed applied files, allowing these
+historical ledger variants to persist. Acceptance is a reviewed, exact
+compatibility record, not permission to alter history or ignore checksums.
+The runner accepts the canonical archive checksum **or that file's recorded
+variant**; an unrecorded value, including a variant borrowed from another
+filename, still throws. Every pre-cut row remains required.
+**Never UPDATE, DELETE, normalize or reseed historical ledger rows.**
+The only additions are the new baseline row and genuinely pending post-cut
+migration rows. Regeneration preserves/validates the variant map; unit tests
+pin all eight values independently to this review. Scratch ledger fixtures
+insert these synthetic rows at construction, then assert their full IDs,
+checksums and timestamps are unchanged by adoption.
 
-### Ownership-exit dry run (not a squash)
-
-Use disposable databases and operator-provisioned credentials only:
-
-1. Build database A with the **unfiltered** `node scripts/migrate.mjs`, in
-   filename order. Verification cut `bbddcc30` applies all 189 root files.
-2. Dump only the kernel-owned schemas listed in procedure step 1 below,
-   **omitting `--schema=public`** (the root ledger is not baseline-managed
-   DDL). Use `pg_dump --schema-only --no-owner --no-privileges`.
-3. Restore that temporary dump into empty disposable B using
-   `psql --set=ON_ERROR_STOP=1`. Dump B with the identical selection.
-   Normalize only random `pg_dump` `\restrict`/`\unrestrict` tokens before
-   comparing: the schema dumps must match.
-4. Assert B has no app schemas and no `public._migrations`. This verifies
-   schema selection and dump/restore equivalence, not an executable
-   idempotent squash migration. No live schema or ledger changes.
-5. Run dykil's app runner against A, then rerun it. Verify adoption of the
-   actual root-history shape without changing table OIDs/definitions/data;
-   only `dykil._migrations` may change. Dykil's real-SQL tests additionally
-   cover fresh builds, populated adoption, repeats and mismatch refusal.
-
-**Remaining acceptance boundary:** the original real-dev-restore dry run
-needs server hands and has not been performed here. The issue/PR carries
-a DECISION card requesting a sanitized restore or separately owned
-server-side verification. Do not represent disposable verification as
-that acceptance.
-
-Verification on October 17, PostgreSQL 16: all 189 root files applied;
-kernel-only dump/restore comparison was identical (normalized SHA-256
-`e235ed2a9d75f2b33425825efda1668502ff5fd3cf00bc3d9a415bd4ebe7da4b`).
-Dykil's fresh schema matched root history byte-for-byte excluding the app
-ledger (normalized SHA-256
-`146c94b9aeb283d87c7c9831ea7a4b5afa4757b3cf1887353d1fcbe5bf1f0a24`).
-Adopting a root-built database populated with a survey/response fixture,
-then rerunning, preserved table OIDs, relfilenodes, row `xmin`, row content,
-DDL and the full root ledger; exactly one app ledger row was created.
-These are disposable verification results only.
-
-## Historical squash design (not executed)
-
-Per the
-2026-09-09 decision recorded on #1991 (see `OWNERSHIP.md`'s "Deferred"
-section), the actual squash waits on deploy posture (#2060). This document
-exists so the procedure is designed, reviewed, and ready before that gate
-lifts — not to schedule when it happens.
-
-## #1986 phase 2 — links per-table ownership decision (no SQL moved)
-
-When `apps/links` was pruned from this monorepo (#1986 phase 2; phase 1 —
-`ima-jin/links` running against this same shared DB — already merged), every
-table touched by `apps/links/src/db/schema.ts` and every migration file whose
-name mentions "links" was checked against `migrations/ownership.json` to
-decide what, if anything, needed to move. Nothing did:
-
-- **`links.clicks`, `links.links`, `links.pages`** (owner: `links`, both per
-  `ownership.json` and per `apps/links/src/db/schema.ts`'s own `pgSchema('links')`)
-  are the app's real tables. They are **not relocated** — this is Option B
-  from "Per-app migration directories" below, already the de facto state:
-  they stay recorded as originating in root `0001_seed.sql`, which is not
-  edited (immutable, shared with 6 other owners). `ima-jin/links` (phase 1)
-  already connects to this same dev/prod Postgres instance and expects the
-  `links` schema to pre-exist from that same `0001_seed.sql`, so the schema
-  must keep being created here until a future baseline squash (Option A)
-  gives `links` a real standalone migration file — not this PR's job.
-- **`auth.channel_link_tokens`, `auth.channel_links`** (`0044_channel_links.sql`,
-  backfilled by `0090_backfill_app_authorization_channel_links.sql`) are a
-  **false-positive name collision, not links-app tables.** Despite the
-  filename, both are schema-qualified `auth.*` (owner: `kernel` per
-  `ownership.json`) and back an unrelated feature: linking an external
-  channel (Discord, a connector app, etc.) to a kernel identity for scoped
-  app authorization — consumed extensively across
-  `apps/kernel/src/lib/kernel/connector-*.ts`, every provider connector
-  (`apps/kernel/src/lib/{google,github,discord,...}/connector.ts`), and the
-  `/auth/api/channel-link/*` routes. `grep -rn "channel_links\|channel_link_tokens"
-  apps/links` returns nothing — the links app never referenced these tables.
-  They stay kernel-side, unchanged.
-- **Gap check**: no kernel code (or any other app) reads `links.clicks`,
-  `links.links`, or `links.pages` directly (`grep -rn "links\.\(clicks\|links\|pages\)"
-  apps/` outside `apps/links` returns nothing), so removing `apps/links` from
-  this repo leaves no dangling cross-schema read — unlike the gaps already
-  tracked in `OWNERSHIP.md`'s "Gaps" section for other owners.
-
-## #2503 — learn per-table ownership decision (no SQL dropped or moved)
-
-When `apps/learn` was pruned from this monorepo (#1987 step 5; the standalone
-`ima-jin/learn` already runs on dev), the five `learn.*` tables (`courses`,
-`modules`, `lessons`, `enrollments`, `lesson_progress`, created in the shared
-`0001_seed.sql`) were checked against `migrations/ownership.json`. **No migration
-was edited and nothing is dropped.** They stay owned by `learn` (the owning code now
-lives in `ima-jin/learn`) and keep being created here until a baseline squash gives
-learn a standalone migration file. The only new migration is the data-only,
-kernel-owned `0184_retire_legacy_learn_registry_row.sql`: an `UPDATE` on
-`registry.apps` that revokes the seeded `app_first_party_learn` row and clears its
-audience/slug/placements, but only when another active row already answers the
-`learn` audience.
-
-## #2500 — coffee per-table ownership decision (no SQL dropped or moved)
-
-When `apps/coffee` was pruned from this monorepo (#1984 step 5; the standalone
-`ima-jin/coffee` runs claimed on dev from its own checkout), every `coffee.*` table was
-checked against `migrations/ownership.json`. **No migration was edited and nothing is
-dropped.**
-
-- **`coffee.pages`, `coffee.tips`** (`0001_seed.sql`, owner `coffee`) are the app's real
-  tables. They are **not relocated** and **not kernel-owned**: they stay recorded as
-  originating in the shared `0001_seed.sql` (Option B, the same standing policy as
-  `links`). Ownership stays `coffee` in `ownership.json` (the per-app ownership of
-  #1991); only the `notes` field changed, to record that the owning code now lives in
-  `ima-jin/coffee`. The `coffee` schema must keep being created here until a baseline
-  squash gives coffee a standalone migration file. The standalone app owns that data.
-- **Gap check**: no kernel code reads `coffee.pages` / `coffee.tips` directly
-  (`grep -rn "coffee\.\(pages\|tips\)" apps/` finds nothing), so removing `apps/coffee`
-  leaves no dangling cross-schema read.
-- **One data-only kernel migration, `0185_retire_legacy_coffee_registry_row.sql`.** It is
-  an `UPDATE` on kernel-owned `registry.apps` (no `DROP`): it revokes the seeded
-  `app_first_party_coffee` row (0139, untouched) and clears its audience/slug/placements,
-  but only when another active row already answers the `coffee` audience (the
-  provisioned one). This removes the ambiguity where `resolveActiveAppByAudience`
-  (`LIMIT 1`, no `ORDER BY`) could pick the legacy first-party row and give coffee's
-  mint the first-party exemption (no scope ceiling) in place of its `coffee:*` scopes.
-
-## #2512 — market per-table ownership decision (no SQL dropped or moved)
-
-When `apps/market` was pruned from this monorepo (#1989 step 5; the standalone
-`ima-jin/market` runs claimed on dev), every `market.*` table was checked against
-`migrations/ownership.json`. **No migration was edited and nothing is dropped.**
-
-- **`market.disputes`, `market.listings`, `market.seller_settings`** (`0001_seed.sql`,
-  owner `market`) are the app's real tables. They are **not relocated** and **not
-  kernel-owned**: they stay recorded as originating in the shared `0001_seed.sql`
-  (the same standing policy as `links`, `learn` and `coffee`). Ownership stays
-  `market` in `ownership.json`; only the `notes` field changed, to record that the
-  owning code now lives in `ima-jin/market`. The `market` schema must keep being
-  created here until a baseline squash gives market a standalone migration file. The
-  standalone app owns that data.
-- **Gap check**: no kernel code reads `market.listings` / `market.disputes` /
-  `market.seller_settings` directly (`grep -rnE "market\.(listings|disputes|seller_settings)"
-  apps packages scripts` finds nothing), so removing `apps/market` leaves no dangling
-  cross-schema read.
-- **One data-only kernel migration, `0187_retire_legacy_market_registry_row.sql`.** It
-  is an `UPDATE` on kernel-owned `registry.apps` (no `DROP`): it revokes the seeded
-  `app_first_party_market` row (0139, untouched) and clears its
-  audience/slug/placements, but only when another active row already answers the
-  `market` audience (the provisioned one). This removes the ambiguity where
-  `resolveActiveAppByAudience` (`LIMIT 1`, no `ORDER BY`) could pick the legacy
-  first-party row and give market's mint the first-party exemption (no scope
-  ceiling) in place of its `market:*` scopes.
-
-## #2523 — dykil per-table ownership decision (no SQL dropped or moved)
-
-When `apps/dykil` was pruned from this monorepo (#1985 step 5; the standalone
-`ima-jin/dykil` already serves prod and dev from its own checkouts), every `dykil.*`
-table was checked against `migrations/ownership.json`. **No migration was edited and
-nothing is dropped.**
-
-- **`dykil.surveys`, `dykil.survey_responses`** (`0001_seed.sql`, owner `dykil`) are
-  the app's real tables and are **not kernel-owned**, so they are not handed to the
-  kernel. They stay recorded as originating in the shared `0001_seed.sql` (Option B,
-  the same standing policy as `links`). Ownership stays `dykil` in `ownership.json`
-  (the per-app ownership of #1991); only the `notes` field changed, to record that
-  they are legacy tables the standalone app reads **read-only** (roles
-  `dykil_readonly_dev` / `dykil_readonly_prod`) and that the node-witnessed legacy
-  import (#2522) depends on. The `dykil` schema must keep being created here until a
-  baseline squash gives dykil a standalone migration file. The rebuilt dykil owns no
-  tables of its own (surveys are signed documents, responses are attestations).
-- **Data keeps being needed in the kernel repo.** `events` still reads
-  `dykil.surveys` / `dykil.survey_responses` directly (guest list, sales, registration,
-  refund, resend-email, register routes). Those are the grandfathered cross-schema
-  reads tracked as #2542 in `OWNERSHIP.md` / `cross-schema-allowlist.json`; they are
-  why the tables cannot be dropped, and they are unchanged by this PR.
-- **`0025` / `0026`** (shared `dykil` + `events` DML) stay as they are, grandfathered.
-- **One data-only kernel migration, `0188_retire_legacy_dykil_registry_row.sql`.** It
-  is an `UPDATE` on kernel-owned `registry.apps` (no `DROP`): it revokes the seeded
-  `app_first_party_dykil` row and clears its audience/slug/placements, but only when
-  another active row already answers the `dykil` audience (the provisioned one). This
-  removes the ambiguity where `resolveActiveAppByAudience` (`LIMIT 1`, no `ORDER BY`)
-  could pick the legacy first-party row and give dykil's mint the first-party
-  exemption (no scope ceiling) in place of its `dykil:*` scopes.
-
-## Why a squash at all
-
-`migrations/` is 132 files deep, and `0001_seed.sql` alone creates all 155
-tables across every owner (kernel: 132, events: 8, learn: 5, links: 3,
-market: 3, coffee: 2, dykil: 2). Every fresh environment — a new dev box, a
-CI ephemeral DB, a disaster-recovery restore — replays the *entire* build-
-up/tear-down history to reach current schema, including tables that were
-created and dropped again (e.g. `events.ticket_registrations`, dropped in
-`0027_drop_ticket_registrations.sql`) and columns that were added and later
-altered. A baseline squash replaces that replay, for kernel-owned schemas
-only, with a single migration that is a direct dump of the schema *as it
-exists today*.
-
-This is explicitly **kernel-only**. App-owned tables (`coffee`, `dykil`,
-`events`, `learn`, `links`, `market`) are out of scope for this document —
-see "Per-app migration directories" below for why those are gated
-separately and by a different mechanism.
-
-## Preconditions (must all be true before this plan is executed)
-
-1. **#2060 (deploy posture) resolved**, specifically: a build-stamp
-   mechanism exists so "what migration head is prod actually running" is a
-   query, not an assumption, and a documented, tested rollback path exists.
-   Squashing history is irreversible in spirit (old migration files stop
-   being replayable against a fresh DB) even though the squash migration
-   itself can be reverted like any other.
-2. **A recent, verified prod schema dump exists** and has been diffed
-   against a fresh `migrate.mjs` run on an empty DB (the same proof
-   technique used in phase 2's convergence check) to confirm the baseline
-   candidate is byte-identical to what 131 migrations actually produce —
-   not what they were *intended* to produce.
-3. **No in-flight PR touches kernel-owned migrations.** A squash lands as
-   one atomic commit; a kernel migration merging concurrently against the
-   pre-squash file list would need to be re-numbered against the post-squash
-   baseline.
-
-## Procedure (dry run)
-
-### 1. Generate the baseline candidate
+## Reproduce/finalize
+Prerequisites: Linux, Docker, Python 3, Node 22, pnpm 9. No env files, real
+database URL or credentials. Scratch PostgreSQL 16 is digest-pinned, tmpfs,
+`--network none`, without mounts/published ports.
 
 ```bash
-# Against a DB that has every existing migration applied (dev, or a fresh
-# DB with `node scripts/migrate.mjs` run to completion):
-pg_dump --schema-only \
-  --schema=auth --schema=chat --schema=connections --schema=consent_requests \
-  --schema=github --schema=inference --schema=kernel --schema=media \
-  --schema=money --schema=notify --schema=operator --schema=pay \
-  --schema=profile --schema=registry --schema=relay --schema=usage --schema=www \
-  --schema=public \
-  --no-owner --no-privileges \
-  "$DATABASE_URL" > /tmp/kernel_baseline_candidate.sql
+pnpm install --frozen-lockfile --ignore-scripts --filter imajin-ai
+git fetch origin main
+git rebase origin/main
+python3 scripts/kernel-baseline.py generate
+python3 scripts/kernel-baseline.py check
+bash scripts/check-migrations.sh
+node scripts/check-migration-ownership.mjs
+bash scripts/seed-drift.test.sh
+git diff --check
 ```
 
-`--schema=public` is included only for the `public._migrations` tracking
-table's own definition, which must NOT be part of the baseline's managed
-DDL (see step 4) — it's captured here only to diff against, not to ship.
+Run from the dedicated PR worktree. `generate` is explicitly pinned to 0215
+and replays archived history plus root SQL at or below that cut, excluding
+the baseline, in filename order/per-file transactions.
+It generates the kernel-only dump/static seeds/manifest, then moves absorbed
+files unchanged to `archive/pre-kernel-baseline/`. Commit/push after the final
+rebase, and inspect main once more before readiness. `check` regenerates from
+the archive and fails on byte drift; neither mode absorbs 0216 or later files.
+Changing the cut requires a separately reviewed generator/manifest update.
+Ordinary migration execution scans root SQL only. The complete mixed-owner
+history is retained for audit/dependency-correct scratch replay, not app
+migration authority.
 
-The candidate needs manual cleanup before it's a real migration:
-idempotency guards (`CREATE TABLE IF NOT EXISTS`, etc. — `pg_dump` output
-is not idempotent by default), removal of `SET`/session-config lines
-`pg_dump` emits, and removal of anything under `public` except as noted
-above.
+DDL uses dependency-aware `pg_dump` ordering from the pinned image, without
+owners/ACLs, patch-version comments or random psql restrict tokens. All other
+DDL/session settings remain. Baseline-only and full-history kernel catalog
+dumps and normalized static seed content must match. The required `public.pgcrypto`
+extension is installed explicitly and its version/schema inventory is compared
+separately; the public ledger itself is not baseline-managed DDL. Fresh baseline
+plus **all** post-cut root files must match full-history replay through the last
+root file, including normalized static seeds.
 
-### 2. Prove it's equivalent, not just plausible
+### Required seed rows (and only these)
+All populated kernel tables on **empty-history replay** are inventoried;
+undeclared nonempty seed targets stop generation. Copied rows:
+- `auth.attestation_type_registry`: platform vocabulary/descriptions; type keys.
+- `auth.identities`: only keyless public-client sentinel
+  `did:imajin:claude-desktop` from 0053, not an operator/user/signing key.
+- `kernel.bus_chain_configs`: default/scoped reactor config, emission schedules
+  and reach chains; event-type/scope keys.
+- `notify.templates`: disabled 0158 templates; scope keys.
+- `registry.apps`: Claude OAuth adapter and historical first-party registrations
+  with their final retirement state. Placeholder public keys are nonfunctional
+  sentinels, not credential values. These are kernel registry data, not app tables.
+- `usage.emitters`: platform internal inference-passthrough configuration.
+
+Rows are JSON-key sorted, then table/content sorted. Bookkeeping
+`created_at`/`updated_at` are fixed to `2000-01-01T00:00:00+00:00`. Chain/template
+UUIDs use UUIDv5 URL namespace with `imajin:baseline:chain:{event_type}:{scope}`
+and `imajin:baseline:template:{scope}` (`None` spells NULL scope).
+Only fresh seed bookkeeping changes; definitions/defaults/business config do
+not. Existing databases retain original IDs/timestamps/operator config.
+No runtime credentials, grants, balances, users, node provisioning, logs or
+app rows are copied.
+
+## Runner safety
+`node scripts/migrate.mjs` or `--owner kernel` takes advisory/ledger locks in
+a transaction:
+- Existing baseline row: verify SHA-256, never re-execute.
+- Complete history: every archived filename must exist and its checksum must
+  match the canonical value or an exact recorded per-file variant, and kernel
+  schemas must exist. Insert **only** the baseline ledger row, no DDL/seeds.
+  All historical ledger rows remain untouched. Missing 0216 is not missing
+  pre-cut history: it is a normal pending root migration after adoption.
+- Empty untracked database: apply baseline and record atomically.
+- Partial/checksum-mismatched history, unknown ledger state or existing
+  untracked kernel: stop; no force-adoption or reconstruction.
+
+Afterward, only post-cut root SQL runs. The blind `seed-migrations.mjs` path
+is disabled for this layout. Finish missing historical migrations using the
+pre-cut release in a separately reviewed recovery operation; never delete
+ledger rows to force a fresh init. Explicit environment `DATABASE_URL` takes
+precedence over the legacy env-file fallback. Scratch copies no env files.
+App `--owner` flags are legacy filtering, not app init; each app repository's
+runner/APP_DB_SCHEMA owns that.
+
+**Prod is re-baselined, never re-initialized.** Normal release deployment
+adopts a complete ledger without DDL. This does not repair schema drift.
+
+## Jin's actual dev-restore dry run (server hands only)
+Jin supplies an already verified **custom-format** dev backup, including
+`public._migrations` and app schemas, via the established backup procedure.
+Backup acquisition is outside this runbook. Do not source/print env files,
+put live URLs in commands, or run migration commands against dev/prod.
+Use a server with Docker access and enough memory for the restore's tmpfs.
 
 ```bash
-# Fresh DB A: apply the full 131-file history.
-createdb imajin_baseline_check_a
-DATABASE_URL=postgres://.../imajin_baseline_check_a node scripts/migrate.mjs
-
-# Fresh DB B: apply only the cleaned-up baseline candidate.
-createdb imajin_baseline_check_b
-psql postgres://.../imajin_baseline_check_b -f /tmp/kernel_baseline_candidate_cleaned.sql
-
-# Diff schema-only dumps of the kernel-owned schemas from both.
-pg_dump --schema-only <kernel schema flags from step 1> --no-owner --no-privileges \
-  postgres://.../imajin_baseline_check_a > /tmp/a.sql
-pg_dump --schema-only <kernel schema flags from step 1> --no-owner --no-privileges \
-  postgres://.../imajin_baseline_check_b > /tmp/b.sql
-diff /tmp/a.sql /tmp/b.sql   # must be empty
+git fetch origin chore/2525-kernel-baseline
+RESTORE_WORKTREE=$(mktemp -d /tmp/imajin-2525-worktree-XXXXXX)
+git worktree add --detach "$RESTORE_WORKTREE" origin/chore/2525-kernel-baseline
+cd "$RESTORE_WORKTREE"
+git rev-parse HEAD
+pnpm install --frozen-lockfile --ignore-scripts --filter imajin-ai
+python3 scripts/kernel-baseline.py check
+read -r -p 'Absolute path to verified custom-format dev backup: ' DEV_RESTORE_DUMP
+test -f "$DEV_RESTORE_DUMP"
+python3 scripts/kernel-baseline.py restore --dump "$DEV_RESTORE_DUMP"
 ```
 
-An empty diff is the acceptance bar — same technique phase 2's PR uses to
-prove the `--owner` filter changes nothing about final schema state.
+The command restores the supplied file into a new network-isolated container
+using `pg_restore --no-owner --no-privileges --exit-on-error`, then runs the
+actual migration runner twice, with a localhost URL only inside that container.
+Before running the runner, it clones the restored scratch database and independently
+replays **every pending post-cut root file** on that reference, in filename order.
+The adopted kernel DDL, extension inventory and non-ledger data/sequence values
+must match that reference, not the untouched restore: 0217 changes schema and
+0218 changes static seed data. For this independent replay comparison only, the
+existing static-seed ID/timestamp normalization above handles generated UUIDs
+and `now()`; non-seed data is not normalized. With no pending files, data is
+compared raw. Existing relation OIDs/relfilenodes untouched by pending SQL must
+survive. Every existing ledger row (including IDs/checksums/timestamps and
+already-recorded post-cut rows) must remain byte-for-byte unchanged.
+Exactly one baseline row must exist; the only new ledger rows are that baseline
+(if absent) and **all** genuinely pending files with canonical checksums.
+Existing post-cut files are skipped. After the first run, the second run must
+preserve raw schema/data, relation OIDs/relfilenodes, representative row xmin and
+the entire ledger without normalization. It does not deploy or modify the source
+DB/backup.
 
-### 3. Mark the baseline as already-applied on existing databases
+If the server has no Docker (as in Jin's reviewed run), use the established
+operator `pg_dump -Fc` / `pg_restore --no-owner --no-privileges --exit-on-error`
+procedure into an already-isolated **scratch** database, from a throwaway
+checkout with **no env files**. With operator-provided credentials exported
+securely as a scratch-only `DATABASE_URL`, run these exact commands twice:
 
-Existing databases (prod, dev, any long-lived environment) must NOT
-re-run the baseline's DDL — they already have this schema from the 131
-individual migrations. The baseline migration ships alongside a one-time
-backfill that inserts its own tracking row directly, without executing its
-SQL body:
-
-```sql
--- Run once, by hand, against every existing database BEFORE the baseline
--- migration file is ever picked up by scripts/migrate.mjs's normal loop:
-INSERT INTO public._migrations (filename, checksum)
-VALUES ('0001_kernel_baseline.sql', '<sha256 of the final baseline file content>')
-ON CONFLICT (filename) DO NOTHING;
+```bash
+node scripts/migrate.mjs --owner kernel
+node scripts/migrate.mjs --owner kernel
 ```
 
-This mirrors how `scripts/seed-migrations.mjs` already handles "existing
-DB, adopt tracking" per `docs/MIGRATIONS.md`'s "New Environment Setup"
-section — same mechanism, applied to one specific new file instead of the
-whole history.
+Compare scratch-only schema/data against an independent copy with every pending
+post-cut migration replayed, and verify all existing ledger rows are unchanged.
+Allow only a baseline row plus canonical rows for the pending post-cut files,
+not just 0216. Check the second run is a strict no-op. Never point these commands
+at live dev/prod or rewrite a historical checksum. Jin owns and records the
+real-data rerun.
 
-### 4. Retire (do not delete) the old files
+Expected final line:
+`PASS: supplied restore plus all pending post-cut migrations matches replay; historical ledger preserved; repeat is mutation-free`
 
-The 131 pre-baseline kernel-touching migration files move to
-`migrations/archive/` (exact name TBD at execution time) rather than being
-deleted — deleting them would break any environment that hasn't yet
-recorded the baseline backfill row from step 3, since `scripts/migrate.mjs`
-would then have no way to reach current schema from empty. They stop being
-part of the active `migrations/` directory `scripts/migrate.mjs` scans, but
-remain in git history and in the archive directory for audit purposes.
+Failure means stop and leave the PR unmerged. Attach only a sanitized error
+and exact SHA to #2525, never backup contents/rows/credentials. Investigate
+missing history/checksum errors; do not edit the ledger to bypass them.
+Record successful command, exact SHA, backup provenance/time (not contents),
+PostgreSQL version and PASS result in #2525. The real dev-restore rerun after
+the changes-requested review remains pending Jin. Synthetic evidence alone
+does not establish the real dev-restore acceptance.
 
-App-owned files interleaved in that same 131 (see `OWNERSHIP.md`'s Owners
-table — every app's earliest tables are among them) are **not** archived
-by this procedure; they stay live in `migrations/` exactly as today, since
-they're outside this squash's scope.
+## CI and rollback
+The baseline job checks reproducibility, baseline-only init, catalog/seeds,
+no app schemas, actual runner fresh/repeat, synthetic dump/restore adoption,
+data/OID/ledger preservation, partial/checksum/untracked refusal and all post-cut
+migrations. Recorded prod-shaped fixtures apply every post-cut file; dev-shaped
+fixtures skip every recorded file. Two additional schema-changing scratch files
+(create a table, then add a column) prove N > 1, without adding root migrations.
+Unit regressions reject an omitted later file, ledger rewrites/extra rows/wrong
+checksums, unexpected identity changes and repeat-run mutation.
+Seed-drift regressions replay the archive. Ownership tests reject
+app DDL/DML/search-path leaks and archive tampering against original main bytes,
+not merely a mutable manifest.
 
-### 5. Fresh nodes vs. prod
-
-- **Fresh nodes** (new dev environments, new self-hosted deployments,
-  ephemeral CI databases): `scripts/migrate.mjs` runs
-  `0001_kernel_baseline.sql` like any other migration — one file, one
-  transaction, full kernel schema, no 131-file replay.
-- **Prod is re-baselined, never re-initialized.** Prod's existing database
-  keeps its data; only its `public._migrations` bookkeeping changes (step
-  3's backfill). The schema itself is untouched by the squash — the
-  baseline file's DDL never executes against prod, by construction (its
-  tracking row is inserted directly, not earned by running the file).
-
-## Per-app migration directories — the other deferred half, and why it's a different kind of gate
-
-The issue's Phase 2 acceptance also asked for at least one app (`links` or
-`dykil`) to run its migrations from `apps/<app>/migrations/`. Phase 2's
-pre-work (see the inventory comment on #1991) found this blocked by two
-independent things, both still true as of this document:
-
-1. **Policy**: explicitly deferred by the 2026-09-09 decision pending
-   deploy posture (#2060) — same gate as the squash above.
-2. **Structural**: `links`'s only migration touch, and most of every other
-   app's, is `0001_seed.sql` — the same shared, immutable file this
-   baseline squash also has to deal with. There is no standalone
-   `links`-only (or `dykil`-only) file today to relocate.
-
-These two problems compose in a specific way worth spelling out now, so
-whoever picks this up next round doesn't have to re-derive it:
-
-- **A move must be either a baseline squash, or empty-directory-from-now-
-  on — never duplicated DDL.** Splitting `links`'s three `CREATE TABLE`
-  statements out of `0001_seed.sql` into a new
-  `apps/links/migrations/0001_links_seed.sql`, while leaving the originals
-  in place, would mean the same DDL exists under two filenames with two
-  checksums in `public._migrations`. That's not a relocation, it's a fork —
-  both files are idempotent (`CREATE TABLE IF NOT EXISTS`), so nothing
-  breaks *today*, but it silently defeats the ownership map's purpose
-  (there's no longer one file of record for `links.pages`'s origin) and
-  makes a future rename/alter ambiguous about which copy is authoritative.
-- **Option A — squash-and-split together.** If a kernel baseline squash
-  (this document) ever happens, doing an app's baseline squash in the same
-  pass is the clean way to get `apps/<app>/migrations/0001_<app>_baseline.sql`
-  as a real, standalone file: dump `<app>`'s schema at the cut, mark it
-  applied on existing DBs exactly like step 3 above, and the *original*
-  `0001_seed.sql` no longer needs to carry `<app>`'s tables at all once
-  every app sharing it has either squashed or archived alongside it.
-- **Option B — prospective-only, no squash.** Alternatively,
-  `apps/<app>/migrations/` starts empty and only gains files for migrations
-  authored from that point forward; `<app>`'s existing tables stay recorded
-  as originating in root `0001_seed.sql` in `ownership.json` (already true
-  today) permanently, or until a later squash. This avoids touching history
-  at all but only partially satisfies "app runs its migrations from its own
-  directory" — it's true prospectively, not retroactively.
-- Whichever option is chosen, it happens **after** #2060 resolves, not
-  before — the policy gate and the structural gate both have to clear.
-
-No decision is made here between Option A and Option B; that's the design
-call the #1991 phase-2 pre-work comment asked for and deferred to whoever
-picks this back up once #2060 is resolved.
+Before any post-cut DDL lands, rolling code back to the pre-cut release still
+recognizes all historical ledger rows; the extra baseline row is harmless.
+Never remove rows or drop/recreate schemas to roll back. After post-cut DDL,
+use the normal reviewed migration/backup recovery procedure; this squash adds
+no automatic down-migration.

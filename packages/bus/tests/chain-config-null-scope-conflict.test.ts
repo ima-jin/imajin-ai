@@ -4,7 +4,7 @@ import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const migrationsDir = resolve(__dirname, '../../../migrations');
+const migrationsDir = resolve(__dirname, '../../../migrations/archive/pre-kernel-baseline');
 
 function readMigration(filename: string): string {
   return readFileSync(resolve(migrationsDir, filename), 'utf8');

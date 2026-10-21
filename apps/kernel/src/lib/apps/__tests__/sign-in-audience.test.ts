@@ -15,7 +15,7 @@ describe('sign-in audience vocabulary and additive migration', () => {
     const db = new PGlite();
     try {
       await db.exec("CREATE SCHEMA registry; CREATE TABLE registry.apps (id text PRIMARY KEY); INSERT INTO registry.apps VALUES ('existing');");
-      const migration = readFileSync(resolve(process.cwd(), 'migrations/0215_registry_apps_sign_in_audience.sql'), 'utf8');
+      const migration = readFileSync(resolve(process.cwd(), 'migrations/archive/pre-kernel-baseline/0215_registry_apps_sign_in_audience.sql'), 'utf8');
       await db.exec(migration);
       expect((await db.query('SELECT sign_in_audience FROM registry.apps')).rows).toEqual([{ sign_in_audience: 'members' }]);
       await db.exec("UPDATE registry.apps SET sign_in_audience='anyone';");

@@ -1,0 +1,967 @@
+{
+  "filename": "0001_kernel_baseline.sql",
+  "archive": "archive/pre-kernel-baseline",
+  "schemas": [
+    "auth",
+    "chat",
+    "connections",
+    "consent_requests",
+    "github",
+    "inference",
+    "kernel",
+    "media",
+    "money",
+    "notify",
+    "operator",
+    "pay",
+    "profile",
+    "registry",
+    "relay",
+    "usage",
+    "www"
+  ],
+  "seeds": [
+    "auth.attestation_type_registry",
+    "auth.identities",
+    "kernel.bus_chain_configs",
+    "notify.templates",
+    "registry.apps",
+    "usage.emitters"
+  ],
+  "acceptedHistoricalChecksums": {
+    "0001_seed.sql": [
+      {
+        "checksum": "9d75ca47c372992e02a178b5d6001ee3689e77b8fa94ad14fa1cdf75843d8aea",
+        "observedIn": [
+          "dev",
+          "prod"
+        ],
+        "reason": "Existing historical ledger checksum recorded by Jin; the legacy runner warned and skipped changed files. Accept this exact observed variant without rewriting the ledger or replaying historical SQL.",
+        "evidence": "https://github.com/ima-jin/imajin-ai/pull/2886#pullrequestreview-5591517061"
+      }
+    ],
+    "0010_logs_cleanup.sql": [
+      {
+        "checksum": "455f387dd93c5f36843d5a278840e593556f5590d8973e8b9346dc2b67021a39",
+        "observedIn": [
+          "dev",
+          "prod"
+        ],
+        "reason": "Existing historical ledger checksum recorded by Jin; the legacy runner warned and skipped changed files. Accept this exact observed variant without rewriting the ledger or replaying historical SQL.",
+        "evidence": "https://github.com/ima-jin/imajin-ai/pull/2886#pullrequestreview-5591517061"
+      }
+    ],
+    "0039_seed_bus_chain_configs.sql": [
+      {
+        "checksum": "cc5ed2c9bafb8b1f2b8ab04d9149f2ede9706c3a74d8f8cc9d45cee032b28a59",
+        "observedIn": [
+          "dev",
+          "prod"
+        ],
+        "reason": "Existing historical ledger checksum recorded by Jin; the legacy runner warned and skipped changed files. Accept this exact observed variant without rewriting the ledger or replaying historical SQL.",
+        "evidence": "https://github.com/ima-jin/imajin-ai/pull/2886#pullrequestreview-5591517061"
+      }
+    ],
+    "0042_seed_calendar_chain_configs.sql": [
+      {
+        "checksum": "a17b873c79706f08e4996784f3fa18af13f6fb2744311a3516cb02374bb659dc",
+        "observedIn": [
+          "dev",
+          "prod"
+        ],
+        "reason": "Existing historical ledger checksum recorded by Jin; the legacy runner warned and skipped changed files. Accept this exact observed variant without rewriting the ledger or replaying historical SQL.",
+        "evidence": "https://github.com/ima-jin/imajin-ai/pull/2886#pullrequestreview-5591517061"
+      }
+    ],
+    "0056_consent_grants.sql": [
+      {
+        "checksum": "89e67ab66003769e9e05bd7ec2865c97a16a6573d1018647f57785433fcc1775",
+        "observedIn": [
+          "dev"
+        ],
+        "reason": "Existing historical ledger checksum recorded by Jin; the legacy runner warned and skipped changed files. Accept this exact observed variant without rewriting the ledger or replaying historical SQL.",
+        "evidence": "https://github.com/ima-jin/imajin-ai/pull/2886#pullrequestreview-5591517061"
+      }
+    ],
+    "0057_profile_field_visibility.sql": [
+      {
+        "checksum": "c1c675e6f4ea6362bcfb9dd0e805bcb458a449afc46b8fa8e9382bc5f0e7cfc7",
+        "observedIn": [
+          "dev"
+        ],
+        "reason": "Existing historical ledger checksum recorded by Jin; the legacy runner warned and skipped changed files. Accept this exact observed variant without rewriting the ledger or replaying historical SQL.",
+        "evidence": "https://github.com/ima-jin/imajin-ai/pull/2886#pullrequestreview-5591517061"
+      }
+    ],
+    "0068_inference_engine.sql": [
+      {
+        "checksum": "16edc9b984bbf7e4f512aa638ec52734a939682eb8e8ea67a2dc326aaee0d5d8",
+        "observedIn": [
+          "dev"
+        ],
+        "reason": "Existing historical ledger checksum recorded by Jin; the legacy runner warned and skipped changed files. Accept this exact observed variant without rewriting the ledger or replaying historical SQL.",
+        "evidence": "https://github.com/ima-jin/imajin-ai/pull/2886#pullrequestreview-5591517061"
+      }
+    ],
+    "0071_inference_attestation_signatures.sql": [
+      {
+        "checksum": "bdf060a42f7594f281194eebcfd03b5308116ad3440f5e296dd451caf533b43a",
+        "observedIn": [
+          "dev"
+        ],
+        "reason": "Existing historical ledger checksum recorded by Jin; the legacy runner warned and skipped changed files. Accept this exact observed variant without rewriting the ledger or replaying historical SQL.",
+        "evidence": "https://github.com/ima-jin/imajin-ai/pull/2886#pullrequestreview-5591517061"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "filename": "0001_seed.sql",
+      "checksum": "35758ad48fd4f601810f1e206c121714d0daeadf7b46b0d72a7a4bd688565e6f"
+    },
+    {
+      "filename": "0002_relay_081.sql",
+      "checksum": "6aec4625fdac9c656e703b423f6c4f0a2a918b53d5fddbf0452b6d202658ab74"
+    },
+    {
+      "filename": "0003_drop_drizzle_tracking.sql",
+      "checksum": "0c0a1484262301a12007e24610fcbb4350164cc63efb1d07af3faff811582bee"
+    },
+    {
+      "filename": "0004_relay_090.sql",
+      "checksum": "ad42d99a75996f4dca2841b1a0a3b034297422c68ca6cedd1d96620995f662f8"
+    },
+    {
+      "filename": "0005_relay_peers.sql",
+      "checksum": "893f7ad7b7763bed1b028aa184635b745a667c447a509b05d968788e7dbae112"
+    },
+    {
+      "filename": "0006_countersig_dedup.sql",
+      "checksum": "081c12714c9eb8d546fdf5a58188daec2d227e5788d38d22a90ce467adef1141"
+    },
+    {
+      "filename": "0007_registry_apps.sql",
+      "checksum": "08a050ad74a30b7477586e5aa46ad12d1a32708bd998203c3e203b82dd157f1b"
+    },
+    {
+      "filename": "0008_survey_response_ticket_id.sql",
+      "checksum": "28b27c7e752448acbfd97a6b87e8281c48477e9529c1f5bf23c898719d485604"
+    },
+    {
+      "filename": "0009_unified_logs.sql",
+      "checksum": "5c45b9dac8184d1143fcadd960f085d790c67d69edb1e999af226bda027a3768"
+    },
+    {
+      "filename": "0010_logs_cleanup.sql",
+      "checksum": "2e9e3c44a172fb9763845f8d2b5d354afc61bdf65c433e628e8d30dac6437921"
+    },
+    {
+      "filename": "0011_join_visibility.sql",
+      "checksum": "7253d7e570415a8bcb80df5d4297e8b5ea956919c78cf7f9f6620c7579dace38"
+    },
+    {
+      "filename": "0012_events_currency.sql",
+      "checksum": "725261d6e1c45eb77655853edbfab0719778d0d4ca9a6241f0303dc1e64d73f1"
+    },
+    {
+      "filename": "0013_agent_role.sql",
+      "checksum": "81852a6ac2aaf8af3a86ac2451afadabe37efd0ecd78b90cc4a85ad3ff4dc15f"
+    },
+    {
+      "filename": "0014_agent_pricing.sql",
+      "checksum": "07e58d1f9243be4b1d9c86727d88d5bd4ee29687514c9a7fd8337a2ec7bc2cb9"
+    },
+    {
+      "filename": "0015_ticket_registrations.sql",
+      "checksum": "f69f3c81fa394facf0e73b9cc856f8673a4dd633af4e531a113a6c10684dfab3"
+    },
+    {
+      "filename": "0016_emt_email.sql",
+      "checksum": "0fb7d92111390974f82c680bd8823295c7b665cda8f1b2649b3bb634bdcff259"
+    },
+    {
+      "filename": "0017_ticket_type_access_code.sql",
+      "checksum": "fe4670a98b5b2539892e2f8e5ebd259e0c975c60c2a96964aec2d7bb98ef8dbf"
+    },
+    {
+      "filename": "0018_learn_course_type.sql",
+      "checksum": "f221415185b2376280437276e76cd6a06453783b63ef1e1cc8ac51cf8ca50521"
+    },
+    {
+      "filename": "0019_orders_multi_type.sql",
+      "checksum": "f37d7ce25076f8f448b530a413bd515ef8592ad038ea6c6082791a7fd3e453f0"
+    },
+    {
+      "filename": "0020_onboard_polling.sql",
+      "checksum": "1ba522f42e4e8cefb40d8b9bdc57ccd1b91271b8ef42323af58047f3f101a334"
+    },
+    {
+      "filename": "0021_orders_buyer_email.sql",
+      "checksum": "29872f54582a06c3403994c1aff5babd2d598691ce768f65e0217009fb2be53d"
+    },
+    {
+      "filename": "0022_media_settlements_access_log.sql",
+      "checksum": "9dcbfe8e74d7799f0c75cf95d2f8ccd99f74d2b21c53b1a54ea86973a23831f8"
+    },
+    {
+      "filename": "0023_settlements_status.sql",
+      "checksum": "7ef48024db81f4263d4da6bb07ba0cc1e554c6a8f8433a5e664dde1dcab1d25e"
+    },
+    {
+      "filename": "0024_assets_fair_dfos_event_id.sql",
+      "checksum": "2818844363f3df3ce8dddecd6c53e535b75afac0c786f12f4232b6cd611051c4"
+    },
+    {
+      "filename": "0025_backfill_survey_responses_for_orphan_registrations.sql",
+      "checksum": "264855a631c9828d40447c6efe1bad810b6d55fc726e15ecafd98bd5ce78d13c"
+    },
+    {
+      "filename": "0026_clone_shared_survey_responses_per_ticket.sql",
+      "checksum": "02c92ad62e1924839a900446c3950e0ee7dbf7cd6d63a7b90634ac3ab4aa5221"
+    },
+    {
+      "filename": "0027_drop_ticket_registrations.sql",
+      "checksum": "87999f78c7f29ff8a21f258ad271265250f23c68a7f1730cd1f099e517a37c4b"
+    },
+    {
+      "filename": "0028_folders_unique_constraint.sql",
+      "checksum": "34a2f64106a3c8937f6ddc0ea0c726fae2ed4b815818c0b8d33e418a9f4576b0"
+    },
+    {
+      "filename": "0029_cad_currency_defaults.sql",
+      "checksum": "fcad676a1d1c9b9160edff26fb956c5922e00701e625f4be78dac420c995e65b"
+    },
+    {
+      "filename": "0030_withdrawal_requests.sql",
+      "checksum": "ebe0b2794d04fb21c4eae1334121b0cc8e59b53c125d1bebbdb8578619748d49"
+    },
+    {
+      "filename": "0031_ticket_types_cad_default.sql",
+      "checksum": "b8d52f035fbcb79bdc0eb6ec965e66e7005eb45291983b07f4c0f223905efacc"
+    },
+    {
+      "filename": "0032_campaign_events.sql",
+      "checksum": "2c1d1874c3dc0baafa15b01663c85f26cead9da91ee907ced25eb58aa492dc99"
+    },
+    {
+      "filename": "0033_event_chat_toggle.sql",
+      "checksum": "c0b06bd72153fa0db66e6eed251da1dd3ef4d8af1f420961d01441b899d8c53c"
+    },
+    {
+      "filename": "0034_attestation_signatures.sql",
+      "checksum": "67177dad7ca02a8ba8077b3d97e0c520e52e5a8ecdbae90bdd0f35e862327d31"
+    },
+    {
+      "filename": "0035_assets_uploaded_by.sql",
+      "checksum": "204b252111c3c6c1ac6c8dbd7ac14f97d041a536d1d8919567bbd0271d3c5ed2"
+    },
+    {
+      "filename": "0036_agent_reverse_membership.sql",
+      "checksum": "5119aa22d12acd1d1c5e14a5303c3ad04a74eb7736c1e7d0028b64b708c5d600"
+    },
+    {
+      "filename": "0037_bus_chain_configs.sql",
+      "checksum": "b0cec470d1fd3e86f07dd60f885078be6a0ef9734233437c4533ffe7da8a306d"
+    },
+    {
+      "filename": "0038_relay_log_dedup.sql",
+      "checksum": "dff496a522460d7194275ae7b4dfaa62c5e4bb81435fe569d85dd37df99f6097"
+    },
+    {
+      "filename": "0039_seed_bus_chain_configs.sql",
+      "checksum": "d36b8a90149f1a93b395b556b332bd794cb4732d4ae8058e740fc535b0713e58"
+    },
+    {
+      "filename": "0040_calendar_entries.sql",
+      "checksum": "16de1acbf661427db20ca34de2609c9aa4a26999f350394551869940eeade154"
+    },
+    {
+      "filename": "0041_availability_intent.sql",
+      "checksum": "a2ed73b43471400b62bb772f777d7b180ee3f2950040227dbc9253486e577dad"
+    },
+    {
+      "filename": "0042_seed_calendar_chain_configs.sql",
+      "checksum": "038c107a3eb14f9a34f6ed288256ca1811da8358a08412a1b34038e510a90b9d"
+    },
+    {
+      "filename": "0043_match_records.sql",
+      "checksum": "bd0ad7665688a8541633b453f26ff5faf2b1be75bfa2f6064b2d82c94e47a515"
+    },
+    {
+      "filename": "0044_channel_links.sql",
+      "checksum": "e90a807418b4426b33631c5e33cd8300ed0b3559d3e02efb978da658776399d6"
+    },
+    {
+      "filename": "0045_match_notifications.sql",
+      "checksum": "4778980cb421dbcbc301866b0f5ddeb5466397bb7ce9babca2c55aa5693b963e"
+    },
+    {
+      "filename": "0046_lore_blob_ref.sql",
+      "checksum": "9166a6b3959396bba6e971deb3622863a82e1c900e39fcea6f8d7601c72567c7"
+    },
+    {
+      "filename": "0047_asset_refs_cascade.sql",
+      "checksum": "82b63df582e3b966178b78ed74e7036f9a502e706c5d0ffd01dad2827ce00a37"
+    },
+    {
+      "filename": "0048_asset_cid.sql",
+      "checksum": "11a42ea2e4fe0a99ebd6085343ff15c38e254c8a460c1a1954e6f4e315efd3ab"
+    },
+    {
+      "filename": "0049_asset_version_count.sql",
+      "checksum": "389680d429fc4a523f909d830a99d67fa3102694734cee872d0ffcf8050bae55"
+    },
+    {
+      "filename": "0050_workspace_manifest.sql",
+      "checksum": "21d77eb0b9c478ca5129ccf02fce2e13bc0f4028f77ac97bb7d74d90ac61eb4e"
+    },
+    {
+      "filename": "0051_oauth_mcp_tables.sql",
+      "checksum": "8b2a00bb967feae320ae7e603c308bfb4f8016ddecabb6133b65ef1bf7f07566"
+    },
+    {
+      "filename": "0052_seed_claude_mcp_client.sql",
+      "checksum": "52f5707c3e28b8a38153d7dd838d74b83b5ad480c758fd16f7dc143edb1f1f8c"
+    },
+    {
+      "filename": "0053_promote_claude_actor.sql",
+      "checksum": "2b3461168dfa05233e504951e47173b481a93c0714480c39892d39694ce14588"
+    },
+    {
+      "filename": "0054_claude_media_write_scope.sql",
+      "checksum": "faad0a72567c8906dfe4960e87600b677dad27e2261484e09077d587108d0b82"
+    },
+    {
+      "filename": "0055_seed_calendar_entry_request_chain.sql",
+      "checksum": "affb8986ada3db9c8505043df75a186282f8ff69af7562f54677e12ef55282b8"
+    },
+    {
+      "filename": "0056_consent_grants.sql",
+      "checksum": "8786a802da79d62e3d9b7a3b30b430bd5951923e9ecdc68d2d3e1e6a066c4cb8"
+    },
+    {
+      "filename": "0057_profile_field_visibility.sql",
+      "checksum": "218c6055361a1992c55c231c3647f84278a0a657ca6cc546545d68f7f659eaa6"
+    },
+    {
+      "filename": "0058_broker_audit_log.sql",
+      "checksum": "4b156a3372dd6f3bedb046b48c673350084c934c2627e46a8865b7f1c4e5d873"
+    },
+    {
+      "filename": "0059_seed_document_changed_chain.sql",
+      "checksum": "50121df74adc0a4b1636e0c321a570cc95644bcab3f082ec24da4146c4bab086"
+    },
+    {
+      "filename": "0060_seed_document_changed_project_chain.sql",
+      "checksum": "edbe60cf13d9a07d878dcd7209e3ac55fc43fff00fdab3558c09becd68b755ac"
+    },
+    {
+      "filename": "0061_identity_aliases.sql",
+      "checksum": "54450bb8b884c1a73ecbab15fa4ea82a32d0e1fa76706aaff26aeca7c794a2e5"
+    },
+    {
+      "filename": "0062_broker_audit_shadow.sql",
+      "checksum": "d1882309780c896a983cd39aef5373ce0e0db3a6d9b312a030c04dee97dfe0d2"
+    },
+    {
+      "filename": "0063_vault_delegation_grants.sql",
+      "checksum": "850afd0594267d45ecc47572190178bf9e35d94f3ed8cdc6daaec9dd9ab12049"
+    },
+    {
+      "filename": "0064_bus_supply_lots.sql",
+      "checksum": "2544b0c1a16a9599f22e3a812a1c07444e79d5f4977aa29becb29f1d553b8f2d"
+    },
+    {
+      "filename": "0065_supply_lots_fair_manifest.sql",
+      "checksum": "a9f9aedefb0928d31c8e3650c48b21be3898c3612dca13e0575088fee4f28f58"
+    },
+    {
+      "filename": "0066_supply_lots_buyer_did.sql",
+      "checksum": "907539a61edb3192ea902f7b909eca2f6fed48af67c09372f57799dea00fb3e7"
+    },
+    {
+      "filename": "0067_contact_hashes.sql",
+      "checksum": "b8ca7f95f9cc2b2e8fcb8659c2bc2b36987d96557f28c6e1a80027f3cd8073b6"
+    },
+    {
+      "filename": "0068_inference_engine.sql",
+      "checksum": "1164ce28b8e9a3773303e2996840e0c54f22755e72a4950f5e5f90d759875fbc"
+    },
+    {
+      "filename": "0069_inference_owner_authorization.sql",
+      "checksum": "9e29845d243b530c9b95083fcf7e782fbbc908b614d0076a32e0f49c50fee1a7"
+    },
+    {
+      "filename": "0070_disclosure_phase2.sql",
+      "checksum": "5b88b13b984a3b981208035aa752f6918bf5f99af4a9c57c12d7d2d2e5131b47"
+    },
+    {
+      "filename": "0071_inference_attestation_signatures.sql",
+      "checksum": "238764dc66dafc356305e334e33dd8bdb24f6fae43c08acc8930aa82188c0af5"
+    },
+    {
+      "filename": "0072_supply_stages_seq.sql",
+      "checksum": "60fef4ff91e539b1554fe4016c00e5d23694a7782ddf306a193a3214fe77bc04"
+    },
+    {
+      "filename": "0073_github_action_proposals.sql",
+      "checksum": "8a72bdab65b30188e274dcdd211f10c86ee745904168376a40bdcf41630ff7f7"
+    },
+    {
+      "filename": "0074_soft_did_delegation_bootstrap.sql",
+      "checksum": "17fc8c9bc82f8266ef4ad5ad0967154a59d9bb5223a72dca2b246508f3fc14b7"
+    },
+    {
+      "filename": "0075_vault_grant_requests.sql",
+      "checksum": "19ce9bec8ea193b829b358debbfa1b68639bacc09f28f1e267ca0a7459161d0e"
+    },
+    {
+      "filename": "0076_nostr_key_binding_sig.sql",
+      "checksum": "31721b56d6f4ee77b5f65ae056abf2d6bcebec35e6f09d91a83f654d3a69ee06"
+    },
+    {
+      "filename": "0077_audit_log.sql",
+      "checksum": "46e9ccd14f826abe03c2db11f472447270c30331df99ab8022d4174c92f9f55b"
+    },
+    {
+      "filename": "0078_vault_owner_envelopes.sql",
+      "checksum": "aa13b4acd6ee1ba367d7bdd1cba566f4ece15046230fe9ceec6cd062172b771f"
+    },
+    {
+      "filename": "0079_vault_grant_active_uniqueness.sql",
+      "checksum": "4ff16570156e6913b7db1936b058f9d013e2e73e1e5b165569292452de9837ff"
+    },
+    {
+      "filename": "0080_github_proposal_expiry.sql",
+      "checksum": "af46ec958b8fdf7a23c0fbc0d2199985a26ee23abe3987f9230a2d43d560fd00"
+    },
+    {
+      "filename": "0081_vault_grant_request_custody_pair.sql",
+      "checksum": "298e85d7c7fe89fe7e8ae1207e3914ed5ad8b122842ba96bc4167602de18a060"
+    },
+    {
+      "filename": "0082_profile_field_predicate_invalidation.sql",
+      "checksum": "7ae0a682eb8598f7b107269220a0044711845c9dd0e8c22310722f597a16b848"
+    },
+    {
+      "filename": "0083_inference_session_app_did.sql",
+      "checksum": "87a01cf1eee45606c96434395258e411eadf7bf468271f446f0005b93776af39"
+    },
+    {
+      "filename": "0084_seed_warp_run_notify_chain.sql",
+      "checksum": "98907b7ef900c63d557c1f842951601e86b9590792dc85e99e48a5c4a3b72f42"
+    },
+    {
+      "filename": "0085_chat_message_composed_by.sql",
+      "checksum": "a0045e96a34426fc0929680f9ff171056a0345d440e239004f8139c53aae5bf5"
+    },
+    {
+      "filename": "0086_seed_warp_run_progress_chain.sql",
+      "checksum": "f854b199296ba5dccbc16e264fe6be284eb6f38f05602ac427cf39ac90aaa2be"
+    },
+    {
+      "filename": "0087_identity_members_added_via.sql",
+      "checksum": "28040ccf979c787a95e19ffce6034140c7799445c162e75095f086c00ec699d4"
+    },
+    {
+      "filename": "0088_quickbooks_realm_index.sql",
+      "checksum": "eb1545380b2037485bf5dc13fa3099644d60d122bf8538a69d69ba663cda56c9"
+    },
+    {
+      "filename": "0089_inference_confirmed_metadata.sql",
+      "checksum": "195c37026467e242c20805dc2383ac1eb7dd4ecbaac0833f8e8fff687ca5ee2f"
+    },
+    {
+      "filename": "0090_backfill_app_authorization_channel_links.sql",
+      "checksum": "795f1630bf6edeaaf7a05632e1b085ab0d45da545041375bb1de874dd2219fd1"
+    },
+    {
+      "filename": "0091_warp_run_progress_telemetry_class.sql",
+      "checksum": "635845c403286f977a0f57555f0f8734f54dcf16301361ca7a65681a0b7b18de"
+    },
+    {
+      "filename": "0092_agrifortress_app_scopes.sql",
+      "checksum": "a6d3b5cd88c4b5f45f7d44232b51e6fc9d8b6fb26a2694bd8e0f33230163d4f0"
+    },
+    {
+      "filename": "0093_claimable_stub_primitive.sql",
+      "checksum": "abcbb44248832d8cf86d5c5907bb4f74ad4d3dd1954b5db83fb977fb6a5b68ba"
+    },
+    {
+      "filename": "0094_attestation_expires_index.sql",
+      "checksum": "4cbcac899895e64ae8bb36535a38b25b1d6c784e2c6e6cf98fa9ef2245966e91"
+    },
+    {
+      "filename": "0095_invite_context.sql",
+      "checksum": "3d1653aa994da31ef5812461eb89a98f44f45dda862ddad177af64aee0b677f4"
+    },
+    {
+      "filename": "0096_attestation_notify_chain.sql",
+      "checksum": "04816b530a435361d5d56612b334da2bcd6f697d55e4d813490f5f13c086fd63"
+    },
+    {
+      "filename": "0097_backfill_register_email_credentials.sql",
+      "checksum": "3b8bd2bbe5a8cf4fcc66eeb00b15e398bf448b1c410e0643c50a895d6d4b0dce"
+    },
+    {
+      "filename": "0098_reconcile_bus_chain_configs.sql",
+      "checksum": "edcd31ee130e85712e9cf7c4c04d908036d4cfc287c31ae62805f18a5d57eea5"
+    },
+    {
+      "filename": "0099_delegation_grants.sql",
+      "checksum": "b75730b33444716cdf09e482e76450c82b7a551f3f8f5c28d659abe2c0f98d36"
+    },
+    {
+      "filename": "0100_attestation_type_registry.sql",
+      "checksum": "869588ed3ffe5b99250e36399c5abca11d43df1fe95ed68bc3c13776b14a6629"
+    },
+    {
+      "filename": "0101_attestation_funnel_envelope.sql",
+      "checksum": "2cd27570d1952f1ea81b26f299da29127c02472dbcc51fd3d535cdb553a326c1"
+    },
+    {
+      "filename": "0102_agent_knocks.sql",
+      "checksum": "c681ee5d9f8d6e782f4faa2e87a37d49d1fffffd43d0a257056380c85ae72e34"
+    },
+    {
+      "filename": "0103_event_subscription_log.sql",
+      "checksum": "f1fbed23c56a5b91162a56d813d02de0cfeec06f3242fcc6dd44480f7580a351"
+    },
+    {
+      "filename": "0104_delegation_grant_audit.sql",
+      "checksum": "7fe7584d55928fb1fdb0c99d75a5e6e86f731bb099fa25f024aee4c21c3e9898"
+    },
+    {
+      "filename": "0105_backfill_role_agent_grants.sql",
+      "checksum": "b66f1e8ff75a383400cccd7d63682259d323d59987e4db8dadee771268488290"
+    },
+    {
+      "filename": "0106_intro_attribution.sql",
+      "checksum": "97d29c0b775f2fe00170b9704eabba14427ea0dd1b03fe2b402c3516e0434d3e"
+    },
+    {
+      "filename": "0107_attestation_delegation_grant.sql",
+      "checksum": "bed46776a4c230e61d68429a5cd3efa1cce8a4b53085080d80af88a0811f1ca4"
+    },
+    {
+      "filename": "0108_knock_external_did_verification.sql",
+      "checksum": "1bc57f185a77c36ab0c28a6840aee9847b77a3a741bb1112da822121a821312a"
+    },
+    {
+      "filename": "0109_attestation_supersedes.sql",
+      "checksum": "83a080256d84b1ddb2df8b341cc222124d749abb131d104467469a58d3fbef5c"
+    },
+    {
+      "filename": "0110_consent_requests.sql",
+      "checksum": "b527e26628899bf5d834d706e3931e324d3332c29456c37aae5160c7d10e1c45"
+    },
+    {
+      "filename": "0111_seed_warp_run_failed_blocked_chain.sql",
+      "checksum": "64946f291b8beadd68d187c62a92bd713f35490cf1cbe7522a8d5ab05c397aed"
+    },
+    {
+      "filename": "0112_claim_stub_expiry.sql",
+      "checksum": "8cb09932471e359d56f4b4123d483d8998a2a7ca66187a6b7d40599b1cc38ca8"
+    },
+    {
+      "filename": "0113_stripe_webhook_index.sql",
+      "checksum": "2364c870516df136fb0c56205114ebb62ed870b09d7e65f622802249acabbca4"
+    },
+    {
+      "filename": "0114_connectors_registry.sql",
+      "checksum": "b3a84772b465093a7d99b2dcaf2dc27f2d4951456519c84fa096dd0261eb0d08"
+    },
+    {
+      "filename": "0115_connectors_registry_openai.sql",
+      "checksum": "2db66afa2ab364247a4eeb0a0bbdb1d6b95085030e6d0a88b20bd38d5926ad40"
+    },
+    {
+      "filename": "0116_recovery_codes.sql",
+      "checksum": "57db8b06d2e7fd1463986f08129153410fcb58363fac695c0f0dfa6471bf442b"
+    },
+    {
+      "filename": "0117_connectors_registry_moonshot.sql",
+      "checksum": "31f3ddd1b9da2a2f5758a61fd8b47d9e23c7986706be2c3f09f2562d833bc080"
+    },
+    {
+      "filename": "0118_connectors_registry_zai.sql",
+      "checksum": "e5d8b44907fe13de816400af2ea6d4be1fa6be5b49efe27e1a9eb567c20751b6"
+    },
+    {
+      "filename": "0119_usage_incurred.sql",
+      "checksum": "ca055e285796ea2d1bbfffadac140fc2470c4d5e2fc4fcf37df1546115a4dddb"
+    },
+    {
+      "filename": "0120_usage_incurred_quantity.sql",
+      "checksum": "7db21dfeab4406700c4ca0885206ef6896197b412f291cbee597af9d9887e6f2"
+    },
+    {
+      "filename": "0121_usage_emitters.sql",
+      "checksum": "e4311f83d0f528f2ae852ed86abc79581732acc7702940975f61cbce55aee892"
+    },
+    {
+      "filename": "0122_usage_billed.sql",
+      "checksum": "af6f985c7cb911eea4ed3b751fe2281bbd9bb59ef7e8bc562c9177743746e1df"
+    },
+    {
+      "filename": "0123_agent_provisions.sql",
+      "checksum": "d7c939cc3531fd8cefad18afd6e60de67a2e479264263bc386b14db77f010ca8"
+    },
+    {
+      "filename": "0124_device_tracking_alerts.sql",
+      "checksum": "5eec5b4475c52531fd34a5522bf2b60181019163a6bfb6075e40f268cea359df"
+    },
+    {
+      "filename": "0125_usage_billed_manual.sql",
+      "checksum": "00ee705d76949153c02c12a4fe7648fc0c9f0c0823e51722a8322d5435564cfd"
+    },
+    {
+      "filename": "0126_money_fx_rates.sql",
+      "checksum": "14b56b996efe2f58f1e76f4bb4ca23b9942a7a402ba281b60d54faf36d3758de"
+    },
+    {
+      "filename": "0127_usage_billed_receipts.sql",
+      "checksum": "f82cd9c30ca00d8378a15403fa1a424a3b49a6df24159a8f811cf039f47f6b19"
+    },
+    {
+      "filename": "0128_warp_terminal_publish_claims.sql",
+      "checksum": "f58cbd47c697c6d3b6f19ee334d73668d5e8ba3381e5d41b872601ac4b30c8d3"
+    },
+    {
+      "filename": "0129_notify_notifications_delivered_at.sql",
+      "checksum": "8dc269bf1ff897a66677a64916e573e3204a2b731c8cdf665fcf79a30504f86b"
+    },
+    {
+      "filename": "0130_operator_approvals.sql",
+      "checksum": "b527aad9e1b04ac25f446f83ad74604af3fd15dee507c1b56bb4570eea5e7d3d"
+    },
+    {
+      "filename": "0131_notify_notifications_ws_ack.sql",
+      "checksum": "ecbc8bf25c383bcc85b7e33f924829dcc78d2a17198ce7aa4557757800444806"
+    },
+    {
+      "filename": "0132_operator_approvals_generic_source.sql",
+      "checksum": "a0e5406c38b6b27bbf424616e3378d223743681f1a915845c4ae5c2b275f488c"
+    },
+    {
+      "filename": "0133_pay_balance_units.sql",
+      "checksum": "6e7e9ac45e74278ebef21da44ba32df0c2ff5a4fb4549e3d296851069469d3ad"
+    },
+    {
+      "filename": "0134_pay_balance_units_drop_legacy_columns.sql",
+      "checksum": "7c9a6c099a44c3b0ae9b9201c7ccb0fd53cd0403786e5c14d03ac30219f1e3fb"
+    },
+    {
+      "filename": "0135_bus_chain_configs_attestation_await.sql",
+      "checksum": "4958d55e949180cc6f50a4d7fbfbc4a9a02de31f7d190e46d17e163da775d87a"
+    },
+    {
+      "filename": "0136_google_workspace_state.sql",
+      "checksum": "61753893cfa84b03ed5838996a7dd0f1fb5a2406f40aca4a9731aef5c54ab887"
+    },
+    {
+      "filename": "0138_registry_apps_registry_fields.sql",
+      "checksum": "6bfb7cca5007608344d4972710ccef25c2870ba7a23e602e853b26a6ef7f8932"
+    },
+    {
+      "filename": "0139_registry_apps_seed_first_party.sql",
+      "checksum": "c4577af52b4b046047ac45476d66c341dff1f3c85503cea15d7be9f36cbfb837"
+    },
+    {
+      "filename": "0140_google_workspace_state_gmail_email.sql",
+      "checksum": "8785b9d97d3ab6cc6b84a1492ff723bcbe490a03d89742bcd812129f02de54f1"
+    },
+    {
+      "filename": "0141_connectors_registry_openrouter.sql",
+      "checksum": "013392e05a9c9b70e898410e3e3d92a45b2db5c47fda1e614668ff21b4165a47"
+    },
+    {
+      "filename": "0142_pay_withdrawal_intents.sql",
+      "checksum": "c51423d07c7135442bc1fc15c8d4293ac348d136101194e5402b854406bebf55"
+    },
+    {
+      "filename": "0143_pay_payment_requests.sql",
+      "checksum": "f3d79a175a0e2f5831a30cc13bb62164f5becd2793cb7a344757fe1deec1f46a"
+    },
+    {
+      "filename": "0144_pay_payment_request_recipient_claim.sql",
+      "checksum": "712d1787084f25a70cae6ea67c77871e25684a660c079aad4ed8c54cc2245ddb"
+    },
+    {
+      "filename": "0145_payment_request_bus_chains.sql",
+      "checksum": "087545b82ed02494815b9a697da48424fa7c4cc3299384f0f46d24cb69d8cdf1"
+    },
+    {
+      "filename": "0146_usage_incurred_status.sql",
+      "checksum": "9717f7b4afc5d38fbf209cc3ba527d063978b2ebcbcb0d4aa0e3977d3ca1a3cf"
+    },
+    {
+      "filename": "0147_operator_approvals_exec_outcome.sql",
+      "checksum": "25c3d7491dff9c3b589b196b6e45733a211869322648e4a512b7784328431413"
+    },
+    {
+      "filename": "0148_vault_delegation_grant_purpose_onetime.sql",
+      "checksum": "f18f9080cc7ffa661d6a848889b1573a30dc3b777f1c9a95202552e9b2169f2a"
+    },
+    {
+      "filename": "0149_vault_delegation_grant_ack.sql",
+      "checksum": "9c3f44788e5c6124df091055321b8f5e42ed5782ac363f1ccbd191c9f68602b1"
+    },
+    {
+      "filename": "0150_vault_mint.sql",
+      "checksum": "adf0e194aa9c3d1d45de31b2839a97c92d9886c708b9f51df64a3e3561af8886"
+    },
+    {
+      "filename": "0151_foreign_principal_stubs.sql",
+      "checksum": "74b08b45c4a23b44429e5bc9eaabb7ac63a05cfa40749c54a6f971f4e4cd6511"
+    },
+    {
+      "filename": "0152_backfill_session_created_attestations.sql",
+      "checksum": "ba69dcc4a3fb7376cbcaea958c4c086391cf84c4fbddfbc4b5f719f930fda3db"
+    },
+    {
+      "filename": "0153_internal_secret_provisions.sql",
+      "checksum": "93b83276f66fcdaf6c54710923deec78d931ee72d75b2e8e979cc992469012bd"
+    },
+    {
+      "filename": "0154_bug_reports_external_tracker.sql",
+      "checksum": "3033708afa57592d93b038c132525a47317eeec72f432c04491ff511a6605c5c"
+    },
+    {
+      "filename": "0155_bug_reports_drop_github_columns.sql",
+      "checksum": "109ef24578af6f1638803f72dd4f35da894b1e90cb5859ba4f7efb6632214006"
+    },
+    {
+      "filename": "0156_delegate_grant_bearers.sql",
+      "checksum": "4f28cc0453f4d975c09aaba6da6d6a2794da5abce95a11825a78f9f240b259b5"
+    },
+    {
+      "filename": "0157_loops_rail.sql",
+      "checksum": "a7e27e75158eb60b6347e4568b74fa1fb5412cf1104ffc8f81ba2ce93194b891"
+    },
+    {
+      "filename": "0158_notify_templates.sql",
+      "checksum": "fbe77f75e49cec0e766cf1819d81678541da38cd3a4a11cf2025f8d33305747e"
+    },
+    {
+      "filename": "0159_registry_apps_redirect_uris.sql",
+      "checksum": "9b58d7370e9dd10839976d3980e5efb9b221deb53d611c6eb976af4571b7f19e"
+    },
+    {
+      "filename": "0160_media_asset_doc_edges.sql",
+      "checksum": "bd3c4326821dcf27a0610266a5f0e5062c090dc285bd290df28117da6288d0ac"
+    },
+    {
+      "filename": "0161_operator_approvals_signer_did.sql",
+      "checksum": "c7f889a430a79924fb7185750c8636f610415eefae00155030b07e1fe08dd6ec"
+    },
+    {
+      "filename": "0162_push_subscriptions.sql",
+      "checksum": "142ba3e9926ab7fadbb63f7329f5b5daf47be4f978318b881ab5a068d9beb276"
+    },
+    {
+      "filename": "0163_registry_apps_slug.sql",
+      "checksum": "6bd9572a832df70630d797bdbca3e0f4bda4c5f924c770b29eb504c59ab601ba"
+    },
+    {
+      "filename": "0164_app_provisions.sql",
+      "checksum": "bb6ba34891db52851dede67fde57891a72cd0f59eb3b7f1cb22f98613350f372"
+    },
+    {
+      "filename": "0165_app_signing_key_claims.sql",
+      "checksum": "cff04f4072e20a1c407dc33a9598c98994b1280e53d56a67025be0d31d1e5c7d"
+    },
+    {
+      "filename": "0166_add_tax_registrations.sql",
+      "checksum": "d8a68b6d8db968830c1a91ae4e661c75478283039319417f77d3d2e82a29028b"
+    },
+    {
+      "filename": "0167_registry_apps_nav_metadata.sql",
+      "checksum": "e72c9fb9f86cc6456a3e7f2b388f9804408bbb71b5af77e4dbcb04c99eea29f9"
+    },
+    {
+      "filename": "0168_pay_payment_request_tax_amounts.sql",
+      "checksum": "68094f08326cafae0fefd76c6318b1f03bc72edbbc3db585686e133930e5360f"
+    },
+    {
+      "filename": "0169_turn_evidence_indexes.sql",
+      "checksum": "f8a182f497749f1c2a6c3ced55f67df92bb4aed714d74d2f44e2776534361ba0"
+    },
+    {
+      "filename": "0170_emission_config.sql",
+      "checksum": "bcea1b51a3905741fe405896ffecf016fcce5bce73992d6f208d78e29f551353"
+    },
+    {
+      "filename": "0171_attestations_context_id_index.sql",
+      "checksum": "836176523df09494d13d4374132d2ec4420682fbe28b4bd7343703094ea0eedf"
+    },
+    {
+      "filename": "0172_attestations_ref.sql",
+      "checksum": "ae2632fb0e572784183707678ae0fdf7576a79449b4470b71bfb35800e8dd1ca"
+    },
+    {
+      "filename": "0173_pay_payment_request_emt_pending.sql",
+      "checksum": "a1547eea6bdeceee4378dde25b6c4a4bf78b0570a98084decee92ad2d64041d9"
+    },
+    {
+      "filename": "0174_profile_etransfer_email.sql",
+      "checksum": "959244874d540cb771b22c8e32887a7391583f3ff6f9091860496587b87239fd"
+    },
+    {
+      "filename": "0175_pay_payment_request_paid_by_did.sql",
+      "checksum": "17623ee04683f9ae9a8da7db5ff5ed11952e753f809e5af0f8011b8791dd96d5"
+    },
+    {
+      "filename": "0176_registry_apps_provides_scopes_depends_on.sql",
+      "checksum": "89234f3db3e012bb2dacbae43188f53f0c882f2b68f607dadfd680ca5c1e529d"
+    },
+    {
+      "filename": "0177_registry_apps_emittable_events.sql",
+      "checksum": "bd5a11391726e9fb519cc74bfc0373f21476a4a50494087c5f9c6aac7f93eef1"
+    },
+    {
+      "filename": "0178_pay_transactions_rail_external_ref.sql",
+      "checksum": "407d04592604ef2bf7efae2370203731bbb4f569d053526947c930ac18baa2b8"
+    },
+    {
+      "filename": "0179_registry_apps_approved_service_scopes.sql",
+      "checksum": "fe483cc13456f2742f1f163de4e61daeb58c6f96717b643d76cdd89e919422e1"
+    },
+    {
+      "filename": "0180_registry_apps_act_as_allowed.sql",
+      "checksum": "fba5c1b6a4cc484afe7580e73aece7318e2705588cd0adab1066f231707bbc9a"
+    },
+    {
+      "filename": "0181_pay_transactions_drop_stripe_id.sql",
+      "checksum": "a475c2f5b33b9c860d71123b38188af6249df6eac9598f3d93b81b00caea4020"
+    },
+    {
+      "filename": "0182_pay_transactions_app_settle_binding.sql",
+      "checksum": "7b07511f397e300c4b1f98296fda85f8430d51ceb9446822b4ca80171d5c8acf"
+    },
+    {
+      "filename": "0184_retire_legacy_learn_registry_row.sql",
+      "checksum": "092270cb4bb07f0ec8f56dd5f10e059af99c562b5151cf24cd403c080a982e05"
+    },
+    {
+      "filename": "0185_retire_legacy_coffee_registry_row.sql",
+      "checksum": "c88506fb5122b8ec5a05c9bffe2253cfe05c3cd4353f7650c1f36adf5d491b04"
+    },
+    {
+      "filename": "0187_retire_legacy_market_registry_row.sql",
+      "checksum": "c4b214b9629bcc7dd1a79a9e644ab3c0b25594083e089335ee9722e2e638a3f0"
+    },
+    {
+      "filename": "0188_retire_legacy_dykil_registry_row.sql",
+      "checksum": "e454f3994f76825db8aee38aed3346e74c9ed8d6170fe647efe360c6d5ffae7e"
+    },
+    {
+      "filename": "0189_registry_apps_self_secrets.sql",
+      "checksum": "4338f6c9ed9be0c01f65fdbb33f14c699b8602a410abf6965a80c3a07eb9f7dc"
+    },
+    {
+      "filename": "0190_retire_legacy_events_registry_row.sql",
+      "checksum": "0b895be0c818599139895e022541bfa333f48ce2035ba23da4ff8a7a4b4a9ac4"
+    },
+    {
+      "filename": "0191_app_provisions_retired_legacy.sql",
+      "checksum": "f1fcaf81fb60207e715acf2b6530b8b0035746fcca0b9df9ca512230a1e3497b"
+    },
+    {
+      "filename": "0192_loop_refs_spend.sql",
+      "checksum": "a52300dc9ea3cdb8a936666fabda6fd09a7b7ae4709c9b4bad4c6ddd3bb32170"
+    },
+    {
+      "filename": "0193_loop_output_artifacts.sql",
+      "checksum": "7175267a52785f819621de77af97d441b1dd4e6720975763ac1c77e75deca9fe"
+    },
+    {
+      "filename": "0194_surface_lease.sql",
+      "checksum": "85348cfa64cde3fb32c348bc184ce61c0eb4dd36367bfb91ad105d4338c833f8"
+    },
+    {
+      "filename": "0195_reach_envelopes.sql",
+      "checksum": "9beebccb331620d935863faea73c53387ff97a796ef0409fbf88fa835282329e"
+    },
+    {
+      "filename": "0196_seed_agent_reach_delivered_chain.sql",
+      "checksum": "67b49709e4862b89e7df835f11ecf4a03c393a015d31038363ad9bd6f646572b"
+    },
+    {
+      "filename": "0197_connector_connection_slots.sql",
+      "checksum": "4bbf2c08a12042bbc6527954a2747a31a0dc2dac055e2fbb8abf1838a655fd33"
+    },
+    {
+      "filename": "0198_foreign_agent_stubs.sql",
+      "checksum": "3c1b805563cd76dc7512c49a267c93a7a66e7aca5dfba1ff44bcaadb822b9fcd"
+    },
+    {
+      "filename": "0199_seed_agent_reach_replied_chain.sql",
+      "checksum": "d9af17642f99c4f67196b264eaef6cd4f42fa546fb9836eb2644c135867e1bb9"
+    },
+    {
+      "filename": "0200_migration_status_head_lookup.sql",
+      "checksum": "d4576b7249c8a00ca530e89cf984baf15af60fed285881aae0c323d9c4161161"
+    },
+    {
+      "filename": "0201_reconcile_seed_era_drift.sql",
+      "checksum": "65ee786b514d9f5fa5812cd72c6cc5ebe8711a3958b4e6277d068b6f947cdd94"
+    },
+    {
+      "filename": "0202_principal_reach_reply_notify.sql",
+      "checksum": "9bea54707357d2bfc52432059a855b6f7e880d264217bc66b2d767f17e35c828"
+    },
+    {
+      "filename": "0203_registry_apps_featured.sql",
+      "checksum": "c43c7d65a96de72dcb3c9e3b1b42732c8d641676b9591dbe3fc38a03f508a3e4"
+    },
+    {
+      "filename": "0204_registry_apps_visibility.sql",
+      "checksum": "514038753f8f99d35aff52a6e5edd3bec71e939d91649f984bf2019a53773679"
+    },
+    {
+      "filename": "0205_registry_apps_profile_widget.sql",
+      "checksum": "d8775ea769882d4945eb654c9701fb3edada9511f72dc200e2fef55d9e5bf213"
+    },
+    {
+      "filename": "0206_registry_apps_template_lineage.sql",
+      "checksum": "f64c2bfd674126769e75f6fa4a15b1bd0a12260181bc2bbced24514994c5b959"
+    },
+    {
+      "filename": "0207_seed_agent_reach_throttled_chain.sql",
+      "checksum": "3a4c0bb43e0b646265128eef30111ad345eda376edb143529a71b639de5e1d8b"
+    },
+    {
+      "filename": "0208_seed_vault_key_imported_chain.sql",
+      "checksum": "a6f4b144cffd6982f98feec437748ce6b2059538595e7c5d73ac366bac012898"
+    },
+    {
+      "filename": "0209_chat_conversations_app_binding.sql",
+      "checksum": "fb70d95121257dcbf6cd0c67fb6f7256b00c8ae2a1bd8379180a68fbcede0a6a"
+    },
+    {
+      "filename": "0210_mail_senders.sql",
+      "checksum": "fc248f83b1bcb9eb1f8b02807ac5d78529466909de71adaa40dc7fa43182530f"
+    },
+    {
+      "filename": "0211_domain_bindings.sql",
+      "checksum": "7f1d27b6c51b9cf98cc04daa52aa9febf367ba862e6d7d760270c55c7791a332"
+    },
+    {
+      "filename": "0212_identity_registering_app.sql",
+      "checksum": "e08fecf258c8a83ee33c196a957d3449185875e9f405d8e3e2894dc768c9b9fc"
+    },
+    {
+      "filename": "0213_connection_relationship_labels.sql",
+      "checksum": "fbdb2294e0fa53dca553aa7853f4cffe17921b9e1bc794038be1f4d17536f611"
+    },
+    {
+      "filename": "0214_usage_incurred_pricing.sql",
+      "checksum": "1730e01f5191263853b28c611636fc721ada25b7aa40e197e39c95963a602ad2"
+    },
+    {
+      "filename": "0215_registry_apps_sign_in_audience.sql",
+      "checksum": "5ca43434e53ba26c1ba31282489d2d99abaa34aa5733456c9c8d771a6f2b73de"
+    }
+  ]
+}
