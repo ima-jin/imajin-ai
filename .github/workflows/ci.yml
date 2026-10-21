@@ -160,7 +160,7 @@ jobs:
           node-version: 22
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile --ignore-scripts
+        run: pnpm install --frozen-lockfile --ignore-scripts --loglevel=error
 
       # actions/checkout registers safe.directory in the RUNNER HOST's global
       # git config. This job's steps run inside the ci-runner container,
@@ -178,12 +178,12 @@ jobs:
       # eslint config are unchanged (#2605).
       - name: Lint
         if: github.event_name != 'merge_group'
-        run: pnpm lint
+        run: pnpm --silent lint:agent
       - name: Lint affected packages (merge group)
         if: github.event_name == 'merge_group'
         env:
           MERGE_GROUP_BASE_SHA: ${{ github.event.merge_group.base_sha }}
-        run: pnpm lint --filter="...[$MERGE_GROUP_BASE_SHA]"
+        run: pnpm --silent lint:agent --filter="...[$MERGE_GROUP_BASE_SHA]"
 
       # `turbo run typecheck` (root `typecheck` script). Each package's
       # `tsc --noEmit` needs its workspace dependencies' built declarations, so
@@ -193,12 +193,12 @@ jobs:
       # `build:types` stays as a local-dev shortcut.
       - name: Typecheck
         if: github.event_name != 'merge_group'
-        run: pnpm typecheck
+        run: pnpm --silent typecheck:agent
       - name: Typecheck affected packages (merge group)
         if: github.event_name == 'merge_group'
         env:
           MERGE_GROUP_BASE_SHA: ${{ github.event.merge_group.base_sha }}
-        run: pnpm typecheck --filter="...[$MERGE_GROUP_BASE_SHA]"
+        run: pnpm --silent typecheck:agent --filter="...[$MERGE_GROUP_BASE_SHA]"
 
       # Schema-boundary guard (#1991 phase 1): a migration may only touch
       # tables its declared "-- owner:" header actually owns, per
@@ -238,7 +238,7 @@ jobs:
           node-version: 22
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile --ignore-scripts
+        run: pnpm install --frozen-lockfile --ignore-scripts --loglevel=error
 
       # --ignore-scripts above blocks arbitrary install/postinstall scripts
       # across the whole dependency tree (githubactions:S6505). apps/corpus's
@@ -251,7 +251,7 @@ jobs:
 
       - name: Run tests with coverage
         if: github.event_name != 'merge_group'
-        run: pnpm test:coverage
+        run: pnpm --silent test:agent --coverage
       # Root Vitest owns the aliases/config for ALL workspace tests; invoking
       # package test scripts would miss packages without one and lose aliases.
       - name: Run affected unit tests (merge group)
@@ -313,7 +313,7 @@ jobs:
           node-version: 22
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile --ignore-scripts
+        run: pnpm install --frozen-lockfile --ignore-scripts --loglevel=error
 
       # turbo hashes task inputs through git; see the identical note in the
       # Lint & Typecheck job (#2605).
@@ -338,7 +338,7 @@ jobs:
         env:
           MERGE_GROUP_BASE_SHA: ${{ github.event.merge_group.base_sha }}
           DATABASE_URL: ${{ secrets.DATABASE_URL_STAGING || 'postgresql://ci:ci@localhost:5432/ci_build' }}
-        run: pnpm build --filter="...[$MERGE_GROUP_BASE_SHA]"
+        run: pnpm --silent build:agent --filter="...[$MERGE_GROUP_BASE_SHA]"
 
       # `turbo run build` (root `build` script). Untouched packages/apps are
       # replayed from the local turbo cache (dist/ and .next/ outputs, minus
@@ -346,7 +346,7 @@ jobs:
       # depends on it.
       - name: Build
         if: github.event_name != 'merge_group'
-        run: pnpm build
+        run: pnpm --silent build:agent
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL_STAGING || 'postgresql://ci:ci@localhost:5432/ci_build' }}
 
@@ -414,7 +414,7 @@ jobs:
 
       # Same flags as the deploy's install, except the lockfile is enforced.
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile --ignore-scripts
+        run: pnpm install --frozen-lockfile --ignore-scripts --loglevel=error
 
       # Same step, same command as deploy-prod.yml.
       - name: Build workspace packages (provisioning prerequisite)
@@ -464,7 +464,7 @@ jobs:
           node-version: 22
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile --ignore-scripts
+        run: pnpm install --frozen-lockfile --ignore-scripts --loglevel=error
 
       # actions/checkout registers safe.directory in the RUNNER HOST's global
       # git config; this job's steps run inside the ci-runner container with

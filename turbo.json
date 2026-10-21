@@ -76,11 +76,19 @@
     // Tests always run, and are never cached. The root `vitest run` is what
     // produces coverage/lcov.info for SonarCloud; replaying a cached result
     // would skip the run and ship an empty/partial coverage report (Sonar then
-    // reports new_coverage=0). CI keeps `pnpm test:coverage` as a plain vitest
-    // invocation; these entries exist so that routing a test script through
+    // reports new_coverage=0). CI uses `test:agent --coverage` directly through
+    // Vitest; these entries exist so that routing a test script through
     // turbo can never silently cache it.
     "//#test": {
       "cache": false
+    },
+    "//#test:agent": {
+      "cache": false,
+      "outputs": ["coverage/**"]
+    },
+    "//#test:run": {
+      "cache": false,
+      "outputs": ["coverage/**"]
     },
     "//#test:coverage": {
       "cache": false,
