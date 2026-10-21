@@ -80,6 +80,12 @@ describe('AgentReporter', () => {
     expect(output()).not.toContain('passed');
   });
 
+  it('does not claim success when a failed test has no serialized errors', () => {
+    const { instance, output } = reporter();
+    instance.onFinished([task('empty failure', 'fail')]);
+    expect(output()).toBe('FAIL empty failure\n');
+  });
+
   it('drops logs from a successful retry and resets across runs', () => {
     const { instance, log, output } = reporter();
     instance.onUserConsoleLog({ taskId: 'retry', content: 'retry noise' });
@@ -133,6 +139,21 @@ test('blocked test', () => {});`));
     expect(result.output).not.toContain('passed');
   }, 30000);
 
+  it('preserves a collection failure and its non-zero exit', () => {
+    const result = run(fixture(`throw new Error('COLLECTION FAILURE');`));
+    expect(result.status).toBe(1);
+    expect(result.output).toContain('COLLECTION FAILURE');
+    expect(result.output).not.toContain('passed');
+  }, 30000);
+
+  it('preserves no-test exit codes and supports explicit passWithNoTests', () => {
+    const dir = fixture(passSource);
+    expect(run(dir, ['--agent', 'not-a-matching-file']).status).toBe(1);
+    const allowed = run(dir, ['--agent', 'not-a-matching-file', '--passWithNoTests']);
+    expect(allowed.status).toBe(0);
+    expect(allowed.output).toContain('No test files found, exiting with code 0');
+  }, 30000);
+
   it('emits lcov without a coverage table or extra passing lines', () => {
     const dir = fixture(`import { value } from './value.mjs';
 test('coverage', () => { expect(value()).toBe(42); });`, {
@@ -155,7 +176,8 @@ describe('agent script and workflow contracts', () => {
   it('keeps human scripts and Vitest major unchanged', () => {
     expect(pkg.scripts.test).toBe('vitest run');
     expect(pkg.scripts['test:coverage']).toBe('vitest run --coverage');
-    expect(pkg.devDependencies.vitest).toBe('^2.1.9');
+    expect(pkg.devDependencies.vitest).toBe('2.1.9');
+    expect(pkg.devDependencies['@vitest/coverage-v8']).toBe('2.1.9');
     expect(pkg.scripts['test:agent']).toBe('node scripts/test-agent.mjs --agent');
     expect(pkg.scripts['test:run']).toBe('node scripts/test-agent.mjs');
   });

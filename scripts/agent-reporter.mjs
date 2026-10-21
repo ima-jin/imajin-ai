@@ -1,4 +1,8 @@
 import { performance } from 'node:perf_hooks';
+function collectTasks(task, names = []) {
+  const path = [...names, task.name];
+  return [{ task, path }, ...(task.tasks ?? []).flatMap((child) => collectTasks(child, path))];
+}
 
 /** Vitest 2.1.9 reporter: retain console output only for tasks that fail. */
 export default class AgentReporter {
@@ -36,26 +40,17 @@ export default class AgentReporter {
   }
 
   onFinished(files = [], errors = []) {
-    let passed = 0;
-    let skipped = 0;
-    let failed = 0;
-    const visit = (task, names = []) => {
-      const path = [...names, task.name];
-      if (task.type === 'test') {
-        if (task.result?.state === 'pass') passed++;
-        else if (task.result?.state === 'skip' || task.result?.state === 'todo'
-          || task.mode === 'skip' || task.mode === 'todo') skipped++;
-      }
-      // Suites may fail before any test runs (imports and beforeAll hooks).
-      if (task.result?.state === 'fail' && (task.type === 'test' || task.result.errors?.length)) {
-        failed++;
-        this.printFailure(task, path);
-      }
-      for (const child of task.tasks ?? []) visit(child, path);
-    };
-    for (const file of files) visit(file);
+    const tasks = files.flatMap((file) => collectTasks(file));
+    const tests = tasks.map(({ task }) => task).filter((task) => task.type === 'test');
+    const passed = tests.filter((task) => task.result?.state === 'pass').length;
+    const skipped = tests.filter((task) =>
+      ['skip', 'todo'].includes(task.result?.state ?? task.mode)).length;
+    // Suites may fail before any test runs (imports and beforeAll hooks).
+    const failed = tasks.filter(({ task }) => task.result?.state === 'fail'
+      && (task.type === 'test' || task.result.errors?.length));
+    for (const { task, path } of failed) this.printFailure(task, path);
     for (const error of errors) this.printError(error);
-    if (!failed && !errors.length) {
+    if (!failed.length && !errors.length) {
       const duration = ((performance.now() - this.started) / 1000).toFixed(2);
       this.ctx.logger.log(`${passed} passed · ${skipped} skipped · ${files.length} files · ${duration}s duration`);
     }
