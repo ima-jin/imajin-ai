@@ -1,3 +1,4 @@
+<!-- Replay: 2026-10-21 pre-cut upkeep for v0.8.26; Refs #2028. -->
 # Imajin
 
 **You compose. Imajin orchestrates. Signed. Legible.**
