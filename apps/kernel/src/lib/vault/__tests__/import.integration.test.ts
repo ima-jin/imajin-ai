@@ -55,7 +55,7 @@ vi.mock('../vault-repository', () => ({
 import { PGlite } from '@electric-sql/pglite';
 import { drizzle } from 'drizzle-orm/pglite';
 import { getTableConfig, type PgTable } from 'drizzle-orm/pg-core';
-import { identities, identityMembers, delegationGrants, delegationGrantCapabilities, delegationGrantEvents } from '@/src/db/schemas/auth';
+import { identities, identityMembers, delegationGrants, delegationGrantCapabilities, delegationGrantEvents, attestations } from '@/src/db/schemas/auth';
 import { internalSecretProvisions, vaultDelegationGrants, vaultOwnerEnvelopes } from '@/src/db/schemas/vault';
 import { operatorApprovals } from '@/src/db/schemas/operator-approvals';
 import { NextRequest } from 'next/server';
@@ -69,7 +69,7 @@ import { executeVaultApproval } from '../approvals-execution';
 import { executeImportApproval, importedKeyField, listImportedKeyCards, validateImportBody } from '../import';
 import { importFingerprint, stageImport } from '../import-staging';
 import { listImportOwners, canExecuteImport } from '../import-authority';
-import { getNodeSigningIdentity } from '../sealing';
+import { getNodeSigningIdentity, _resetSealingCache } from '../sealing';
 import { fetchGrantSecret, listGrantsForGrantee, vaultService } from '../index';
 import { introspectGrant, issueGrant, revokeGrant, revokeGrantCapability } from '@/src/lib/auth/grants';
 import { cloudflarePurpose, cloudflareZoneDid } from '@/src/lib/cloudflare/contract';
@@ -80,8 +80,9 @@ const AGENT = 'did:imajin:agent';
 const STRANGER = 'did:imajin:stranger';
 const personKeys = generateKeypair();
 const agentKeys = generateKeypair();
+const nodeKeys = generateKeypair();
 const tables = [identities, identityMembers, internalSecretProvisions, vaultDelegationGrants, vaultOwnerEnvelopes, operatorApprovals,
-  delegationGrants, delegationGrantCapabilities, delegationGrantEvents];
+  delegationGrants, delegationGrantCapabilities, delegationGrantEvents, attestations];
 const ZONE = 'a'.repeat(32);
 const zoneImport = { domain: 'example.com', zoneId: ZONE, granteeDid: AGENT, capabilities: ['cloudflare:read', 'cloudflare:dns'] };
 let client: PGlite;
@@ -114,10 +115,16 @@ beforeAll(async () => {
   db = drizzle(client);
   h.db = db;
 });
-afterAll(async () => { await client.close(); });
+afterAll(async () => {
+  vi.unstubAllEnvs();
+  _resetSealingCache();
+  await client.close();
+});
 beforeEach(async () => {
   vi.clearAllMocks();
   vi.unstubAllGlobals();
+  vi.stubEnv('AUTH_PRIVATE_KEY', nodeKeys.privateKey);
+  _resetSealingCache();
   h.log.mockClear(); h.emit.mockClear(); h.publish.mockClear();
   h.saveError = null;
   h.zoneOwner = ORG;

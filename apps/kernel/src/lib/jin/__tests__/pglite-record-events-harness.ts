@@ -95,6 +95,7 @@ CREATE TABLE IF NOT EXISTS auth.delegation_grants (
   expires_at timestamptz NOT NULL,
   status text NOT NULL DEFAULT 'active',
   revoked_at timestamptz,
+  pending_revocation_audits jsonb NOT NULL DEFAULT '[]',
   last_used_at timestamptz,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()

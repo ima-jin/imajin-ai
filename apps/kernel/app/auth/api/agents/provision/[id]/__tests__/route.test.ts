@@ -121,6 +121,6 @@ describe('DELETE /auth/api/agents/provision/[id]', () => {
 
     const res = await DELETE(makeRequest('DELETE'), ctx());
     expect(res.status).toBe(200);
-    expect(revokeProvisionMock).toHaveBeenCalledWith('prov_1', OWNER);
+    expect(revokeProvisionMock).toHaveBeenCalledWith('prov_1', OWNER, OWNER);
   });
 });

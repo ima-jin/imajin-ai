@@ -58,16 +58,16 @@ describe('DELETE /auth/api/grants/:grantId', () => {
     const res = await DELETE(makeRequest(), params());
 
     expect(res.status).toBe(200);
-    expect(revokeGrantMock).toHaveBeenCalledWith({ grantId: GRANT_ID, requestedBy: DELEGATOR });
+    expect(revokeGrantMock).toHaveBeenCalledWith({ grantId: GRANT_ID, requestedBy: DELEGATOR, actorDid: DELEGATOR });
   });
 
-  it('sources requestedBy from the real actor, not a cached actingAs identity', async () => {
-    requireAuthMock.mockResolvedValue({ identity: { id: 'did:imajin:admin', actingAs: 'did:imajin:group' } });
+  it('sources requestedBy from actingAs', async () => {
+    requireAuthMock.mockResolvedValue({ identity: { id: 'did:imajin:admin', actingAs: 'did:imajin:group', actingAsRole: 'admin' } });
     revokeGrantMock.mockResolvedValue({ revoked: true });
 
     await DELETE(makeRequest(), params());
 
-    expect(revokeGrantMock).toHaveBeenCalledWith({ grantId: GRANT_ID, requestedBy: 'did:imajin:admin' });
+    expect(revokeGrantMock).toHaveBeenCalledWith({ grantId: GRANT_ID, requestedBy: 'did:imajin:group', actorDid: 'did:imajin:admin' });
   });
 
   it('surfaces a lib-level error with its own status code', async () => {

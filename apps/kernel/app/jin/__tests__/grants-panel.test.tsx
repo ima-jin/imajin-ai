@@ -13,6 +13,8 @@ import { installIntervalSpy } from './panel-test-support';
 interface GrantCardFixture {
   id: string;
   source: 'auth-grant' | 'auth-membership' | 'vault-delegation' | 'access-bearer' | 'app-authorization';
+  delegatorDid?: string;
+  history?: { event: string; actorDid: string; createdAt: string; capability: string | null }[];
   grantee: string;
   capabilities: string[];
   issuedAt: string | null;
@@ -42,7 +44,9 @@ function grant(overrides: Partial<GrantCardFixture> = {}): GrantCardFixture {
 }
 
 function installFetch(options: {
-  grantsResponse?: { isOperator: boolean; grants: GrantCardFixture[] } | null;
+  grantsResponse?: {
+    isOperator: boolean; canManageGrants?: boolean; delegatorDid?: string; actorDid?: string; grants: GrantCardFixture[];
+  } | null;
   revokeResponse?: { ok: boolean; status?: number; body?: unknown };
 }) {
   const {
@@ -76,6 +80,22 @@ afterEach(() => {
 });
 
 describe('operator gate', () => {
+  it('shows org grants to an authorized non-operator with full delegator, grantee and human history', async () => {
+    const delegatorDid = `did:imajin:org-${'a'.repeat(64)}`;
+    const actorDid = 'did:imajin:human';
+    const grantee = `did:imajin:agent-${'b'.repeat(64)}`;
+    installFetch({ grantsResponse: {
+      isOperator: false, canManageGrants: true, delegatorDid, actorDid,
+      grants: [grant({ delegatorDid, grantee, history: [{ event: 'issued', actorDid, createdAt: '2026-01-01T00:00:00.000Z', capability: null }] })],
+    } });
+    render(<GrantsPanel />);
+    const card = await screen.findByTestId('grant-card');
+    expect(within(card).getByText(delegatorDid)).toBeDefined();
+    expect(within(card).getByText(grantee).className).toContain('break-all');
+    expect(within(card).getByText(actorDid)).toBeDefined();
+    expect(screen.getByText(/Organization delegator:/)).toBeDefined();
+    expect(screen.getByRole('link', { name: 'Manage capabilities →' }).getAttribute('href')).toBe('/auth/agents');
+  });
   it('renders nothing for a non-operator identity', async () => {
     const spy = installFetch({ grantsResponse: { isOperator: false, grants: [] } });
     const { container } = render(<GrantsPanel />);

@@ -13,7 +13,8 @@
  * grant may revoke or add capabilities on it.
  */
 import { NextResponse } from 'next/server';
-import { requireAuth, authErrorResponse } from '@imajin/auth';
+import { authErrorResponse } from '@imajin/auth';
+import { requireGrantPrincipal } from '@/src/lib/auth/grant-principal';
 import { revokeGrantCapability, addGrantCapability } from '@/src/lib/auth/grants';
 
 export async function DELETE(
@@ -22,17 +23,17 @@ export async function DELETE(
 ) {
   const { grantId, capability } = await props.params;
 
-  const authResult = await requireAuth(request);
+  const authResult = await requireGrantPrincipal(request);
   if ('error' in authResult) {
     return authErrorResponse(authResult);
   }
-  if (authResult.identity.actingFor) return NextResponse.json({ error: 'Direct principal required' }, { status: 403 });
-  const requestedBy = authResult.identity.id;
+  const requestedBy = authResult.identity.actingAs ?? authResult.identity.id;
 
   const result = await revokeGrantCapability({
     grantId,
     capability: decodeURIComponent(capability),
     requestedBy,
+    actorDid: authResult.identity.id,
   });
   if ('error' in result) {
     return NextResponse.json({ error: result.error }, { status: result.status });
@@ -45,8 +46,7 @@ export async function PUT(
   props: { params: Promise<{ grantId: string; capability: string }> },
 ) {
   const { grantId, capability } = await props.params;
-
-  const authResult = await requireAuth(request);
+  const authResult = await requireGrantPrincipal(request);
   if ('error' in authResult) {
     return authErrorResponse(authResult);
   }
@@ -56,6 +56,7 @@ export async function PUT(
     grantId,
     capability: decodeURIComponent(capability),
     requestedBy,
+    actorDid: authResult.identity.id,
   });
   if ('error' in result) {
     return NextResponse.json({ error: result.error }, { status: result.status });

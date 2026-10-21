@@ -7,8 +7,8 @@
  * grants (#2247/#2235, with deferred-ack state), delegate-grant bearers
  * (#2252), and MCP/OAuth app authorizations (#1803).
  *
- * Same operator-identity gate as `OperatorApprovalsPanel` — renders nothing
- * (not even a header) for a non-operator identity, and the initial-load
+ * Operator sources retain the operator gate; org owner/admin act-as can
+ * manage only the org's auth grants (#2997). The initial-load
  * state holds that same "nothing" so nobody briefly sees panel chrome
  * before the check resolves. Poll + silent-refresh mirrors
  * `usage-feed-panel.tsx`.
@@ -47,6 +47,8 @@ interface RevokeAction {
 interface GrantCard {
   id: string;
   source: GrantSourceKind;
+  delegatorDid?: string;
+  history?: { event: string; actorDid: string; createdAt: string; capability: string | null }[];
   grantee: string;
   capabilities: string[];
   issuedAt: string | null;
@@ -133,17 +135,34 @@ function GrantCardView({
 }>) {
   return (
     <div className="rounded-lg border border-gray-800 p-4 space-y-2" data-testid="grant-card">
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2 min-w-0">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div className="flex items-center gap-2 min-w-0 flex-wrap">
           <span className="px-1.5 py-0.5 rounded text-xs font-mono bg-indigo-900/40 text-indigo-300 whitespace-nowrap">
             {SOURCE_LABELS[card.source]}
           </span>
-          <span className="font-mono text-xs text-gray-200 truncate" title={card.grantee}>{card.grantee}</span>
+          <span className="font-mono text-xs text-gray-200 break-all" title={card.grantee}>{card.grantee}</span>
         </div>
         {statusBadge(card.status)}
       </div>
 
-      <div className="text-xs text-gray-500">
+      {card.delegatorDid && (
+        <p className="text-xs text-gray-500 break-all">Delegator: <span className="font-mono text-gray-300">{card.delegatorDid}</span></p>
+      )}
+      {card.history && card.history.length > 0 && (
+        <details className="text-xs text-gray-500 break-all">
+          <summary className="cursor-pointer">Grant history</summary>
+          <ul className="mt-2 space-y-2">
+            {card.history.map((entry, index) => (
+              <li key={`${entry.event}-${entry.createdAt}-${index}`}>
+                {entry.event}{entry.capability ? ` (${entry.capability})` : ''} — {formatDate(entry.createdAt)}
+                <span className="block">Human actor: <span className="font-mono text-gray-300">{entry.actorDid}</span></span>
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+
+      <div className="text-xs text-gray-500 break-all">
         <span className="uppercase tracking-wide mr-2">Capabilities</span>
         <span className="font-mono text-gray-400">{card.capabilities.join(', ') || '—'}</span>
       </div>
@@ -158,7 +177,7 @@ function GrantCardView({
       {card.revocable && card.revoke && (
         <div className="pt-1">
           {confirming ? (
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <span className="text-xs text-gray-400">Revoke this grant?</span>
               <button
                 type="button"
@@ -231,7 +250,9 @@ function renderCardsList(
 }
 
 export function GrantsPanel() {
-  const [isOperator, setIsOperator] = useState(false);
+  const [canManageGrants, setCanManageGrants] = useState(false);
+  const [delegatorDid, setDelegatorDid] = useState('');
+  const [actorDid, setActorDid] = useState('');
   const [loading, setLoading] = useState(true);
   const [grants, setGrants] = useState<GrantCard[]>([]);
   const [showRevoked, setShowRevoked] = useState(false);
@@ -245,9 +266,17 @@ export function GrantsPanel() {
     if (!silent) setLoading(true);
     try {
       const res = await fetch('/jin/api/grants', { credentials: 'include' });
-      if (!res.ok) return;
-      const data = (await res.json()) as { isOperator: boolean; grants: GrantCard[] };
-      setIsOperator(data.isOperator);
+      if (!res.ok) {
+        setCanManageGrants(false);
+        setGrants([]);
+        return;
+      }
+      const data = (await res.json()) as {
+        isOperator: boolean; canManageGrants?: boolean; delegatorDid?: string; actorDid?: string; grants: GrantCard[];
+      };
+      setCanManageGrants(data.canManageGrants ?? data.isOperator);
+      setDelegatorDid(data.delegatorDid ?? '');
+      setActorDid(data.actorDid ?? '');
       setGrants(data.grants ?? []);
     } catch {
       // Silent — this panel simply stays empty on a transient network error.
@@ -295,21 +324,23 @@ export function GrantsPanel() {
     }
   }, [load, notify]);
 
-  // Non-operators see nothing — no header, no empty-state, no card. This
+  // Unauthorized principals see nothing — no header, no empty-state, no card. This
   // also holds during the initial load so nobody briefly sees panel chrome
   // before the operator check resolves.
-  if (!isOperator) return null;
+  if (!canManageGrants) return null;
 
   const visible = showRevoked ? grants : grants.filter((g) => g.status !== 'revoked');
 
   return (
     <section id="grants" className="mt-8" data-testid="grants-panel">
-      <div className="flex items-center justify-between mb-3">
+      <div className="flex items-center justify-between gap-3 flex-wrap mb-3">
         <div>
           <h2 className="text-base font-semibold text-gray-100">Grants</h2>
           <p className="text-xs text-gray-500">Who acts for you, with what capabilities — one-tap revoke</p>
+          {delegatorDid && <p className="text-xs text-gray-400 break-all">Organization delegator: <span className="font-mono">{delegatorDid}</span></p>}
+          {actorDid && <p className="text-xs text-gray-500 break-all">Authenticated human: <span className="font-mono">{actorDid}</span></p>}
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 flex-wrap">
           <Link
             href="/auth/agents"
             className="text-xs text-indigo-400 hover:text-indigo-300 transition-colors"

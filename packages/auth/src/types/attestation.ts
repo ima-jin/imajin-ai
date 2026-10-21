@@ -5,6 +5,12 @@
  */
 
 export const ATTESTATION_TYPES = [
+  // #2997 — node-signed grant authority changes; org delegator and human actor.
+  'delegation.grant.issued',
+  'delegation.grant.renewed',
+  'delegation.grant.revoked',
+  'delegation.grant.capability_added',
+  'delegation.grant.capability_revoked',
   'domain.verified',
   'domain.revoked',
   'cloudflare.mutation',
@@ -302,6 +308,11 @@ export type AttestationType = typeof ATTESTATION_TYPES[number];
  */
 export const MECHANICAL_ATTESTATION_TYPES = [
   'agreement.revoked',
+  'delegation.grant.issued',
+  'delegation.grant.renewed',
+  'delegation.grant.revoked',
+  'delegation.grant.capability_added',
+  'delegation.grant.capability_revoked',
   'connection.relationship.label.changed',
   'group.member.added',
   'group.member.removed',

@@ -88,11 +88,13 @@ function agent(overrides: Partial<AgentFixture> = {}): AgentFixture {
 
 type FetchImpl = (url: string, init?: RequestInit) => Promise<Response>;
 
-function installFetch(agents: AgentFixture[], overrides: Partial<Record<string, FetchImpl>> = {}) {
+function installFetch(agents: AgentFixture[], overrides: Partial<Record<string, FetchImpl>> = {}, delegator = {
+  did: 'did:imajin:ryan', name: 'Ryan', isOrganization: false, actorDid: 'did:imajin:ryan',
+}) {
   const spy = vi.fn(async (rawUrl: string, init?: RequestInit) => {
     const url = String(rawUrl);
     if (url.endsWith('/auth/api/agents') && (!init || !init.method || init.method === 'GET')) {
-      return { ok: true, status: 200, json: async () => ({ agents }) } as unknown as Response;
+      return { ok: true, status: 200, json: async () => ({ agents, delegator }) } as unknown as Response;
     }
     if (url.endsWith('/auth/api/session')) {
       return { ok: true, status: 200, json: async () => ({ did: 'did:imajin:ryan', handle: 'ryan' }) } as unknown as Response;
@@ -120,6 +122,79 @@ afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
+});
+
+describe('org delegator context (#2997)', () => {
+  const orgDid = `did:imajin:org-${'a'.repeat(64)}`;
+  const actorDid = 'did:imajin:human-owner';
+
+  it('names the org and full DID as delegator, separately from the authenticated human', async () => {
+    installFetch([], {}, { did: orgDid, name: 'Agrifortress', isOrganization: true, actorDid });
+    render(<AgentsPage />);
+    const context = await screen.findByRole('region', { name: 'Grant delegator' });
+    expect(within(context).getByText('Issuing grants as organization — Agrifortress')).toBeDefined();
+    expect(within(context).getByText(orgDid).className).toContain('font-mono');
+    expect(within(context).getByText(actorDid)).toBeDefined();
+    expect(within(context).getByText(orgDid).className).toContain('break-all');
+    expect(screen.queryByText(/Issuing grants as your personal identity/)).toBeNull();
+  });
+
+  it('keeps personal grants clearly labeled when no org is selected', async () => {
+    await renderAgentsPage([]);
+    expect(screen.getByText('Issuing grants as your personal identity — Ryan')).toBeDefined();
+    expect(screen.queryByText(/Issuing grants as organization/)).toBeNull();
+  });
+  it('shows an auth-context failure and disables direct issuance when the agents read is denied', async () => {
+    const spy = installFetch([]);
+    spy.mockResolvedValueOnce({ ok: false, status: 403, json: async () => ({ error: 'Forbidden' }) } as Response);
+    render(<AgentsPage />);
+    expect(await screen.findByText('Failed to load grant delegator. Check your auth service access.')).toBeDefined();
+    expect(screen.queryByRole('region', { name: 'Grant delegator' })).toBeNull();
+    const button = screen.getByRole('button', { name: '+ Add capability to agent' }) as HTMLButtonElement;
+    expect(button.disabled).toBe(true);
+  });
+
+  it('issues to an agent DID with no agent list, knock or membership and without trusting a client delegator field', async () => {
+    const spy = installFetch([], {}, { did: orgDid, name: 'Agrifortress', isOrganization: true, actorDid });
+    render(<AgentsPage />);
+    await screen.findByRole('region', { name: 'Grant delegator' });
+    fireEvent.change(screen.getByLabelText('Agent DID'), { target: { value: EXTERNAL_AGENT } });
+    fireEvent.change(screen.getByLabelText('Capabilities'), { target: { value: 'messages:write, intros:propose' } });
+    fireEvent.click(screen.getByRole('button', { name: '+ Add capability to agent' }));
+    await waitFor(() => expect(spy).toHaveBeenCalledWith('/auth/api/grants', expect.objectContaining({
+      method: 'POST', credentials: 'include',
+      body: JSON.stringify({ agentDid: EXTERNAL_AGENT, capabilities: ['messages:write', 'intros:propose'], audience: { type: 'all' } }),
+    })));
+  });
+
+  it('renders the full agent DID and grant delegator with the human in history', async () => {
+    const longAgentDid = `did:imajin:agent-${'b'.repeat(64)}`;
+    await renderAgentsPage([agent({ did: longAgentDid, grants: [grant({
+      delegatorDid: orgDid,
+      history: [{ event: 'issued', capability: null, actorDid, createdAt: '2026-08-01T00:00:00.000Z' }],
+    })] })]);
+    expect(screen.getByText(longAgentDid).className).toContain('break-all');
+    fireEvent.click(screen.getByRole('button', { name: 'Show detail' }));
+    expect(screen.getByText(orgDid)).toBeDefined();
+    expect(screen.getByText(actorDid)).toBeDefined();
+    expect(screen.getByText(/Human actor:/)).toBeDefined();
+  });
+
+  it('provisions for the selected org DID rather than the human session DID', async () => {
+    const spy = installFetch([], {}, { did: orgDid, name: 'Agrifortress', isOrganization: true, actorDid });
+    render(<AgentsPage />);
+    await screen.findByRole('region', { name: 'Grant delegator' });
+    fireEvent.click(screen.getByRole('button', { name: '+ Provision Agent' }));
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Org assistant' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Provision' }));
+    await waitFor(() => expect(spy).toHaveBeenCalledWith('/auth/api/agents/provision', expect.objectContaining({
+      method: 'POST',
+      body: JSON.stringify({
+        servingDid: orgDid, name: 'Org assistant', harness: 'nanoclaw',
+        placement: 'hosted', scopes: [], model: { provider: 'anthropic:claude' },
+      }),
+    })));
+  });
 });
 
 describe('grants-view read surface (#1887)', () => {

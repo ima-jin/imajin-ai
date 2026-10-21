@@ -526,6 +526,16 @@ export const foreignAgentStubs = authSchema.table('foreign_agent_stubs', {
  * Renewal (#1882 item 4, "grants are leases with expiry") updates
  * `expires_at` in place; no lineage row is kept for the previous expiry.
  */
+export interface PendingGrantRevocationAudit {
+  id: string;
+  grantId: string;
+  delegatorDid: string;
+  actorDid: string;
+  event: 'revoked' | 'capability_revoked';
+  capability?: string;
+  occurredAt: string;
+}
+
 export const delegationGrants = authSchema.table('delegation_grants', {
   id: text('id').primaryKey(),                          // grant_{nanoid}
   agentDid: text('agent_did').notNull(),                // external agent the grant is issued to
@@ -536,6 +546,8 @@ export const delegationGrants = authSchema.table('delegation_grants', {
   expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
   status: text('status').notNull().default('active'),   // 'active' | 'revoked'
   revokedAt: timestamp('revoked_at', { withTimezone: true }),
+  // Committed with revocation, delivered after commit; never grants authority.
+  pendingRevocationAudits: jsonb('pending_revocation_audits').notNull().default([]).$type<PendingGrantRevocationAudit[]>(),
   // #1887 grants-view read surface: last successful introspectGrant() hit
   // against this grant (any capability). Not a per-capability timestamp —
   // see delegationGrantEvents below for the capability-level audit trail.
@@ -544,6 +556,8 @@ export const delegationGrants = authSchema.table('delegation_grants', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => ({
   agentIdx: index('idx_delegation_grants_agent').on(table.agentDid, table.status),
+  auditRetryIdx: index('idx_delegation_grants_pending_revocation_audits').on(table.id)
+    .where(sql`${table.pendingRevocationAudits} <> '[]'::jsonb`),
   delegatorIdx: index('idx_delegation_grants_delegator').on(table.delegatorDid, table.status),
   expiresIdx: index('idx_delegation_grants_expires').on(table.expiresAt).where(sql`${table.status} = 'active'`),
 }));

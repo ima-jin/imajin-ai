@@ -31,7 +31,7 @@ const { mockDbSelect, mockTxInsertValues, mockTransaction, pushSelectResult, res
 
 vi.mock('@/src/db', () => ({
   db: { select: mockDbSelect, transaction: mockTransaction },
-  identities: { id: 'identities.id', handle: 'identities.handle' },
+  identities: { id: 'identities.id', handle: 'identities.handle', scope: 'identities.scope' },
   identityMembers: {},
 }));
 
@@ -115,6 +115,7 @@ describe('mintAgentIdentity', () => {
 
   it('mints a new identity with trimmed display name and bio metadata', async () => {
     pushSelectResult([]);
+    pushSelectResult([{ scope: 'actor' }]);
 
     const result = await mintAgentIdentity({
       handle: 'travel-agent',
@@ -142,11 +143,53 @@ describe('mintAgentIdentity', () => {
 
   it('defaults displayName to null and metadata to {} when neither is provided', async () => {
     pushSelectResult([]);
+    pushSelectResult([{ scope: 'actor' }]);
 
     const result = await mintAgentIdentity({ handle: 'no-frills-agent', actingDid: ACTING_DID });
 
     expect(result.displayName).toBeNull();
     const identityRow = mockTxInsertValues.mock.calls[0][0] as Record<string, unknown>;
     expect(identityRow.metadata).toEqual({});
+  });
+
+  it.each(['business', 'community', 'family'])('mints for stored %s scope with no membership rows in either direction', async (scope) => {
+    pushSelectResult([]);
+    pushSelectResult([{ scope }]);
+
+    const result = await mintAgentIdentity({ handle: 'org-agent', actingDid: ACTING_DID });
+
+    expect(result.did).toBe('did:imajin:pub-hex');
+    expect(mockTxInsertValues).toHaveBeenCalledTimes(1);
+    expect(mockTxInsertValues).toHaveBeenCalledWith(expect.objectContaining({
+      id: result.did, scope: 'actor', subtype: 'agent',
+    }));
+    expect(mockDbSelect).toHaveBeenLastCalledWith({ scope: 'identities.scope' });
+  });
+
+  it('retains both legacy personal-agent membership directions for a stored actor', async () => {
+    pushSelectResult([]);
+    pushSelectResult([{ scope: 'actor' }]);
+
+    const result = await mintAgentIdentity({ handle: 'personal-agent', actingDid: ACTING_DID });
+
+    expect(mockTxInsertValues).toHaveBeenCalledTimes(3);
+    expect(mockTxInsertValues).toHaveBeenNthCalledWith(2, {
+      identityDid: result.did, memberDid: ACTING_DID, role: 'owner',
+      addedBy: ACTING_DID, addedVia: 'direct',
+    });
+    expect(mockTxInsertValues).toHaveBeenNthCalledWith(3, {
+      identityDid: ACTING_DID, memberDid: result.did, role: 'agent',
+      addedBy: ACTING_DID, addedVia: 'agent',
+    });
+  });
+
+  it('fails closed without minting when the serving identity is absent from storage', async () => {
+    pushSelectResult([]);
+    pushSelectResult([]);
+
+    await expect(mintAgentIdentity({ handle: 'unknown-serving', actingDid: ACTING_DID })).rejects.toMatchObject({
+      status: 404, message: 'Serving identity not found',
+    });
+    expect(mockTransaction).not.toHaveBeenCalled();
   });
 });

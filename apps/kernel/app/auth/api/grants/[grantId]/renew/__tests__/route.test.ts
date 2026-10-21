@@ -41,10 +41,10 @@ beforeEach(() => {
 
 describe('POST /auth/api/grants/:grantId/renew', () => {
   it('uses the actual controller DID rather than trusting act-as context', async () => {
-    requireAuthMock.mockResolvedValue({ identity: { id: DELEGATOR, actingAs: 'did:imajin:group' } });
+    requireAuthMock.mockResolvedValue({ identity: { id: DELEGATOR, actingAs: 'did:imajin:group', actingAsRole: 'admin' } });
     renewGrantMock.mockResolvedValue({ grantId: GRANT_ID, expiresAt: '2026-09-01T00:00:00.000Z' });
     expect((await POST(makeRequest(), params())).status).toBe(200);
-    expect(renewGrantMock).toHaveBeenCalledWith({ grantId: GRANT_ID, requestedBy: DELEGATOR, ttlMs: undefined });
+    expect(renewGrantMock).toHaveBeenCalledWith({ grantId: GRANT_ID, requestedBy: 'did:imajin:group', actorDid: DELEGATOR, ttlMs: undefined });
   });
 
   it('refuses agent delegation', async () => {
@@ -68,7 +68,7 @@ describe('POST /auth/api/grants/:grantId/renew', () => {
     const res = await POST(makeRequest(), params());
 
     expect(res.status).toBe(200);
-    expect(renewGrantMock).toHaveBeenCalledWith({ grantId: GRANT_ID, requestedBy: DELEGATOR, ttlMs: undefined });
+    expect(renewGrantMock).toHaveBeenCalledWith({ grantId: GRANT_ID, requestedBy: DELEGATOR, actorDid: DELEGATOR, ttlMs: undefined });
   });
 
   it('passes an explicit ttlMs through from the body', async () => {
@@ -77,7 +77,7 @@ describe('POST /auth/api/grants/:grantId/renew', () => {
 
     await POST(makeRequest({ ttlMs: 60000 }), params());
 
-    expect(renewGrantMock).toHaveBeenCalledWith({ grantId: GRANT_ID, requestedBy: DELEGATOR, ttlMs: 60000 });
+    expect(renewGrantMock).toHaveBeenCalledWith({ grantId: GRANT_ID, requestedBy: DELEGATOR, actorDid: DELEGATOR, ttlMs: 60000 });
   });
 
   it('surfaces a lib-level error with its own status code', async () => {

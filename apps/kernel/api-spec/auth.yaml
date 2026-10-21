@@ -4350,6 +4350,30 @@ paths:
         User-push only: the caller must be a directly authenticated delegator
         principal. A caller acting under `X-Acting-For` agent delegation is
         rejected — authority flows delegator -> agent only, never the reverse.
+        Organization act-as is supported through the X-Acting-As header or
+        selected x-acting-as cookie. Authentication checks service `auth`:
+        the controller's allowed_services must be null (all) or include auth.
+        Only owner/admin controllers may manage org grants; agent identities,
+        agent-role controllers, other roles, and actingFor callers are refused.
+        The delegator is identity.actingAs ?? identity.id, never the human's
+        personal DID while acting as an org. The authenticated identity.id is
+        retained separately as actorDid. No agent membership is required or
+        created by issuance.
+
+        Every actual issue/renew/capability-add atomically records a
+        signed mechanical attestation `delegation.grant.<event>` (events:
+        issued, renewed, revoked, capability_added, capability_revoked).
+        subjectDid is the delegator DID; payload is
+        {grantId, delegatorDid, actorDid, event, capability?}.
+        The existing grant history actorDid also names the authenticated human.
+        No-op changes do not create events. A signing/evidence failure rolls back
+        issue, renew and capability-add only. Revocation commits authority first,
+        with durable pending_revocation_audits on the existing grant row, then
+        attempts signed history delivery. Signing/history/attestation failures
+        never restore authority: the protected /api/cron/grant-audit-retry job
+        retries every minute, preserving the original delegator, human actor and
+        occurredAt timestamp. Delivery and clearing retry intent are atomic and
+        serialized, so replay cannot duplicate history. No parallel authority store.
 
         `capabilities` accepts two shapes: (1) a member of the closed
         `domain:verb` GRANT_SCOPE_REGISTRY vocabulary (`@imajin/auth`'s
@@ -4403,7 +4427,7 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
         "403":
-          description: Caller is acting under agent delegation and may not issue grants
+          description: Agent delegation, non-owner/admin org controller, agent identity acting as org, or auth service excluded by allowed_services
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
@@ -4411,6 +4435,13 @@ paths:
       tags: [grants]
       operationId: listGrants
       summary: List the authenticated delegator's own grants
+      description: |
+        Supports X-Acting-As header / x-acting-as cookie. Lists only grants
+        whose delegatorDid is identity.actingAs ?? identity.id, so org grants
+        never appear in the controller's personal list. Requires service auth
+        in allowed_services (or null/all), owner/admin for org act-as, and no
+        actingFor agent delegation. Authenticated human actorDid is distinct
+        from the org delegatorDid in grant lifecycle history.
       security:
         - cookieAuth: []
         - bearerAuth: []
@@ -4431,6 +4462,15 @@ paths:
       tags: [grants]
       operationId: revokeGrant
       summary: Revoke an entire grant
+      description: |
+        Supports org act-as (X-Acting-As / x-acting-as cookie). Requires auth
+        service access via allowed_services and owner/admin, non-agent org
+        controller; actingFor is refused. Authorization compares the grant
+        delegatorDid with identity.actingAs ?? identity.id, not the human DID.
+        Revocation commits first, then writes signed delegation.grant.revoked
+        evidence naming delegatorDid, authenticated human actorDid and occurredAt.
+        Signing or event-store failure leaves the grant revoked and its durable
+        audit intent queued for the protected minute-by-minute retry job.
       security:
         - cookieAuth: []
         - bearerAuth: []
@@ -4471,6 +4511,12 @@ paths:
         sibling grant. Validated against the same closed capability registry
         as `POST /api/grants`. Same auth as the DELETE below — only the
         delegator who issued the grant may add to it.
+        Org act-as is supported via X-Acting-As / x-acting-as cookie; requires
+        service auth in allowed_services (or null/all), owner/admin and a
+        non-agent identity. actingFor is refused. The delegator is
+        identity.actingAs ?? identity.id; actorDid is the authenticated human.
+        Actual changes atomically emit signed delegation.grant.capability_added
+        evidence naming both, with capability. No-op 200 emits no event.
       security:
         - cookieAuth: []
         - bearerAuth: []
@@ -4516,6 +4562,15 @@ paths:
       tags: [grants]
       operationId: revokeGrantCapability
       summary: Revoke exactly one capability, without touching its siblings (#1882 item 4)
+      description: |
+        Supports org act-as via X-Acting-As / x-acting-as cookie; requires
+        service auth in allowed_services (or null/all), owner/admin and a
+        non-agent identity. actingFor is refused. Authorization uses
+        identity.actingAs ?? identity.id as delegator, retaining identity.id
+        as human actorDid. Capability revocation commits first, then emits signed
+        delegation.grant.capability_revoked evidence naming both, capability and
+        occurredAt. Signing/event failures cannot restore the capability; durable
+        intent on the grant row is retried by the protected minute-by-minute job.
       security:
         - cookieAuth: []
         - bearerAuth: []
@@ -4553,6 +4608,13 @@ paths:
       tags: [grants]
       operationId: renewGrant
       summary: Extend a grant's lease (grants are leases with expiry)
+      description: |
+        Supports org act-as via X-Acting-As / x-acting-as cookie; requires
+        service auth in allowed_services (or null/all), owner/admin and a
+        non-agent identity. actingFor is refused. Only the effective delegator
+        (identity.actingAs ?? identity.id) may renew the grant. An actual
+        renewal atomically emits signed delegation.grant.renewed evidence
+        naming the org delegatorDid and authenticated human actorDid.
       security:
         - cookieAuth: []
         - bearerAuth: []
