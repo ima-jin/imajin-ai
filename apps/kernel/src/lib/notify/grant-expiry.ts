@@ -3,6 +3,7 @@ import { and, eq, gt, lte } from 'drizzle-orm';
 import { GRANT_DEFAULT_TTL } from '@imajin/auth';
 import { db, delegationGrants, delegationGrantCapabilities, notifications, preferences } from '@/src/db';
 import { operatorGrantExpiryWarning } from '@/src/lib/auth/grant-lease';
+import { forEachSequential } from '@/src/lib/async/sequential';
 import { buildNotificationFrame, pushNotificationToDid } from './ws-push';
 import { pushWebNotificationToOperator } from './web-push';
 
@@ -47,8 +48,8 @@ export async function notifyExpiringOperatorGrants(now = new Date()) {
     ));
   // Sequential delivery bounds push traffic and database pressure.
   let notified = 0;
-  for (const grant of grants) {
+  await forEachSequential(grants, async grant => {
     if (await notifyExpiringGrant(grant, now)) notified += 1;
-  }
+  });
   return { checked: grants.length, notified };
 }
