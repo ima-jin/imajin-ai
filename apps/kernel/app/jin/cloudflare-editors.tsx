@@ -29,7 +29,7 @@ export function DnsEditor({ record, busy, save, cancel }: Readonly<{
     const data = new FormData(event.currentTarget);
     void save({
       type, name: cloudflareFormText(data, 'name'), content: cloudflareFormText(data, 'content'),
-      ttl: Number(data.get('ttl')), ...(['A', 'AAAA', 'CNAME'].includes(type) ? { proxied: data.get('proxied') === 'on' } : {}),
+      ttl: Number(data.get('ttl')),
       ...(type === 'MX' ? { priority: Number(data.get('priority')) } : {}),
     });
   };
@@ -44,9 +44,7 @@ export function DnsEditor({ record, busy, save, cancel }: Readonly<{
       <CloudflareField label="TTL seconds (1 = automatic)"><input name="ttl" type="number" min="1" required defaultValue={record?.ttl ?? 1} className={cfInput} disabled={busy} /></CloudflareField>
     </div>
     {type === 'MX' && <CloudflareField label="MX priority"><input name="priority" type="number" min="0" max="65535" defaultValue={record?.priority ?? 10} required disabled={busy} className={cfInput} /></CloudflareField>}
-    {['A', 'AAAA', 'CNAME'].includes(type) && <label className="flex min-h-11 items-center gap-2 font-mono text-sm">
-      <input type="checkbox" name="proxied" defaultChecked={record?.proxied ?? false} disabled={busy} />Proxied through Cloudflare
-    </label>}
+    <p className="text-xs">DNS editing does not change proxy state. Use Edge classification to preview a proxy plan and request approval.</p>
     <div className="flex flex-wrap gap-2"><button disabled={busy} className={cfButton} type="submit">Save DNS record</button>
       <button disabled={busy} className={cfButton} type="button" onClick={cancel}>Cancel DNS edit</button></div>
   </form>;

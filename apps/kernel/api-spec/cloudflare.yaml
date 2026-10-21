@@ -56,7 +56,7 @@ components:
         name: { type: string }
         content: { type: string }
         ttl: { type: integer, minimum: 1, description: 1 means automatic }
-        proxied: { type: boolean }
+        proxied: { type: boolean, description: "Creation must be false or omitted; single-record PATCH must omit. Proxy changes require the bulk approval rail." }
     ProxyChange:
       type: object
       required: [recordId, proxied]
@@ -82,6 +82,42 @@ components:
                 mode: { type: string, enum: [respect_origin, bypass_by_default, override_origin] }
                 default: { type: integer, minimum: 1 }
 paths:
+  /api/zones/{zoneId}/classification:
+    parameters:
+      - $ref: "#/components/parameters/zoneId"
+      - $ref: "#/components/parameters/domain"
+    get:
+      operationId: cloudflareRouteClassification
+      summary: Derive per-host edge decisions from source and registered service specs
+      description: >-
+        Requires cloudflare:read for the verified zone. Read-only; never changes DNS,
+        cache rules, credentials or approvals. The classification envelope includes
+        domain, hosts, proxyBatches, cacheRules and warnings. Each host includes
+        hostname, proxied decision, reason, blockingRoutes, remedy, route evidence
+        (path, method, class, reason, source) and record before/after proxy states.
+        Classes are cacheable, proxy-bypass, proxy-unsafe, never-proxied and
+        unclassified (DNS-only). Any unsafe/unknown route blocks the whole host;
+        carve out to a separate hostname is guidance, not an implemented change.
+        Unknown third-party manifests default DNS-only. Mail and verification
+        records are never proxied. WebSockets are supported on all Cloudflare
+        plans; long-lived connections still need proven compatibility. Provider
+        documentation currently gives a 125-second proxy read timeout; the policy
+        conservatively retains the issue's 100-second threshold. Upload decisions
+        default to the Free/Pro 100 MB ceiling rather than assuming an upgraded plan.
+        /jin previews each proxyBatches entry through POST bulk with dryRun=true
+        (at most 20 changes per proposal) and previews cacheRules through PUT
+        cache-rules with dryRun=true. Only after preview does the operator request
+        the corresponding staged approvals (dryRun=false). No mutation executes
+        before each human countersignature; signed intent and before/after outcomes
+        use the connector's existing audit rail. Cache-rule replacement is the
+        complete ordered replacement shown in the preview, not an append.
+        Ambiguous OpenAPI operations may use x-edge-class plus x-edge-reason;
+        overrides cannot make authenticated/API operations cacheable.
+      responses:
+        "200": { description: "Derived report envelope: { classification: { domain, hosts, proxyBatches, cacheRules, warnings } }" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "503": { description: Classification inputs unavailable; no changes applied }
   /api/zones/{zoneId}/dns:
     parameters:
       - $ref: "#/components/parameters/zoneId"
@@ -97,7 +133,7 @@ paths:
     post:
       operationId: cloudflareDnsCreate
       summary: Create a DNS record
-      description: Requires cloudflare:dns scoped to this zone. Node-signed intent and outcome are recorded.
+      description: Requires cloudflare:dns scoped to this zone. Creates DNS-only; proxied=true is refused. Node-signed intent and outcome are recorded.
       requestBody:
         required: true
         content:
@@ -115,8 +151,13 @@ paths:
       - $ref: "#/components/parameters/id"
     patch:
       operationId: cloudflareDnsUpdate
-      summary: Edit DNS record or toggle its proxy
-      description: Requires cloudflare:dns and a record belonging to this zone.
+      summary: Edit a DNS record without changing its proxy
+      description: >-
+        Requires cloudflare:dns and a record belonging to this zone.
+        Any proxied field is refused with 409 proxy_approval_required; use the
+        bounded bulk preview and countersigned proposal instead. To rename or
+        change the type/target of a proxied record, first disable proxying through
+        the approval rail. A caller-supplied approvalId is not accepted.
       requestBody:
         required: true
         content:
@@ -255,6 +296,10 @@ paths:
         Approval is single-use, reauthorizes the actor and verified owner at execution,
         and detects stale before-state. Denied, unsigned, expired, stale or replayed
         proposals do not execute.
+        Proxy-on changes must also match the current derived classification,
+        both when previewed/staged and immediately before approved execution.
+        Unknown, unsafe, mail and verification records cannot be enabled by a
+        manually constructed bulk request. Proxy-off remediation remains available.
       requestBody:
         required: true
         content:

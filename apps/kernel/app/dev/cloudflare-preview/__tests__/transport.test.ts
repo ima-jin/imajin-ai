@@ -48,8 +48,10 @@ describe('Cloudflare fixture transport', () => {
       (await fetcher(path(resource), { method, ...(body ? { body: JSON.stringify(body) } : {}) })).json();
     const first = (await request('dns')).records[0];
     const created = (await request('dns', 'POST', { type: 'A', name: 'test.example.com', content: '192.0.2.12', ttl: 1 })).record;
-    await request(`dns/${created.id}`, 'PATCH', { proxied: true });
-    expect((await request('dns')).records.at(-1).proxied).toBe(true);
+    expect((await request(`dns/${created.id}`, 'PATCH', { proxied: true })).error).toBe('proxy_approval_required');
+    await request(`dns/${created.id}`, 'PATCH', { content: '192.0.2.13' });
+    expect((await request('dns')).records.at(-1).content).toBe('192.0.2.13');
+    expect((await request('dns')).records.at(-1).proxied).toBe(false);
     await request(`dns/${created.id}`, 'DELETE');
     expect((await request('dns')).records).toHaveLength(3);
     const plan = { changes: [{ recordId: first.id, proxied: true }], dryRun: true };

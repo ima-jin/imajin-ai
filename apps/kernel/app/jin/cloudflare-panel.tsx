@@ -3,12 +3,13 @@ import './cloudflare.css';
 
 import { approvalCardAnchorId } from './approval-anchor';
 import { CloudflareField, JsonView, cfButton, cfInput } from './cloudflare-editors';
-import { cloudflareFormText, validCloudflareZone } from './cloudflare-client';
+import { cloudflareFormText, validCloudflareZone, type CloudflareZone } from './cloudflare-client';
 import { sections, useCloudflare, type Section } from './use-cloudflare';
 import { CloudflareDnsTab, CloudflareCacheTab, CloudflareHostnamesTab, CloudflareHistoryTab } from './cloudflare-tabs';
+import { CloudflareClassification } from './cloudflare-classification';
 
 /** No token input: custody and grant issuance stay on the existing Import credential rail. */
-export function CloudflarePanel() {
+export function CloudflarePanel({ initialZone, initialSection = 'DNS' }: Readonly<{ initialZone?: CloudflareZone; initialSection?: Section }> = {}) {
   const model = useCloudflare();
   const { zone, setZone, section, setSection, busy, notice, proposal, settings, setRecords, setRules, setHistory, setHostnames, setSettings, setPreview, setNotice, run, load } = model;
   return <section className="cloudflare-surface mt-8 min-w-0 space-y-3 border border-white/10 p-3" data-testid="cloudflare-panel">
@@ -16,7 +17,7 @@ export function CloudflarePanel() {
     <p className="text-sm text-[var(--text-secondary)]">Use an exact verified zone domain and its Cloudflare zone ID.
       Import and seal credentials through Import credential above; this panel never receives keys.
       Actions use your authenticated DID, not an acting identity. Revoking the zone capability stops future operations.</p>
-    <form className="grid min-w-0 gap-3 sm:grid-cols-2" onSubmit={(event) => {
+    <form className="grid min-w-0 gap-3 sm:grid-cols-2" onChange={() => { model.edge.invalidate(); setPreview(null); model.setCachePreview(null); }} onSubmit={(event) => {
       event.preventDefault();
       const data = new FormData(event.currentTarget);
       const target = { domain: cloudflareFormText(data, 'domain').trim(), zoneId: cloudflareFormText(data, 'zoneId').trim() };
@@ -25,9 +26,9 @@ export function CloudflarePanel() {
       setZone(null); setRecords([]); setRules([]); setHistory([]); setHostnames([]); setSettings(null); setPreview(null);
       void run(async () => { await load(target, initial); setZone(target); setSection(initial); });
     }}>
-      <CloudflareField label="Verified zone domain"><input name="domain" placeholder="example.com" required autoCapitalize="none" spellCheck={false} disabled={busy} className={cfInput} /></CloudflareField>
-      <CloudflareField label="Cloudflare zone ID"><input name="zoneId" required pattern="[a-f0-9]{32}" autoCapitalize="none" spellCheck={false} disabled={busy} className={cfInput} /></CloudflareField>
-      <CloudflareField label="Initial zone view"><select name="view" className={cfInput} disabled={busy}>{sections.map((tab) => <option key={tab}>{tab}</option>)}</select></CloudflareField>
+      <CloudflareField label="Verified zone domain"><input name="domain" defaultValue={initialZone?.domain} placeholder="example.com" required autoCapitalize="none" spellCheck={false} disabled={busy} className={cfInput} /></CloudflareField>
+      <CloudflareField label="Cloudflare zone ID"><input name="zoneId" defaultValue={initialZone?.zoneId} required pattern="[a-f0-9]{32}" autoCapitalize="none" spellCheck={false} disabled={busy} className={cfInput} /></CloudflareField>
+      <CloudflareField label="Initial zone view"><select name="view" defaultValue={initialSection} className={cfInput} disabled={busy}>{sections.map((tab) => <option key={tab}>{tab}</option>)}</select></CloudflareField>
       <button type="submit" disabled={busy} className={cfButton}>Load zone</button>
     </form>
     {notice && <output aria-live="polite" className="block break-words text-sm text-[var(--sunset-purple)]">{notice}
@@ -41,6 +42,7 @@ export function CloudflarePanel() {
         <button type="button" className={cfButton} disabled={busy} onClick={() => void run(() => load(zone, section))}>Refresh zone data</button>
       </nav>
       {section === 'DNS' && <CloudflareDnsTab model={model} />}
+      {section === 'Edge classification' && <CloudflareClassification model={model} />}
       {(section === 'Settings / SSL' || section === 'SSL') && <div><h3 className="font-mono">Zone settings and SSL · read only</h3><JsonView value={settings} /></div>}
       {section === 'Cache rules' && <CloudflareCacheTab model={model} />}
       {section === 'Custom hostnames' && <CloudflareHostnamesTab model={model} />}
