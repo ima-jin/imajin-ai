@@ -14,6 +14,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 vi.mock('@/src/lib/notify/reach-approvals', () => ({ backfillReachApprovals: vi.fn().mockResolvedValue(undefined) }));
 vi.mock('@/src/lib/notify/reach-approval-authority', () => ({ reachActAsPrincipal: vi.fn().mockResolvedValue(null) }));
+vi.mock('@/src/lib/auth/group-membership', () => ({ isActiveGroupMember: vi.fn().mockResolvedValue(true) }));
 import {
   CONNECTOR_OWNER_DID,
   GROUP_DID,
@@ -22,6 +23,8 @@ import {
   connectorOwnerIdentity,
   githubProposalDetail,
   operatorIdentity,
+  operatorActingAsGroupIdentity,
+  otherHumanIdentity,
 } from '@/src/lib/notify/__tests__/operator-approvals-test-helpers';
 import {
   installConnectorInboxHarness,
@@ -148,6 +151,29 @@ async function approvalRow(id: string) {
 }
 
 const proposalIds = (inbox: { approvals: Array<{ proposalId: string }> }) => inbox.approvals.map((a) => a.proposalId);
+
+describe('acting Inbox personal attention (#3017)', () => {
+  it.each(['', '&count=true'])('counts only addressed pending personal rows without leaking cards (%s)', async countQuery => {
+    await raise(GATEWAY_PROPOSAL, 'system-agent', 'system-agent:restart', null);
+    await seedLegacyOwnerProposal();
+    await raise('opap_already_decided', 'system-agent', 'system-agent:config-mutation', null);
+    await decide(operatorIdentity(), 'opap_already_decided');
+    mocks.requireAuth.mockResolvedValueOnce({ identity: { ...operatorActingAsGroupIdentity(), handle: 'ryan' } });
+    const response = await GET(new Request(`https://test.imajin.ai/jin/api/operator-approvals?view=acting${countQuery}`) as Parameters<typeof GET>[0]);
+    const body = await response.json();
+    expect(body.personalInbox).toEqual({ pending: 1, handle: 'ryan' });
+    expect(body.approvals ?? []).toEqual([]);
+    if (countQuery) expect(body.pending).toBe(0);
+
+    mocks.requireAuth.mockResolvedValueOnce({ identity: { ...otherHumanIdentity(), actingAs: GROUP_DID, actingAsRole: 'admin' } });
+    const other = await GET(new Request(`https://test.imajin.ai/jin/api/operator-approvals?view=acting${countQuery}`) as Parameters<typeof GET>[0]);
+    expect((await other.json()).personalInbox).toBeUndefined();
+    expect((await decide(operatorActingAsGroupIdentity(), GATEWAY_PROPOSAL)).status).toBe(403);
+    expect(proposalIds(await inboxOf(operatorIdentity()))).toContain(GATEWAY_PROPOSAL);
+    expect((await decide(operatorIdentity(), GATEWAY_PROPOSAL)).status).toBe(200);
+    expect((await approvalRow(GATEWAY_PROPOSAL)).status).toBe('approved');
+  });
+});
 
 // ─── Acceptance ──────────────────────────────────────────────────────────────
 

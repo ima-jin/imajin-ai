@@ -36,9 +36,13 @@
  * #2970: `?count=true` returns only `pending` (plus `isOperator` and, for
  * `view=acting`, `canAccess`). It aggregates the durable approval projection:
  * no card hydration, Reach recovery writes, gate rules or topic payloads.
+ * #3017: validated acting views also carry `personalInbox: {pending, handle}`
+ * when the authenticated human has pending personal cards. This aggregate
+ * never hydrates personal cards or includes shared Reach cards; the acting
+ * list/pending remain organization-only and decision authority is unchanged.
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAuth } from '@imajin/auth';
+import { requireAuth, type Identity } from '@imajin/auth';
 import { corsHeaders, corsOptions } from '@/src/lib/kernel/cors';
 import { getOperatorDid, isOperatorIdentity } from '@/src/lib/notify/operator-approvals';
 import { inboxDidFor } from '@/src/lib/notify/approval-addressing';
@@ -76,6 +80,15 @@ function emptyInbox(countOnly: boolean, actingView: boolean) {
   };
 }
 
+/** Only the authenticated human's own count/handle may cross the acting boundary. */
+async function personalInboxAttention(identity: Identity, actingView: boolean) {
+  if (!actingView || !identity.actingAs || identity.actingAs === identity.id ||
+    identity.subtype !== 'human' || identity.actingFor) return {};
+  const { countInboxApprovals } = await import('@/src/lib/notify/approval-inbox-count');
+  const { pending } = await countInboxApprovals(identity.id);
+  return pending > 0 ? { personalInbox: { pending, handle: identity.handle ?? null } } : {};
+}
+
 export async function GET(request: NextRequest) {
   const cors = corsHeaders(request);
 
@@ -107,6 +120,7 @@ export async function GET(request: NextRequest) {
   const isOperator = operatorDid !== null && isOperatorIdentity(authResult.identity, operatorDid);
 
   const reachPrincipal = await reachActAsPrincipal(authResult.identity);
+  const personalAttention = await personalInboxAttention(identity, actingView);
   if (countOnly) {
     const { countInboxApprovals } = await import('@/src/lib/notify/approval-inbox-count');
     const counts = await countInboxApprovals(inboxDid, {
@@ -114,14 +128,14 @@ export async function GET(request: NextRequest) {
       sharedReachPrincipal: reachPrincipal,
     });
     return NextResponse.json({
-      isOperator, pending: counts.pending,
+      isOperator, pending: counts.pending, ...personalAttention,
       ...(actingView ? { canAccess: isOperator || Boolean(identity.actingAs) || counts.total > 0 } : {}),
     }, { headers: cors });
   }
   const approvals = await listInboxApprovals(inboxDid, reachPrincipal, searchParams.get('source'));
   return NextResponse.json(
     {
-      isOperator, approvals, actAs: actAsContext(authResult.identity), reachActAsAllowed: reachPrincipal !== null,
+      isOperator, approvals, ...personalAttention, actAs: actAsContext(authResult.identity), reachActAsAllowed: reachPrincipal !== null,
       ...(actingView ? { canAccess: isOperator || Boolean(authResult.identity.actingAs) || approvals.length > 0 } : {}),
     },
     { headers: cors },

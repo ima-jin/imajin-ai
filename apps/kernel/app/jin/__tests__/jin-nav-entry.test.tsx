@@ -34,6 +34,14 @@ afterEach(() => {
 });
 
 describe('persistent Jin nav entry', () => {
+  it('adds personal pending attention to the isolated org count', async () => {
+    fetchMock.mockResolvedValue({ ok: true, json: async () => ({
+      canAccess: true, pending: 3, personalInbox: { pending: 2, handle: 'ryan' },
+    }) });
+    entry();
+    const link = await screen.findByRole('link', { name: '/jin — 5 pending Inbox approvals' });
+    expect(link.textContent).toBe('/jin5');
+  });
   it('shows an empty operator console without a zero badge', async () => {
     entry();
     const link = await screen.findByRole('link', { name: '/jin — operator console' });

@@ -45,7 +45,10 @@ describe('count-only Inbox projection (#2970)', () => {
     const res = await GET(req as Parameters<typeof GET>[0]);
     expect(mockRequireAuth).toHaveBeenCalledWith(req, { service: 'jin' });
     expect(mockCount).toHaveBeenCalledWith(did, { source: 'reach', sharedReachPrincipal: session.actingAs ?? null });
-    expect(await res.json()).toEqual({ isOperator: true, pending: 120, canAccess: true });
+    expect(await res.json()).toEqual({
+      isOperator: true, pending: 120, canAccess: true,
+      ...(session.actingAs ? { personalInbox: { pending: 120, handle: null } } : {}),
+    });
     expect(mockList).not.toHaveBeenCalled();
     expect(backfillReachApprovals).not.toHaveBeenCalled();
   });
@@ -150,6 +153,43 @@ describe('OPTIONS /jin/api/operator-approvals', () => {
 });
 
 describe('GET /jin/api/operator-approvals (#2059)', () => {
+  describe('personal attention while acting (#3017)', () => {
+    it.each(['?view=acting', '?view=acting&count=true'])('returns only the actor own count and handle in %s', async query => {
+      mockRequireAuth.mockResolvedValue({ identity: { ...operatorActingAsGroupIdentity(), handle: 'ryan' } });
+      mockCount.mockImplementation(async (did: string) => ({ pending: did === OPERATOR_DID ? 2 : 3, total: 3 }));
+      mockList.mockResolvedValue([]);
+      const response = await GET(makeReq(`${query}&did=${OTHER_HUMAN_DID}&source=github`) as Parameters<typeof GET>[0]);
+      const body = await response.json();
+      expect(body.personalInbox).toEqual({ pending: 2, handle: 'ryan' });
+      expect(mockCount).toHaveBeenCalledWith(OPERATOR_DID);
+      expect(mockCount).not.toHaveBeenCalledWith(OTHER_HUMAN_DID, expect.anything());
+      expect(mockList.mock.calls.every(([did]) => did === GROUP_DID)).toBe(true);
+      expect(body.approvals ?? []).toEqual([]);
+    });
+
+    it('never gives another org controller the operator count', async () => {
+      mockRequireAuth.mockResolvedValue({ identity: {
+        ...otherHumanIdentity(), actingAs: GROUP_DID, actingAsRole: 'admin',
+      } });
+      mockCount.mockImplementation(async (did: string) => ({ pending: did === OPERATOR_DID ? 9 : 0, total: 0 }));
+      mockList.mockResolvedValue([]);
+      const response = await GET(makeReq('?view=acting') as Parameters<typeof GET>[0]);
+      expect((await response.json()).personalInbox).toBeUndefined();
+      expect(mockCount).toHaveBeenCalledTimes(1);
+      expect(mockCount).toHaveBeenCalledWith(OTHER_HUMAN_DID);
+    });
+
+    it.each([
+      operatorIdentity(),
+      { ...operatorActingAsGroupIdentity(), subtype: 'agent' },
+      { ...operatorActingAsGroupIdentity(), actingAs: OPERATOR_DID },
+    ])('omits personal attention outside a human borrowing a different identity', async identity => {
+      mockRequireAuth.mockResolvedValue({ identity });
+      const response = await GET(makeReq('?view=acting') as Parameters<typeof GET>[0]);
+      expect((await response.json()).personalInbox).toBeUndefined();
+      expect(mockCount).not.toHaveBeenCalled();
+    });
+  });
   describe('acting read projection (#2952)', () => {
     it.each(['agent', 'maintainer', 'member', undefined])('refuses actingAsRole=%s before reading an Inbox', async role => {
       mockRequireAuth.mockResolvedValueOnce({
