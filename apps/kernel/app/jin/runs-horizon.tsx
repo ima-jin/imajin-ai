@@ -5,6 +5,7 @@ import type { HorizonStep } from '@/src/lib/loops/horizon';
 import { browserSessionCommands, type SessionCommandClient } from './session-command-client';
 import { useRunsHorizon } from './use-runs-horizon';
 
+// Horizon publication status comes only from the loop registry, never the harness.
 const zones = ['head', 'near', 'middle', 'tail', 'past'] as const;
 const descriptions = {
   head: 'Claimed · sharp up close',
