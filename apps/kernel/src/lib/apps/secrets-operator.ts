@@ -2,8 +2,8 @@
  * App self-secret operator rail (#2799). Proposals carry names/recipes only.
  * Execution requires a verified human signature, not a session or agent request.
  */
-import { and, asc, eq, inArray, isNull } from 'drizzle-orm';
-import { db, registryApps, appSigningKeyClaims, appProvisions } from '@/src/db';
+import { and, asc, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { db, registryApps, appSigningKeyClaims, appProvisions, operatorApprovals } from '@/src/db';
 import { appManifestError, fetchAppManifest, tryGetInstallationToken } from '@/src/lib/github/org-provisioning';
 import type { OperatorApprovalCard } from '@/src/lib/notify/operator-approvals-service';
 import { resolveVaultAuthorization, type VaultAuthorization } from '@/src/lib/vault/authorization';
@@ -12,6 +12,10 @@ import { ensureAppDeclaredSecrets, rotateAppDeclaredSecret, revokeAppDeclaredSec
 import { appSecretsKind, isAppSecretsKind } from './secrets-kind';
 import { consumeAppSecret } from './secret-staging';
 import { getOperatorDid } from '@/src/lib/notify/operator-approvals';
+import type { OperatorAppSecrets } from './secrets-metadata';
+function provenanceIdentity(value: string | null | undefined): string | null {
+  return value?.trim() || null;
+}
 
 export function sameSecretDeclarations(a: AppSecretDeclaration[], b: AppSecretDeclaration[]): boolean {
   const canonical = (list: AppSecretDeclaration[]) => JSON.stringify([...list].sort((x, y) => x.name.localeCompare(y.name)));
@@ -46,30 +50,68 @@ async function secretMetadata(appDid: string) {
   }));
 }
 
-/** Include registry apps even when there is no provision ledger (older claims). */
-export async function listOperatorAppSecrets() {
+/** Registry membership alone is not evidence that an app can use self-secrets. */
+export async function listOperatorAppSecrets(): Promise<OperatorAppSecrets[]> {
   const apps = await db.select({
     appDid: registryApps.appDid, slug: registryApps.slug, name: registryApps.name,
-  }).from(registryApps).where(eq(registryApps.status, 'active')).orderBy(asc(registryApps.name));
+    createdAt: registryApps.createdAt, ownerDid: registryApps.ownerDid,
+  }).from(registryApps).where(and(eq(registryApps.status, 'active'), sql`(
+    exists (select 1 from ${appProvisions} where ${appProvisions.appDid} = ${registryApps.appDid})
+    or exists (select 1 from ${appSigningKeyClaims} where ${appSigningKeyClaims.appDid} = ${registryApps.appDid})
+  )`)).orderBy(asc(registryApps.name));
   const provisions = await db.select({
     appDid: appProvisions.appDid, slug: appProvisions.slug,
-  }).from(appProvisions).where(eq(appProvisions.status, 'succeeded')).orderBy(asc(appProvisions.slug));
-  const dids = apps.map((app) => app.appDid);
-  const claims = dids.length === 0 ? [] : await db.select({ appDid: appSigningKeyClaims.appDid })
-    .from(appSigningKeyClaims).where(and(inArray(appSigningKeyClaims.appDid, dids),
-      eq(appSigningKeyClaims.status, 'claimed'), isNull(appSigningKeyClaims.bootstrapKeyRevokedAt)));
-  const claimed = new Set(claims.map((claim) => claim.appDid));
-  const active = new Set(dids);
-  const registered = await Promise.all(apps.map(async (app) => ({
-    ...app, claimed: claimed.has(app.appDid), active: true,
-    secrets: await secretMetadata(app.appDid),
-  })));
-  return [
-    ...registered,
+    createdAt: appProvisions.createdAt, registeredAt: appProvisions.registeredAt,
+  }).from(appProvisions).orderBy(asc(appProvisions.slug));
+  const dids = [...new Set([...apps, ...provisions].flatMap((app) => app.appDid ? [app.appDid] : []))];
+  const claims = dids.length === 0 ? [] : await db.select({
+    appDid: appSigningKeyClaims.appDid, status: appSigningKeyClaims.status,
+    expiresAt: appSigningKeyClaims.expiresAt, claimedAt: appSigningKeyClaims.claimedAt,
+    claimedByHost: appSigningKeyClaims.claimedByHost,
+  }).from(appSigningKeyClaims).where(and(inArray(appSigningKeyClaims.appDid, dids),
+    isNull(appSigningKeyClaims.bootstrapKeyRevokedAt))).orderBy(desc(appSigningKeyClaims.createdAt));
+  const approvals = await db.select({
+    slug: sql<string>`${operatorApprovals.detail}->>'slug'`,
+    proposedBy: operatorApprovals.signerDid,
+    approvedBy: sql<string | null>`${operatorApprovals.decision}->'payload'->>'decidedBy'`,
+  }).from(operatorApprovals).where(and(
+    eq(operatorApprovals.source, 'apps'), eq(operatorApprovals.kind, 'apps:provision'),
+    eq(operatorApprovals.status, 'applied'),
+    sql`${operatorApprovals.decision}->'payload'->>'decision' = 'approve'`,
+    sql`coalesce(${operatorApprovals.detail}->>'reissueClaim', 'false') <> 'true'`,
+  )).orderBy(asc(operatorApprovals.createdAt));
+  const active = new Set(apps.map((app) => app.appDid));
+  const entries = [
+    ...apps.map((app) => ({ ...app, active: true })),
     ...provisions.filter((row) => !row.appDid || !active.has(row.appDid)).map((row) => ({
-      ...row, name: row.slug, claimed: false, active: false, secrets: [],
+      appDid: row.appDid, slug: row.slug, name: row.slug, active: false, createdAt: null, ownerDid: null,
     })),
   ];
+  return Promise.all(entries.map(async (app) => {
+    const provision = provisions.find((row) => row.appDid === app.appDid && app.appDid !== null)
+      ?? provisions.find((row) => row.slug === app.slug && !row.appDid);
+    const approval = provision ? approvals.find((row) => row.slug === provision.slug) : undefined;
+    const appClaims = claims.filter((row) => row.appDid === app.appDid);
+    const claimed = appClaims.find((row) => row.status === 'claimed');
+    const claim = claimed ?? appClaims[0];
+    const secrets = app.active && app.appDid ? await secretMetadata(app.appDid) : [];
+    const fetched = secrets.flatMap((secret) => secret.timeline).filter((entry) => entry.phase === 'fetched')
+      .sort((a, b) => Date.parse(b.at) - Date.parse(a.at))[0];
+    return {
+      appDid: app.appDid, slug: app.slug, name: app.name, active: app.active, claimed: Boolean(claimed),
+      claimExpiresAt: claim?.expiresAt.toISOString() ?? null,
+      provenance: {
+        created: { at: app.createdAt?.toISOString() ?? null, by: provenanceIdentity(app.ownerDid) },
+        provisioned: {
+          at: (provision?.registeredAt ?? provision?.createdAt)?.toISOString() ?? null,
+          proposedBy: provenanceIdentity(approval?.proposedBy), approvedBy: provenanceIdentity(approval?.approvedBy),
+        },
+        claimed: { at: claimed?.claimedAt?.toISOString() ?? null, by: provenanceIdentity(claimed?.claimedByHost) },
+        lastSeen: { at: fetched?.at ?? null, by: fetched ? app.appDid : null },
+      },
+      secrets,
+    };
+  }));
 }
 
 export type AppSecretsExecutionResult =
