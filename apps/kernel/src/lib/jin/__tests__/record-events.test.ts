@@ -24,6 +24,7 @@ vi.mock('@/src/db', async () => {
     systemEvents: registry.systemEvents,
     operatorApprovals: operatorApprovalsSchema.operatorApprovals,
     identityMembers: authSchema.identityMembers,
+    identities: authSchema.identities,
     delegationGrants: authSchema.delegationGrants,
   };
 });

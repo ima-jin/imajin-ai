@@ -1,9 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { Identity } from '@imajin/auth';
 
-const { mockRequireAuth, mockList } = vi.hoisted(() => ({
+const { mockRequireAuth, mockList, mockGroupMember } = vi.hoisted(() => ({
   mockRequireAuth: vi.fn(),
   mockList: vi.fn(),
+  mockGroupMember: vi.fn(),
 }));
 
 vi.mock('@imajin/auth', async (importOriginal) => {
@@ -19,6 +20,7 @@ vi.mock('@/src/lib/kernel/cors', () => ({
 vi.mock('@/src/lib/jin/record-events', () => ({
   listRecordEventsForPrincipal: mockList,
 }));
+vi.mock('@/src/lib/auth/group-membership', () => ({ isActiveGroupMember: mockGroupMember }));
 
 import { GET, OPTIONS } from '../route';
 
@@ -39,6 +41,7 @@ function agentActingForIdentity(): Identity {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mockGroupMember.mockResolvedValue(true);
   mockList.mockResolvedValue({ events: [], total: 0, limit: 50, offset: 0 });
 });
 
@@ -63,10 +66,54 @@ describe('GET /jin/api/events (#2289)', () => {
     expect(mockList).toHaveBeenCalledWith(HUMAN_DID, {});
   });
 
-  it('resolves the effective principal via X-Acting-For (actingFor delegation)', async () => {
+  it('never selects the read principal via X-Acting-For', async () => {
     mockRequireAuth.mockResolvedValueOnce({ identity: agentActingForIdentity() });
     await GET(makeReq() as Parameters<typeof GET>[0]);
-    expect(mockList).toHaveBeenCalledWith(HUMAN_DID, {});
+    expect(mockList).toHaveBeenCalledWith(AGENT_DID, {});
+    expect(mockRequireAuth).toHaveBeenCalledWith(expect.any(Request), { service: 'jin' });
+  });
+
+  it.each(['owner', 'admin'])('selects the validated org for a human %s', async (role) => {
+    mockRequireAuth.mockResolvedValueOnce({ identity: {
+      ...humanIdentity(), actingAs: 'did:imajin:org', actingAsRole: role,
+    } });
+    expect((await GET(makeReq() as Parameters<typeof GET>[0])).status).toBe(200);
+    expect(mockList).toHaveBeenCalledWith('did:imajin:org', {}, { organization: true });
+    expect(mockGroupMember).toHaveBeenCalledWith('did:imajin:org', HUMAN_DID);
+  });
+
+  it.each(['member', 'maintainer', 'agent', undefined])('denies act-as role %s before listing', async (role) => {
+    mockRequireAuth.mockResolvedValueOnce({ identity: {
+      ...humanIdentity(), actingAs: 'did:imajin:org', actingAsRole: role,
+    } });
+    expect((await GET(makeReq() as Parameters<typeof GET>[0])).status).toBe(403);
+    expect(mockList).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { subtype: 'agent' as const },
+    { actingFor: HUMAN_DID },
+  ])('denies an agent or mixed act-as/acting-for context (%j)', async (extra) => {
+    mockRequireAuth.mockResolvedValueOnce({ identity: {
+      ...humanIdentity(), actingAs: 'did:imajin:org', actingAsRole: 'owner', ...extra,
+    } });
+    expect((await GET(makeReq() as Parameters<typeof GET>[0])).status).toBe(403);
+    expect(mockList).not.toHaveBeenCalled();
+  });
+
+  it('denies a non-group act-as target even with an owner role hint', async () => {
+    mockGroupMember.mockResolvedValueOnce(false);
+    mockRequireAuth.mockResolvedValueOnce({ identity: {
+      ...humanIdentity(), actingAs: 'did:imajin:personal', actingAsRole: 'owner',
+    } });
+    expect((await GET(makeReq() as Parameters<typeof GET>[0])).status).toBe(403);
+    expect(mockList).not.toHaveBeenCalled();
+  });
+
+  it('propagates a service-scoped auth refusal without a personal fallback', async () => {
+    mockRequireAuth.mockResolvedValueOnce({ error: 'Not authorized to act as this group', status: 403 });
+    expect((await GET(makeReq() as Parameters<typeof GET>[0])).status).toBe(403);
+    expect(mockList).not.toHaveBeenCalled();
   });
 
   it('passes action/since/agent/grant filters through to the service', async () => {

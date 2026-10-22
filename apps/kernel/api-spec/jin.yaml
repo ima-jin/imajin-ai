@@ -1203,18 +1203,31 @@ paths:
     get:
       tags: [jin]
       operationId: listRecordEvents
-      summary: List the authenticated principal's signed events (Record lane, #2289)
+      summary: List personal or acting-as organization signed events (Record lane)
       description: >-
         Per-principal read over the signed event stream
         (`registry.system_events`) — the same table `GET /api/admin/events`
-        reads (requireAdmin only). Scoped here to `requireAuth` +
-        `X-Acting-For` instead: a principal sees an event when they are its
-        issuer, when the issuer is an agent that acts for them (legacy
-        `identity_members` role='agent' membership or a #1882 delegation
-        grant they issued), or when the event was authorized by an operator
-        approval they decided (`operator.approvals`, joined on
-        `payload->>'proposalId'`). `agent`/`grant` only ever narrow this
-        scope, never widen it.
+        reads (requireAdmin only). Uses `requireAuth` with service `jin`.
+        The read principal is `identity.actingAs ?? identity.id`, selected by
+        the validated X-Acting-As header or x-acting-as cookie, never by
+        X-Acting-For, a query DID, or membership alone. Acting as an org
+        requires a human owner/admin of a genuine group whose allowed_services
+        includes `jin` (or is null for unrestricted access). Restricted members,
+        counterparties (labelled relationships), other orgs' controllers,
+        agents and mixed acting-as/acting-for contexts cannot read its Record.
+        Org rows include the org DID's issued events, historical members'
+        events explicitly carrying payload.actingAs equal to the org, agent
+        events bound by payload.grantId to an org-issued delegation grant
+        (or payload.principal equal to the org when no grantId is present),
+        and decided events joined to approvals addressed to the org via
+        payload.proposalId. Agent membership never grants org visibility;
+        a shared agent DID alone is insufficient. Revoked grants and removed
+        memberships retain attributed history.
+        Without act-as, the existing personal issuer/owned-agent/approval
+        scope remains, excluding explicitly org-attributed rows. The same
+        signed stream and approvals are read without copying or writing data.
+        `agent`/`grant` and all other filters only narrow scope, never widen it;
+        totals use the same scope as the returned rows.
       security:
         - cookieAuth: []
       parameters:
@@ -1262,6 +1275,11 @@ paths:
                   offset: { type: integer }
         "401":
           description: Not authenticated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "403":
+          description: Acting-as organization or jin service access refused; no personal fallback
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }

@@ -5,11 +5,18 @@
  * (`registry.system_events`) is `GET /api/admin/events` — requireAdmin,
  * no per-principal scoping, no link back to the operator-approval card
  * that authorized a decided event. This module is the per-principal
- * counterpart: any authenticated identity (or an agent acting for one,
- * via `resolveActingDid`) can list the slice of the signed event stream
- * that belongs to them.
+ * counterpart: an authenticated identity reads its own slice, or a validated
+ * human owner/admin reads the session's acting-as org (#3033). X-Acting-For
+ * never selects this read principal.
  *
- * ## Scoping
+ * Organization reads include the org issuer, historical members' explicitly
+ * org-attributed (`payload.actingAs`) events, grant-bound agent events and
+ * approvals addressed to the org. Membership never supplies agent authority.
+ * A shared agent DID alone is insufficient: the row must name an org-issued
+ * grant, or name the org as principal under such a grant. Revocation does not
+ * erase history. Explicit org attribution stays out of personal reads.
+ *
+ * ## Personal scoping (organization scoping is stricter, above)
  * A principal sees a `system_events` row when:
  *   - they are its issuer (`system_events.did` — the only actor DID the
  *     `emit` bus reactor persists per row today; see
@@ -71,8 +78,8 @@
  * `not-applicable` for every row with nothing to cover. Pure crypto over the
  * payload's own `keyId` — no extra DB read.
  */
-import { and, desc, eq, gte, inArray, or, sql } from 'drizzle-orm';
-import { db, delegationGrants, identityMembers, operatorApprovals, systemEvents } from '@/src/db';
+import { and, desc, eq, exists, gte, inArray, ne, not, or, sql } from 'drizzle-orm';
+import { db, delegationGrants, identities, identityMembers, operatorApprovals, systemEvents } from '@/src/db';
 import { DECISION_APPROVAL_KIND } from '@/src/lib/decisions/view';
 import {
   LETTER_NOT_COUNTERSIGNED_LABEL,
@@ -227,6 +234,59 @@ function toRecordEventRow(row: RecordEventQueryRow): RecordEventRow {
   };
 }
 
+/** Historical attribution, not current authority: revocation never erases Record. */
+function organizationScope(principalDid: string) {
+  const memberEvent = and(
+    sql`${systemEvents.payload}->>'actingAs' = ${principalDid}`,
+    exists(db.select({ did: identityMembers.memberDid }).from(identityMembers)
+      .innerJoin(identities, eq(identities.id, identityMembers.memberDid)).where(and(
+      eq(identityMembers.identityDid, principalDid),
+      eq(identityMembers.memberDid, systemEvents.did),
+      eq(identities.subtype, 'human'),
+      inArray(identityMembers.role, ['owner', 'admin', 'maintainer', 'member']),
+    ))),
+  );
+  const agentEvent = exists(
+    db.select({ id: delegationGrants.id }).from(delegationGrants).where(and(
+      eq(delegationGrants.delegatorDid, principalDid),
+      eq(delegationGrants.agentDid, systemEvents.did),
+      sql`(${systemEvents.payload}->>'principal' IS NULL OR ${systemEvents.payload}->>'principal' = ${principalDid})`,
+      sql`(${systemEvents.payload}->>'actingAs' IS NULL OR ${systemEvents.payload}->>'actingAs' = ${principalDid})`,
+      or(
+        sql`${systemEvents.payload}->>'grantId' = ${delegationGrants.id}`,
+        and(
+          sql`${systemEvents.payload}->>'grantId' IS NULL`,
+          sql`${systemEvents.payload}->>'principal' = ${principalDid}`,
+        ),
+      ),
+    )),
+  );
+  return or(
+    eq(systemEvents.did, principalDid),
+    memberEvent,
+    agentEvent,
+    and(eq(systemEvents.action, 'operator.approval.decided'), eq(operatorApprovals.operatorDid, principalDid)),
+  );
+}
+
+function personalScope(principalDid: string, ownedAgentDids: string[]) {
+  return and(
+    or(
+      eq(systemEvents.did, principalDid),
+      inArray(systemEvents.did, ownedAgentDids),
+      eq(operatorApprovals.operatorDid, principalDid),
+    ),
+    sql`(${systemEvents.payload}->>'actingAs' IS NULL OR ${systemEvents.payload}->>'actingAs' = ${principalDid})`,
+    sql`(${operatorApprovals.operatorDid} IS NULL OR ${operatorApprovals.operatorDid} = ${principalDid})`,
+    sql`(${systemEvents.payload}->>'principal' IS NULL OR ${systemEvents.payload}->>'principal' = ${principalDid})`,
+    not(exists(db.select({ id: delegationGrants.id }).from(delegationGrants).where(and(
+      sql`${systemEvents.payload}->>'grantId' = ${delegationGrants.id}`,
+      eq(delegationGrants.agentDid, systemEvents.did),
+      ne(delegationGrants.delegatorDid, principalDid),
+    )))),
+  );
+}
+
 /**
  * List the slice of the signed event stream that belongs to `principalDid`,
  * newest first, with the approval-ref join and bounded limit+offset
@@ -235,12 +295,13 @@ function toRecordEventRow(row: RecordEventQueryRow): RecordEventRow {
 export async function listRecordEventsForPrincipal(
   principalDid: string,
   filters: RecordEventFilters = {},
+  scope: { organization?: boolean } = {},
 ): Promise<RecordEventsPage> {
   const limit = clampLimit(filters.limit);
   const offset = clampOffset(filters.offset);
   const since = parseSince(filters.since);
 
-  const ownedAgentDids = await resolveOwnedAgentDids(principalDid);
+  const ownedAgentDids = scope.organization ? [] : await resolveOwnedAgentDids(principalDid);
 
   // The one field name the sole live `emit`-reactor producer of an
   // approval-linked event (`operator.approval.decided`) carries — see the
@@ -248,11 +309,9 @@ export async function listRecordEventsForPrincipal(
   // joined here.
   const proposalIdJoin = sql`${operatorApprovals.proposalId} = (${systemEvents.payload}->>'proposalId')`;
 
-  const scopeCondition = or(
-    eq(systemEvents.did, principalDid),
-    inArray(systemEvents.did, ownedAgentDids),
-    eq(operatorApprovals.operatorDid, principalDid),
-  );
+  const scopeCondition = scope.organization
+    ? organizationScope(principalDid)
+    : personalScope(principalDid, ownedAgentDids);
 
   const agentFilter = filters.agent
     ? or(eq(systemEvents.did, filters.agent), sql`${systemEvents.payload}->>'agentDid' = ${filters.agent}`)
