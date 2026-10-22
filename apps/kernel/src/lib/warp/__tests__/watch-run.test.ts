@@ -72,6 +72,7 @@ vi.mock('../loop-emit', () => ({
 }));
 
 import { watchRun, WATCH_POLL_INTERVALS_MS, WATCH_TIMEOUT_MS } from '../dispatch';
+import { emitWarpRunLoopEvent } from '../loop-emit';
 
 // #2334: `sleep` and `Date.now` below are already fully injected/stubbed —
 // the poll loop never touches a real timer, so this suite has nothing to gain
@@ -893,6 +894,26 @@ describe('conversation deltas', () => {
 // ── Progress: cost and early errors (#1682) ───────────────────────────────────
 
 describe('cost accumulation', () => {
+  it('keeps the blocker first line on usage-only progress rather than cost updated', async () => {
+    const status_message = { message: 'Waiting on Postal decision\nAdditional context', error_code: 'held' };
+    respondRun(runBody('BLOCKED', { status_message, request_usage: { inference_cost: 0.1 } }));
+    respondRun(runBody('BLOCKED', { status_message, request_usage: { inference_cost: 0.3 } }));
+    respondRun(runBody('SUCCEEDED'));
+    await watchRun(PRINCIPAL, RUN_ID, { sleep });
+    expect(progressEvents()[1].payload).toMatchObject({ changed: ['usage'], summary: 'Waiting on Postal decision' });
+    expect(eventOfType('warp.run.blocked').payload.summary).toBe('Waiting on Postal decision');
+    const transitions = vi.mocked(emitWarpRunLoopEvent).mock.calls.map(([transition]) => transition);
+    expect(transitions.filter(t => t.state === 'blocked').every(t => t.summary === 'Waiting on Postal decision')).toBe(true);
+  });
+
+  it('does not overwrite an existing blocker when telemetry has no status message', async () => {
+    respondRun(runBody('BLOCKED', { request_usage: { inference_cost: 0.1 } }));
+    respondRun(runBody('BLOCKED', { request_usage: { inference_cost: 0.3 } }));
+    respondRun(runBody('SUCCEEDED'));
+    await watchRun(PRINCIPAL, RUN_ID, { sleep });
+    const transitions = vi.mocked(emitWarpRunLoopEvent).mock.calls.map(([transition]) => transition);
+    expect(transitions.filter(t => t.type === 'loop.progress')).toHaveLength(0);
+  });
   it('publishes when the running spend moves, and not when it holds', async () => {
     respondRun(runBody('INPROGRESS', { request_usage: { inference_cost: 0.1 } }));
     respondRun(runBody('INPROGRESS', { request_usage: { inference_cost: 0.3 } }));

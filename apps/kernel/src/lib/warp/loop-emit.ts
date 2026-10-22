@@ -85,7 +85,7 @@ export interface WarpRunLoopTransition {
  * publish that already happened, the same invariant every publish in
  * `dispatch.ts` follows for its own bus publish.
  */
-export async function emitWarpRunLoopEvent(transition: WarpRunLoopTransition): Promise<void> {
+export async function emitWarpRunLoopEvent(transition: WarpRunLoopTransition): Promise<true | void> {
   try {
     const payload: LoopEnvelope = {
       loopId: transition.runId,
@@ -123,6 +123,7 @@ export async function emitWarpRunLoopEvent(transition: WarpRunLoopTransition): P
     }
     await forEachSequential(transition.prArtifacts ?? [], (pr) =>
       observeWarpPullRequestArtifact(transition.principalDid, pr, transition.runId, transition.at));
+    return true;
   } catch (err) {
     log.error(
       { err: String(err), type: transition.type, runId: transition.runId },

@@ -1,6 +1,7 @@
 import type { LoopJson, LoopEventJson } from '@/src/lib/loops/serialize';
 
 export function isBlockedLoop(loop: LoopJson): boolean {
+  if (loop.kind === 'warp.run' && ['awaiting_review', 'resolved', 'superseded'].includes(loop.state.toLowerCase())) return false;
   return !loop.finishedAt && (loop.lastEventType === 'loop.blocked' || loop.state.toLowerCase() === 'blocked');
 }
 

@@ -20,6 +20,10 @@ export function RunsPreview() {
   }, []);
   return <main className="mx-auto max-w-3xl min-w-0 p-4">
     <h1 className="text-xl font-semibold">Runs · development fixture</h1>
+    <nav className="my-3 flex flex-wrap gap-4 text-sm text-indigo-300" aria-label="Blocker reconciliation fixtures">
+      <a href="?blockers=before">Before reconciliation</a>
+      <a href="?blockers=after">After reconciliation</a>
+    </nav>
     <p className="my-3 text-sm text-amber-300">Mock transport, generated browser signing identity, exact #77 envelopes. No live gateway execution. Live round-trip remains pending plugin #77.</p>
     {error && <p role="alert">{error}</p>}
     {ready && <RunsPanel client={client} />}
