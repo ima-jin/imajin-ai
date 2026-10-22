@@ -43,6 +43,7 @@ describe('display-only lifecycle', () => {
     const lastSeen = new Date(now - 90 * 86400_000).toISOString();
     const input = { ...row, hasConsent: true, lastSeen };
     expect(registeredApp(input, now).status).toBe('dormant');
+    expect(registeredApp({ ...input, consentAt: new Date(now).toISOString() }, now).status).toBe('dormant');
     expect(registeredApp(input, now - 1).status).toBe('active');
     expect(registeredApp({ ...input, lastSeen: new Date(now).toISOString() }, now).status).toBe('active');
     expect(registeredApp({ ...input, createdAt: null, lastSeen: null }, now).status).toBe('active');

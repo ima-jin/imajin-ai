@@ -905,6 +905,11 @@ paths:
   /jin/api/registered-apps:
     get:
       tags: [jin, apps]
+      servers:
+        - url: https://{node}.imajin.ai
+          variables:
+            node: { default: jin }
+        - url: http://localhost:3000
       summary: Read registered app lifecycle and provenance (node operator only)
       description: >-
         Read-only engine-bay inventory; never writes registry rows. Includes every

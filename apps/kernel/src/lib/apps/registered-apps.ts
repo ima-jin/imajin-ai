@@ -33,11 +33,12 @@ function timestamp(value: Date | string | null): string | null {
 /** A display projection only: never persist dormant or repair old registry rows. */
 export function registeredApp(row: RegistryLifecycleRow, now = Date.now()): RegisteredApp {
   const lastSeen = timestamp(row.lastSeen);
-  const baseline = [lastSeen, timestamp(row.createdAt), row.consentAt, row.provisionAt, row.claimAt]
+  const baseline = [timestamp(row.createdAt), row.consentAt, row.provisionAt, row.claimAt]
     .filter((at): at is string => at !== null).map(at => Date.parse(at));
+  const lastActivity = lastSeen ? Date.parse(lastSeen) : Math.max(...baseline);
   const protectedApp = row.hasConsent || row.hasProvision || row.hasClaim || row.tier === 'first_party';
-  const dormant = protectedApp && baseline.length > 0
-    && now - Math.max(...baseline) >= 90 * 24 * 60 * 60 * 1000;
+  const dormant = protectedApp && Number.isFinite(lastActivity)
+    && now - lastActivity >= 90 * 24 * 60 * 60 * 1000;
   let status: RegisteredAppStatus = 'active';
   if (row.status === 'expired' || row.status === 'revoked') status = row.status;
   else if (dormant) status = 'dormant';

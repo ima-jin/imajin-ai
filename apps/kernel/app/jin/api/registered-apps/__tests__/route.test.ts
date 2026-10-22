@@ -48,6 +48,8 @@ describe('registered app read route', () => {
     const path = spec.paths['/jin/api/registered-apps'];
     expect(path.get.security).toEqual([{ cookieAuth: [] }, { bearerAuth: [] }]);
     expect(Object.keys(path)).toEqual(['get']);
+    expect(path.get.servers.map((server: { url: string }) => server.url))
+      .toEqual(['https://{node}.imajin.ai', 'http://localhost:3000']);
     expect(path.get.description).toContain('never writes registry rows');
   });
 });
