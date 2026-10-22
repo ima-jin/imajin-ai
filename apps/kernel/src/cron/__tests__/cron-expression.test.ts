@@ -97,6 +97,7 @@ describe('kernel manifest', () => {
   it('preserves the existing schedules and adds hourly domain rechecks', () => {
     const table = Object.fromEntries(KERNEL_CRON_MANIFEST.jobs.map((j) => [cronJobName(j), j.schedule]));
     expect(table).toEqual({
+      'registry-app-expiry': '*/10 * * * *',
       'operator-approval-expiry': '*/10 * * * *',
       'grant-expiry': '*/10 * * * *',
       'grant-audit-retry': '* * * * *',

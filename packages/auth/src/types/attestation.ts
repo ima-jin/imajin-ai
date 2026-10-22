@@ -166,6 +166,7 @@ export const ATTESTATION_TYPES = [
   'registry.app.registered',
   'registry.app.rotated',
   'registry.app.revoked',
+  'registry.app.expired',
   // #2638/#2641 — an operator changed the list of event types an app may emit
   // via POST /api/events (PATCH /api/admin/registry/apps/:appId). Same
   // system-class posture as the three above.
@@ -351,6 +352,7 @@ export const MECHANICAL_ATTESTATION_TYPES = [
   'registry.app.registered',
   'registry.app.rotated',
   'registry.app.revoked',
+  'registry.app.expired',
   // #2638/#2641 — see ATTESTATION_TYPES above.
   'registry.app.emittable-events.updated',
   'registry.app.act_as.updated',

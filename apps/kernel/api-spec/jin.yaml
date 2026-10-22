@@ -947,6 +947,49 @@ components:
         errorMessage: { type: string, nullable: true }
 
 paths:
+  /api/cron/registry-app-expiry:
+    get:
+      tags: [apps]
+      servers:
+        - url: https://{node}.imajin.ai
+          variables:
+            node: { default: jin }
+        - url: http://localhost:3000
+      operationId: expireRegistryApps
+      summary: Expire DCR clients that never completed consent after seven days
+      description: >-
+        Kernel-cron calls this route every ten minutes (UTC), noOverlap enabled.
+        Uses the vault-generated kernel.cron-secret bearer, never a user session.
+        Each tick locks at most 100 active did:imajin:mcp-* registry rows,
+        oldest first, skipping locked rows. created_at must be at least seven
+        days old. Any app.authorized history (even revoked or expired), provision,
+        signing-key claim, or first_party tier excludes the app.
+        Each status='expired', revoked_at and updated_at change commits atomically
+        with a node-signed registry.app.expired mechanical attestation.
+        Payload is {appId, reason: 'dcr-unconsented-ttl', ttlDays: 7, createdAt};
+        subject is the app DID, context_id is appId, context_type is registry_app.
+        Signing or persistence failure rolls back the tick. Nothing is deleted.
+        Already-expired rows are a no-op; existing old registrations are included
+        on the first ticks without SQL cleanup. Registered apps returns retained
+        expired history with the node issuer as ended.by in the collapsed expired
+        group. Returning clients re-register; non-active apps cannot authorize
+        or mint tokens.
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Bounded tick completed, including no-op ticks.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok, checked, expired]
+                properties:
+                  ok: { type: boolean, const: true }
+                  checked: { type: integer, minimum: 0, maximum: 100 }
+                  expired: { type: integer, minimum: 0, maximum: 100 }
+        "401": { description: Missing or incorrect cron bearer; no writes. }
+        "503": { description: Cron secret unavailable from the vault; no writes. }
+        "500": { description: Tick failed and rolled back; generic error only. }
   /jin/api/registered-apps:
     get:
       tags: [jin, apps]
