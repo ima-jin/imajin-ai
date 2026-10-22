@@ -19,9 +19,9 @@ const now = Date.parse('2026-10-21T00:00:00Z');
 const row = {
   id: 'app_fixture', appDid: 'did:imajin:fixture', name: 'Legacy', tier: 'third_party', status: 'active',
   createdAt: old, ownerDid: 'did:imajin:registrar', registrar: null,
-  consentAt: null, consentBy: null, consentingPrincipals: 0,
+  consentAt: null, consentBy: null, consentingPrincipals: 0, liveConsents: 0,
   hasConsent: false, hasProvision: false, hasClaim: false, provisionAt: null, claimAt: null,
-  lastSeen: null, endedAt: null, endedBy: null,
+  lastSeen: null, endedAt: null, endedBy: null, revocationId: null,
 };
 describe('display-only lifecycle', () => {
   it.each(['hasConsent', 'hasProvision', 'hasClaim'] as const)('flags idle apps with %s without mutating input', key => {
@@ -63,6 +63,7 @@ beforeAll(async () => {
       created_at timestamptz, owner_did text, revoked_at timestamptz, token_audiences text[]);
     CREATE TABLE auth.attestations (id text, issuer_did text, subject_did text, type text,
       issued_at timestamptz, expires_at timestamptz, revoked_at timestamptz);
+    ALTER TABLE auth.attestations ADD COLUMN context_id text, ADD COLUMN context_type text;
     CREATE TABLE kernel.app_provisions (app_did text, created_at timestamptz);
     CREATE TABLE kernel.app_signing_key_claims (app_did text, created_at timestamptz, claimed_at timestamptz);
     CREATE TABLE auth.oauth_refresh_tokens (client_id text, created_at timestamptz, last_used_at timestamptz);
@@ -75,7 +76,7 @@ beforeAll(async () => {
       ('seed','did:imajin:seed','Links','first_party','active','2026-01-01','platform',null,'{links}'),
       ('expired','did:imajin:expired','Expired','third_party','expired','2026-01-01','platform','2026-09-01','{}'),
       ('revoked','did:imajin:revoked','Revoked','third_party','revoked','2026-01-01','platform','2026-09-02','{}');
-    INSERT INTO auth.attestations VALUES
+    INSERT INTO auth.attestations (id, issuer_did, subject_did, type, issued_at, expires_at, revoked_at) VALUES
       ('first','principal-a','did:imajin:mcp-fixture','app.authorized','2026-01-01',null,'2026-02-01'),
       ('second','principal-b','did:imajin:mcp-fixture','app.authorized','2026-02-01',null,null),
       ('duplicate','principal-b','did:imajin:mcp-fixture','app.authorized','2026-02-02',null,null),
@@ -84,6 +85,7 @@ beforeAll(async () => {
       ('reg','actual-registrar','did:imajin:legacy','registry.app.registered','2026-01-01',null,null),
       ('end1','expiry-signer','did:imajin:expired','registry.app.expired','2026-09-01',null,null),
       ('end2','operator','did:imajin:revoked','registry.app.revoked','2026-09-02',null,null);
+    UPDATE auth.attestations SET context_id = 'revoked', context_type = 'registry_app' WHERE id = 'end2';
     INSERT INTO auth.oauth_refresh_tokens VALUES
       ('dcr','2026-10-10','2026-10-11'), ('dcr','2026-10-12',null);
     INSERT INTO registry.system_events VALUES
@@ -113,12 +115,13 @@ describe('real SQL inventory', () => {
     });
     expect(apps.find(app => app.id === 'revoked')).toMatchObject({
       status: 'revoked', ended: { at: '2026-09-02T00:00:00.000Z', by: 'operator' },
+      revocationId: 'end2',
     });
     expect(await client.query('select * from registry.apps order by id')).toEqual(before);
   });
-  it('keeps first historical consent even when revoked and counts distinct live principals only', async () => {
+  it('counts live consents separately from distinct principals, excluding expired and revoked grants', async () => {
     expect((await listRegisteredApps()).find(app => app.id === 'dcr')).toMatchObject({
-      firstConsent: { at: old, by: 'principal-a' }, consentingPrincipals: 2,
+      firstConsent: { at: old, by: 'principal-a' }, consentingPrincipals: 2, liveConsents: 3,
       lastSeen: '2026-10-14T00:00:00.000Z',
     });
   });

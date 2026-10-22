@@ -581,6 +581,7 @@ file: ``- `path` — role``.
 - `apps/kernel/src/lib/auth/knock.ts` — S3
 - `apps/kernel/app/auth/api/attestations/internal/route.ts` — S3
 - `apps/kernel/app/api/admin/registry/apps/route.ts` — S3
+- `apps/kernel/app/api/admin/registry/apps/[appId]/revoke/route.ts` — S3 (operator-only Clear; node-signed registry.app.revoked receipt commits atomically with the retained app tombstone)
 - `apps/kernel/src/lib/auth/node-key-rotation.ts` — S3
 - `packages/auth/src/key-rotation.ts` — S3
 - `packages/auth/src/types/attestation.ts` — S3

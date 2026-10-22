@@ -966,6 +966,9 @@ paths:
         Without activity, age starts at the latest creation/consent/provision/claim.
         First consent includes historical revoked/expired consents; the count is
         distinct currently consenting principals (unrevoked, unexpired).
+        liveConsents separately counts all unrevoked, unexpired app.authorized
+        attestations, including multiple consents by one principal, for Clear's
+        confirmation. Clear calls the existing POST /api/admin/registry/apps/{appId}/revoke.
         Last seen is the maximum refresh-token creation/rotation, successful
         token mint, or authorization validation. Delegated mint/validate reads
         auth.app_authorization_usage (#3009). Service/session mints record
@@ -976,6 +979,8 @@ paths:
         issuer with owner_did fallback for older rows. Terminal actor comes from
         the matching registry.app.revoked/expired attestation. Expired apps are
         returned normally; the UI groups them in a collapsed expired disclosure.
+        revocationId identifies the latest registry.app.revoked receipt for
+        this registry row; revoked rows expose it alongside the time and operator.
         No credential, bearer, hash, claim code, or attestation payload is returned.
       security: [{ cookieAuth: [] }, { bearerAuth: [] }]
       responses:
@@ -991,7 +996,7 @@ paths:
                     type: array
                     items:
                       type: object
-                      required: [id, appDid, name, kind, status, created, firstConsent, consentingPrincipals, lastSeen, ended]
+                      required: [id, appDid, name, kind, status, created, firstConsent, consentingPrincipals, liveConsents, lastSeen, ended, revocationId]
                       properties:
                         id: { type: string }
                         appDid: { type: string }
@@ -1001,8 +1006,10 @@ paths:
                         created: { $ref: "#/components/schemas/RegistryProvenancePoint" }
                         firstConsent: { $ref: "#/components/schemas/RegistryProvenancePoint" }
                         consentingPrincipals: { type: integer, minimum: 0 }
+                        liveConsents: { type: integer, minimum: 0 }
                         lastSeen: { type: [string, "null"], format: date-time }
                         ended: { $ref: "#/components/schemas/RegistryProvenancePoint" }
+                        revocationId: { type: [string, "null"] }
         "401": { description: Authentication required. }
         "403": { description: Node operator required; no metadata returned. }
         "503": { description: Metadata unavailable; provider detail is redacted. }

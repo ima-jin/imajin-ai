@@ -586,6 +586,38 @@ paths:
         "400": { description: Invalid declaration or mixed update }
         "401": { description: Admin session required }
         "404": { description: App not found }
+  /api/admin/registry/apps/{appId}/revoke:
+    servers:
+      - url: /
+    parameters:
+      - { name: appId, in: path, required: true, schema: { type: string } }
+    post:
+      operationId: operatorRevokeRegistryApp
+      summary: Clear a registered app without deleting history
+      description: >-
+        Existing revoke route, used by /jin Clear. Requires the configured human
+        node operator directly; acting-for agents and non-operator admins are
+        refused. Changes status to revoked and records a signed registry.app.revoked
+        attestation in one transaction. Registry enforcement refuses the app on
+        its next mint, verify or OAuth use; consent history is retained.
+        Repeated and concurrent requests are idempotent. Nothing is deleted.
+      security: [{ cookieAuth: [] }, { bearerAuth: [] }]
+      responses:
+        "200":
+          description: Revoked with receipt, or already revoked without another write.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok]
+                properties:
+                  ok: { type: boolean }
+                  attestationId: { type: string }
+                  alreadyRevoked: { type: boolean }
+        "401": { description: Authentication required }
+        "403": { description: Direct node operator required }
+        "404": { description: Registered app not found }
+        "503": { description: Signing or persistence unavailable; no partial state change }
   /registry/api/health:
     get:
       servers:
