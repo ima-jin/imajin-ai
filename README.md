@@ -1,5 +1,4 @@
 # Imajin
-<!-- #2028 delta replay started 2026-10-22; source reconciliation in progress. -->
 
 **You compose. Imajin orchestrates. Signed. Legible.**
 
@@ -16,11 +15,13 @@ Revocation is the option to leave: withdraw → soft tombstone → hard destruct
 
 ## What you can do today
 
-**Repository, registry and issue evidence checked 2026-10-21 UTC.**
+**Repository, registry and issue evidence checked 2026-10-22 UTC.**
 
 - Run a local kernel, register an identity, and use its auth, profile, messaging and media surfaces. Start with the [developer guide index](docs/guide/README.md); configuration, permissions and deployment determine availability.
 - Connect an agent through the [OpenClaw plugin](https://github.com/ima-jin/openclaw-imajin-plugin/blob/main/README.md), or compose a registered app with the published SDK. See [Build an app](#build-an-app).
 - Choose apps built on Imajin from their owned repositories below. App deployment and acceptance are separate from a kernel release.
+- Inspect Registered apps, Clear an active or dormant registration with a consent-count confirmation, and inspect your personal or authorized organization Record on `/jin`. Inbox and Operator approvals show actionable items by default; history remains behind **Show history**. See the [kernel README](apps/kernel/README.md#operator-lanes) for the merged-source delta and access limits.
+- Use the inference proxy with principal-based minting and the full usable model catalog, without pinning a grant ID. Re-grant on `/jin` → Grants after consent expires or is revoked; see the [passthrough runbook](packages/openclaw-infer-passthrough/README.md).
 
 The [v0.8.25 source tag](https://github.com/ima-jin/imajin-ai/tree/v0.8.25) and npm SDK artifacts are available. The [kernel production workflow](https://github.com/ima-jin/imajin-ai/actions/runs/39439563638) succeeded on 2026-10-20 for `c8e84b354b7330c9f5d40c403147ded3143c17c0`; that does not certify later main commits or every app flow. This replay is **pre-cut upkeep for v0.8.26**, not an assertion that v0.8.26 is released.
 
@@ -65,7 +66,7 @@ External consumers install **`@ima-jin/*` from npmjs.org anonymously**; workspac
 
 ## Packages (SDK)
 
-Generated from every `packages/*/package.json` at [`e34a1b43`](https://github.com/ima-jin/imajin-ai/tree/e34a1b43a3db6f169d6b2c1d19d22c3220f62376). Descriptions use manifest text, or current exports where a manifest has none. Anonymous public npm `latest` checks on **2026-10-21 UTC** found **12 published, 18 workspace-only**. Versions are a checked snapshot; registry links show live metadata. SDK tracking: [#1982](https://github.com/ima-jin/imajin-ai/issues/1982), [#1581](https://github.com/ima-jin/imajin-ai/issues/1581), [#1011](https://github.com/ima-jin/imajin-ai/issues/1011), [#1992](https://github.com/ima-jin/imajin-ai/issues/1992).
+Generated from every `packages/*/package.json` at [`1f7501b4`](https://github.com/ima-jin/imajin-ai/tree/1f7501b4317220374b9ba3d8a82c6a1691315d4d). Descriptions use manifest text, or current exports where a manifest has none. Anonymous public npm `latest` checks on **2026-10-22 UTC** found **12 published, 18 workspace-only**. Versions are a checked snapshot; registry links show live metadata. SDK tracking: [#1982](https://github.com/ima-jin/imajin-ai/issues/1982), [#1581](https://github.com/ima-jin/imajin-ai/issues/1581), [#1011](https://github.com/ima-jin/imajin-ai/issues/1011), [#1992](https://github.com/ima-jin/imajin-ai/issues/1992).
 
 ### Core SDK and workspace libraries
 
@@ -127,11 +128,11 @@ Details: [local development](docs/DEVELOPER.md) · [deployment](deploy/README.md
 ## Project status
 
 <!-- stats:start -->
-Generated 2026-10-21 UTC from source commit [`e34a1b43`](https://github.com/ima-jin/imajin-ai/commit/e34a1b43a3db6f169d6b2c1d19d22c3220f62376); full-history repository snapshot, not live deployment metrics.
+Generated 2026-10-22 UTC from source commit [`1f7501b4`](https://github.com/ima-jin/imajin-ai/commit/1f7501b4317220374b9ba3d8a82c6a1691315d4d); full-history repository snapshot, not live deployment metrics.
 
 | Repository metric | Computed value |
 |---|---|
-| Reachable commits (`git rev-list --count e34a1b43`, full history) | 5880 |
+| Reachable commits (`git rev-list --count 1f7501b4`, full history) | 5954 |
 | `apps/*/package.json` | 3 (includes kernel and internal services) |
 | `packages/*/package.json` | 30 |
 <!-- stats:end -->
