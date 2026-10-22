@@ -155,6 +155,23 @@ afterEach(() => { vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
 afterAll(async () => { await harness.close(); });
 
 describe('organization Record access and data isolation (#3033)', () => {
+  it.each(['person', 'agent'])('filters %s rows before pagination with scoped totals and unchanged personal defaults (#3035)', async kind => {
+    const org = await page(OWNER, ORG, `?kind=${kind}&limit=1`);
+    expect(org.events).toHaveLength(1);
+    expect(org.events[0].kind).toBe(kind);
+    expect(org.total).toBe(3);
+    const allFiltered = await page(OWNER, ORG, `?kind=${kind}`);
+    expect(allFiltered.events.every((event: { kind: string }) => event.kind === kind)).toBe(true);
+    expect(allFiltered.events.map((event: { id: string }) => event.id)).not.toContain('personal');
+    expect((await GET(request(COUNTERPARTY, ORG, `?kind=${kind}`))).status).toBe(403);
+    expect((await GET(request(OTHER_OWNER, ORG, `?kind=${kind}`))).status).toBe(403);
+    expect((await GET(request(MEMBER, ORG, `?kind=${kind}`))).status).toBe(403);
+    const personal = await GET(request(OWNER, undefined, `?kind=${kind}`));
+    const personalBody = await personal.json();
+    expect(personalBody.total).toBe(kind === 'person' ? 1 : 2);
+    expect(personalBody.events.every((event: { kind: string }) => event.kind === kind)).toBe(true);
+    expect(eventIds(await (await GET(request(OWNER))).json())).toEqual(['agent_personal', 'agent_unbound', 'personal']);
+  });
   it('uses canonical Inbox addressing for legacy connectors, never the stale stored addressee', async () => {
     await harness.db.insert(operatorApprovals).values([
       { proposalId: 'misrouted_out', operatorDid: ORG, source: 'github', kind: 'github:mutate',

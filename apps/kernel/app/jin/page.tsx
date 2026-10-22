@@ -15,6 +15,7 @@ import { SpendPanel } from './spend-panel';
 import { RunsPanel } from './runs-panel';
 import { FrontDoorPanel } from './front-door-panel';
 import { PushSubscribeButton } from './push-subscribe-button';
+import { RecordPanel } from './record-panel';
 
 // ─── Main page ────────────────────────────────────────────────────────────────
 //
@@ -91,6 +92,7 @@ export default function JinPage() {
             raised revoke/decision surfaces above this read-only lane. */}
         <GrantsPanel />
         <RunsPanel />
+        <RecordPanel />
 
         {/* Spend lane (#2725) — provider cost vs caps, 7-day trend, and
             (labelled interim, until the #2290 loop registry) Warp run cost +
