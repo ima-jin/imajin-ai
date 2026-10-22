@@ -33,6 +33,7 @@ import { isReachApproval, validReachReply } from './reach-approval-contract';
 import { canDecideReach } from './reach-approval-authority';
 import { commitReachDecision, ReachDecisionError } from './reach-approval-execution';
 import { forEachSequential } from '../async/sequential';
+import { approvalExpiryDays, approvalExpiryReason, isApprovalActionable } from './approval-attention';
 import type { SessionBinding, SessionCommandFrame } from '../jin/session-command-contract';
 import type { ApprovalSessionOutcome } from './operator-approval-session-outcome';
 import {
@@ -124,6 +125,7 @@ export interface OperatorApprovalCard {
   appliedAt: string | null;
   /** This reader's unsigned Inbox archive marker, never another principal's. */
   archivedAt: string | null;
+  actionable: boolean;
   createdAt: string;
   updatedAt: string;
   /** Only populated from authenticated, signature-verified native evidence. */
@@ -158,6 +160,10 @@ function toCard(row: OperatorApprovalRow, archivedAt: string | null = null): Ope
     outcome: publicOutcome(row.outcome),
     appliedAt: row.appliedAt ? row.appliedAt.toISOString() : null,
     archivedAt,
+    actionable: isApprovalActionable({
+      ...row, archivedAt,
+      nativeDecision: Boolean((row.decision as { sessionCommand?: unknown } | null)?.sessionCommand),
+    }, Date.now(), approvalExpiryDays(process.env.OPERATOR_APPROVAL_EXPIRY_DAYS)),
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
@@ -265,7 +271,7 @@ export type DecideOperatorApprovalResult =
 const ARCHIVABLE_STATUSES = ['approved', 'denied', 'withdrawn', 'applied', 'expired'];
 
 function isArchivableDecision(row: OperatorApprovalRow): boolean {
-  return row.source === 'decision' && row.kind === 'decision:card' && ARCHIVABLE_STATUSES.includes(row.status);
+  return ARCHIVABLE_STATUSES.includes(row.status);
 }
 
 function archivedAtFor(row: OperatorApprovalRow, inboxDid: string): string | null {
@@ -277,7 +283,7 @@ function archivedAtFor(row: OperatorApprovalRow, inboxDid: string): string | nul
 }
 
 /**
- * Archive only the real addressee's decided decision card. This unsigned
+ * Archive only the real addressee's decided approval. This unsigned
  * preference never applies a proposal, signs a decision, or deletes a row.
  * Merge against the live JSONB value in one UPDATE, preserving concurrent
  * markers and outcome metadata; the first timestamp for this DID wins.
@@ -293,7 +299,7 @@ export async function archiveOperatorApproval(params: {
     return { ok: false, error: 'This proposal is not addressed to you', status: 403 };
   }
   if (!isArchivableDecision(row)) {
-    return { ok: false, error: 'Only decided decision cards may be archived', status: 409 };
+    return { ok: false, error: 'Only decided approvals may be archived', status: 409 };
   }
 
   const archivedAt = new Date().toISOString();
@@ -313,9 +319,7 @@ export async function archiveOperatorApproval(params: {
     )`,
   }).where(and(
     eq(operatorApprovals.proposalId, proposalId),
-    eq(operatorApprovals.operatorDid, operatorDid),
-    eq(operatorApprovals.source, 'decision'),
-    eq(operatorApprovals.kind, 'decision:card'),
+    eq(operatorApprovals.operatorDid, row.operatorDid),
     inArray(operatorApprovals.status, ARCHIVABLE_STATUSES),
   )).returning({ proposalId: operatorApprovals.proposalId });
   if (!updated.length) {
@@ -430,7 +434,11 @@ function checkDecisionGates(
   mode: string | undefined,
 ): { ok: true } | { ok: false; error: string; status: number } {
   const modeGate = checkDecisionMode(row, decision, mode);
-  return modeGate.ok ? checkExecCommandGate(row, decision) : modeGate;
+  if (!modeGate.ok) return modeGate;
+  if (approvalExpiryReason(row, Date.now(), approvalExpiryDays(process.env.OPERATOR_APPROVAL_EXPIRY_DAYS))) {
+    return { ok: false, error: 'Approval has expired and can no longer be decided', status: 409 };
+  }
+  return checkExecCommandGate(row, decision);
 }
 
 /**
@@ -774,12 +782,13 @@ export async function markApplied(proposalId: string): Promise<{ ok: boolean }> 
   if (!row) return { ok: false };
   if (await usesNativeRail(row)) return { ok: false };
   if (row.status === 'applied') return { ok: true };
-  if (row.status !== 'approved') return { ok: false };
+  const expiry = row.outcome?.approvalExpiry as { previousStatus?: string } | undefined;
+  if (row.status !== 'approved' && !(row.status === 'expired' && expiry?.previousStatus === 'approved')) return { ok: false };
 
   await db
     .update(operatorApprovals)
     .set({ status: 'applied', appliedAt: new Date(), updatedAt: new Date() })
-    .where(and(eq(operatorApprovals.proposalId, proposalId), eq(operatorApprovals.status, 'approved')));
+    .where(and(eq(operatorApprovals.proposalId, proposalId), inArray(operatorApprovals.status, ['approved', 'expired'])));
 
   log.info({ proposalId }, 'operator approval applied');
   return { ok: true };
@@ -808,7 +817,7 @@ export async function attachApprovalOutcome(
 
   await db
     .update(operatorApprovals)
-    .set({ outcome: outcome as unknown as Record<string, unknown>, updatedAt: new Date() })
+    .set({ outcome: sql`coalesce(${operatorApprovals.outcome}, '{}'::jsonb) || ${JSON.stringify(outcome)}::jsonb`, updatedAt: new Date() })
     .where(eq(operatorApprovals.proposalId, proposalId));
 
   log.info({ proposalId, exitCode: outcome.exitCode }, 'exec.command outcome attached');
@@ -832,7 +841,7 @@ export async function attachApprovalOutcome(
  */
 export async function listApprovalsForOperator(
   inboxDid: string,
-  options: { source?: string } = {},
+  options: { source?: string; includeHistory?: boolean } = {},
 ): Promise<OperatorApprovalCard[]> {
   const candidate = or(
     eq(operatorApprovals.operatorDid, inboxDid),
@@ -846,7 +855,8 @@ export async function listApprovalsForOperator(
     .from(operatorApprovals)
     .where(and(...conditions))
     .orderBy(desc(operatorApprovals.createdAt));
-  return Promise.all(rows
+  const cards = await Promise.all(rows
     .filter((row) => resolveApprovalAddressee(row, row.operatorDid) === inboxDid)
     .map((row) => boundCard(row, archivedAtFor(row, inboxDid))));
+  return options.includeHistory === false ? cards.filter(card => card.actionable) : cards;
 }

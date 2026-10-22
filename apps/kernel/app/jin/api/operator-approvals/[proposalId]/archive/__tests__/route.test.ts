@@ -77,7 +77,7 @@ function post(id = PROPOSAL_ID) {
 
 async function inboxAs(identity: Identity = operatorIdentity()) {
   mocks.requireAuth.mockResolvedValueOnce({ identity });
-  const response = await GET(new Request('https://test.imajin.ai/jin/api/operator-approvals') as Parameters<typeof GET>[0]);
+  const response = await GET(new Request('https://test.imajin.ai/jin/api/operator-approvals?history=true') as Parameters<typeof GET>[0]);
   return response.json();
 }
 
@@ -220,16 +220,12 @@ describe('durable decision-card archive (#2694)', () => {
   it.each([
     { status: 'pending' },
     { status: 'unknown' },
-    { source: 'exec', kind: 'exec.command' },
-    { source: 'github', kind: 'github:mutate', detail: { ownerDid: OPERATOR_DID } },
-    { source: 'other', kind: 'decision:card' },
-    { kind: 'decision:other' },
   ])('refuses non-archivable rows without mutation: %j', async (overrides) => {
     await seed(overrides);
     const before = await row();
     const response = await post();
     expect(response.status).toBe(409);
-    expect(await response.json()).toEqual({ error: 'Only decided decision cards may be archived' });
+    expect(await response.json()).toEqual({ error: 'Only decided approvals may be archived' });
     expect(await row()).toEqual(before);
   });
 

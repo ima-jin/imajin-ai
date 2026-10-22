@@ -73,6 +73,7 @@ vi.mock('drizzle-orm', () => ({
   desc: (...args: unknown[]) => ({ desc: args }),
   or: (...args: unknown[]) => ({ or: args }),
   sql: (strings: TemplateStringsArray, ...values: unknown[]) => ({ sql: [...strings], values }),
+  inArray: (...args: unknown[]) => ({ inArray: args }),
 }));
 
 vi.mock('@imajin/logger', () => ({
@@ -351,8 +352,8 @@ function row(overrides: Record<string, unknown> = {}) {
     status: 'pending',
     decision: null,
     appliedAt: null,
-    createdAt: new Date('2026-09-08T00:00:00.000Z'),
-    updatedAt: new Date('2026-09-08T00:00:00.000Z'),
+    createdAt: new Date(),
+    updatedAt: new Date(),
     ...overrides,
   };
 }

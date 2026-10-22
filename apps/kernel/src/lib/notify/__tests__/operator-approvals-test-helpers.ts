@@ -129,10 +129,11 @@ export function pendingApprovalCard(overrides: Record<string, unknown> = {}) {
     keysTouched: [] as string[],
     detail: null,
     status: 'pending' as const,
+    actionable: true,
     decision: null,
     appliedAt: null,
-    createdAt: new Date('2026-09-08T00:00:00.000Z').toISOString(),
-    updatedAt: new Date('2026-09-08T00:00:00.000Z').toISOString(),
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
     ...overrides,
   };
   const contentHash =

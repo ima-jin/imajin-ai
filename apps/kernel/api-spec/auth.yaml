@@ -3059,7 +3059,15 @@ paths:
       tags: [auth]
       operationId: listRegisteredAttestationTypes
       summary: Discover registered attestation types
-      description: Includes agreement for finalized document agreements. The record retains the signed document hash and unique party DIDs; agreement cards appear in both parties' attestation history including revocation state.
+      description: >-
+        Includes agreement for finalized document agreements and the mechanical
+        operator.approval.expired type. Expiry records are node-signed, never
+        awaiting countersignature, with contextType operator.approval,
+        contextId proposalId, subjectDid the resolved addressee, and payload
+        {proposalId, previousStatus, reason}. They commit atomically with expiry,
+        preserve the original decision, and remain after a late applied receipt.
+        The agreement record retains the signed document hash and unique party
+        DIDs; agreement cards appear in both parties' attestation history including revocation state.
       responses:
         "200": { description: "Registered types and schemas, including agreement" }
 

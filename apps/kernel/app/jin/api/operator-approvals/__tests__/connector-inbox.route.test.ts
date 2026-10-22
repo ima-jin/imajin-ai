@@ -161,7 +161,7 @@ describe('acting Inbox personal attention (#3017)', () => {
     mocks.requireAuth.mockResolvedValueOnce({ identity: { ...operatorActingAsGroupIdentity(), handle: 'ryan' } });
     const response = await GET(new Request(`https://test.imajin.ai/jin/api/operator-approvals?view=acting${countQuery}`) as Parameters<typeof GET>[0]);
     const body = await response.json();
-    expect(body.personalInbox).toEqual({ pending: 1, handle: 'ryan' });
+    expect(body.personalInbox).toEqual({ pending: 2, handle: 'ryan' });
     expect(body.approvals ?? []).toEqual([]);
     if (countQuery) expect(body.pending).toBe(0);
 
