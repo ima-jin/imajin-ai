@@ -96,16 +96,6 @@ vi.mock('@imajin/auth', async (importOriginal) => {
 });
 
 describe('verified native approvals: one command execution rail', () => {
-  it('retains signed expiry references on expired native history cards', async () => {
-    const { db } = await import('@/src/db');
-    const expiry = { attestationId: 'att-expiry', reason: 'not applied before approval deadline', previousStatus: 'approved' };
-    vi.mocked(db.select).mockReturnValueOnce({
-      from: () => ({ where: () => ({ orderBy: vi.fn().mockResolvedValue([execCommandRow({ status: 'expired', outcome: { approvalExpiry: expiry } })]) }) }),
-    } as unknown as ReturnType<typeof db.select>);
-    const [card] = await listApprovalsForOperator(OPERATOR_DID);
-    expect(card.actionable).toBe(false);
-    expect(card.outcome).toEqual({ approvalExpiry: expiry });
-  });
   const binding = { loopId: 'loop_native', principalDid: OPERATOR_DID, agentDid: AGENT_DID, approvalId: 'oc_approval_1' };
   const frame = {
     type: 'session.approve', commandId: 'command_native', principal: OPERATOR_DID, to: AGENT_DID,
@@ -120,6 +110,16 @@ describe('verified native approvals: one command execution rail', () => {
     native.binding.mockResolvedValue(binding);
     native.verify.mockResolvedValue(frame);
     mockSelectLimit.mockResolvedValue([execCommandRow()]);
+  });
+  it('retains signed expiry references on expired native history cards', async () => {
+    const { db } = await import('@/src/db');
+    const expiry = { attestationId: 'att-expiry', reason: 'not applied before approval deadline', previousStatus: 'approved' };
+    vi.mocked(db.select).mockReturnValueOnce({
+      from: () => ({ where: () => ({ orderBy: vi.fn().mockResolvedValue([execCommandRow({ status: 'expired', outcome: { approvalExpiry: expiry } })]) }) }),
+    } as unknown as ReturnType<typeof db.select>);
+    const [card] = await listApprovalsForOperator(OPERATOR_DID);
+    expect(card.actionable).toBe(false);
+    expect(card.outcome).toEqual({ approvalExpiry: expiry });
   });
   it.each([null, { commandId: frame.commandId, outcome: 'completed', at: frame.issuedAt }])('projects native receipts without legacy applied claims after binding revocation: %j', async (sessionOutcome) => {
     const { db } = await import('@/src/db');

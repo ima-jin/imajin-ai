@@ -3,6 +3,7 @@ import { db, attestations, operatorApprovals, type OperatorApprovalRow } from '@
 import { prepareMechanicalAttestation } from '@/src/lib/auth/emit-mechanical-attestation';
 import { approvalExpiryDays, approvalExpiryReason } from './approval-attention';
 import { resolveApprovalAddressee } from './approval-addressing';
+import { forEachSequential } from '../async/sequential';
 
 export type ApprovalSourceState = 'gone' | 'superseded';
 
@@ -39,10 +40,10 @@ export async function expireApprovals(now = Date.now()): Promise<number> {
   const days = approvalExpiryDays(process.env.OPERATOR_APPROVAL_EXPIRY_DAYS);
   const rows = await db.select().from(operatorApprovals).where(inArray(operatorApprovals.status, ['pending', 'approved']));
   let expired = 0;
-  for (const row of rows) {
+  await forEachSequential(rows, async row => {
     const reason = approvalExpiryReason(row, now, days);
     if (reason && await expireApproval(row, reason)) expired++;
-  }
+  });
   return expired;
 }
 

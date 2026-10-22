@@ -26,8 +26,8 @@ export function approvalExpiryReason(card: ApprovalAttention, now = Date.now(), 
   const sourceDeadline = card.detail?.expiresAt;
   const parsed = typeof sourceDeadline === 'string' ? Date.parse(sourceDeadline) : Number.NaN;
   const fallback = new Date(card.createdAt).getTime() + days * DAY_MS;
-  const deadline = Number.isFinite(parsed)
-    ? Math.min(parsed, card.status === 'pending' ? fallback : parsed) : fallback;
+  let deadline = fallback;
+  if (Number.isFinite(parsed)) deadline = card.status === 'pending' ? Math.min(parsed, fallback) : parsed;
   if (now < deadline || !Number.isFinite(deadline)) return null;
   return card.status === 'approved' ? 'not applied before approval deadline' : 'pending approval deadline elapsed';
 }
