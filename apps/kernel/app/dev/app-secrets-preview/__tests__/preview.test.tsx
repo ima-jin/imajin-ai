@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import AppSecretsPreview from '../app-secrets-preview';
 import AppSecretsPreviewPage from '../page';
 
@@ -40,5 +40,20 @@ describe('App secrets development preview', () => {
     render(<AppSecretsPreview />);
     expect(screen.queryByTestId('app-secrets-panel')).toBeNull();
     expect(globalThis.fetch).toBe(originalFetch);
+  });
+  it('simulates Clear locally without letting the development preview send real mutations', async () => {
+    vi.stubEnv('NODE_ENV', 'development');
+    const originalFetch = vi.fn();
+    vi.stubGlobal('fetch', originalFetch);
+    vi.stubGlobal('confirm', vi.fn().mockReturnValue(true));
+    render(<AppSecretsPreview />);
+    const panel = await screen.findByRole('region', { name: 'Registered apps' });
+    const row = within(panel).getByText('BrokerAgent fixture (zero consent)').closest('li')!;
+    fireEvent.click(within(row).getByRole('button', { name: 'Clear' }));
+    await within(row).findByText('delegated app · revoked');
+    expect(row.textContent).toContain('att_fixture_clear');
+    expect(originalFetch).not.toHaveBeenCalled();
+    expect((await fetch('/api/admin/registry/apps/not-a-fixture/revoke', { method: 'POST' })).status).toBe(404);
+    expect(originalFetch).not.toHaveBeenCalled();
   });
 });
