@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { RecordEventRow, RecordEventsPage } from '@/src/lib/jin/record-events';
 
 const defaultTransport: typeof fetch = (...args) => fetch(...args);
@@ -50,9 +50,32 @@ export function RecordPanel({ transport = defaultTransport }: Readonly<{ transpo
   const [loading, setLoading] = useState(true);
   const [denied, setDenied] = useState(false);
   const [error, setError] = useState(false);
+  const abortRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    function scopeChanged() {
+      abortRef.current?.abort();
+      setPage(null);
+      setKind('');
+      setOffset(0);
+      setRefresh(value => value + 1);
+    }
+    function storageChanged(event: StorageEvent) {
+      if (event.key === null || event.key === 'imajin:acting-as') scopeChanged();
+    }
+    globalThis.addEventListener('imajin:acting-as-changed', scopeChanged);
+    globalThis.addEventListener('imajin:session-changed', scopeChanged);
+    globalThis.addEventListener('storage', storageChanged);
+    return () => {
+      globalThis.removeEventListener('imajin:acting-as-changed', scopeChanged);
+      globalThis.removeEventListener('imajin:session-changed', scopeChanged);
+      globalThis.removeEventListener('storage', storageChanged);
+    };
+  }, []);
 
   useEffect(() => {
     const controller = new AbortController();
+    abortRef.current = controller;
     setPage(null);
     setLoading(true);
     setError(false);

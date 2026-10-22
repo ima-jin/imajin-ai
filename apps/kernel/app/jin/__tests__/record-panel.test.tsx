@@ -3,6 +3,23 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import type { RecordEventRow, RecordEventsPage } from '@/src/lib/jin/record-events';
 import { RecordPanel } from '../record-panel';
+import JinPage from '../page';
+
+vi.mock('../usage-feed-panel', () => ({ UsageFeedPanel: () => null }));
+vi.mock('../operator-approvals-panel', () => ({ OperatorApprovalsPanel: () => null }));
+vi.mock('../vault-keys-panel', () => ({ VaultKeysPanel: () => null }));
+vi.mock('../vault-import-panel', () => ({ VaultImportPanel: () => null }));
+vi.mock('../cloudflare-panel', () => ({ CloudflarePanel: () => null }));
+vi.mock('../access-bearers-panel', () => ({ AccessBearersPanel: () => null }));
+vi.mock('../provision-app-panel', () => ({ ProvisionAppPanel: () => null }));
+vi.mock('../app-secrets-panel', () => ({ AppSecretsPanel: () => null }));
+vi.mock('../registered-apps-panel', () => ({ RegisteredAppsPanel: () => null }));
+vi.mock('../registered-app-scopes-panel', () => ({ RegisteredAppScopesPanel: () => null }));
+vi.mock('../grants-panel', () => ({ GrantsPanel: () => null }));
+vi.mock('../spend-panel', () => ({ SpendPanel: () => null }));
+vi.mock('../runs-panel', () => ({ RunsPanel: () => null }));
+vi.mock('../front-door-panel', () => ({ FrontDoorPanel: () => null }));
+vi.mock('../push-subscribe-button', () => ({ PushSubscribeButton: () => null }));
 
 const person = 'did:imajin:owner';
 const agent = `did:imajin:agent-${'a'.repeat(64)}`;
@@ -38,6 +55,37 @@ function deferred<T>() {
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
 describe('/jin Record lane (#3035)', () => {
+  it('mounts Record on /jin rather than leaving an unreachable component', async () => {
+    fixture([row()]);
+    render(<JinPage />);
+    expect(await screen.findByRole('region', { name: 'Record' })).toBeDefined();
+    expect(screen.getByText(person)).toBeDefined();
+  });
+  it.each(['imajin:acting-as-changed', 'imajin:session-changed', 'storage'])('discards org rows and filters on %s without requiring a reload', async eventName => {
+    const transport = fixture([row({ who: 'org-private' })]);
+    render(<RecordPanel />);
+    await screen.findByText('org-private');
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'person' } });
+    await waitFor(() => expect(transport).toHaveBeenCalledTimes(2));
+    await screen.findByText('org-private');
+    transport.mockResolvedValue(response([row()]));
+    act(() => { globalThis.dispatchEvent(eventName === 'storage'
+      ? new StorageEvent('storage', { key: 'imajin:acting-as' }) : new Event(eventName)); });
+    expect(screen.queryByText('org-private')).toBeNull();
+    await screen.findByText(person);
+    expect((screen.getByRole('combobox') as HTMLSelectElement).value).toBe('');
+    expect(transport).toHaveBeenLastCalledWith('/jin/api/events?limit=50&offset=0', expect.anything());
+  });
+
+  it('ignores unrelated storage changes but refreshes when storage is cleared', async () => {
+    const transport = fixture([row()]);
+    render(<RecordPanel />);
+    await screen.findByText(person);
+    act(() => { globalThis.dispatchEvent(new StorageEvent('storage', { key: 'unrelated' })); });
+    expect(transport).toHaveBeenCalledTimes(1);
+    act(() => { globalThis.dispatchEvent(new StorageEvent('storage', { key: null })); });
+    await waitFor(() => expect(transport).toHaveBeenCalledTimes(2));
+  });
   it('loads the cookie-scoped read without a client-selected principal or acting-for header', async () => {
     const transport = fixture([row(), row({ id: 'agent', kind: 'agent', who: agent })]);
     render(<RecordPanel />);
