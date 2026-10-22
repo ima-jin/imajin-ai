@@ -204,6 +204,32 @@ describe('POST /auth/api/grants — intro-attribution terms (#1886)', () => {
 });
 
 describe('GET /auth/api/grants', () => {
+  it.each(['grant_1', 'foreign', '', 'grant_1&other=grant_2'])('only narrows the existing list for grantId=%s', async (grantId) => {
+    requireAuthMock.mockResolvedValue({ identity: { id: DELEGATOR } });
+    listGrantsForDelegatorMock.mockResolvedValue([{ grantId: 'grant_1' }, { grantId: 'grant_2' }]);
+    const res = await GET(new Request(`${ENDPOINT}?grantId=${encodeURIComponent(grantId)}`));
+    expect(await res.json()).toEqual({ grants: grantId === 'grant_1' ? [{ grantId: 'grant_1' }] : [] });
+    expect(listGrantsForDelegatorMock).toHaveBeenCalledWith(DELEGATOR);
+  });
+
+  it('keeps Record grant links behind auth-service and delegation checks', async () => {
+    requireAuthMock.mockResolvedValue({ error: 'auth service denied', status: 403 });
+    expect((await GET(new Request(`${ENDPOINT}?grantId=grant_1`))).status).toBe(403);
+    requireAuthMock.mockResolvedValue({ identity: { id: AGENT, subtype: 'agent', actingFor: DELEGATOR } });
+    expect((await GET(new Request(`${ENDPOINT}?grantId=grant_1`))).status).toBe(403);
+    expect(listGrantsForDelegatorMock).not.toHaveBeenCalled();
+  });
+
+  it('resolves a Record link only inside the validated acting organization', async () => {
+    requireAuthMock.mockResolvedValue({ identity: {
+      id: DELEGATOR, subtype: 'human', actingAs: 'did:imajin:org', actingAsRole: 'owner',
+    } });
+    listGrantsForDelegatorMock.mockResolvedValue([{ grantId: 'grant_org' }]);
+    const res = await GET(new Request(`${ENDPOINT}?grantId=grant_org`));
+    expect(await res.json()).toEqual({ grants: [{ grantId: 'grant_org' }] });
+    expect(listGrantsForDelegatorMock).toHaveBeenCalledWith('did:imajin:org');
+    expect(requireAuthMock).toHaveBeenCalledWith(expect.any(Request), { service: 'auth' });
+  });
   it('lists grants for the authenticated delegator', async () => {
     requireAuthMock.mockResolvedValue({ identity: { id: DELEGATOR } });
     listGrantsForDelegatorMock.mockResolvedValue([{ grantId: 'grant_1' }]);

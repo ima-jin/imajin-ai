@@ -4456,6 +4456,15 @@ paths:
         in allowed_services (or null/all), owner/admin for org act-as, and no
         actingFor agent delegation. Authenticated human actorDid is distinct
         from the org delegatorDid in grant lifecycle history.
+        Optional grantId (used by Record links) narrows this same visible
+        list to one exact ID. Unknown, foreign or empty IDs return an empty
+        list without confirming whether the grant exists elsewhere.
+      parameters:
+        - name: grantId
+          in: query
+          required: false
+          schema: { type: string }
+          description: Exact grant ID within the existing delegator-only read scope.
       security:
         - cookieAuth: []
         - bearerAuth: []

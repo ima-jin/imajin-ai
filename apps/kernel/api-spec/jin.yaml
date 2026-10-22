@@ -715,17 +715,54 @@ components:
       description: >-
         Present on a signed event authorized by an operator approval,
         joined from `operator.approvals` on `payload->>'proposalId'`
-        (#2289) — the Record lane can click event -> approval card.
-      required: [proposalId, source, kind]
+        (#2289), only when addressed to the read principal — the Record
+        lane can click event -> approval card via /jin?proposalId=<proposalId>.
+        Null in an actingFor context, which has no Inbox.
+        Uses the same canonical connector-owner addressing as the Inbox,
+        not a legacy row's stale operatorDid.
+      required: [proposalId, href, source, kind]
       properties:
         proposalId: { type: string }
+        href: { type: string, description: "Relative approval-card link; proposalId is URL-encoded." }
         source: { type: string, example: "vault" }
         kind: { type: string, example: "vault:mint" }
+    RecordGrantRef:
+      type: object
+      required: [grantId, href]
+      description: >-
+        Reference to the exact payload.grantId in the existing
+        /auth/api/grants?grantId=<grantId> read surface, which only narrows
+        the existing caller-visible list. Only present when the recorded grant
+        belongs to the read principal, its agentDid equals the event issuer,
+        and the caller has auth-service access. Revoked/expired grants remain
+        referenceable. Null for missing, unknown, foreign or mismatched grants;
+        never infer a grant from the agent's current authority.
+      properties:
+        grantId: { type: string }
+        href: { type: string, description: "Relative grant read link; grantId is URL-encoded." }
     RecordEvent:
       type: object
       description: One row off the signed event stream (`registry.system_events`), scoped to the caller (#2289).
+      required: [kind, who, grantRef, approvalRef]
       properties:
         id: { type: string }
+        kind:
+          type: string
+          enum: [person, agent]
+          description: >-
+            Human identity issuers are person; registered agents, organization
+            issuers and historical grant/agent-membership issuers are agent.
+            Legacy unregistered issuers without agent evidence are person.
+            Payload actor labels are never trusted for classification.
+        who:
+          type: string
+          description: >-
+            Issuer DID, not the acting-as organization or a payload label.
+            Legacy issuer-less approval events fall back to their addressed
+            principal DID; the original nullable did remains unchanged.
+        grantRef:
+          allOf: [{ $ref: "#/components/schemas/RecordGrantRef" }]
+          nullable: true
         service: { type: string }
         action: { type: string }
         did: { type: string, nullable: true, description: "The event's issuer." }
@@ -1292,6 +1329,10 @@ paths:
         Without act-as, the existing personal issuer/owned-agent/approval
         scope remains, excluding explicitly org-attributed rows. The same
         signed stream and approvals are read without copying or writing data.
+        Every row includes kind (person|agent), who (issuer DID), grantRef
+        and approvalRef. Authority references use the existing grant and
+        approval read surfaces only; no new read reach is granted. Grant
+        references require auth-service access as well as jin Record access.
         `agent`/`grant` and all other filters only narrow scope, never widen it;
         totals use the same scope as the returned rows.
       security:

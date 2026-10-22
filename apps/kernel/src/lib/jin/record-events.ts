@@ -51,7 +51,8 @@
  *
  * ## approvalRef / hasOperatorSignature
  * `approvalRef` is populated straight off the joined `operator.approvals`
- * row (`{ proposalId, source, kind }`) when the join matches, else
+ * row (`{ proposalId, source, kind }`) when the join matches AND is addressed
+ * to the read principal, else
  * `null`. `hasOperatorSignature` is a boolean presence check on
  * `payload.operatorSignature` (#2082's client-side countersignature) —
  * computed uniformly for every row, `false` when the field is absent, so
@@ -81,6 +82,7 @@
 import { and, desc, eq, exists, gte, inArray, ne, not, or, sql } from 'drizzle-orm';
 import { db, delegationGrants, identities, identityMembers, operatorApprovals, systemEvents } from '@/src/db';
 import { DECISION_APPROVAL_KIND } from '@/src/lib/decisions/view';
+import { resolveApprovalAddressee } from '@/src/lib/notify/approval-addressing';
 import {
   LETTER_NOT_COUNTERSIGNED_LABEL,
   assessDecidedModeCountersignature,
@@ -105,6 +107,7 @@ export interface RecordEventFilters {
 
 export interface ApprovalRef {
   proposalId: string;
+  href: string;
   source: string;
   kind: string;
   /** Option letter chosen on a decided `decision:card` approval (#2323) — read-only projection of the decided payload's `mode`. */
@@ -113,6 +116,12 @@ export interface ApprovalRef {
 
 export interface RecordEventRow {
   id: string;
+  /** Human/person or automated agent issuer; never inferred from payload labels. */
+  kind: 'person' | 'agent';
+  /** Issuer DID; legacy issuer-less approval events use their addressed principal. */
+  who: string;
+  /** Exact recorded grant, never guessed from an agent's current grants. */
+  grantRef: { grantId: string; href: string } | null;
   service: string;
   action: string;
   did: string | null;
@@ -191,6 +200,10 @@ type RecordEventQueryRow = {
   approvalProposalId: string | null;
   approvalSource: string | null;
   approvalKind: string | null;
+  approvalOperatorDid: string | null;
+  approvalDetail: Record<string, unknown> | null;
+  actorKind: 'person' | 'agent';
+  grantId: string | null;
 };
 
 /** The chosen option letter, only for an `operator.approval.decided` event on a `decision:card` approval (#2323). */
@@ -200,24 +213,33 @@ function chosenOptionOf(row: RecordEventQueryRow, payload: Record<string, unknow
   return typeof mode === 'string' && mode.length > 0 ? mode : undefined;
 }
 
-function toApprovalRef(row: RecordEventQueryRow, payload: Record<string, unknown> | null): ApprovalRef | null {
-  if (!row.approvalProposalId) return null;
+function toApprovalRef(row: RecordEventQueryRow, payload: Record<string, unknown> | null, principalDid: string): ApprovalRef | null {
+  if (!row.approvalProposalId || resolveApprovalAddressee({
+    kind: row.approvalKind ?? '', detail: row.approvalDetail,
+  }, row.approvalOperatorDid ?? '') !== principalDid) return null;
   const chosenOption = chosenOptionOf(row, payload);
   return {
     proposalId: row.approvalProposalId,
+    href: `/jin?proposalId=${encodeURIComponent(row.approvalProposalId)}`,
     source: row.approvalSource ?? '',
     kind: row.approvalKind ?? '',
     ...(chosenOption ? { chosenOption } : {}),
   };
 }
 
-function toRecordEventRow(row: RecordEventQueryRow): RecordEventRow {
+function toRecordEventRow(row: RecordEventQueryRow, principalDid: string, canReadApprovals: boolean): RecordEventRow {
   const payload = (row.payload ?? null) as Record<string, unknown> | null;
   // Only a decided event carries a decision to assess (#2693).
   const modeCountersign: ModeCountersignStatus =
     row.action === 'operator.approval.decided' ? assessDecidedModeCountersignature(payload) : 'not-applicable';
   return {
     id: row.id,
+    kind: row.actorKind,
+    who: row.did ?? row.approvalOperatorDid ?? principalDid,
+    grantRef: row.grantId ? {
+      grantId: row.grantId,
+      href: `/auth/api/grants?grantId=${encodeURIComponent(row.grantId)}`,
+    } : null,
     service: row.service,
     action: row.action,
     did: row.did,
@@ -227,7 +249,7 @@ function toRecordEventRow(row: RecordEventQueryRow): RecordEventRow {
     status: row.status,
     durationMs: row.durationMs,
     createdAt: row.createdAt.toISOString(),
-    approvalRef: toApprovalRef(row, payload),
+    approvalRef: canReadApprovals ? toApprovalRef(row, payload, principalDid) : null,
     hasOperatorSignature: Boolean(payload?.operatorSignature),
     modeCountersign,
     modeCountersignLabel: modeCountersign === 'not-countersigned' ? LETTER_NOT_COUNTERSIGNED_LABEL : null,
@@ -295,7 +317,7 @@ function personalScope(principalDid: string, ownedAgentDids: string[]) {
 export async function listRecordEventsForPrincipal(
   principalDid: string,
   filters: RecordEventFilters = {},
-  scope: { organization?: boolean } = {},
+  scope: { organization?: boolean; canReadGrants?: boolean; canReadApprovals?: boolean } = {},
 ): Promise<RecordEventsPage> {
   const limit = clampLimit(filters.limit);
   const offset = clampOffset(filters.offset);
@@ -339,6 +361,23 @@ export async function listRecordEventsForPrincipal(
     approvalProposalId: operatorApprovals.proposalId,
     approvalSource: operatorApprovals.source,
     approvalKind: operatorApprovals.kind,
+    approvalOperatorDid: operatorApprovals.operatorDid,
+    approvalDetail: operatorApprovals.detail,
+    actorKind: sql<'person' | 'agent'>`CASE WHEN ${identities.subtype} = 'human' THEN 'person' WHEN
+      ${identities.subtype} = 'agent'
+      OR ${identities.scope} IN ('business', 'community', 'family')
+      OR EXISTS (SELECT 1 FROM ${delegationGrants}
+        WHERE ${delegationGrants.agentDid} = ${systemEvents.did})
+      OR EXISTS (SELECT 1 FROM ${identityMembers}
+        WHERE ${identityMembers.memberDid} = ${systemEvents.did}
+        AND ${identityMembers.role} = 'agent')
+      THEN 'agent' ELSE 'person' END`,
+    grantId: scope.canReadGrants === false ? sql<null>`NULL` : sql<string | null>`(
+      SELECT ${delegationGrants.id} FROM ${delegationGrants}
+      WHERE ${delegationGrants.id} = ${systemEvents.payload}->>'grantId'
+        AND ${delegationGrants.delegatorDid} = ${principalDid}
+        AND ${delegationGrants.agentDid} = ${systemEvents.did}
+    )`,
   };
 
   const [rows, countRows] = await Promise.all([
@@ -346,6 +385,7 @@ export async function listRecordEventsForPrincipal(
       .select(selection)
       .from(systemEvents)
       .leftJoin(operatorApprovals, proposalIdJoin)
+      .leftJoin(identities, eq(identities.id, systemEvents.did))
       .where(whereClause)
       .orderBy(desc(systemEvents.createdAt))
       .limit(limit)
@@ -358,7 +398,7 @@ export async function listRecordEventsForPrincipal(
   ]);
 
   return {
-    events: rows.map((row: RecordEventQueryRow) => toRecordEventRow(row)),
+    events: rows.map((row: RecordEventQueryRow) => toRecordEventRow(row, principalDid, scope.canReadApprovals !== false)),
     total: countRows[0]?.count ?? 0,
     limit,
     offset,
