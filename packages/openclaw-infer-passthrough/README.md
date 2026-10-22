@@ -1,4 +1,5 @@
 # @imajin/openclaw-infer-passthrough
+Principal-based configuration and live catalog routing are tracked in imajin-ai#3041.
 
 Local HTTP proxy implementing [imajin-ai#1926](https://github.com/ima-jin/imajin-ai/issues/1926)
 (Phase 4 of the [#1922](https://github.com/ima-jin/imajin-ai/issues/1922) inference
