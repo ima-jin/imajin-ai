@@ -23,9 +23,10 @@ import { PGlite } from '@electric-sql/pglite';
 import { pgcrypto } from '@electric-sql/pglite/contrib/pgcrypto';
 import { drizzle } from 'drizzle-orm/pglite';
 import type { PgliteDatabase } from 'drizzle-orm/pglite';
+import { getTableConfig } from 'drizzle-orm/pg-core';
 import { systemEvents } from '@/src/db/schemas/registry';
 import { operatorApprovals } from '@/src/db/schemas/operator-approvals';
-import { identityMembers, delegationGrants } from '@/src/db/schemas/auth';
+import { identities, identityMembers, delegationGrants } from '@/src/db/schemas/auth';
 
 /**
  * `operator.approvals` DDL, column-for-column matching
@@ -122,6 +123,9 @@ export async function createRecordEventsHarness(): Promise<RecordEventsHarness> 
   const client = new PGlite({ extensions: { pgcrypto } });
   await client.waitReady;
   await client.exec(SCHEMA_SQL);
+  const config = getTableConfig(identities);
+  const columns = config.columns.map((column) => `"${column.name}" ${column.getSQLType()}`);
+  await client.exec(`CREATE TABLE auth.identities (${columns.join(', ')});`);
 
   const schema: RecordEventsSchema = { systemEvents, operatorApprovals, identityMembers, delegationGrants };
   const db = drizzle(client, { schema });

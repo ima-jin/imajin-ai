@@ -126,5 +126,8 @@ export async function GET(request: Request) {
   const delegatorDid = authResult.identity.actingAs ?? authResult.identity.id;
 
   const grants = await listGrantsForDelegator(delegatorDid);
-  return NextResponse.json({ grants });
+  // Record links narrow the existing delegator-only list; an unknown or
+  // foreign ID is indistinguishable from an empty result, never a lookup bypass.
+  const grantId = new URL(request.url).searchParams.get('grantId');
+  return NextResponse.json({ grants: grantId === null ? grants : grants.filter(grant => grant.grantId === grantId) });
 }

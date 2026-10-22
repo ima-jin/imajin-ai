@@ -59,8 +59,17 @@ export async function GET(request: NextRequest) {
     )) {
       return NextResponse.json({ error: 'Organization Record requires an owner or admin of a group' }, { status: 403, headers: cors });
     }
-    const page = identity.actingAs
-      ? await listRecordEventsForPrincipal(principalDid, filters, { organization: true })
+    // Record access is jin-scoped, but a grant reference must not bypass the
+    // existing auth-service read boundary on /auth/api/grants.
+    const grantAuth = identity.actingAs ? await requireAuth(request, { service: 'auth' }) : authResult;
+    const canReadGrants = !('error' in grantAuth) && !identity.actingFor && identity.subtype !== 'agent';
+    const scope = {
+      ...(identity.actingAs ? { organization: true } : {}),
+      ...(!canReadGrants ? { canReadGrants: false } : {}),
+      ...(identity.actingFor ? { canReadApprovals: false } : {}),
+    };
+    const page = Object.keys(scope).length
+      ? await listRecordEventsForPrincipal(principalDid, filters, scope)
       : await listRecordEventsForPrincipal(principalDid, filters);
     return NextResponse.json(page, { headers: cors });
   } catch (err) {

@@ -26,4 +26,20 @@ describe('served listRecordEvents /spec contract (#3033)', () => {
     expect(operation.security).toEqual([{ cookieAuth: [] }]);
     expect(operation.responses['403'].description).toContain('no personal fallback');
   });
+
+  it('serves the attribution and scope-safe reference fields (#3034)', async () => {
+    vi.spyOn(process, 'cwd').mockReturnValue(kernelRoot);
+    const spec = parse(await GET().text());
+    const schemas = spec.components.schemas;
+    expect(schemas.RecordEvent.required).toEqual(expect.arrayContaining(['kind', 'who', 'grantRef', 'approvalRef']));
+    expect(schemas.RecordEvent.properties.kind.enum).toEqual(['person', 'agent']);
+    expect(schemas.RecordEvent.properties.who.type).toBe('string');
+    expect(schemas.RecordEvent.properties.grantRef.allOf[0].$ref).toBe('#/components/schemas/RecordGrantRef');
+    expect(schemas.RecordGrantRef.required).toEqual(['grantId', 'href']);
+    expect(schemas.ApprovalRef.required).toContain('href');
+    for (const text of ['auth-service access', 'Revoked/expired', 'never infer']) {
+      expect(schemas.RecordGrantRef.description).toContain(text);
+    }
+    expect(schemas.ApprovalRef.description).toContain('only when addressed to the read principal');
+  });
 });

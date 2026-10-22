@@ -43,6 +43,7 @@ function request(did: string, actingAs?: string, query = '', actingFor?: string)
       ...(actingFor ? { 'x-acting-for': actingFor } : {}),
     },
   });
+
 }
 async function page(did = OWNER, actingAs: string | undefined = ORG, query = '') {
   const response = await GET(request(did, actingAs, query));
@@ -64,7 +65,7 @@ async function snapshot() {
 beforeAll(async () => {
   harness = await createRecordEventsHarness();
   holder.db = harness.db;
-  for (const table of [identities, connections]) {
+  for (const table of [connections]) {
     const config = getTableConfig(table);
     const columns = config.columns.map((column) => `"${column.name}" ${column.getSQLType()}`);
     await harness.client.exec(`CREATE SCHEMA IF NOT EXISTS "${config.schema}";
@@ -154,6 +155,36 @@ afterEach(() => { vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
 afterAll(async () => { await harness.close(); });
 
 describe('organization Record access and data isolation (#3033)', () => {
+  it('does not hydrate another org approval or a foreign/mismatched grant from a visible org-issued row', async () => {
+    await harness.db.insert(systemEvents).values([
+      { id: 'foreign_refs', did: ORG, service: 'kernel', action: 'test.event',
+        payload: { proposalId: 'approval_other', grantId: 'grant_other' } },
+      { id: 'wrong_agent_ref', did: OWNER, service: 'kernel', action: 'test.event',
+        payload: { actingAs: ORG, grantId: 'grant_org' } },
+      { id: 'missing_refs', did: ORG, service: 'kernel', action: 'test.event',
+        payload: { proposalId: 'missing', grantId: 'missing' } },
+    ]);
+    const body = await page();
+    for (const id of ['foreign_refs', 'wrong_agent_ref', 'missing_refs']) {
+      expect(body.events.find((event: { id: string }) => event.id === id)).toMatchObject({
+        approvalRef: null, grantRef: null,
+      });
+    }
+  });
+  it('links an agent to the exact revoked grant and addressed approval without copying source data', async () => {
+    await harness.db.insert(systemEvents).values({
+      id: 'agent_approved', did: AGENT, service: 'kernel', action: 'test.event',
+      payload: { grantId: 'grant_org', proposalId: 'approval_org', publisherProof: { signature: 'fixture-proof' } },
+    });
+    const before = await snapshot();
+    const body = await page();
+    expect(body.events.find((event: { id: string }) => event.id === 'agent_approved')).toMatchObject({
+      kind: 'agent', who: AGENT, grantRef: { grantId: 'grant_org', href: '/auth/api/grants?grantId=grant_org' },
+      approvalRef: { proposalId: 'approval_org', source: 'reach', kind: 'reach:message' },
+      payload: before.events.find(event => event.id === 'agent_approved')?.payload,
+    });
+    expect(await snapshot()).toEqual(before);
+  });
   const expected = ['agent_org', 'agent_principal', 'approval_org', 'member_org', 'org', 'owner_org'];
   it.each([OWNER, ADMIN])('reads only org-attributed existing rows as %s, without mutations', async (did) => {
     const before = await snapshot();
@@ -161,7 +192,15 @@ describe('organization Record access and data isolation (#3033)', () => {
     expect(eventIds(body)).toEqual(expected);
     expect(body.total).toBe(expected.length);
     expect(body.events.find((event: { id: string }) => event.id === 'approval_org').approvalRef)
-      .toEqual({ proposalId: 'approval_org', source: 'reach', kind: 'reach:message' });
+      .toMatchObject({ proposalId: 'approval_org', source: 'reach', kind: 'reach:message', href: '/jin?proposalId=approval_org' });
+    for (const row of body.events) {
+      expect(row.who).toBe(row.did);
+      expect(row.kind).toBe(['org', 'agent_org', 'agent_principal'].includes(row.id) ? 'agent' : 'person');
+    }
+    expect(body.events.find((event: { id: string }) => event.id === 'agent_org').grantRef)
+      .toEqual(did === OWNER ? { grantId: 'grant_org', href: '/auth/api/grants?grantId=grant_org' } : null);
+    // principal-only history must not guess which grant was exercised.
+    expect(body.events.find((event: { id: string }) => event.id === 'agent_principal').grantRef).toBeNull();
     expect(await snapshot()).toEqual(before);
   });
   it.each([[], ['auth'], ['pay']].map((services) => ({ services })))('denies a controller whose allowed_services is $services', async ({ services }) => {

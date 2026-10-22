@@ -197,7 +197,7 @@ describe('listRecordEventsForPrincipal — approvalRef join (#2289 acceptance)',
     });
 
     const page = await listRecordEventsForPrincipal(PRINCIPAL_A);
-    expect(page.events[0].approvalRef).toEqual({ proposalId: 'prop_2', source: 'access', kind: 'access:bearer-grant' });
+    expect(page.events[0].approvalRef).toMatchObject({ proposalId: 'prop_2', source: 'access', kind: 'access:bearer-grant' });
   });
 
   it('adds chosenOption to approvalRef for a decided decision:card, read off the decided payload mode (#2323)', async () => {
@@ -210,7 +210,7 @@ describe('listRecordEventsForPrincipal — approvalRef join (#2289 acceptance)',
     });
 
     const page = await listRecordEventsForPrincipal(PRINCIPAL_A);
-    expect(page.events[0].approvalRef).toEqual({
+    expect(page.events[0].approvalRef).toMatchObject({
       proposalId: 'dcard_1',
       source: 'decision',
       kind: 'decision:card',
@@ -228,7 +228,7 @@ describe('listRecordEventsForPrincipal — approvalRef join (#2289 acceptance)',
     });
 
     const page = await listRecordEventsForPrincipal(PRINCIPAL_A);
-    expect(page.events[0].approvalRef).toEqual({ proposalId: 'dcard_2', source: 'decision', kind: 'decision:card' });
+    expect(page.events[0].approvalRef).toMatchObject({ proposalId: 'dcard_2', source: 'decision', kind: 'decision:card' });
   });
 
   it('omits chosenOption for a decision:card event that is not a decided event', async () => {
@@ -254,7 +254,7 @@ describe('listRecordEventsForPrincipal — approvalRef join (#2289 acceptance)',
     });
 
     const page = await listRecordEventsForPrincipal(PRINCIPAL_A);
-    expect(page.events[0].approvalRef).toEqual({ proposalId: 'prop_gh', source: 'github', kind: 'github:append' });
+    expect(page.events[0].approvalRef).toMatchObject({ proposalId: 'prop_gh', source: 'github', kind: 'github:append' });
   });
 
   it('leaves approvalRef null when the event carries no matching proposalId', async () => {
@@ -276,6 +276,55 @@ describe('listRecordEventsForPrincipal — approvalRef join (#2289 acceptance)',
     const byId = Object.fromEntries(page.events.map((e) => [e.id, e]));
     expect(byId.evt_signed.hasOperatorSignature).toBe(true);
     expect(byId.evt_unsigned.hasOperatorSignature).toBe(false);
+  });
+});
+
+describe('Record attribution and authority links (#3034)', () => {
+  it('uses identity subtype and legacy agent evidence, not actor labels in payload', async () => {
+    const { identities } = await import('@/src/db/schemas/auth');
+    await harness.db.insert(identities).values([
+      { id: PRINCIPAL_A, scope: 'actor', subtype: 'human', publicKey: '' },
+      { id: 'did:imajin:registered-agent', scope: 'actor', subtype: 'agent', publicKey: '' },
+    ]);
+    await insertLegacyAgentMembership(PRINCIPAL_A, 'did:imajin:registered-agent');
+    await insertLegacyAgentMembership(PRINCIPAL_A, 'did:imajin:legacy-agent');
+    await insertEvent({ id: 'human', did: PRINCIPAL_A, payload: { kind: 'agent', who: PRINCIPAL_B } });
+    await insertEvent({ id: 'registered', did: 'did:imajin:registered-agent', payload: { kind: 'person' } });
+    await insertEvent({ id: 'legacy', did: 'did:imajin:legacy-agent' });
+    const page = await listRecordEventsForPrincipal(PRINCIPAL_A);
+    const rows = Object.fromEntries(page.events.map(row => [row.id, row]));
+    expect(rows.human).toMatchObject({ kind: 'person', who: PRINCIPAL_A, grantRef: null });
+    expect(rows.registered).toMatchObject({ kind: 'agent', who: 'did:imajin:registered-agent', grantRef: null });
+    expect(rows.legacy).toMatchObject({ kind: 'agent', who: 'did:imajin:legacy-agent', grantRef: null });
+  });
+
+  it('URL-encodes authority identifiers instead of interpolating query syntax', async () => {
+    const agent = 'did:imajin:agent/with&query';
+    const proposalId = 'approval/&?injected=1#fragment';
+    await insertDelegationGrant(PRINCIPAL_A, agent);
+    await insertApproval({ proposalId, operatorDid: PRINCIPAL_A });
+    await insertEvent({ id: 'encoded', did: agent, payload: { grantId: `grant_${agent}`, proposalId } });
+    const [row] = (await listRecordEventsForPrincipal(PRINCIPAL_A)).events;
+    expect(row.grantRef?.href).toBe(`/auth/api/grants?grantId=${encodeURIComponent(`grant_${agent}`)}`);
+    expect(row.approvalRef?.href).toBe(`/jin?proposalId=${encodeURIComponent(proposalId)}`);
+  });
+
+  it('suppresses references without source read access, retaining the signed event unchanged', async () => {
+    const agent = 'did:imajin:agent';
+    await insertDelegationGrant(PRINCIPAL_A, agent);
+    await insertApproval({ proposalId: 'approval', operatorDid: PRINCIPAL_A });
+    const payload = { grantId: `grant_${agent}`, proposalId: 'approval' };
+    await insertEvent({ id: 'suppressed', did: agent, payload });
+    const page = await listRecordEventsForPrincipal(PRINCIPAL_A, {}, { canReadGrants: false, canReadApprovals: false });
+    expect(page.events[0]).toMatchObject({ kind: 'agent', who: agent, grantRef: null, approvalRef: null, payload });
+    expect(page.total).toBe(1);
+  });
+
+  it('retains issuer-less legacy approval events with an explicit addressed-principal fallback', async () => {
+    await insertApproval({ proposalId: 'legacy', operatorDid: PRINCIPAL_A });
+    await insertEvent({ id: 'issuerless', action: 'operator.approval.decided', payload: { proposalId: 'legacy' } });
+    const [row] = (await listRecordEventsForPrincipal(PRINCIPAL_A)).events;
+    expect(row).toMatchObject({ kind: 'person', who: PRINCIPAL_A, did: null, grantRef: null });
   });
 });
 

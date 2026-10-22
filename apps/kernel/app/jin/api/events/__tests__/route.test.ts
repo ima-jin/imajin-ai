@@ -41,6 +41,7 @@ function agentActingForIdentity(): Identity {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mockRequireAuth.mockResolvedValue({ identity: humanIdentity() });
   mockGroupMember.mockResolvedValue(true);
   mockList.mockResolvedValue({ events: [], total: 0, limit: 50, offset: 0 });
 });
@@ -50,9 +51,18 @@ describe('OPTIONS /jin/api/events', () => {
     const res = await OPTIONS(makeReq() as Parameters<typeof OPTIONS>[0]);
     expect(res.status).toBe(204);
   });
+
+
 });
 
 describe('GET /jin/api/events (#2289)', () => {
+  it('retains jin Record access but suppresses grant refs without auth-service access', async () => {
+    mockRequireAuth.mockResolvedValueOnce({ identity: {
+      ...humanIdentity(), actingAs: 'did:imajin:org', actingAsRole: 'admin',
+    } }).mockResolvedValueOnce({ error: 'auth service denied', status: 403 });
+    expect((await GET(makeReq() as Parameters<typeof GET>[0])).status).toBe(200);
+    expect(mockList).toHaveBeenCalledWith('did:imajin:org', {}, { organization: true, canReadGrants: false });
+  });
   it('returns 401 when unauthenticated, never calling the service', async () => {
     mockRequireAuth.mockResolvedValueOnce({ error: 'Not authenticated', status: 401 });
     const res = await GET(makeReq() as Parameters<typeof GET>[0]);
@@ -69,7 +79,7 @@ describe('GET /jin/api/events (#2289)', () => {
   it('never selects the read principal via X-Acting-For', async () => {
     mockRequireAuth.mockResolvedValueOnce({ identity: agentActingForIdentity() });
     await GET(makeReq() as Parameters<typeof GET>[0]);
-    expect(mockList).toHaveBeenCalledWith(AGENT_DID, {});
+    expect(mockList).toHaveBeenCalledWith(AGENT_DID, {}, { canReadGrants: false, canReadApprovals: false });
     expect(mockRequireAuth).toHaveBeenCalledWith(expect.any(Request), { service: 'jin' });
   });
 
@@ -80,6 +90,7 @@ describe('GET /jin/api/events (#2289)', () => {
     expect((await GET(makeReq() as Parameters<typeof GET>[0])).status).toBe(200);
     expect(mockList).toHaveBeenCalledWith('did:imajin:org', {}, { organization: true });
     expect(mockGroupMember).toHaveBeenCalledWith('did:imajin:org', HUMAN_DID);
+    expect(mockRequireAuth).toHaveBeenCalledWith(expect.any(Request), { service: 'auth' });
   });
 
   it.each(['member', 'maintainer', 'agent', undefined])('denies act-as role %s before listing', async (role) => {
