@@ -1,4 +1,5 @@
 # Imajin
+<!-- #2028 delta replay started 2026-10-22; source reconciliation in progress. -->
 
 **You compose. Imajin orchestrates. Signed. Legible.**
 
