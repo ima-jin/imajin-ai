@@ -115,7 +115,7 @@ function AppRows({ apps, onCleared }: Readonly<{ apps: RegisteredApp[]; onCleare
   ))}</ul>;
 }
 
-/** Operator-only inventory; Clear uses the existing admin revoke route. */
+/** Operator-only inventory preserves registry history; Clear uses the existing admin revoke route. */
 export function RegisteredAppsPanel() {
   const [apps, setApps] = useState<RegisteredApp[] | null>(null);
   const [error, setError] = useState(false);
@@ -146,8 +146,9 @@ export function RegisteredAppsPanel() {
   }, [revision]);
   const refresh = () => setRevision(value => value + 1);
   if (!apps && !error) return null;
-  const visible = apps?.filter(app => app.status !== 'expired') ?? [];
+  const visible = apps?.filter(app => app.status === 'active' || app.status === 'dormant') ?? [];
   const expired = apps?.filter(app => app.status === 'expired') ?? [];
+  const revoked = apps?.filter(app => app.status === 'revoked') ?? [];
   return (
     <section aria-label="Registered apps" className="mt-8 min-w-0 space-y-3 text-xs [overflow-wrap:anywhere]">
       <h2 className="text-base font-semibold text-gray-100">Registered apps</h2>
@@ -159,6 +160,10 @@ export function RegisteredAppsPanel() {
       {expired.length > 0 && <details className="border border-gray-800 p-3">
         <summary className="cursor-pointer py-2 text-gray-300">expired ({expired.length})</summary>
         <AppRows apps={expired} onCleared={refresh} />
+      </details>}
+      {revoked.length > 0 && <details className="border border-gray-800 p-3">
+        <summary className="cursor-pointer py-2 text-gray-300">revoked ({revoked.length})</summary>
+        <AppRows apps={revoked} onCleared={refresh} />
       </details>}
     </section>
   );

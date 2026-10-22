@@ -50,8 +50,13 @@ describe('App secrets development preview', () => {
     const panel = await screen.findByRole('region', { name: 'Registered apps' });
     const row = within(panel).getByText('BrokerAgent fixture (zero consent)').closest('li')!;
     fireEvent.click(within(row).getByRole('button', { name: 'Clear' }));
-    await within(row).findByText('delegated app · revoked');
-    expect(row.textContent).toContain('att_fixture_clear');
+    const history = (await within(panel).findByText('revoked (2)')).closest('details')!;
+    expect(history.open).toBe(false);
+    fireEvent.click(within(history).getByText('revoked (2)'));
+    const revokedRow = within(history).getByText('BrokerAgent fixture (zero consent)').closest('li')!;
+    expect(within(revokedRow).getByText('delegated app · revoked')).toBeDefined();
+    expect(revokedRow.textContent).toContain('att_fixture_clear');
+    expect(row.isConnected).toBe(false);
     expect(originalFetch).not.toHaveBeenCalled();
     expect((await fetch('/api/admin/registry/apps/not-a-fixture/revoke', { method: 'POST' })).status).toBe(404);
     expect(originalFetch).not.toHaveBeenCalled();
