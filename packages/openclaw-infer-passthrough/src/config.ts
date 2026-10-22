@@ -111,6 +111,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ProxyConfig {
     directTimeoutMs: parsePositiveInt(env, 'DIRECT_TIMEOUT_MS', DEFAULT_DIRECT_TIMEOUT_MS),
     appDid: requireEnv(env, 'OPENCLAW_APP_DID'),
     appPrivateKey: requireEnv(env, 'OPENCLAW_APP_PRIVATE_KEY'),
+    legacyGrantIdConfigured: Object.keys(env).some((name) =>
+      /^(?:INFER_PROXY|OPENCLAW)_(?:.*_)?(?:GRANT|ATTESTATION)_ID$/.test(name)),
     routes,
     mcpPublicUrl: env.MCP_PUBLIC_URL || DEFAULT_MCP_PUBLIC_URL,
   };

@@ -82,10 +82,17 @@ describe('proxy server (integration)', () => {
     expect(mints).toBe(3);
   });
   it('GET /healthz returns the health snapshot shape', async () => {
+    const realFetch = globalThis.fetch;
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) =>
+      url.startsWith(baseUrl) ? realFetch(url, init) : Response.json({
+        token: 'test-token', expiresIn: 600, scopes: ['infer:completions'],
+      })));
     const res = await fetch(`${baseUrl}/healthz`);
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body).toEqual({
+      ok: true,
+      routes: CONFIG.routes.map((route) => ({ route: route.id, ok: true })),
       kernelOk: true,
       fallbackCount: 0,
       fallbackRate: 0,
