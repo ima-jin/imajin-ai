@@ -25,8 +25,8 @@ export interface HandleModelsDeps {
   getTokenProvider(routeId: string): TokenSource;
 }
 
-/** Routes whose token cannot list models: `mcp` is audience-bound/unnarrowed, `anthropic` serves a different (Anthropic-format) catalog. */
-const NON_MODELS_ROUTE_IDS = new Set(['mcp', 'anthropic']);
+/** MCP tokens have a different resource audience; all inference tokens can list the usable catalog. */
+const NON_MODELS_ROUTE_IDS = new Set(['mcp']);
 
 /**
  * Pick the route whose app token authorizes the listing. The kernel's list is

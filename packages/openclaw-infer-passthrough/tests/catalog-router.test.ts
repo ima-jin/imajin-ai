@@ -129,6 +129,14 @@ describe('usable catalog routing (#3041)', () => {
     await expect(setup().router.resolve(undefined, 'model')).rejects.toBeInstanceOf(CatalogError);
   });
 
+  it('can use an inference-only Anthropic seat for explicit and generic catalog requests', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => Response.json({ data: [row('model', 'anthropic')] })));
+    const anthropic = { id: 'anthropic', principalDid };
+    const { router } = setup([anthropic]);
+    expect(await router.resolve('anthropic', 'model')).toBe(anthropic);
+    expect(await router.resolve('openai', 'model')).toBe(anthropic);
+  });
+
   it('drops revoked catalog auth and retries a fresh token on the next request', async () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(Response.json({ error: 'Authorization has been revoked' }, { status: 403 }))

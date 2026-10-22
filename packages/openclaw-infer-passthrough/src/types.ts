@@ -9,7 +9,7 @@
  * directly (`http://127.0.0.1:PORT/{id}/v1/chat/completions`) — the
  * unambiguous, preferred wiring, since each upstream gets its own OpenClaw
  * custom-provider entry anyway (imajin-ai#1922 Phase 1: one `BRAIN_CONNECTORS`
- * entry per provider). `modelPrefixes` is a fallback for callers that share a
+ * entry per provider). `modelPrefixes` is an optional override for callers that share a
  * single `baseUrl`/`/v1/chat/completions` and rely on the `model` field in the
  * request body to select a route instead.
  *

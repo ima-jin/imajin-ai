@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { generateKeypair, crypto } from '@imajin/auth';
-import { mintAppToken, RouteTokenProvider, TokenMintError } from '../src/token-provider.js';
+import { isRevokedGrant, mintAppToken, rejectRevokedGrant, RouteTokenProvider, TokenMintError } from '../src/token-provider.js';
 import { UpstreamUnavailableError } from '../src/upstream.js';
 
 const APP_DID = 'did:imajin:openclaw-app';
@@ -9,6 +9,25 @@ const PRINCIPAL_DID = 'did:imajin:principal';
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
 }
+
+describe('revocation classification boundaries', () => {
+  it.each([null, 'revoked', {}, { error: 1 }, { error: 'insufficient_scope' }])('does not treat %j as consent loss', async (body) => {
+    expect(isRevokedGrant(body)).toBe(false);
+    const source = { getToken: vi.fn(), invalidate: vi.fn() };
+    const response = jsonResponse(body, 403);
+    await rejectRevokedGrant(response, source);
+    expect(source.invalidate).not.toHaveBeenCalled();
+    expect(await response.json()).toEqual(body);
+  });
+
+  it('leaves a non-JSON 403 unchanged', async () => {
+    const source = { getToken: vi.fn(), invalidate: vi.fn() };
+    const response = new Response('forbidden', { status: 403 });
+    await rejectRevokedGrant(response, source);
+    expect(source.invalidate).not.toHaveBeenCalled();
+    expect(await response.text()).toBe('forbidden');
+  });
+});
 
 describe('mintAppToken', () => {
   afterEach(() => {

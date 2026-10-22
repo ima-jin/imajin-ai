@@ -28,13 +28,14 @@ export class CatalogRouter {
   ) {}
 
   async resolve(pathProviderId: string | undefined, model: string | undefined): Promise<ProviderRouteConfig | undefined> {
+    if (pathProviderId === 'mcp') return undefined;
     const configured = resolveRoute(this.deps.routes, pathProviderId, model);
     // Explicit prefix overrides retain their break-glass endpoint and principal.
     if (configured && (!model || configured.modelPrefixes?.some((prefix) => model.startsWith(prefix)))) return configured;
-    if (!model || pathProviderId === 'mcp') return undefined;
+    if (!model) return undefined;
     const seat = this.deps.routes.find((route) => route.id === (pathProviderId ?? 'openai')) ??
       (!pathProviderId || pathProviderId === 'openai'
-        ? this.deps.routes.find((route) => route.id !== 'mcp' && route.id !== 'anthropic')
+        ? this.deps.routes.find((route) => route.id !== 'mcp')
         : undefined);
     if (!seat) return undefined;
     let models = await this.models(seat);
