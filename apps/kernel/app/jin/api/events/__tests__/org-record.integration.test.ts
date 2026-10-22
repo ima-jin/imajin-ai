@@ -155,6 +155,23 @@ afterEach(() => { vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
 afterAll(async () => { await harness.close(); });
 
 describe('organization Record access and data isolation (#3033)', () => {
+  it('uses canonical Inbox addressing for legacy connectors, never the stale stored addressee', async () => {
+    await harness.db.insert(operatorApprovals).values([
+      { proposalId: 'misrouted_out', operatorDid: ORG, source: 'github', kind: 'github:mutate',
+        summary: 'Other owner', detail: { ownerDid: OTHER_ORG } },
+      { proposalId: 'misrouted_in', operatorDid: OTHER_ORG, source: 'github', kind: 'github:mutate',
+        summary: 'Our owner', detail: { ownerDid: ORG } },
+    ]);
+    await harness.db.insert(systemEvents).values([
+      { id: 'misrouted_out', did: ORG, service: 'kernel', action: 'test.event', payload: { proposalId: 'misrouted_out' } },
+      { id: 'misrouted_in', did: ORG, service: 'kernel', action: 'test.event', payload: { proposalId: 'misrouted_in' } },
+    ]);
+    const body = await page();
+    expect(body.events.find((event: { id: string }) => event.id === 'misrouted_out').approvalRef).toBeNull();
+    expect(body.events.find((event: { id: string }) => event.id === 'misrouted_in').approvalRef).toMatchObject({
+      proposalId: 'misrouted_in', href: '/jin?proposalId=misrouted_in',
+    });
+  });
   it('does not hydrate another org approval or a foreign/mismatched grant from a visible org-issued row', async () => {
     await harness.db.insert(systemEvents).values([
       { id: 'foreign_refs', did: ORG, service: 'kernel', action: 'test.event',
@@ -168,7 +185,7 @@ describe('organization Record access and data isolation (#3033)', () => {
     for (const id of ['foreign_refs', 'wrong_agent_ref', 'missing_refs']) {
       expect(body.events.find((event: { id: string }) => event.id === id)).toMatchObject({
         approvalRef: null, grantRef: null,
-      });
+  });
     }
   });
   it('links an agent to the exact revoked grant and addressed approval without copying source data', async () => {

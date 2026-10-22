@@ -82,6 +82,7 @@
 import { and, desc, eq, exists, gte, inArray, ne, not, or, sql } from 'drizzle-orm';
 import { db, delegationGrants, identities, identityMembers, operatorApprovals, systemEvents } from '@/src/db';
 import { DECISION_APPROVAL_KIND } from '@/src/lib/decisions/view';
+import { resolveApprovalAddressee } from '@/src/lib/notify/approval-addressing';
 import {
   LETTER_NOT_COUNTERSIGNED_LABEL,
   assessDecidedModeCountersignature,
@@ -200,6 +201,7 @@ type RecordEventQueryRow = {
   approvalSource: string | null;
   approvalKind: string | null;
   approvalOperatorDid: string | null;
+  approvalDetail: Record<string, unknown> | null;
   actorKind: 'person' | 'agent';
   grantId: string | null;
 };
@@ -211,8 +213,10 @@ function chosenOptionOf(row: RecordEventQueryRow, payload: Record<string, unknow
   return typeof mode === 'string' && mode.length > 0 ? mode : undefined;
 }
 
-function toApprovalRef(row: RecordEventQueryRow, payload: Record<string, unknown> | null): ApprovalRef | null {
-  if (!row.approvalProposalId) return null;
+function toApprovalRef(row: RecordEventQueryRow, payload: Record<string, unknown> | null, principalDid: string): ApprovalRef | null {
+  if (!row.approvalProposalId || resolveApprovalAddressee({
+    kind: row.approvalKind ?? '', detail: row.approvalDetail,
+  }, row.approvalOperatorDid ?? '') !== principalDid) return null;
   const chosenOption = chosenOptionOf(row, payload);
   return {
     proposalId: row.approvalProposalId,
@@ -245,7 +249,7 @@ function toRecordEventRow(row: RecordEventQueryRow, principalDid: string, canRea
     status: row.status,
     durationMs: row.durationMs,
     createdAt: row.createdAt.toISOString(),
-    approvalRef: canReadApprovals && row.approvalOperatorDid === principalDid ? toApprovalRef(row, payload) : null,
+    approvalRef: canReadApprovals ? toApprovalRef(row, payload, principalDid) : null,
     hasOperatorSignature: Boolean(payload?.operatorSignature),
     modeCountersign,
     modeCountersignLabel: modeCountersign === 'not-countersigned' ? LETTER_NOT_COUNTERSIGNED_LABEL : null,
@@ -358,6 +362,7 @@ export async function listRecordEventsForPrincipal(
     approvalSource: operatorApprovals.source,
     approvalKind: operatorApprovals.kind,
     approvalOperatorDid: operatorApprovals.operatorDid,
+    approvalDetail: operatorApprovals.detail,
     actorKind: sql<'person' | 'agent'>`CASE WHEN ${identities.subtype} = 'human' THEN 'person' WHEN
       ${identities.subtype} = 'agent'
       OR ${identities.scope} IN ('business', 'community', 'family')

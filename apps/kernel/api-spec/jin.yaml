@@ -718,6 +718,8 @@ components:
         (#2289), only when addressed to the read principal — the Record
         lane can click event -> approval card via /jin?proposalId=<proposalId>.
         Null in an actingFor context, which has no Inbox.
+        Uses the same canonical connector-owner addressing as the Inbox,
+        not a legacy row's stale operatorDid.
       required: [proposalId, href, source, kind]
       properties:
         proposalId: { type: string }
