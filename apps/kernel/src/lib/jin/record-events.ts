@@ -93,6 +93,8 @@ const MAX_LIMIT = 200;
 const DEFAULT_LIMIT = 50;
 
 export interface RecordEventFilters {
+  /** Person/agent classification, applied before pagination within the read scope. */
+  kind?: 'person' | 'agent';
   /** Exact match on `system_events.action` (the bus event type). */
   action?: string;
   /** Lower bound (inclusive) on `system_events.created_at`, ISO 8601. */
@@ -338,9 +340,19 @@ export async function listRecordEventsForPrincipal(
   const agentFilter = filters.agent
     ? or(eq(systemEvents.did, filters.agent), sql`${systemEvents.payload}->>'agentDid' = ${filters.agent}`)
     : undefined;
+  const actorKind = sql<'person' | 'agent'>`CASE WHEN ${identities.subtype} = 'human' THEN 'person' WHEN
+    ${identities.subtype} = 'agent'
+    OR ${identities.scope} IN ('business', 'community', 'family')
+    OR EXISTS (SELECT 1 FROM ${delegationGrants}
+      WHERE ${delegationGrants.agentDid} = ${systemEvents.did})
+    OR EXISTS (SELECT 1 FROM ${identityMembers}
+      WHERE ${identityMembers.memberDid} = ${systemEvents.did}
+      AND ${identityMembers.role} = 'agent')
+    THEN 'agent' ELSE 'person' END`;
 
   const whereClause = and(
     scopeCondition,
+    filters.kind ? eq(actorKind, filters.kind) : undefined,
     filters.action ? eq(systemEvents.action, filters.action) : undefined,
     since ? gte(systemEvents.createdAt, since) : undefined,
     agentFilter,
@@ -363,15 +375,7 @@ export async function listRecordEventsForPrincipal(
     approvalKind: operatorApprovals.kind,
     approvalOperatorDid: operatorApprovals.operatorDid,
     approvalDetail: operatorApprovals.detail,
-    actorKind: sql<'person' | 'agent'>`CASE WHEN ${identities.subtype} = 'human' THEN 'person' WHEN
-      ${identities.subtype} = 'agent'
-      OR ${identities.scope} IN ('business', 'community', 'family')
-      OR EXISTS (SELECT 1 FROM ${delegationGrants}
-        WHERE ${delegationGrants.agentDid} = ${systemEvents.did})
-      OR EXISTS (SELECT 1 FROM ${identityMembers}
-        WHERE ${identityMembers.memberDid} = ${systemEvents.did}
-        AND ${identityMembers.role} = 'agent')
-      THEN 'agent' ELSE 'person' END`,
+    actorKind,
     grantId: scope.canReadGrants === false ? sql<null>`NULL` : sql<string | null>`(
       SELECT ${delegationGrants.id} FROM ${delegationGrants}
       WHERE ${delegationGrants.id} = ${systemEvents.payload}->>'grantId'
@@ -394,6 +398,7 @@ export async function listRecordEventsForPrincipal(
       .select({ count: sql<number>`count(*)::int` })
       .from(systemEvents)
       .leftJoin(operatorApprovals, proposalIdJoin)
+      .leftJoin(identities, eq(identities.id, systemEvents.did))
       .where(whereClause),
   ]);
 

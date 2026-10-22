@@ -1346,6 +1346,11 @@ paths:
       security:
         - cookieAuth: []
       parameters:
+        - name: kind
+          in: query
+          required: false
+          schema: { type: string, enum: [person, agent] }
+          description: "Narrow by actor classification before pagination; totals reflect the filter. Omit for both."
         - name: action
           in: query
           required: false
@@ -1390,6 +1395,11 @@ paths:
                   offset: { type: integer }
         "401":
           description: Not authenticated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "400":
+          description: Invalid actor kind (must be person or agent)
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
