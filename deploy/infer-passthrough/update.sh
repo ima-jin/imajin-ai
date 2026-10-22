@@ -29,7 +29,10 @@ fi
 
 log() { printf 'infer-passthrough-update: %s\n' "$*"; }
 as_user() { runuser -u "$runtime_user" -- "$@"; }
-health() { node "$script_dir/check-health.mjs" "$1"; }
+health() {
+  local health_port="$1"
+  node "$script_dir/check-health.mjs" "$health_port"
+}
 
 # One updater at a time. The directory and current link are root-owned.
 exec 9>"$state/update.lock"
@@ -64,7 +67,8 @@ candidate_started=false
 promoted=false
 committed=false
 point_current() {
-  ln -sfn -- "$1" "$state/current.next"
+  local target="$1"
+  ln -sfn -- "$target" "$state/current.next"
   mv -Tf -- "$state/current.next" "$state/current"
 }
 finish() {

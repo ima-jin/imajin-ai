@@ -25,6 +25,21 @@ function run(port, attempts = '1') {
 }
 
 describe('release mint-health check', () => {
+  it('never follows redirects away from the fixed health endpoint', async () => {
+    const paths = [];
+    server = createServer((req, res) => {
+      paths.push(req.url);
+      if (req.url === '/health') {
+        res.writeHead(302, { Location: '/redirect-target' });
+        res.end();
+      } else {
+        res.end(JSON.stringify({ ok: true, routes: [{ ok: true }] }));
+      }
+    });
+    await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+    expect((await run(server.address().port)).code).toBe(1);
+    expect(paths).toEqual(['/health']);
+  });
   it.each([
     [200, { ok: true, routes: [{ ok: true }] }, 0],
     [503, { ok: false, routes: [{ ok: false }] }, 1],
@@ -47,7 +62,9 @@ describe('release mint-health check', () => {
     expect(error).not.toHaveBeenCalled();
   });
 
-  it.each([['0', 1], ['65536', 1], ['8787', 0], ['8787', 31]])('fails validation before fetching (%s, %s)', async (port, attempts) => {
+  it.each([['0', 1], ['65536', 1], ['8787', 0], ['8787', 31],
+    ['8787@other.test', 1], ['8787/other', 1], ['http://other.test', 1],
+  ])('fails validation before fetching (%s, %s)', async (port, attempts) => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);

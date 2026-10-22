@@ -117,6 +117,8 @@ journalctl -u infer-passthrough-update.service -n 60 --no-pager
 HTTP 200 means each route has minted or holds an unexpired token; 503 includes
 failed route IDs and **/jin → Grants** guidance, never token/key material. Existing
 fallback and passthrough-error counters remain on both `/health` and `/healthz`.
+The release checker only contacts the fixed loopback `/health` endpoint and
+refuses redirects; its port argument cannot supply a host or path.
 Mint success does not claim a billed model completion happened or that no grant
 was revoked after the last mint; cached tokens retain the kernel's normal TTL.
 
