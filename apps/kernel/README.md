@@ -11,6 +11,20 @@ pnpm --filter @imajin/kernel dev   # http://localhost:3000
 ```
 
 Full setup guide: [docs/DEVELOPER.md](../../docs/DEVELOPER.md).
+
+## Operator lanes
+
+Merged-source snapshot **2026-10-22**, since the [#3037 replay](https://github.com/ima-jin/imajin-ai/pull/3037); these changes are pre-cut for v0.8.26, not evidence of deployment:
+
+- **Registered apps:** direct human operators can inspect kind, status, consent/activity and registration provenance, including explicit unknown history. Expired entries remain expandable; failed provisions without a live claim code do not offer Reissue ([#3047](https://github.com/ima-jin/imajin-ai/pull/3047)).
+- **Clear:** an active or dormant app opens a confirmation naming its live consent count. Confirmation uses the existing registry revoke route, retains the row and consent history, and exposes the signed `registry.app.revoked` receipt. Non-operators and acting-for identities cannot use it ([#3051](https://github.com/ima-jin/imajin-ai/pull/3051)).
+- **DCR expiry:** the ten-minute sweep expires active DCR registrations at least seven days old only when they have never had consent and have no provision, claim or first-party protection. Status and node-signed `registry.app.expired` evidence commit together; no rows are deleted ([#3053](https://github.com/ima-jin/imajin-ai/pull/3053)).
+- **Record:** inspect personal history, or act as an organization with the required owner/admin and `jin` service access. Filter people/agents; rows identify who acted and expose exact grant/approval links only when separately authorized. Missing legacy references are not guessed. Switching identity clears the view and in-flight reads ([#3046](https://github.com/ima-jin/imajin-ai/pull/3046), [#3049](https://github.com/ima-jin/imajin-ai/pull/3049), [#3052](https://github.com/ima-jin/imajin-ai/pull/3052)).
+- **Inbox / Operator approvals:** default lists and attention counts include only actionable cards, with relative age. **Show history** retrieves retained resolved, expired, superseded or archived cards. The ten-minute sweep records node-signed expiry; `OPERATOR_APPROVAL_EXPIRY_DAYS` defaults to seven days, with source deadlines taking precedence ([#3050](https://github.com/ima-jin/imajin-ai/pull/3050)).
+- **Grants:** app last-used evidence includes successful mint/validate activity and historical OAuth refreshes; unknown pre-recording history is labelled, not reported as never. Idle active grants get a 30-day warning, not automatic revocation ([#3044](https://github.com/ima-jin/imajin-ai/pull/3044)). `/auth/agents` Renew offers a lease choice and preview; the default preserves the previous lease, capped at 30 days. Critical approval grants warn within 24 hours of expiry ([#3038](https://github.com/ima-jin/imajin-ai/pull/3038)).
+- **Blocked on you:** current linked PR/issue state reconciles stale Warp blockers; merged/closed work stops appearing as an operator block, while ready PRs await review. Provider/authority failures retain the signed blocker ([#3043](https://github.com/ima-jin/imajin-ai/pull/3043)).
+
+Contracts and access limits: [Jin spec](api-spec/jin.yaml) · [auth spec](api-spec/auth.yaml) · [registry spec](api-spec/registry.yaml).
 ## Static-header reach clients
 Share `/<handle>/reach` for per-platform setup. Agents resolve a DID, handle or
 `@handle` at `/.well-known/agent/<id>` to discover live MCP, OpenAPI and signed
@@ -97,6 +111,9 @@ information-only Reach inbox card: **No action needed**, with the
 revokes the stub and erases its bearer hashes immediately.
 
 ## Inference connectors
+As of **2026-10-22**, `GET /infer/v1/models/usable` exposes each usable sealed connector's full picker list in OpenAI list shape; `imajin.picked` marks the current selection, not the only callable model. Non-picked listed models resolve through the same connector and metering path; unsealed/ungranted/modelless cards contribute no models ([#3045](https://github.com/ima-jin/imajin-ai/pull/3045)). See the [inference spec](api-spec/infer.yaml).
+
+Delegated app-token minting can resolve the live consent by `principalDid`, mutually exclusive with the legacy `attestationId` selector ([#3042](https://github.com/ima-jin/imajin-ai/pull/3042)). The [OpenClaw passthrough runbook](../../packages/openclaw-infer-passthrough/README.md) already documents principal-based configuration, catalog routing, consent-failure recovery and operator-only rollout cleanup from [#3048](https://github.com/ima-jin/imajin-ai/pull/3048). Re-granting needs no proxy restart after that rollout; auth/scope failures never trigger direct fallback.
 
 Brain connectors (`BRAIN_CONNECTORS` in `src/lib/inference/brain.ts`, `CONNECTOR_REGISTRY` in `src/lib/kernel/connector-registry.ts`) let a DID seal its own provider API key for the completions passthrough (`POST /infer/v1/chat/completions`) instead of a shared env var — see the [inference connectors epic](https://github.com/ima-jin/imajin-ai/issues/1922). In resolution order:
 
