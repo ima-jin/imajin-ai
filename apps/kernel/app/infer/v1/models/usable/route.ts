@@ -1,4 +1,5 @@
 /**
+ * Picker-list catalog expansion is tracked in #3027.
  * GET /infer/v1/models/usable (#2201, sub-issue of the #1926 passthrough
  * epic; depends on #2195/PR #2199).
  *
