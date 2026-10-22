@@ -3068,6 +3068,13 @@ paths:
         preserve the original decision, and remain after a late applied receipt.
         The agreement record retains the signed document hash and unique party
         DIDs; agreement cards appear in both parties' attestation history including revocation state.
+        The mechanical registry.app.expired type records seven-day unconsented
+        DCR expiry by /api/cron/registry-app-expiry (jin spec). It is node-signed,
+        never bilateral, with subject_did=app DID, context_id=appId,
+        context_type=registry_app, and payload
+        {appId, reason: 'dcr-unconsented-ttl', ttlDays: 7, createdAt}.
+        Status changes and signed records commit together; registry rows
+        and all consent history remain retained.
       responses:
         "200": { description: "Registered types and schemas, including agreement" }
 

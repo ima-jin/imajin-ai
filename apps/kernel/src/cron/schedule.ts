@@ -41,6 +41,7 @@ export interface CronManifest {
 export const KERNEL_CRON_MANIFEST: CronManifest = {
   app: 'kernel',
   jobs: [
+    { path: '/api/cron/registry-app-expiry', schedule: '*/10 * * * *', noOverlap: true },
     { path: '/api/cron/operator-approval-expiry', schedule: '*/10 * * * *', noOverlap: true },
     { path: '/api/cron/grant-expiry', schedule: '*/10 * * * *', noOverlap: true },
     { path: '/api/cron/grant-audit-retry', schedule: '* * * * *', noOverlap: true },
