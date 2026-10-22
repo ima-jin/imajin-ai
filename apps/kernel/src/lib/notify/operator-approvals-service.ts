@@ -686,6 +686,12 @@ export async function decideOperatorApproval(
   return decideLegacyApproval(row, params);
 }
 
+function decisionStatusError(status: string): string {
+  return status === 'expired'
+    ? 'Approval has expired and can no longer be decided'
+    : `Proposal is not awaiting this decision (status: ${status})`;
+}
+
 async function decideLegacyApproval(row: OperatorApprovalRow, params: DecideOperatorApprovalParams): Promise<DecideOperatorApprovalResult> {
   const { proposalId, operatorDid, decision, mode, reason, operatorSignature, decidedAt: claimedDecidedAt } = params;
   // #2723: owner-only. `operatorDid` here is the REAL session DID; it must be
@@ -700,9 +706,7 @@ async function decideLegacyApproval(row: OperatorApprovalRow, params: DecideOper
   if (row.status !== requiredStatus) {
     return {
       ok: false,
-      error: row.status === 'expired'
-        ? 'Approval has expired and can no longer be decided'
-        : `Proposal is not awaiting this decision (status: ${row.status})`,
+      error: decisionStatusError(row.status),
       status: 409,
     };
   }
