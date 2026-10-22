@@ -315,6 +315,52 @@ describe('sibling topology: local and external agents in one list', () => {
 });
 
 describe('grant controls call the #1882 grants endpoints', () => {
+  it('offers a 30-day choice, previews its expiry and shows the returned expiry after renewal', async () => {
+    const expiresAt = new Date(Date.now() + 30 * 86400000).toISOString();
+    const spy = await renderAgentsPage([agent()], {
+      '/auth/api/grants/grant_1/renew': async () => Response.json({ grant: { grantId: 'grant_1', expiresAt } }),
+    });
+    const select = screen.getByLabelText('Renewal lease for grant_1');
+    expect(select.className).toContain('max-w-full');
+    expect(select.className).toContain('min-h-11');
+    fireEvent.change(select, { target: { value: String(30 * 86400000) } });
+    const preview = screen.getByText(/Renew until:/).querySelector('time')!;
+    expect(Math.abs(Date.parse(preview.dateTime) - Date.parse(expiresAt))).toBeLessThan(1000);
+    fireEvent.click(screen.getByRole('button', { name: 'Renew' }));
+    await waitFor(() => expect(spy).toHaveBeenCalledWith('/auth/api/grants/grant_1/renew', expect.objectContaining({
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ttlMs: 30 * 86400000 }),
+    })));
+    expect(await screen.findByText(/Grant renewed. New expiry:/)).toBeDefined();
+  });
+
+  it('defaults to keeping the last renewed lease and omits ttlMs when unchanged', async () => {
+    const lastRenewed = new Date(Date.now() - 86400000).toISOString();
+    const expiresAt = new Date(Date.parse(lastRenewed) + 7 * 86400000).toISOString();
+    const spy = await renderAgentsPage([agent({ grants: [grant({
+      expiresAt, history: [{ event: 'renewed', capability: null, actorDid: 'did:imajin:ryan', createdAt: lastRenewed }],
+    })] })]);
+    expect((screen.getByLabelText('Renewal lease for grant_1') as HTMLSelectElement).value).toBe('');
+    const preview = screen.getByText(/Renew until:/).querySelector('time')!;
+    expect(Math.abs(Date.parse(preview.dateTime) - Date.now() - 7 * 86400000)).toBeLessThan(1000);
+    fireEvent.click(screen.getByRole('button', { name: 'Renew' }));
+    await waitFor(() => expect(spy).toHaveBeenCalledWith('/auth/api/grants/grant_1/renew', expect.objectContaining({ body: '{}' })));
+  });
+
+  it('clamps the default preview to 30 days for legacy overlong grants', async () => {
+    await renderAgentsPage([agent({ grants: [grant({
+      issuedAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 90 * 86400000).toISOString(),
+    })] })]);
+    const preview = screen.getByText(/Renew until:/).querySelector('time')!;
+    expect(Math.abs(Date.parse(preview.dateTime) - Date.now() - 30 * 86400000)).toBeLessThan(1000);
+  });
+
+  it.each(['active', 'revoked'] as const)('warns only for an active critical capability (%s)', async status => {
+    await renderAgentsPage([agent({ grants: [grant({
+      expiresAt: new Date(Date.now() + 2 * 3600000).toISOString(),
+      capabilities: [{ capability: 'operator:approvals', status, revokedAt: null }],
+    })] })]);
+    expect(screen.queryByText(/Operator approvals expires in 2h/) !== null).toBe(status === 'active');
+  });
   it.each([
     [
       'revokes a single capability via DELETE /auth/api/grants/:grantId/capabilities/:capability',

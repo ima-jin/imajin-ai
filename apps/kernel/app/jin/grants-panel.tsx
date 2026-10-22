@@ -31,6 +31,7 @@ import Link from 'next/link';
 import type { GrantCard, GrantSourceKind, DeferredAckState, GrantAckEvidence } from '@/src/lib/jin/grants-lane';
 import styles from './grants-panel.module.css';
 import { forEachSequential } from '@/src/lib/async/sequential';
+import { operatorGrantExpiryWarning } from '@/src/lib/auth/grant-lease';
 
 const defaultTransport: typeof fetch = (...args) => fetch(...args);
 
@@ -116,6 +117,7 @@ function GrantCardView({
   onCleanup: (card: GrantCard) => void;
 }>) {
   const surplus = surplusIds(card);
+  const expiryWarning = card.expiresAt ? operatorGrantExpiryWarning({ ...card, expiresAt: card.expiresAt }) : null;
   return (
     <div className={surplus.length > 0 ? 'border border-gray-800 bg-[var(--bg-surface)] p-4 space-y-2' : 'rounded-lg border border-gray-800 p-4 space-y-2'} data-testid="grant-card">
       <div className="flex items-center justify-between gap-3 flex-wrap">
@@ -142,6 +144,7 @@ function GrantCardView({
         </div>
       )}
 
+      {expiryWarning && <p role="alert" className="text-xs text-amber-400">{expiryWarning} <Link href="/auth/agents">Renew grant →</Link></p>}
       {card.delegatorDid && (
         <p className="text-xs text-gray-500 break-all">Delegator: <span className="font-mono text-gray-300">{card.delegatorDid}</span></p>
       )}

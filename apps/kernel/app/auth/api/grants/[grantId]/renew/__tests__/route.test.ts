@@ -61,7 +61,7 @@ describe('POST /auth/api/grants/:grantId/renew', () => {
     expect(renewGrantMock).not.toHaveBeenCalled();
   });
 
-  it('renews with the default TTL when no body is supplied', async () => {
+  it('preserves the previous lease when no body is supplied', async () => {
     requireAuthMock.mockResolvedValue({ identity: { id: DELEGATOR } });
     renewGrantMock.mockResolvedValue({ grantId: GRANT_ID, expiresAt: '2026-09-01T00:00:00.000Z' });
 
@@ -78,6 +78,25 @@ describe('POST /auth/api/grants/:grantId/renew', () => {
     await POST(makeRequest({ ttlMs: 60000 }), params());
 
     expect(renewGrantMock).toHaveBeenCalledWith({ grantId: GRANT_ID, requestedBy: DELEGATOR, actorDid: DELEGATOR, ttlMs: 60000 });
+  });
+
+  it.each([0, -1, '30d', null, Number.POSITIVE_INFINITY])('rejects invalid TTL %s without renewing', async (ttlMs) => {
+    requireAuthMock.mockResolvedValue({ identity: { id: DELEGATOR } });
+    expect((await POST(makeRequest({ ttlMs }), params())).status).toBe(400);
+    expect(renewGrantMock).not.toHaveBeenCalled();
+  });
+
+  it.each([null, [], 'invalid'])('rejects a non-object body %s', async (body) => {
+    requireAuthMock.mockResolvedValue({ identity: { id: DELEGATOR } });
+    expect((await POST(makeRequest(body), params())).status).toBe(400);
+    expect(renewGrantMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed JSON', async () => {
+    requireAuthMock.mockResolvedValue({ identity: { id: DELEGATOR } });
+    const request = new Request('http://localhost/auth/api/grants/grant_1/renew', { method: 'POST', body: '{' });
+    expect((await POST(request, params())).status).toBe(400);
+    expect(renewGrantMock).not.toHaveBeenCalled();
   });
 
   it('surfaces a lib-level error with its own status code', async () => {

@@ -5,6 +5,7 @@ import { buildPublicUrlAbsolute } from '@imajin/config';
 import { GRANT_SCOPE_REGISTRY } from '@imajin/auth/grant-scopes';
 import RetracePane from './retrace-panel';
 import { fireAndForget } from '@/src/lib/async/fire-and-forget';
+import { previousGrantLeaseMs, operatorGrantExpiryWarning } from '@/src/lib/auth/grant-lease';
 
 const NODE_URL = buildPublicUrlAbsolute('kernel');
 const CHAT_BASE_URL = buildPublicUrlAbsolute('chat');
@@ -235,14 +236,18 @@ function GrantCard({
   actionLoading: string;
   onRevokeCapability: (grantId: string, capability: string) => void;
   onRevokeAll: (grantId: string) => void;
-  onRenew: (grantId: string) => void;
+  onRenew: (grantId: string, ttlMs?: number) => void;
   onAddCapability: (grantId: string, capability: string) => void;
 }>) {
   const [expanded, setExpanded] = useState(false);
+  const [leaseChoice, setLeaseChoice] = useState('');
+  const leaseMs = leaseChoice ? Number(leaseChoice) : previousGrantLeaseMs(grant);
+  const renewalExpiry = new Date(Date.now() + leaseMs).toISOString();
   const isRevoked = grant.status === 'revoked';
   const isExpired = grant.status === 'expired';
   const canAct = !isRevoked;
   const activeCapabilities = new Set(grant.capabilities.filter((cap) => cap.status === 'active').map((cap) => cap.capability));
+  const expiryWarning = operatorGrantExpiryWarning({ ...grant, capabilities: [...activeCapabilities] });
   const addableCapabilities = GRANT_SCOPE_REGISTRY.map((entry) => entry.scope).filter((scope) => !activeCapabilities.has(scope));
 
   function handleAddCapabilitySubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -268,11 +273,23 @@ function GrantCard({
         <div className="flex items-center gap-2 flex-wrap">
           {canAct && (
             <>
+              <select
+                aria-label={`Renewal lease for ${grant.grantId}`}
+                value={leaseChoice}
+                onChange={(event) => setLeaseChoice(event.target.value)}
+                disabled={actionLoading === `renew-${grant.grantId}`}
+                className="min-h-11 min-w-0 max-w-full px-2 py-1 text-xs border border-gray-700 rounded bg-black text-white"
+              >
+                <option value="">Keep previous lease</option>
+                <option value={24 * 60 * 60 * 1000}>24 hours</option>
+                <option value={7 * 24 * 60 * 60 * 1000}>7 days</option>
+                <option value={30 * 24 * 60 * 60 * 1000}>30 days</option>
+              </select>
               <button
                 type="button"
-                onClick={() => onRenew(grant.grantId)}
+                onClick={() => onRenew(grant.grantId, leaseChoice ? leaseMs : undefined)}
                 disabled={actionLoading === `renew-${grant.grantId}`}
-                className="text-xs px-2 py-1 border border-gray-700 text-gray-300 rounded hover:border-amber-600 hover:text-amber-400 transition disabled:opacity-40"
+                className="min-h-11 text-xs px-2 py-1 border border-gray-700 text-gray-300 rounded hover:border-amber-600 hover:text-amber-400 transition disabled:opacity-40"
               >
                 {actionLoading === `renew-${grant.grantId}` ? '…' : 'Renew'}
               </button>
@@ -296,6 +313,9 @@ function GrantCard({
         </div>
       </div>
 
+      {canAct && <p className="text-xs text-gray-400">Renew until: <time dateTime={renewalExpiry}>{formatDateTime(renewalExpiry)}</time></p>}
+      <p className="text-xs text-gray-500">Current expiry: <time dateTime={grant.expiresAt}>{formatDateTime(grant.expiresAt)}</time></p>
+      {expiryWarning && <p role="alert" className="text-xs text-amber-400">{expiryWarning}</p>}
       <div className="flex flex-wrap gap-1.5">
         {grant.capabilities.map((cap) => (
           <span
@@ -916,16 +936,19 @@ export default function AgentsPage() {
     }
   }
 
-  async function handleRenew(grantId: string) {
+  async function handleRenew(grantId: string, ttlMs?: number) {
     const key = `renew-${grantId}`;
     setActionLoading(key);
     try {
       const res = await fetch(`/auth/api/grants/${encodeURIComponent(grantId)}/renew`, {
         method: 'POST',
         credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(ttlMs === undefined ? {} : { ttlMs }),
       });
       if (res.ok) {
-        showStatus('success', 'Grant renewed.');
+        const body = await res.json();
+        showStatus('success', `Grant renewed. New expiry: ${formatDateTime(body.grant?.expiresAt) ?? 'refreshing…'}`);
         await loadData();
       } else {
         const body = await res.json().catch(() => ({}));

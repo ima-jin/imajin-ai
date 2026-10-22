@@ -7,6 +7,8 @@
  *
  * `eventTypes` is data for the delegated event-subscription work in #1884.
  */
+export { GRANT_DEFAULT_TTL, GRANT_MAX_TTL } from './constants';
+
 export const GRANT_SCOPE_REGISTRY = [
   { scope: 'media:read', origin: 'mcp', eventTypes: [] },
   { scope: 'media:write', origin: 'mcp', eventTypes: [] },

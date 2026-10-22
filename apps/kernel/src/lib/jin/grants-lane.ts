@@ -94,6 +94,7 @@ export interface GrantCard {
   /** Non-secret capability/scope labels — a purpose string for vault, a coarse role for legacy membership. */
   capabilities: string[];
   issuedAt: string | null;
+  expiresAt?: string;
   lastUsedAt: string | null;
   ackState: DeferredAckState | null;
   ackEvidence: GrantAckEvidence | null;
@@ -214,6 +215,7 @@ function normalizeAuthGrants(grants: Awaited<ReturnType<typeof listGrantDetailsF
       grantee: grant.agentDid,
       capabilities: activeCapabilities.length > 0 ? activeCapabilities : ['(no active capabilities)'],
       issuedAt: grant.issuedAt,
+      expiresAt: grant.expiresAt,
       lastUsedAt: grant.lastUsedAt,
       ackState: null,
       ackEvidence: null,
