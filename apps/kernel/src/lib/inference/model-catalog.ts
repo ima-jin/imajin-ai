@@ -7,6 +7,7 @@ import { createOpenAiCompatibleModelHandlers } from '@/src/lib/kernel/openai-com
 import { createOpenrouterModelHandlers } from '@/src/lib/openrouter/model-handlers';
 import type { ModelListResult } from '@/src/lib/kernel/connector-model-picker-route';
 import type { ResolvedBrain } from './brain';
+import { forEachSequential } from '@/src/lib/async/sequential';
 
 const log = createLogger('kernel:inference:model-catalog');
 
@@ -55,13 +56,14 @@ export async function expandUsableModels(brains: readonly ResolvedBrain[]): Prom
     if (!picked.has(brain.modelId)) picked.set(brain.modelId, brain);
   }
   const models = new Map<string, UsableModel>();
-  for (const brain of brains) {
-    for (const modelId of await listBrainPickerModels(brain)) {
+  await forEachSequential(brains, async (brain) => {
+    const pickerModels = await listBrainPickerModels(brain);
+    for (const modelId of pickerModels) {
       const winner = picked.get(modelId) ?? brain;
       if (models.has(modelId)) continue;
       models.set(modelId, { ...winner, modelId, picked: winner.modelId === modelId });
     }
-  }
+  });
   return [...models.values()];
 }
 
