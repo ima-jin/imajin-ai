@@ -21,7 +21,7 @@ function eligible(cutoff: Date) {
 }
 
 /** Old registrations need no backfill: the first ticks apply this same policy. */
-export async function expireRegistryApps(now = Date.now()): Promise<{ checked: number; expired: number }> {
+export function expireRegistryApps(now = Date.now()): Promise<{ checked: number; expired: number }> {
   const cutoff = new Date(now - DCR_EXPIRY_TTL_DAYS * 86_400_000);
   return db.transaction(async tx => {
     const rows = await tx.select({
