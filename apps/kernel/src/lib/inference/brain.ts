@@ -40,6 +40,7 @@ import { loadLocalCredentials } from '@/src/lib/local/connector';
 import { loadOpenrouterCredentials, OPENROUTER_BASE_URL } from '@/src/lib/openrouter/connector';
 import { lookupAppRegistrantDid } from '@/src/lib/kernel/app-registrant';
 import { forEachSequential } from '@/src/lib/async/sequential';
+import { expandUsableModels, resolvePickerModel, type UsableModel } from './model-catalog';
 
 const log = createLogger('kernel:inference:brain');
 
@@ -557,7 +558,10 @@ export interface ResolveBrainOptions {
    * The caller's requested model id (#2195) — the routing key. Among the
    * principal's sealed, usable connectors (sealed + a model resolved), the
    * one whose model matches wins outright, regardless of table order. When
-   * omitted, or when nothing matches, resolution falls back to the first
+   * no picked model matches, the same live picker loaders used by /jin are
+   * checked in walk order (#3027). A picker match returns that requested model
+   * using the matching card's credential. When omitted, or nothing matches,
+   * resolution falls back to the first
    * usable connector in walk order: a per-DID default-brain preference is a
    * deliberate non-goal for now, same as `BRAIN_CONNECTORS`'
    * order-is-priority precedent (#1621 calls it a future refinement).
@@ -576,7 +580,8 @@ export interface ResolveBrainOptions {
  * from before #2195. With one, the walk keeps going past a usable-but-
  * non-matching connector (remembered as the fallback) looking for an exact
  * match; a match returns immediately, and running out of DIDs/connectors
- * with no match falls back to the first usable connector found.
+ * with no picked match checks live picker membership (#3027), then falls
+ * back to the first usable connector found if no picker serves the id.
  *
  * A connector that is sealed but has picked no model (#1769) is skipped, not
  * fatal (#2195): it is recorded and the walk keeps going, so one broken
@@ -602,12 +607,17 @@ export async function resolveBrain(
   const candidateConnectors = options?.connectors
     ? BRAIN_CONNECTORS.filter((c) => options.connectors!.includes(c.id))
     : BRAIN_CONNECTORS;
-  const requestedModel = options?.model;
+  // OpenClaw refs carry the provider namespace; upstream model ids do not.
+  const requestedModel = options?.model?.replace(/^imajin\//, '');
 
   const walk = await walkBrainConnectors(dids, candidateConnectors, requestedModel);
   if (walk.brain) return walk.brain;
 
   if (walk.fallback) {
+    if (requestedModel) {
+      const matching = await resolvePickerModel(walk.usableBrains, requestedModel);
+      if (matching) return matching;
+    }
     // #2195: nothing served the requested model — fall back to the
     // principal's explicit default brain (a future refinement, #1621) or,
     // absent one, the first usable sealed connector found in walk order.
@@ -641,7 +651,8 @@ export async function resolveBrain(
  * Deduped by (connector, modelId): the same connector/model pair sealed on
  * more than one candidate DID (e.g. both owner and app/org) is only ever one
  * usable brain from a caller's perspective, and only the first (highest
- * priority) occurrence is kept.
+ * priority) occurrence is kept. `allCards` retains every credential card
+ * for full catalog expansion, since two keys can see different picker lists.
  *
  * A connector that throws while being probed is skipped, silently as far as
  * this function's return value goes (#1637's precedent) — a caller listing
@@ -660,7 +671,7 @@ export async function resolveBrain(
  */
 export async function listUsableBrains(
   context: string | BrainCredentialContext,
-  options?: Pick<ResolveBrainOptions, 'connectors'>,
+  options?: Pick<ResolveBrainOptions, 'connectors'> & { allCards?: boolean },
 ): Promise<ResolvedBrain[]> {
   const dids = await resolveCandidateDids(context);
   const candidateConnectors = options?.connectors
@@ -677,15 +688,21 @@ export async function listUsableBrains(
     if (outcome.kind !== 'usable') return;
 
     const key = `${outcome.brain.connector}::${outcome.brain.modelId}`;
-    if (seen.has(key)) return;
+    if (!options?.allCards && seen.has(key)) return;
     seen.add(key);
     brains.push(outcome.brain);
   });
   return brains;
 }
 
+/** Full picker catalog of usable sealed cards (#3027), with the current pick marked. */
+export async function listUsableModels(context: string | BrainCredentialContext): Promise<UsableModel[]> {
+  return expandUsableModels(await listUsableBrains(context, { allCards: true }));
+}
+
 /** Aggregate result of walking every candidate (DID, connector) pair — see {@link walkBrainConnectors}. */
 interface BrainWalkResult {
+  usableBrains: ResolvedBrain[];
   /** Set when a usable connector matched `requestedModel` (or none was requested) — the walk returns immediately. */
   brain?: ResolvedBrain;
   /** The first usable connector found, kept in case nothing serves `requestedModel`. */
@@ -708,6 +725,7 @@ async function walkBrainConnectors(
 ): Promise<BrainWalkResult> {
   const failures: BrainConnectorFailure[] = [];
   const modellessCards: UnusableSealedCard[] = [];
+  const usableBrains: ResolvedBrain[] = [];
   let fallback: ResolvedBrain | undefined;
 
   for (const did of dids) {
@@ -728,13 +746,14 @@ async function walkBrainConnectors(
       // usable connector wins outright (table-order priority, unchanged
       // from before #2195); otherwise a matching model outranks table order.
       if (!requestedModel || outcome.brain.modelId === requestedModel) {
-        return { brain: outcome.brain, failures, modellessCards };
+        return { brain: outcome.brain, usableBrains, failures, modellessCards };
       }
+      usableBrains.push(outcome.brain);
       fallback ??= outcome.brain;
     }
   }
 
-  return { fallback, failures, modellessCards };
+  return { fallback, usableBrains, failures, modellessCards };
 }
 
 /** Outcome of probing one (connector, DID) pair — see {@link probeConnector}. */

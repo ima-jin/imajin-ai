@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 // ─── Mocks ──────────────────────────────────────────────────────────────────
 
@@ -19,6 +19,7 @@ vi.mock('@/src/lib/gemini/connector', () => ({
 
 vi.mock('@/src/lib/anthropic/connector', () => ({
   loadAnthropicCredentials: mockLoadAnthropic,
+  ANTHROPIC_BASE_URL: 'https://api.anthropic.com/v1',
 }));
 
 vi.mock('@/src/lib/xai/connector', () => ({
@@ -59,7 +60,6 @@ const { mockDbSelect } = vi.hoisted(() => {
   const mockDbSelect = vi.fn();
   return { mockDbSelect };
 });
-
 vi.mock('drizzle-orm', () => ({
   eq: (col: unknown, val: unknown) => ({ col, val }),
 }));
@@ -79,7 +79,15 @@ vi.mock('@/src/db', () => ({
 
 // ─── Subject ────────────────────────────────────────────────────────────────
 
-import { resolveBrain, listBrainConnectors, listUsableBrains, NoBrainSealedError, NoModelSelectedError } from '../brain';
+import { resolveBrain, listBrainConnectors, listUsableBrains, listUsableModels, NoBrainSealedError, NoModelSelectedError } from '../brain';
+import { forwardOpenAiCompatible } from '../completions/openai-compatible-adapter';
+
+const { mockRecordUsage, mockEgressSafeFetch } = vi.hoisted(() => ({
+  mockRecordUsage: vi.fn(),
+  mockEgressSafeFetch: vi.fn(),
+}));
+vi.mock('../usage-ledger', () => ({ recordInferenceUsage: mockRecordUsage }));
+vi.mock('@/src/lib/kernel/egress-fetch', () => ({ egressSafeFetch: mockEgressSafeFetch }));
 
 const OWNER = 'did:imajin:farmer';
 const APP = 'did:imajin:agrifortress';
@@ -98,6 +106,7 @@ beforeEach(() => {
   // `mockResolvedValueOnce` unconsumed. clearAllMocks keeps those queues, which
   // then satisfy a later test that expects nothing to be sealed.
   vi.resetAllMocks();
+  vi.stubGlobal('fetch', vi.fn().mockImplementation(async () => Response.json({ data: [] })));
   mockLoadGemini.mockResolvedValue(undefined);
   mockLoadAnthropic.mockResolvedValue(undefined);
   mockLoadXai.mockResolvedValue(undefined);
@@ -108,6 +117,119 @@ beforeEach(() => {
   mockLoadOpenrouter.mockResolvedValue(undefined);
   // Default: no app registrant found (no parent org DID)
   mockDbSelect.mockResolvedValue([]);
+});
+
+afterEach(() => vi.unstubAllGlobals());
+
+describe('usable picker catalogs (#3027)', () => {
+  function serveCatalogs() {
+    vi.mocked(fetch).mockImplementation(async (url) => {
+      if (String(url).includes('api.moonshot.ai')) {
+        return Response.json({ data: [{ id: 'kimi-k3' }, { id: 'kimi-k2.7-code' }, { id: 'kimi-k2.7-code' }] });
+      }
+      return Response.json({ data: [{ id: 'grok-picked' }, { id: 'grok-other' }] });
+    });
+  }
+
+  it('lists full pickers only for usable granted cards and marks precisely the picked entries', async () => {
+    mockLoadAnthropic.mockResolvedValue({ apiKey: 'fixture' }); // sealed but modelless
+    mockLoadXai.mockResolvedValue({ apiKey: 'fixture', modelId: 'grok-picked' });
+    mockLoadMoonshot.mockResolvedValue({ apiKey: 'fixture', modelId: 'kimi-k3' });
+    serveCatalogs();
+
+    const models = await listUsableModels(OWNER);
+
+    expect(models.map(({ modelId, connector, picked }) => ({ modelId, connector, picked }))).toEqual([
+      { modelId: 'grok-picked', connector: 'xai', picked: true },
+      { modelId: 'grok-other', connector: 'xai', picked: false },
+      { modelId: 'kimi-k3', connector: 'moonshot', picked: true },
+      { modelId: 'kimi-k2.7-code', connector: 'moonshot', picked: false },
+    ]);
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(models.some((model) => ['anthropic', 'openai'].includes(model.connector))).toBe(false);
+  });
+
+  it('does not fetch any catalog for unsealed, ungranted or modelless cards', async () => {
+    mockLoadGemini.mockResolvedValue({ apiKey: 'fixture' });
+    expect(await listUsableModels(OWNER)).toEqual([]);
+    expect(fetch).not.toHaveBeenCalled();
+    await expect(resolveBrain(OWNER, { model: 'imajin/foreign-model' })).rejects.toBeInstanceOf(NoModelSelectedError);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it('resolves every listed bare or imajin ref through the advertised credential', async () => {
+    mockLoadXai.mockResolvedValue({ apiKey: 'fixture', modelId: 'grok-picked' });
+    mockLoadMoonshot.mockResolvedValue({ apiKey: 'fixture', modelId: 'kimi-k3' });
+    serveCatalogs();
+    for (const row of await listUsableModels(OWNER)) {
+      for (const ref of [row.modelId, `imajin/${row.modelId}`]) {
+        expect(await resolveBrain(OWNER, { model: ref })).toMatchObject({
+          connector: row.connector, credentialDid: row.credentialDid, modelId: row.modelId,
+        });
+      }
+    }
+  });
+
+  it('meters a non-picked listed Moonshot model rather than the earlier sealed xAI card', async () => {
+    mockLoadXai.mockResolvedValue({ apiKey: 'fixture', modelId: 'grok-picked' });
+    mockLoadMoonshot.mockResolvedValue({ apiKey: 'fixture', modelId: 'kimi-k3' });
+    serveCatalogs();
+    const listed = (await listUsableModels(OWNER)).find((row) => row.modelId === 'kimi-k2.7-code')!;
+    const brain = await resolveBrain(OWNER, { model: `imajin/${listed.modelId}` });
+    vi.mocked(fetch).mockResolvedValueOnce(Response.json({
+      id: 'completion-fixture', choices: [], usage: { prompt_tokens: 123, completion_tokens: 45 },
+    }));
+
+    const response = await forwardOpenAiCompatible(brain, { model: listed.modelId, messages: [] }, { sessionId: 'fixture-session' });
+
+    expect(response.status).toBe(200);
+    expect(fetch).toHaveBeenLastCalledWith('https://api.moonshot.ai/v1/chat/completions', expect.objectContaining({
+      body: JSON.stringify({ model: 'kimi-k2.7-code', messages: [] }),
+    }));
+    expect(mockRecordUsage).toHaveBeenCalledOnce();
+    expect(mockRecordUsage).toHaveBeenCalledWith(expect.objectContaining({
+      principalDid: OWNER, provider: 'moonshot', model: listed.modelId,
+      tokensIn: 123, tokensOut: 45, sessionId: 'fixture-session',
+    }));
+  });
+
+  it('keeps picked-match priority when catalogs overlap, otherwise uses walk order', async () => {
+    mockLoadXai.mockResolvedValue({ apiKey: 'fixture', modelId: 'x-picked' });
+    mockLoadMoonshot.mockResolvedValue({ apiKey: 'fixture', modelId: 'shared' });
+    vi.mocked(fetch).mockImplementation(async () => Response.json({ data: [{ id: 'shared' }, { id: 'other' }] }));
+    const models = await listUsableModels(OWNER);
+    expect(models.filter((row) => row.modelId === 'shared')).toEqual([
+      expect.objectContaining({ connector: 'moonshot', picked: true }),
+    ]);
+    expect(models.find((row) => row.modelId === 'other')?.connector).toBe('xai');
+    expect((await resolveBrain(OWNER, { model: 'shared' })).connector).toBe('moonshot');
+    expect((await resolveBrain(OWNER, { model: 'other' })).connector).toBe('xai');
+  });
+
+  it('retains the registrant card catalog even when its picked model duplicates the owner pick', async () => {
+    const ORG = 'did:imajin:org';
+    mockDbSelect.mockResolvedValue([{ ownerDid: ORG }]);
+    mockLoadMoonshot.mockImplementation(async (did) =>
+      did === APP ? undefined : { apiKey: did, modelId: 'shared' });
+    vi.mocked(fetch).mockImplementation(async (_url, init) => Response.json({
+      data: [{ id: init?.headers && (init.headers as Record<string, string>).Authorization === `Bearer ${ORG}` ? 'org-only' : 'owner-only' }],
+    }));
+    const context = { ownerDid: OWNER, appDid: APP };
+    const models = await listUsableModels(context);
+    expect(models.find((row) => row.modelId === 'shared')?.credentialDid).toBe(OWNER);
+    expect(models.find((row) => row.modelId === 'org-only')?.credentialDid).toBe(ORG);
+    expect(await resolveBrain(context, { model: 'org-only' })).toMatchObject({ credentialDid: ORG, modelId: 'org-only' });
+  });
+
+  it('respects connector restrictions even when another sealed picker has the requested id', async () => {
+    mockLoadXai.mockResolvedValue({ apiKey: 'fixture', modelId: 'grok-picked' });
+    mockLoadMoonshot.mockResolvedValue({ apiKey: 'fixture', modelId: 'kimi-k3' });
+    serveCatalogs();
+    expect(await resolveBrain(OWNER, { connectors: ['xai'], model: 'kimi-k2.7-code' })).toMatchObject({
+      connector: 'xai', modelId: 'grok-picked',
+    });
+    expect(mockLoadMoonshot).not.toHaveBeenCalled();
+  });
 });
 
 // ─── Resolution order ───────────────────────────────────────────────────────
