@@ -96,9 +96,10 @@ async function boundCard(row: OperatorApprovalRow, archivedAt: string | null = n
   const { readApprovalSessionOutcome } = await import('./operator-approval-session-outcome');
   const sessionOutcome = await readApprovalSessionOutcome(row.operatorDid, approvalId, record?.payload?.decision, record?.sessionCommand);
   const nativeRail = sessionBinding !== null || await usesNativeRail(row);
+  const nativeOutcome = row.status === 'expired' ? card.outcome : null;
   return {
     ...card,
-    ...(nativeRail ? { outcome: null, appliedAt: null } : {}),
+    ...(nativeRail ? { outcome: nativeOutcome, appliedAt: null } : {}),
     ...(sessionBinding ? { sessionBinding } : {}),
     ...(sessionOutcome ? { sessionOutcome } : {}),
   };
@@ -699,7 +700,9 @@ async function decideLegacyApproval(row: OperatorApprovalRow, params: DecideOper
   if (row.status !== requiredStatus) {
     return {
       ok: false,
-      error: `Proposal is not awaiting this decision (status: ${row.status})`,
+      error: row.status === 'expired'
+        ? 'Approval has expired and can no longer be decided'
+        : `Proposal is not awaiting this decision (status: ${row.status})`,
       status: 409,
     };
   }
@@ -817,8 +820,12 @@ export async function attachApprovalOutcome(
 
   await db
     .update(operatorApprovals)
-    .set({ outcome: sql`coalesce(${operatorApprovals.outcome}, '{}'::jsonb) || ${JSON.stringify(outcome)}::jsonb`, updatedAt: new Date() })
-    .where(eq(operatorApprovals.proposalId, proposalId));
+    .set({
+      outcome: sql`coalesce(${operatorApprovals.outcome}, '{}'::jsonb) || ${JSON.stringify(outcome)}::jsonb`,
+      ...(row.status === 'approved' ? { status: 'applied', appliedAt: new Date() } : {}),
+      updatedAt: new Date(),
+    })
+    .where(and(eq(operatorApprovals.proposalId, proposalId), eq(operatorApprovals.status, row.status)));
 
   log.info({ proposalId, exitCode: outcome.exitCode }, 'exec.command outcome attached');
   return { ok: true };

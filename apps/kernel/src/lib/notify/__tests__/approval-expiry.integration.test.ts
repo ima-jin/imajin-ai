@@ -155,6 +155,7 @@ describe('signed approval expiry and retained history (#3016)', () => {
     expect(card.archivedAt).toBeTruthy();
     expect(card.outcome).toMatchObject({ exitCode: 0 });
     expect(card.outcome).not.toHaveProperty('inboxArchivedBy');
+    expect((await row('exec')).status).toBe('applied');
     expect(await countInboxApprovals(OPERATOR_DID)).toEqual({ pending: 0, total: 1 });
   });
 

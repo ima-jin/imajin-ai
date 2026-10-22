@@ -55,6 +55,23 @@ describe('vault import approval renderer (#2260)', () => {
   });
 });
 describe('acting Inbox freshness (#2952)', () => {
+  it('keeps history-only personal Inboxes accessible and fetches history only when requested', async () => {
+    const historical = approval({ status: 'expired' });
+    const spy = vi.fn(async (url: string) => ({
+      ok: true, json: async () => ({ isOperator: false, hasHistory: true, approvals: url.includes('history=true') ? [historical] : [] }),
+    }));
+    vi.stubGlobal('fetch', spy);
+    render(<OperatorApprovalsPanel />);
+    const show = await screen.findByRole('button', { name: 'Show history' });
+    expect(spy.mock.calls[0][0]).toBe('/jin/api/operator-approvals?view=acting');
+    expect(screen.queryByText(historical.summary)).toBeNull();
+    fireEvent.click(show);
+    await screen.findByText(historical.summary);
+    expect(spy.mock.calls.some(([url]) => url.includes('&history=true'))).toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: 'Hide history' }));
+    await waitFor(() => expect(screen.queryByText(historical.summary)).toBeNull());
+    expect(spy.mock.calls.at(-1)?.[0]).toBe('/jin/api/operator-approvals?view=acting');
+  });
   it.each(['focus', 'imajin:acting-as-changed', 'imajin:session-changed'])('clears obsolete cards and refreshes on %s', async event => {
     const spy = installFetch([{ isOperator: true, approvals: [approval()] }]);
     const { result } = renderHook(() => useRunApprovals());
