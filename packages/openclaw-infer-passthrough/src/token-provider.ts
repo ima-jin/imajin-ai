@@ -43,9 +43,11 @@ export class TokenMintError extends Error {
 }
 
 /** Match only consent loss, not other 403 boundaries such as insufficient scope. */
-export function isRevokedGrant(body: { code?: unknown; error?: unknown }): boolean {
-  return body.code === 'no_live_grant' ||
-    (typeof body.error === 'string' && /authorization.*revoked/i.test(body.error));
+export function isRevokedGrant(value: unknown): boolean {
+  if (!value || typeof value !== 'object') return false;
+  const body = value as { code?: unknown; error?: unknown };
+  const error = typeof body.error === 'string' ? body.error.toLowerCase() : '';
+  return body.code === 'no_live_grant' || (error.includes('authorization') && error.includes('revoked'));
 }
 
 export class NoLiveGrantError extends Error {
@@ -112,11 +114,11 @@ export async function mintAppToken(
   }
 
   if (!res.ok) {
-    const body = (await res.json().catch(() => ({ error: res.statusText }))) as { error?: string; code?: string };
+    const body = (await res.json().catch(() => null)) as { error?: string; code?: string } | null;
     // Never interpolate the signature/challenge/nonce into this message —
     // only the kernel's own (non-secret) error string and HTTP status.
     if (res.status === 403 && isRevokedGrant(body)) throw new NoLiveGrantError();
-    throw new TokenMintError(res.status, body.error ?? res.statusText);
+    throw new TokenMintError(res.status, body?.error ?? res.statusText);
   }
 
   return (await res.json()) as MintedToken;

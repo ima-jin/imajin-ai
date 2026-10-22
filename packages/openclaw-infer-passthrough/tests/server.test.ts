@@ -435,15 +435,16 @@ describe('proxy server — proper status codes instead of a generic 500 (#2453)'
   });
 
   it('unknown model on the unprefixed path → 404', async () => {
-    const fetchMock = stubKernel(() => {
-      throw new Error('kernel must not be called');
+    const fetchMock = stubKernel((url) => {
+      if (url === MINT_URL) return goodMint();
+      return Response.json({ data: [] });
     });
 
     const res = await post('/v1/chat/completions', { model: 'no-such-model', messages: [] });
 
     expect(res.status).toBe(404);
-    expect((await res.json()).error).toBe('no_route_for_model');
-    expect(fetchMock).toHaveBeenCalledTimes(1); // only the test's own call to the shim
+    expect((await res.json()).error).toMatchObject({ code: 'no_route_for_model', message: expect.stringContaining('/jin connector card') });
+    expect(fetchMock).toHaveBeenCalledTimes(4); // client + mint + catalog + refresh
   });
 
   it('kernel-reported unknown model (404) is forwarded verbatim', async () => {
@@ -452,7 +453,7 @@ describe('proxy server — proper status codes instead of a generic 500 (#2453)'
       return new Response(JSON.stringify({ error: 'model_not_found' }), { status: 404, headers: jsonHeaders });
     });
 
-    const res = await post('/openai/v1/chat/completions', { model: 'mystery-model', messages: [] });
+    const res = await post('/openai/v1/chat/completions', { model: 'gpt-mystery-model', messages: [] });
 
     expect(res.status).toBe(404);
     expect((await res.json()).error).toBe('model_not_found');
@@ -548,9 +549,7 @@ describe('proxy server — proper status codes instead of a generic 500 (#2453)'
   });
 
   it('/healthz is not tripped by client errors (4xx) (#2453)', async () => {
-    stubKernel(() => {
-      throw new Error('kernel must not be called');
-    });
+    stubKernel((url) => url === MINT_URL ? goodMint() : Response.json({ data: [] }));
 
     expect((await post('/v1/chat/completions', { model: 'no-such-model', messages: [] })).status).toBe(404);
 

@@ -1,4 +1,10 @@
 import type { ProviderRouteConfig } from './types.js';
+export class CatalogError extends Error {
+  constructor(readonly status: number, message: string) {
+    super(message);
+    this.name = 'CatalogError';
+  }
+}
 
 /** A request named a provider route that is not in the routes config (imajin-ai#2453). */
 export class UnknownRouteError extends Error {

@@ -127,7 +127,7 @@ describe('handleCompletions — 4xx is surfaced verbatim, never triggers fallbac
     const deps = baseDeps();
     const result = await handleCompletions(deps, { bodyText: JSON.stringify({ model: 'unknown-model-xyz' }) });
     expect(result.status).toBe(404);
-    expect(JSON.parse(await bodyToText(result.body)).error).toBe('no_route_for_model');
+    expect(JSON.parse(await bodyToText(result.body)).error.code).toBe('no_route_for_model');
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
