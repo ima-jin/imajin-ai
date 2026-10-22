@@ -3,6 +3,7 @@ import { PGlite } from '@electric-sql/pglite';
 import { drizzle } from 'drizzle-orm/pglite';
 import { readFileSync } from 'node:fs';
 import { canonicalize, crypto, ATTESTATION_TYPES, MECHANICAL_ATTESTATION_TYPES } from '@imajin/auth';
+import { forEachSequential } from '@/src/lib/async/sequential';
 
 const holder = vi.hoisted(() => ({ db: null as unknown }));
 vi.mock('@/src/db', async () => ({
@@ -139,16 +140,16 @@ describe('seven-day signed DCR lifecycle', () => {
   });
 
   it.each([35, 4])('sweeps the existing %i-row environment backlog on its first tick without cleanup SQL', async count => {
-    for (let i = 0; i < count; i++) await seed(`legacy-${i}`);
+    await forEachSequential(Array.from({ length: count }, (_, i) => i), async i => { await seed(`legacy-${i}`); });
     expect(await expireRegistryApps(now)).toEqual({ checked: count, expired: count });
     expect(await rows()).toHaveLength(count);
     expect(await evidence()).toHaveLength(count);
   });
 
   it('bounds a tick to 100 oldest rows and finishes the remainder on the next tick', async () => {
-    for (let i = 0; i < DCR_EXPIRY_BATCH_SIZE + 2; i++) {
+    await forEachSequential(Array.from({ length: DCR_EXPIRY_BATCH_SIZE + 2 }, (_, i) => i), async i => {
       await seed(`batch-${i}`, { createdAt: new Date(old.getTime() + i) });
-    }
+    });
     expect(await expireRegistryApps(now)).toEqual({ checked: 100, expired: 100 });
     expect((await rows()).filter(row => row.status === 'active').map(row => row.id)).toEqual(['batch-100', 'batch-101']);
     expect(await expireRegistryApps(now)).toEqual({ checked: 2, expired: 2 });

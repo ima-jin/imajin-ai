@@ -15,7 +15,7 @@ export async function GET(request: NextRequest) {
     log.info(outcome, 'Registry app expiry complete');
     return NextResponse.json({ ok: true, ...outcome });
   } catch {
-    log.error('Registry app expiry failed');
+    log.error({}, 'Registry app expiry failed');
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
