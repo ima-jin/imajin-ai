@@ -17,16 +17,18 @@ export interface RegisteredApp {
   ended: AppProvenancePoint;
 }
 
+type RegistryTimestamp = Date | string | null;
+
 interface RegistryLifecycleRow {
   id: string; appDid: string; name: string; tier: string; status: string;
-  createdAt: Date | string | null; ownerDid: string;
+  createdAt: RegistryTimestamp; ownerDid: string;
   registrar: string | null; consentAt: string | null; consentBy: string | null;
   consentingPrincipals: number; hasConsent: boolean; hasProvision: boolean; hasClaim: boolean;
   provisionAt: string | null; claimAt: string | null; lastSeen: string | null;
-  endedAt: Date | string | null; endedBy: string | null;
+  endedAt: RegistryTimestamp; endedBy: string | null;
 }
 
-function timestamp(value: Date | string | null): string | null {
+function timestamp(value: RegistryTimestamp): string | null {
   return value ? new Date(value).toISOString() : null;
 }
 
