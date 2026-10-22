@@ -2,7 +2,6 @@
   {
     "id": "xai",
     "principalDid": "did:imajin:REPLACE_WITH_OWNER_DID",
-    "attestationId": "REPLACE_WITH_APP_AUTHORIZED_ATTESTATION_ID",
     "modelPrefixes": ["grok-"],
     "directBaseUrl": "https://api.x.ai/v1",
     "directApiKeyEnvVar": "XAI_DIRECT_API_KEY"
@@ -10,7 +9,6 @@
   {
     "id": "openai",
     "principalDid": "did:imajin:REPLACE_WITH_OWNER_DID",
-    "attestationId": "REPLACE_WITH_APP_AUTHORIZED_ATTESTATION_ID",
     "modelPrefixes": ["gpt-", "o1-", "o3-"],
     "directBaseUrl": "https://api.openai.com/v1",
     "directApiKeyEnvVar": "OPENAI_DIRECT_API_KEY"
@@ -18,7 +16,6 @@
   {
     "id": "gemini",
     "principalDid": "did:imajin:REPLACE_WITH_OWNER_DID",
-    "attestationId": "REPLACE_WITH_APP_AUTHORIZED_ATTESTATION_ID",
     "modelPrefixes": ["gemini-"],
     "directBaseUrl": "https://generativelanguage.googleapis.com/v1beta/openai",
     "directApiKeyEnvVar": "GEMINI_DIRECT_API_KEY"
@@ -26,7 +23,6 @@
   {
     "id": "moonshot",
     "principalDid": "did:imajin:REPLACE_WITH_OWNER_DID",
-    "attestationId": "REPLACE_WITH_APP_AUTHORIZED_ATTESTATION_ID",
     "modelPrefixes": ["moonshot-", "kimi-"],
     "directBaseUrl": "https://api.moonshot.ai/v1",
     "directApiKeyEnvVar": "MOONSHOT_DIRECT_API_KEY"
@@ -34,14 +30,12 @@
   {
     "id": "anthropic",
     "principalDid": "did:imajin:REPLACE_WITH_OWNER_DID",
-    "attestationId": "REPLACE_WITH_APP_AUTHORIZED_ATTESTATION_ID",
     "modelPrefixes": ["claude-"],
     "directBaseUrl": "https://api.anthropic.com/v1",
     "directApiKeyEnvVar": "ANTHROPIC_DIRECT_API_KEY"
   },
   {
     "id": "mcp",
-    "principalDid": "did:imajin:REPLACE_WITH_OWNER_DID",
-    "attestationId": "REPLACE_WITH_APP_AUTHORIZED_ATTESTATION_ID_GRANTING_AN_MCP_SCOPE"
+    "principalDid": "did:imajin:REPLACE_WITH_OWNER_DID"
   }
 ]

@@ -36,6 +36,51 @@ afterEach(async () => {
 });
 
 describe('proxy server (integration)', () => {
+  it('warns exactly once at startup for any number of legacy grant IDs, without printing them', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const legacyServer = createProxyServer(CONFIG);
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn.mock.calls[0][0]).toContain('attestationId is deprecated and ignored');
+    expect(warn.mock.calls[0][0]).not.toContain('att-xai');
+    legacyServer.close();
+    warn.mockRestore();
+  });
+
+  it.each(['no_live_grant', 'revoked'])('returns actionable OpenAI 403 then recovers with a fresh principal mint: %s', async (failure) => {
+    const realFetch = globalThis.fetch;
+    let grantLive = true;
+    let mints = 0;
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+      if (url.startsWith(baseUrl)) return realFetch(url, init);
+      if (url.endsWith('/auth/api/apps/token')) {
+        mints++;
+        const body = JSON.parse(init!.body as string);
+        expect(body.principalDid).toBe('did:imajin:ryan');
+        expect(body).not.toHaveProperty('attestationId');
+        return Response.json(grantLive
+          ? { token: `tok-${mints}`, expiresIn: 600, scopes: ['infer:completions'] }
+          : { code: 'no_live_grant', error: 'No live grant' }, { status: grantLive ? 200 : 403 });
+      }
+      return Response.json(grantLive ? { id: 'ok' } : failure === 'revoked'
+        ? { error: 'Authorization has been revoked' }
+        : { code: 'no_live_grant' }, { status: grantLive ? 200 : 403 });
+    }));
+    const post = () => fetch(`${baseUrl}/openai/v1/chat/completions`, {
+      method: 'POST', body: JSON.stringify({ model: 'grok-4', messages: [] }),
+    });
+    expect((await post()).status).toBe(200);
+    grantLive = false;
+    for (let i = 0; i < 2; i++) {
+      const res = await post();
+      expect(res.status).toBe(403);
+      expect(await res.json()).toMatchObject({
+        error: { code: 'no_live_grant', type: 'invalid_request_error', message: expect.stringContaining('Re-grant on /jin → Grants') },
+      });
+    }
+    grantLive = true;
+    expect((await post()).status).toBe(200);
+    expect(mints).toBe(3);
+  });
   it('GET /healthz returns the health snapshot shape', async () => {
     const res = await fetch(`${baseUrl}/healthz`);
     expect(res.status).toBe(200);
@@ -390,15 +435,16 @@ describe('proxy server — proper status codes instead of a generic 500 (#2453)'
   });
 
   it('unknown model on the unprefixed path → 404', async () => {
-    const fetchMock = stubKernel(() => {
-      throw new Error('kernel must not be called');
+    const fetchMock = stubKernel((url) => {
+      if (url === MINT_URL) return goodMint();
+      return Response.json({ data: [] });
     });
 
     const res = await post('/v1/chat/completions', { model: 'no-such-model', messages: [] });
 
     expect(res.status).toBe(404);
-    expect((await res.json()).error).toBe('no_route_for_model');
-    expect(fetchMock).toHaveBeenCalledTimes(1); // only the test's own call to the shim
+    expect((await res.json()).error).toMatchObject({ code: 'no_route_for_model', message: expect.stringContaining('/jin connector card') });
+    expect(fetchMock).toHaveBeenCalledTimes(4); // client + mint + catalog + refresh
   });
 
   it('kernel-reported unknown model (404) is forwarded verbatim', async () => {
@@ -407,17 +453,17 @@ describe('proxy server — proper status codes instead of a generic 500 (#2453)'
       return new Response(JSON.stringify({ error: 'model_not_found' }), { status: 404, headers: jsonHeaders });
     });
 
-    const res = await post('/openai/v1/chat/completions', { model: 'mystery-model', messages: [] });
+    const res = await post('/openai/v1/chat/completions', { model: 'gpt-mystery-model', messages: [] });
 
     expect(res.status).toBe(404);
     expect((await res.json()).error).toBe('model_not_found');
   });
 
-  it('grok-4 on the /openai/v1 seat mints against the xai attestation and is not a 500', async () => {
+  it('grok-4 on the /openai/v1 seat mints by the xai route principal and is not a 500', async () => {
     const mintedFor: string[] = [];
     stubKernel((url, init) => {
       if (url === MINT_URL) {
-        mintedFor.push(JSON.parse(init?.body as string).attestationId);
+        mintedFor.push(JSON.parse(init?.body as string).principalDid);
         return goodMint();
       }
       if (url === COMPLETIONS_URL) return new Response(JSON.stringify({ id: 'chatcmpl-grok' }), { status: 200, headers: jsonHeaders });
@@ -428,7 +474,7 @@ describe('proxy server — proper status codes instead of a generic 500 (#2453)'
 
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ id: 'chatcmpl-grok' });
-    expect(mintedFor).toEqual(['att-xai']);
+    expect(mintedFor).toEqual(['did:imajin:ryan']);
   });
 
   it('valid model with a failing upstream (kernel 500, no fallback) → 502', async () => {
@@ -503,9 +549,7 @@ describe('proxy server — proper status codes instead of a generic 500 (#2453)'
   });
 
   it('/healthz is not tripped by client errors (4xx) (#2453)', async () => {
-    stubKernel(() => {
-      throw new Error('kernel must not be called');
-    });
+    stubKernel((url) => url === MINT_URL ? goodMint() : Response.json({ data: [] }));
 
     expect((await post('/v1/chat/completions', { model: 'no-such-model', messages: [] })).status).toBe(404);
 

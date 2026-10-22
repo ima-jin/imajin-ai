@@ -1,4 +1,5 @@
 # @imajin/openclaw-infer-passthrough
+Principal-based configuration and live catalog routing are tracked in imajin-ai#3041.
 
 Local HTTP proxy implementing [imajin-ai#1926](https://github.com/ima-jin/imajin-ai/issues/1926)
 (Phase 4 of the [#1922](https://github.com/ima-jin/imajin-ai/issues/1922) inference
@@ -33,28 +34,6 @@ formats, one shim — see [imajin-ai#1959](https://github.com/ima-jin/imajin-ai/
 > break-glass tested in prod) are the operator's to tick after rollout, using this
 > runbook.
 
-## Gap audit — 2026-09-10 scoping (#1926)
-
-Jin's [2026-09-10 scoping comment](https://github.com/ima-jin/imajin-ai/issues/1926#issuecomment-5621228797)
-narrowed #1926 to five concrete checks for the first delegated-seat model,
-`gpt-6-astra` via the OpenAI connector (#1927). All five are already satisfied
-by the existing, provider-agnostic implementation below — nothing about them
-is OpenAI-specific, so standing up this one seat needed no new proxy or
-kernel code, only the operator runbook this change adds (see "Worked example"
-below) plus the routes-config/OpenClaw-config values an operator supplies.
-
-| # | Check | Status | Where |
-|---|---|---|---|
-| a | Mint/refresh the 10-min app-token JWT for the AGENT DID via challenge-response with the agent's own keypair | Done | `src/token-provider.ts` (`mintAppToken`, `RouteTokenProvider`) — challenge shape matches `apps/kernel/app/auth/api/apps/token/route.ts` byte for byte; works for whichever DID is configured as `OPENCLAW_APP_DID`, including the agent's own |
-| b | `/:providerId/v1/chat/completions` maps `openai` → the kernel's OpenAI connector and passes `model: gpt-6-astra` through unchanged | Done | `src/router.ts` (`resolveRoute`) + `src/upstream.ts` (`forwardToKernel`, raw byte passthrough) on this side; `apps/kernel/src/lib/inference/brain.ts`'s `openai` `BRAIN_CONNECTORS` entry (#1927) + `openai-compatible-adapter.ts` resolve and forward the sealed model kernel-side — see `tests/openai-seat.test.ts` |
-| c | Streaming (SSE) works end-to-end | Done | `src/dispatch.ts`/`src/upstream.ts` (byte-for-byte body passthrough) + `src/server.ts` (`writeProxyResponse`, Node/Web stream bridge); the kernel tees the stream for metering without altering client bytes (`openai-compatible-adapter.ts`'s `meterStreamForUsage`) — see "streams an SSE response through untouched" in `tests/handle-completions.test.ts` |
-| d | `usage` surfaced so the kernel meter records `usage.incurred` under the agent DID, connector=openai, model=gpt-6-astra | Done (kernel-side, #1925/#1923) | `apps/kernel/src/lib/inference/completions/openai-compatible-adapter.ts` (`recordInferenceUsage`, `agentDid: meta.agentDid`) — this proxy only forwards the `X-Imajin-Session`/`X-Imajin-Turn` headers that metadata is keyed on (`src/upstream.ts`, imajin-ai#2204; the legacy `X-Session-Id`/`X-Turn-Id` names still work on the kernel side) |
-| e | Spend-cap 4xx surfaced as a clean provider error, not a hang | Done | `src/dispatch.ts` (`dispatchWithBreakGlass`: only a ≥500 status or a TTFB timeout triggers fallback; every 4xx — including the kernel's `402 spend_cap_exceeded` from `brain-http-errors.ts` — is forwarded verbatim) — see the `402` case in `tests/openai-seat.test.ts` |
-
-No `apps/kernel` changes were needed or made for this deliverable — the
-passthrough and spend-cap plumbing already generalize to every
-`BRAIN_CONNECTORS` entry, OpenAI included.
-
 ## Why a proxy, not a native OpenClaw provider
 
 OpenClaw's custom-provider mechanism (the same surface `openclaw.plugin.json` /
@@ -84,26 +63,28 @@ The shim never answers a known failure with a generic `500`:
 
 | Situation | Status |
 | --- | --- |
-| Kernel refuses the app-token mint (bad/missing app key, unknown attestation, any mint 4xx) | `401 unauthorized` |
-| Model/route not in the routes config (`/v1/chat/completions` with an unmatched `model`, or an unconfigured `/:providerId/`) | `404 no_route_for_model` |
+| Kernel refuses the app-token mint (bad/missing app key, unknown app, other mint 4xx) | `401 unauthorized` |
+| Revoked authorization / `no_live_grant` (mint or inference) | OpenAI-shaped `403 no_live_grant`: **Re-grant on /jin → Grants**; cache dropped; next request re-mints |
+| Model absent from the usable catalog after refresh, or an unknown route | OpenAI-shaped `404 no_route_for_model` naming the **/jin connector card** |
 | Unprefixed request with no `model` at all | `422 no_model_selected` |
 | Kernel 5xx / timeout / unreachable (including the mint call) with no break-glass fallback | `502 kernel_unavailable` / `upstream_*` |
 | Kernel 4xx from the completions call (incl. its own `404` unknown model, `402` spend cap) | forwarded verbatim |
 | Anything genuinely unexpected | `500 internal_error` |
 
 `/openai/v1` is the generic seat OpenClaw points at: a model that another route claims by prefix (`grok-4` → `xai`)
-is routed to that route's attestation and break-glass key. `GET /openai/v1/models` (also `/v1/models` and
+uses that route's principal and optional break-glass key. `GET /openai/v1/models` (also `/v1/models` and
 `/:providerId/v1/models`) answers from any configured inference route when there is no explicit `openai` entry.
 
 ### OpenAI-compatible path
 
 1. OpenClaw sends an OpenAI-compatible `POST /v1/chat/completions` (or
    `POST /{providerId}/v1/chat/completions`) to this proxy.
-2. The proxy resolves which **route** (provider) the request is for — either from the
-   path segment or by matching `model` against the route's configured prefixes — then
-   mints (or reuses a cached) kernel app-token JWT for that route via
+2. The proxy resolves `model` from the principal's kernel usable catalog (see below),
+   unless an optional `modelPrefixes` override matches, then mints (or reuses a cached)
+   kernel app-token JWT for that principal via
    `POST {KERNEL_BASE_URL}/auth/api/apps/token`, and retries once with a fresh token on
-   a `401`.
+   a `401`. A revoked/absent grant drops the cache and returns an actionable 403;
+   the next request re-mints, so re-granting needs no restart.
 3. It forwards the exact request body to
    `POST {KERNEL_BASE_URL}/infer/v1/chat/completions` with that token as the bearer,
    streaming the response back byte for byte (SSE or plain JSON).
@@ -219,11 +200,12 @@ flowchart LR
 `app-service+jwt` (`POST /auth/api/apps/token/service`, the flow
 `apps/broker-agent/src/token.ts` uses) may carry — `infer:completions` is **not** in
 that fence. This proxy therefore mints the user-delegated `app+jwt`
-(`POST /auth/api/apps/token`), which requires an `attestationId`: the `app.authorized`
-consent record the principal (Ryan) granted this app DID with `infer:completions` in
-scope. The minted token's `sub` — and therefore the kernel's resolved `ownerDid` — comes
-from that attestation's issuer, not from anything the proxy sends directly. One
-attestation per principal/route combination.
+(`POST /auth/api/apps/token`) by **principal DID** (#3040/#3041). The signed
+challenge is `${appDid}:${principalDid}:${nonce}:${timestamp}` and the body
+contains `appDid`, `principalDid`, `scope`, `nonce`, `timestamp`, `signature`
+(and `aud` only for audience-bound resources). It never sends a grant ID.
+The kernel resolves the principal's live `app.authorized` grant at mint time.
+A re-grant on /jin is picked up on the next mint without changing config.
 
 ## Configuration
 
@@ -238,11 +220,30 @@ attestation per principal/route combination.
 | `DIRECT_TIMEOUT_MS` | no (default `20000`) | Time-to-first-byte deadline for a break-glass direct call. |
 | `OPENCLAW_APP_DID` | yes | This app's registered DID (`registry.apps`). |
 | `OPENCLAW_APP_PRIVATE_KEY` | yes | This app's Ed25519 private key (hex seed). **Never logged.** |
-| `INFER_PROXY_ROUTES_CONFIG` | yes | Path to the non-secret routes JSON file (see below). |
+| `INFER_PROXY_PRINCIPAL_DID` | yes, unless routes config supplies principals | The owner DID whose sealed connectors and live grant to this app the kernel uses. |
+| `INFER_PROXY_ROUTES_CONFIG` | no | Optional non-secret overrides / break-glass routes JSON (see below). No routes file is needed for normal operation. |
 | `MCP_PUBLIC_URL` | no (default `https://mcp.imajin.ai`) | The kernel's own public MCP issuer origin (imajin-ai#2368) — mirrors `apps/kernel/src/lib/mcp/oauth-config.ts`'s `getMcpIssuer()` env var name and default exactly. Only the `/mcp` route's app-token mint uses this; every other route is unaffected. **Must match whatever the kernel itself resolves `MCP_PUBLIC_URL` to**, or `/mcp` 401s on every call (RFC 8707 audience mismatch) — in prod this is typically a *different* origin than `KERNEL_BASE_URL` (`mcp.imajin.ai` vs `jin.imajin.ai`), so do not assume the default is correct without checking the kernel's own deployed value. |
 | *(per route)* `directApiKeyEnvVar` target, e.g. `ANTHROPIC_DIRECT_API_KEY` | no | Break-glass direct provider key for that route. Omit to disable fallback for it. |
 
-### Routes config (`INFER_PROXY_ROUTES_CONFIG`, a JSON file — no secrets)
+### Minimal configuration — no routes file
+
+Keep the existing `KERNEL_BASE_URL`, `OPENCLAW_APP_DID`, and
+`OPENCLAW_APP_PRIVATE_KEY` environment values and set `INFER_PROXY_PRINCIPAL_DID`.
+Do not set `INFER_PROXY_ROUTES_CONFIG`. This supplies the generic `openai` seat,
+Anthropic-format endpoint, and MCP endpoint for the same principal. There are no
+direct provider keys or fallback endpoints by default.
+
+Use `http://127.0.0.1:8787/openai/v1` (or `/v1`) as the generic OpenAI-compatible
+base URL. Routing fetches `GET /infer/v1/models/usable`, caches by principal for
+60 seconds, and refreshes once on a model miss, even inside that TTL. Every
+servable row routes through `imajin.connector`, including `imajin.picked: false`:
+`picked` marks the card's current selection, not a filter on the full picker list.
+The model ID, including any `vendor/model` slash, is forwarded unchanged.
+A connector just added on the **/jin connector card** therefore needs no config
+edit or process restart. Catalog failures surface as auth/upstream errors, not a
+misleading unknown-model 404. No stale catalog is used after a failed refresh.
+
+### Optional routes config (`INFER_PROXY_ROUTES_CONFIG`, JSON — no secrets)
 
 See `config/routes.example.json`. Each entry:
 
@@ -250,7 +251,6 @@ See `config/routes.example.json`. Each entry:
 {
   "id": "anthropic",
   "principalDid": "did:imajin:...",
-  "attestationId": "att_...",
   "modelPrefixes": ["claude-"],
   "directBaseUrl": "https://api.anthropic.com/v1",
   "directApiKeyEnvVar": "ANTHROPIC_DIRECT_API_KEY"
@@ -261,15 +261,18 @@ See `config/routes.example.json`. Each entry:
   `http://127.0.0.1:PORT/{id}/v1` to select this route unambiguously (recommended: one
   OpenClaw custom-provider entry per upstream, matching the one-`BRAIN_CONNECTORS`-entry-
   per-provider shape from Phase 1 of the epic).
-- `modelPrefixes` — fallback selection by `model` on an unprefixed
-  `http://127.0.0.1:PORT/v1/chat/completions` baseUrl.
+- `principalDid` — required per route; kernel resolves the live grant, not a persisted grant ID.
+- `modelPrefixes` — optional override for model selection on `/v1` or the generic
+  `/openai/v1` seat. Omit it to use the catalog. Explicit configured provider paths
+  use their own principal; catalog entries never borrow another principal’s break-glass key.
+- Legacy `attestationId` fields are **ignored**, with **one startup warning** for
+  the whole config (no field values logged). Remove them when migrating.
 - `directBaseUrl` / `directApiKeyEnvVar` — omit both to disable break-glass fallback for
   a route (a kernel outage then surfaces the kernel's own error instead of silently
   routing around it).
 
 The `"mcp"` entry (imajin-ai#2368) is the single well-known route id `POST /mcp` resolves
-against — same single-route shape as `"anthropic"`. It needs only `principalDid`/
-`attestationId` (an `app.authorized` attestation granting at least one MCP-surface scope,
+against — same single-route shape as `"anthropic"`. It needs only `principalDid` (with a live grant carrying at least one MCP-surface scope,
 e.g. `media:read`); `modelPrefixes`/`directBaseUrl`/`directApiKeyEnvVar` do not apply (MCP has
 no model routing and no break-glass fallback — see the MCP path section above).
 
@@ -347,8 +350,8 @@ the body before forwarding to either the kernel or a break-glass direct endpoint
 
 No new environment variables: a NanoClaw/Claude Code container reuses the SAME
 `KERNEL_BASE_URL`, `OPENCLAW_APP_DID`, `OPENCLAW_APP_PRIVATE_KEY`, and
-`INFER_PROXY_ROUTES_CONFIG` this shim already requires, plus the routes config's
-existing `"anthropic"` entry (`directBaseUrl`/`directApiKeyEnvVar` for break-glass).
+`INFER_PROXY_PRINCIPAL_DID` env. An optional routes config can supply an
+`"anthropic"` entry with `directBaseUrl`/`directApiKeyEnvVar` for break-glass.
 Set these two container env vars to point the harness at this shim instead of Anthropic
 directly:
 
@@ -365,6 +368,32 @@ ANTHROPIC_API_KEY=unused-placeholder
 This is the exact follow-up #1932's `docs/agents/nanoclaw-first-boot.md` deviation
 calls for: swap those two lines in for the scoped direct Anthropic key, no other
 container or code change, and the deployment is off the direct-key deviation.
+
+## One-time production unit cleanup (#3041) — operator only
+
+These are rollout instructions, **not changes applied by this PR**. Do not edit
+live server files or `/etc/imajin` as part of development.
+
+1. Inspect the effective `infer-passthrough` unit, its drop-ins, and its environment
+   file locally on the host (do not paste secret-bearing output into chat/logs).
+2. Remove **every** `INFER_PROXY_ROUTES_CONFIG` assignment from the effective unit,
+   drop-ins, and environment source, including the reference to
+   `/etc/imajin/routes.prod.json`. Merely unsetting a shell variable does not remove
+   a systemd `Environment=` or `EnvironmentFile=` assignment. The old JSON file
+   need not be edited or deleted; it is no longer read.
+3. Set **`INFER_PROXY_PRINCIPAL_DID`** to the principal DID in that unit’s environment.
+   Retain the existing app identity/key env and `KERNEL_BASE_URL`; never copy a
+   grant ID into any env or route file. Keep secrets in the existing restricted
+   environment file, never in the unit or command line.
+4. Confirm live consent on **/jin → Grants** and a usable selected model on the
+   **/jin connector card**. If direct break-glass is required, use a separate,
+   optional config containing only principal/connector overrides and env-var names;
+   do not keep the grant-pinned production file as a prerequisite.
+5. During the normal deployment window, the operator runs `systemctl daemon-reload`
+   and restarts `infer-passthrough` once to load the new code/environment. Check
+   `/healthz`, `GET /openai/v1/models`, and a small metered completion. This one-time
+   code/config rollout restart is **not** needed for any subsequent re-grant or
+   added connector. No production action was performed by this change.
 
 ## Migration runbook
 
@@ -395,11 +424,12 @@ Per-provider flip procedure (repeat for each provider in the order above):
    (Phase 1 of the epic — #1924/#1927/#1930/#1931).
 2. Obtain (or have the operator issue) an `app.authorized` attestation granting this
    app DID `infer:completions` on behalf of the principal who owns that provider's
-   sealed key. Record the attestation id and principal DID in
-   `INFER_PROXY_ROUTES_CONFIG`.
+   sealed key. Set `INFER_PROXY_PRINCIPAL_DID` (or an optional route’s
+   `principalDid`). Never record or configure a grant ID.
 3. Set the route's `directApiKeyEnvVar` to the *existing* direct key already in gateway
    config for that provider — do not remove the direct key from gateway config yet.
-4. Start (or reload) this proxy with the updated routes config.
+4. Start this proxy with the principal env. Future re-grants and newly added
+   connectors require no restart or route-file edit.
 5. Add or update the OpenClaw custom-provider entry for that model family to point
    `baseUrl` at this proxy (see shape above), leaving every other provider's entry
    untouched.
@@ -434,7 +464,7 @@ operator review found none of these true yet on the live host:
 | Precondition | Check command |
 |---|---|
 | The passthrough proxy (step 1 below) is running and healthy on `127.0.0.1:8787` | `curl -sf http://127.0.0.1:8787/healthz` |
-| The real `principalDid`/`attestationId` for this seat have been obtained — from the seat-issuance step earlier in this runbook ([Migration runbook](#migration-runbook) step 2 above) / [#2146](https://github.com/ima-jin/imajin-ai/pull/2146) — and substituted for the `REPLACE_WITH_*` placeholders in the routes-config entry (step 3 below) | `grep -c REPLACE_WITH /path/to/imajin-ai/packages/openclaw-infer-passthrough/config/routes.prod.json` (expect `0`) |
+| The principal has a live grant to this app and a usable connector | Verify the app on **/jin → Grants** and the selected model on its **/jin connector card**; set `INFER_PROXY_PRINCIPAL_DID` |
 | `OPENCLAW_APP_PRIVATE_KEY` and `OPENAI_DIRECT_API_KEY` are present in the root-only `/etc/imajin/infer-passthrough.env` — **never** in OpenClaw config or chat | `sudo test -r /etc/imajin/infer-passthrough.env \&\& sudo grep -qE '^(OPENCLAW_APP_PRIVATE_KEY\|OPENAI_DIRECT_API_KEY)=' /etc/imajin/infer-passthrough.env \&\& echo ok` |
 
 ### 1. Run the proxy on the gateway host
@@ -456,7 +486,7 @@ proxy does not need its own daemon-management approach.
   env: {
     INFER_PROXY_HOST: '127.0.0.1',
     INFER_PROXY_PORT: '8787',
-    INFER_PROXY_ROUTES_CONFIG: '/path/to/imajin-ai/packages/openclaw-infer-passthrough/config/routes.prod.json',
+    INFER_PROXY_PRINCIPAL_DID: 'did:imajin:REPLACE_WITH_OWNER_DID',
   },
 }
 ```
@@ -502,27 +532,23 @@ sudo systemctl enable --now infer-passthrough
 | `KERNEL_BASE_URL` | The kernel's prod **front door** origin as served by Caddy (see `docs/ENVIRONMENTS.md`), e.g. `https://jin.imajin.ai` — **never** `http://127.0.0.1:7000` or any other raw port. The raw port is bound for local/reverse-proxy use on the kernel host itself; reaching it directly skips TLS termination and Caddy's routing, and the gateway host should not need direct network access to it. |
 | `OPENCLAW_APP_DID` | The agent's own registered DID (`registry.apps`) — in prod this is OpenClaw's own app identity (referred to as `@jin` in the 2026-09-10 scoping note). |
 | `OPENCLAW_APP_PRIVATE_KEY` | That DID's Ed25519 private key (hex seed). **Never** commit it, echo it, or put it directly in a world-readable ecosystem/unit file — source it from the root-only secrets file referenced by `env_file`/`EnvironmentFile=` above. |
-| `INFER_PROXY_ROUTES_CONFIG` | Path to a routes JSON file (not committed with real values — copy `config/routes.example.json`) containing at least the `"openai"` entry below. |
+| `INFER_PROXY_PRINCIPAL_DID` | The DID owning this seat’s sealed connectors and live grant. No routes file is necessary. |
 
-### 3. The `"openai"` routes-config entry
+### 3. Optional `"openai"` break-glass routes-config entry
 
 ```json
 {
   "id": "openai",
   "principalDid": "did:imajin:REPLACE_WITH_DID_THAT_SEALED_OPENAI",
-  "attestationId": "REPLACE_WITH_APP_AUTHORIZED_ATTESTATION_ID",
   "modelPrefixes": ["gpt-", "o1-", "o3-"],
   "directBaseUrl": "https://api.openai.com/v1",
   "directApiKeyEnvVar": "OPENAI_DIRECT_API_KEY"
 }
 ```
 
-- `attestationId` must be an `app.authorized` attestation issued to
-  `OPENCLAW_APP_DID`, granting `infer:completions`, whose issuer
-  (`principalDid`) is the DID whose OpenAI connector card has `gpt-6-astra`
-  sealed — per the 2026-09-10 finding, that is already true in prod for the
-  account Jin checked. Obtain/issue it the same way as any other route
-  (Migration runbook step 2 above).
+- No routes file or grant ID is needed for catalog routing. This entry is only
+  needed if you deliberately retain a direct fallback / prefix override.
+- Grant this app `infer:completions` on **/jin → Grants** for `principalDid`.
 - `directBaseUrl`/`directApiKeyEnvVar` are optional break-glass — omit both
   to disable direct-key fallback for this seat entirely (a kernel outage then
   surfaces the kernel's own error to OpenClaw rather than silently spending
@@ -560,9 +586,8 @@ Or as the equivalent JSON fragment:
 - `imajin-openai` is the provider id a `sessions_spawn(model: …)` call
   references to use this seat, as `imajin-openai/gpt-6-astra` — but see step 5
   below, which is also required before `sessions_spawn` will accept it.
-- The `/openai/v1` path segment in `baseUrl` is what selects the `"openai"`
-  route entry above (`resolveRoute`, `src/router.ts`) — the recommended,
-  unambiguous wiring; it does not depend on `modelPrefixes` matching.
+- The `/openai/v1` path is the generic seat: every usable catalog model is
+  accepted, including models on other connectors. No prefixes are required.
 - `apiKey` is the same "required by schema, never checked" placeholder every
   other route in this README uses — real auth is the minted app-token JWT,
   not this value. **This is the whole point: it contains no OpenAI key.**

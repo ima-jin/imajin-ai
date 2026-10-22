@@ -17,6 +17,7 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { Readable } from 'node:stream';
 import { loadConfig, resolveDirectApiKey } from './config.js';
+import { CatalogRouter } from './catalog-router.js';
 import { HealthTracker } from './health.js';
 import { handleCompletions } from './handle-completions.js';
 import { errorToProxyResponse } from './dispatch.js';
@@ -141,14 +142,18 @@ async function writeErrorResponse(res: ServerResponse, health: HealthTracker, er
 }
 
 export function createProxyServer(config: ProxyConfig) {
+  if (config.routes.some((route) => Object.hasOwn(route, 'attestationId'))) {
+    log.warn({}, 'attestationId is deprecated and ignored; minting by principalDid');
+  }
   const health = new HealthTracker();
   const tokenProviders = new Map<string, RouteTokenProvider>();
+  const runtimeRoutes = new Map(config.routes.map((route) => [route.id, route]));
   const mcpAud = mcpResourceAudience(config);
 
   function getTokenProvider(routeId: string): RouteTokenProvider {
     let provider = tokenProviders.get(routeId);
     if (!provider) {
-      const route = config.routes.find((r) => r.id === routeId);
+      const route = runtimeRoutes.get(routeId);
       if (!route) throw new UnknownRouteError(routeId);
       // The `mcp` route mints with NO scope narrowing (`null`) and binds the
       // token to the kernel's MCP resource audience — every other route keeps
@@ -159,7 +164,7 @@ export function createProxyServer(config: ProxyConfig) {
         config.kernelBaseUrl,
         config.appDid,
         config.appPrivateKey,
-        route.attestationId,
+        route.principalDid,
         undefined,
         undefined,
         isMcpRoute ? null : undefined,
@@ -180,6 +185,8 @@ export function createProxyServer(config: ProxyConfig) {
     health,
     log,
   };
+  const catalog = new CatalogRouter(deps, (route) => runtimeRoutes.set(route.id, route));
+  const completionsDeps = { ...deps, resolveCatalogRoute: catalog.resolve.bind(catalog) };
   // Anthropic-format deps share every field with `deps` above except `route`,
   // which is resolved once here rather than per-request — there is exactly
   // one Anthropic route (see the module header), unlike the OpenAI-compatible
@@ -190,7 +197,7 @@ export function createProxyServer(config: ProxyConfig) {
   const mcpDeps = { ...deps, route: config.routes.find((r) => r.id === MCP_ROUTE_ID), appDid: config.appDid };
 
   return createServer((req, res) => {
-    void routeRequest(req, res, deps, anthropicDeps, mcpDeps, health).catch((err: unknown) => {
+    void routeRequest(req, res, completionsDeps, anthropicDeps, mcpDeps, health).catch((err: unknown) => {
       void writeErrorResponse(res, health, err);
     });
   });

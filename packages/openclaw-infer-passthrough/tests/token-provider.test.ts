@@ -1,21 +1,58 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { generateKeypair, crypto } from '@imajin/auth';
-import { mintAppToken, RouteTokenProvider, TokenMintError } from '../src/token-provider.js';
+import { isRevokedGrant, mintAppToken, rejectRevokedGrant, RouteTokenProvider, TokenMintError } from '../src/token-provider.js';
 import { UpstreamUnavailableError } from '../src/upstream.js';
 
 const APP_DID = 'did:imajin:openclaw-app';
-const ATTESTATION_ID = 'att_test_infer_completions';
+const PRINCIPAL_DID = 'did:imajin:principal';
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
 }
+
+describe('revocation classification boundaries', () => {
+  it.each([null, 'revoked', {}, { error: 1 }, { error: 'insufficient_scope' }])('does not treat %j as consent loss', async (body) => {
+    expect(isRevokedGrant(body)).toBe(false);
+    const source = { getToken: vi.fn(), invalidate: vi.fn() };
+    const response = jsonResponse(body, 403);
+    await rejectRevokedGrant(response, source);
+    expect(source.invalidate).not.toHaveBeenCalled();
+    expect(await response.json()).toEqual(body);
+  });
+
+  it('leaves a non-JSON 403 unchanged', async () => {
+    const source = { getToken: vi.fn(), invalidate: vi.fn() };
+    const response = new Response('forbidden', { status: 403 });
+    await rejectRevokedGrant(response, source);
+    expect(source.invalidate).not.toHaveBeenCalled();
+    expect(await response.text()).toBe('forbidden');
+  });
+});
 
 describe('mintAppToken', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
   });
 
-  it('signs the raw challenge string with the app.authorized attestation flow (not the service-token flow)', async () => {
+  it.each([
+    { code: 'no_live_grant', error: 'No current grant' },
+    { error: 'Authorization has been revoked' },
+  ])('drops a failed mint and recovers after re-grant without restarting: %j', async (error) => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse(error, 403))
+      .mockResolvedValueOnce(jsonResponse({ token: 'regranted', expiresIn: 600, scopes: ['infer:completions'] }));
+    vi.stubGlobal('fetch', fetchMock);
+    const provider = new RouteTokenProvider('https://kernel.test', APP_DID, generateKeypair().privateKey, PRINCIPAL_DID);
+    await expect(provider.getToken()).rejects.toThrow('Re-grant on /jin → Grants');
+    expect(await provider.getToken()).toBe('regranted');
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    for (const [, init] of fetchMock.mock.calls) {
+      expect(JSON.parse(init.body)).toMatchObject({ principalDid: PRINCIPAL_DID });
+      expect(JSON.parse(init.body)).not.toHaveProperty('attestationId');
+    }
+  });
+
+  it('signs the principal DID challenge without sending any grant ID', async () => {
     const keypair = generateKeypair();
     let capturedUrl: string | undefined;
     let capturedBody: Record<string, unknown> | null = null;
@@ -27,26 +64,27 @@ describe('mintAppToken', () => {
     });
     vi.stubGlobal('fetch', fetchMock);
 
-    const result = await mintAppToken('https://kernel.test', APP_DID, keypair.privateKey, ATTESTATION_ID);
+    const result = await mintAppToken('https://kernel.test', APP_DID, keypair.privateKey, PRINCIPAL_DID);
 
     expect(capturedUrl).toBe('https://kernel.test/auth/api/apps/token');
     expect(result).toEqual({ token: 'signed.app.jwt', expiresIn: 600, scopes: ['infer:completions'] });
 
-    const { appDid, attestationId, scope, nonce, timestamp, signature } = capturedBody as {
+    const { appDid, principalDid, scope, nonce, timestamp, signature } = capturedBody as {
       appDid: string;
-      attestationId: string;
+      principalDid: string;
       scope: string;
       nonce: string;
       timestamp: string;
       signature: string;
     };
     expect(appDid).toBe(APP_DID);
-    expect(attestationId).toBe(ATTESTATION_ID);
+    expect(principalDid).toBe(PRINCIPAL_DID);
+    expect(capturedBody).not.toHaveProperty('attestationId');
     expect(scope).toBe('infer:completions');
     expect(nonce.length).toBeGreaterThanOrEqual(16);
 
     // Pin the exact challenge shape the kernel's POST /auth/api/apps/token verifies against.
-    const challenge = `${appDid}:${attestationId}:${nonce}:${timestamp}`;
+    const challenge = `${appDid}:${principalDid}:${nonce}:${timestamp}`;
     const valid = await crypto.verify(signature, challenge, keypair.publicKey);
     expect(valid).toBe(true);
   });
@@ -58,8 +96,8 @@ describe('mintAppToken', () => {
     );
     const keypair = generateKeypair();
 
-    await expect(mintAppToken('https://kernel.test', APP_DID, keypair.privateKey, ATTESTATION_ID)).rejects.toThrow(
-      /403.*Authorization has been revoked/,
+    await expect(mintAppToken('https://kernel.test', APP_DID, keypair.privateKey, PRINCIPAL_DID)).rejects.toThrow(
+      /Re-grant on \/jin → Grants/,
     );
   });
 
@@ -74,7 +112,7 @@ describe('mintAppToken', () => {
       }),
     );
 
-    await mintAppToken('https://kernel.test', APP_DID, keypair.privateKey, ATTESTATION_ID, undefined, 'https://mcp.test/mcp');
+    await mintAppToken('https://kernel.test', APP_DID, keypair.privateKey, PRINCIPAL_DID, undefined, 'https://mcp.test/mcp');
 
     expect((capturedBody as unknown as { aud: string }).aud).toBe('https://mcp.test/mcp');
   });
@@ -90,7 +128,7 @@ describe('RouteTokenProvider', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     let now = 0;
-    const provider = new RouteTokenProvider('https://kernel.test', APP_DID, generateKeypair().privateKey, ATTESTATION_ID, 60_000, () => now);
+    const provider = new RouteTokenProvider('https://kernel.test', APP_DID, generateKeypair().privateKey, PRINCIPAL_DID, 60_000, () => now);
 
     const first = await provider.getToken();
     now += 60_000; // well within the 600s TTL minus the 60s skew
@@ -110,7 +148,7 @@ describe('RouteTokenProvider', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     let now = 0;
-    const provider = new RouteTokenProvider('https://kernel.test', APP_DID, generateKeypair().privateKey, ATTESTATION_ID, 60_000, () => now);
+    const provider = new RouteTokenProvider('https://kernel.test', APP_DID, generateKeypair().privateKey, PRINCIPAL_DID, 60_000, () => now);
 
     const first = await provider.getToken();
     now += 600_000 - 60_000 + 1; // just past the refresh skew boundary
@@ -131,7 +169,7 @@ describe('RouteTokenProvider', () => {
       }),
     );
 
-    const provider = new RouteTokenProvider('https://kernel.test', APP_DID, generateKeypair().privateKey, ATTESTATION_ID);
+    const provider = new RouteTokenProvider('https://kernel.test', APP_DID, generateKeypair().privateKey, PRINCIPAL_DID);
     const first = await provider.getToken();
     provider.invalidate();
     const second = await provider.getToken();
@@ -144,7 +182,7 @@ describe('RouteTokenProvider', () => {
     const fetchMock = vi.fn(async () => jsonResponse({ token: 'tok-concurrent', expiresIn: 600, scopes: ['infer:completions'] }));
     vi.stubGlobal('fetch', fetchMock);
 
-    const provider = new RouteTokenProvider('https://kernel.test', APP_DID, generateKeypair().privateKey, ATTESTATION_ID);
+    const provider = new RouteTokenProvider('https://kernel.test', APP_DID, generateKeypair().privateKey, PRINCIPAL_DID);
     const [a, b, c] = await Promise.all([provider.getToken(), provider.getToken(), provider.getToken()]);
 
     expect([a, b, c]).toEqual(['tok-concurrent', 'tok-concurrent', 'tok-concurrent']);
@@ -165,7 +203,7 @@ describe('RouteTokenProvider', () => {
       'https://kernel.test',
       APP_DID,
       generateKeypair().privateKey,
-      ATTESTATION_ID,
+      PRINCIPAL_DID,
       undefined,
       undefined,
       null,
@@ -182,7 +220,7 @@ describe('RouteTokenProvider', () => {
     const fetchMock = vi.fn(async () => jsonResponse({ token: 'mcp-tok', expiresIn: 600, scopes: ['media:read', 'github:read'] }));
     vi.stubGlobal('fetch', fetchMock);
 
-    const provider = new RouteTokenProvider('https://kernel.test', APP_DID, generateKeypair().privateKey, ATTESTATION_ID, undefined, undefined, null);
+    const provider = new RouteTokenProvider('https://kernel.test', APP_DID, generateKeypair().privateKey, PRINCIPAL_DID, undefined, undefined, null);
     const scopes = await provider.getScopes();
 
     expect(scopes).toEqual(['media:read', 'github:read']);
@@ -203,7 +241,7 @@ describe('mintAppToken — typed failures (imajin-ai#2453)', () => {
     const keypair = generateKeypair();
     vi.stubGlobal('fetch', vi.fn(async () => jsonResponse({ error: 'invalid signature' }, 401)));
 
-    const err = await mintAppToken('https://kernel.test', APP_DID, keypair.privateKey, ATTESTATION_ID).catch((e: unknown) => e);
+    const err = await mintAppToken('https://kernel.test', APP_DID, keypair.privateKey, PRINCIPAL_DID).catch((e: unknown) => e);
 
     expect(err).toBeInstanceOf(TokenMintError);
     expect((err as TokenMintError).status).toBe(401);
@@ -216,6 +254,6 @@ describe('mintAppToken — typed failures (imajin-ai#2453)', () => {
       throw new TypeError('fetch failed');
     }));
 
-    await expect(mintAppToken('https://kernel.test', APP_DID, keypair.privateKey, ATTESTATION_ID)).rejects.toBeInstanceOf(UpstreamUnavailableError);
+    await expect(mintAppToken('https://kernel.test', APP_DID, keypair.privateKey, PRINCIPAL_DID)).rejects.toBeInstanceOf(UpstreamUnavailableError);
   });
 });

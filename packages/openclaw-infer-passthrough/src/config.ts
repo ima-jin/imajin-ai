@@ -6,7 +6,7 @@
  *     host-wiring knobs (bind host/port, kernel base URL, timeouts).
  *   - `INFER_PROXY_ROUTES_CONFIG` points at a JSON file holding the
  *     non-secret route table (`ProviderRouteConfig[]`) — provider ids,
- *     principal/attestation ids, model prefixes, and *names* of the env vars
+ *     principal DIDs, optional model prefixes, and *names* of the env vars
  *     holding each route's direct API key (never the key itself). This file
  *     is safe to commit to the gateway host's own config repo/dotfiles;
  *     nothing in it can mint a token or call a provider on its own.
@@ -52,9 +52,9 @@ function isValidRoute(value: unknown): value is ProviderRouteConfig {
     typeof route.id === 'string' &&
     route.id.length > 0 &&
     typeof route.principalDid === 'string' &&
-    route.principalDid.length > 0 &&
-    typeof route.attestationId === 'string' &&
-    route.attestationId.length > 0
+    route.principalDid.trim().length > 0 &&
+    (route.modelPrefixes === undefined ||
+      (Array.isArray(route.modelPrefixes) && route.modelPrefixes.every((prefix) => typeof prefix === 'string' && prefix.length > 0)))
   );
 }
 
@@ -80,7 +80,7 @@ export function loadRoutes(configPath: string): ProviderRouteConfig[] {
   const invalid = parsed.filter((entry) => !isValidRoute(entry));
   if (invalid.length > 0) {
     throw new Error(
-      `Routes config at ${configPath} has ${invalid.length} entr${invalid.length === 1 ? 'y' : 'ies'} missing a required field (id, principalDid, attestationId)`,
+      `Routes config at ${configPath} has ${invalid.length} invalid entr${invalid.length === 1 ? 'y' : 'ies'} (id and principalDid required; modelPrefixes must be non-empty strings)`,
     );
   }
 
@@ -96,7 +96,13 @@ export function loadRoutes(configPath: string): ProviderRouteConfig[] {
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): ProxyConfig {
-  const routesPath = requireEnv(env, 'INFER_PROXY_ROUTES_CONFIG');
+  const routesPath = env.INFER_PROXY_ROUTES_CONFIG;
+  const routes = routesPath
+    ? loadRoutes(routesPath)
+    : ['openai', 'anthropic', 'mcp'].map((id) => ({
+        id,
+        principalDid: requireEnv(env, 'INFER_PROXY_PRINCIPAL_DID'),
+      }));
   return {
     host: env.INFER_PROXY_HOST || DEFAULT_HOST,
     port: parsePositiveInt(env, 'INFER_PROXY_PORT', DEFAULT_PORT),
@@ -105,7 +111,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ProxyConfig {
     directTimeoutMs: parsePositiveInt(env, 'DIRECT_TIMEOUT_MS', DEFAULT_DIRECT_TIMEOUT_MS),
     appDid: requireEnv(env, 'OPENCLAW_APP_DID'),
     appPrivateKey: requireEnv(env, 'OPENCLAW_APP_PRIVATE_KEY'),
-    routes: loadRoutes(routesPath),
+    routes,
     mcpPublicUrl: env.MCP_PUBLIC_URL || DEFAULT_MCP_PUBLIC_URL,
   };
 }

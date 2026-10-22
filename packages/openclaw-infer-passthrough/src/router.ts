@@ -1,4 +1,10 @@
 import type { ProviderRouteConfig } from './types.js';
+export class CatalogError extends Error {
+  constructor(readonly status: number, message: string) {
+    super(message);
+    this.name = 'CatalogError';
+  }
+}
 
 /** A request named a provider route that is not in the routes config (imajin-ai#2453). */
 export class UnknownRouteError extends Error {
@@ -12,7 +18,7 @@ export class UnknownRouteError extends Error {
  * The generic OpenAI-compatible seat. OpenClaw's `baseUrl` for the kernel
  * passthrough is `/openai/v1`, and every model — `grok-4` included — is
  * requested through it. A model whose prefix belongs to another route
- * (`grok-` → `xai`) must still reach that route's attestation and
+ * (`grok-` → `xai`) must still reach that route's principal and
  * break-glass key (imajin-ai#2453), so on this id the model wins.
  */
 export const OPENAI_ALIAS_ROUTE_ID = 'openai';

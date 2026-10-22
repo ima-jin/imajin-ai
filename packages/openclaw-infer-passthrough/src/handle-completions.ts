@@ -10,7 +10,7 @@
  * module only builds the OpenAI-compatible-specific request/response pieces:
  * route resolution by path segment or `model`, and the two upstream calls.
  */
-import { dispatchWithBreakGlass, jsonError, type ProxyResponse } from './dispatch.js';
+import { dispatchWithBreakGlass, jsonError, openAiError, type ProxyResponse } from './dispatch.js';
 import type { HealthTracker } from './health.js';
 import type { Logger } from './logger.js';
 import { translateOpenAiParams } from './param-translation.js';
@@ -32,6 +32,7 @@ export interface IncomingCompletionsRequest {
 
 export interface HandleCompletionsDeps {
   routes: readonly ProviderRouteConfig[];
+  resolveCatalogRoute?(pathProviderId: string | undefined, model: string | undefined): Promise<ProviderRouteConfig | undefined>;
   kernelBaseUrl: string;
   kernelTimeoutMs: number;
   directTimeoutMs: number;
@@ -55,19 +56,21 @@ export async function handleCompletions(
   req: IncomingCompletionsRequest,
 ): Promise<ProxyResponse> {
   const model = extractModel(req.bodyText);
-  const route = resolveRoute(deps.routes, req.providerIdFromPath, model);
+  const route = deps.resolveCatalogRoute
+    ? await deps.resolveCatalogRoute(req.providerIdFromPath, model)
+    : resolveRoute(deps.routes, req.providerIdFromPath, model);
   if (!route) {
     // No model at all on the unprefixed path mirrors the kernel's own 422
     // NoModelSelected; a named-but-unroutable model/route is a 404 (#2453).
     if (!req.providerIdFromPath && model === undefined) {
       return jsonError(422, 'no_model_selected', 'Request body has no `model`; set one or use a path-prefixed route');
     }
-    return jsonError(
+    return openAiError(
       404,
       'no_route_for_model',
       req.providerIdFromPath && model === undefined
         ? `No configured route '${req.providerIdFromPath}'`
-        : `No route configured matches model ${JSON.stringify(model ?? null)}; use a path-prefixed route or add a modelPrefixes entry`,
+        : `Model ${JSON.stringify(model ?? null)} is not usable; connect and pick a model on the /jin connector card`,
     );
   }
 

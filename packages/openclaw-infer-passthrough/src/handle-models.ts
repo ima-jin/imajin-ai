@@ -13,7 +13,7 @@
  */
 import { jsonError, toProxyResponse, type ProxyResponse } from './dispatch.js';
 import { OPENAI_ALIAS_ROUTE_ID } from './router.js';
-import type { TokenSource } from './token-provider.js';
+import { rejectRevokedGrant, type TokenSource } from './token-provider.js';
 import { forwardModelsToKernel } from './upstream.js';
 import type { ProviderRouteConfig } from './types.js';
 
@@ -25,8 +25,8 @@ export interface HandleModelsDeps {
   getTokenProvider(routeId: string): TokenSource;
 }
 
-/** Routes whose token cannot list models: `mcp` is audience-bound/unnarrowed, `anthropic` serves a different (Anthropic-format) catalog. */
-const NON_MODELS_ROUTE_IDS = new Set(['mcp', 'anthropic']);
+/** MCP tokens have a different resource audience; all inference tokens can list the usable catalog. */
+const NON_MODELS_ROUTE_IDS = new Set(['mcp']);
 
 /**
  * Pick the route whose app token authorizes the listing. The kernel's list is
@@ -56,10 +56,13 @@ export async function handleModels(deps: HandleModelsDeps, providerId?: string):
 
   const token = await tokenProvider.getToken();
   const first = await forwardModelsToKernel(deps.kernelBaseUrl, token, deps.kernelTimeoutMs);
+  await rejectRevokedGrant(first, tokenProvider);
   if (first.status !== 401) return toProxyResponse(first);
 
   tokenProvider.invalidate();
   const freshToken = await tokenProvider.getToken();
   const retried = await forwardModelsToKernel(deps.kernelBaseUrl, freshToken, deps.kernelTimeoutMs);
+  if (retried.status === 401) tokenProvider.invalidate();
+  await rejectRevokedGrant(retried, tokenProvider);
   return toProxyResponse(retried);
 }

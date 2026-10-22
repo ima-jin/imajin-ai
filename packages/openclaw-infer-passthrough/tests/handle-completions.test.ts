@@ -113,6 +113,19 @@ describe('handleCompletions — 4xx is surfaced verbatim, never triggers fallbac
     expect(deps.health.snapshot().fallbackCount).toBe(0);
   });
 
+  it('drops revoked consent without retrying or spending through configured break-glass', async () => {
+    const fetchMock = vi.fn(async () => Response.json({ code: 'no_live_grant' }, { status: 403 }));
+    vi.stubGlobal('fetch', fetchMock);
+    const source = fakeTokenSource(['old', 'new']);
+    const invalidate = vi.spyOn(source, 'invalidate');
+    const deps = baseDeps({ routes: [ROUTE_WITH_FALLBACK], getTokenProvider: () => source });
+    await expect(handleCompletions(deps, { providerIdFromPath: 'anthropic', bodyText: '{}' }))
+      .rejects.toThrow('Re-grant on /jin → Grants');
+    expect(invalidate).toHaveBeenCalledOnce();
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(deps.health.snapshot().fallbackCount).toBe(0);
+  });
+
   it('forwards a 403 scope error verbatim', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ error: 'forbidden' }), { status: 403 })));
     const deps = baseDeps({ routes: [ROUTE_WITH_FALLBACK] });
@@ -127,7 +140,7 @@ describe('handleCompletions — 4xx is surfaced verbatim, never triggers fallbac
     const deps = baseDeps();
     const result = await handleCompletions(deps, { bodyText: JSON.stringify({ model: 'unknown-model-xyz' }) });
     expect(result.status).toBe(404);
-    expect(JSON.parse(await bodyToText(result.body)).error).toBe('no_route_for_model');
+    expect(JSON.parse(await bodyToText(result.body)).error.code).toBe('no_route_for_model');
     expect(fetchMock).not.toHaveBeenCalled();
   });
 

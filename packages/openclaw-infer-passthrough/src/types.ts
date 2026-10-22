@@ -9,26 +9,20 @@
  * directly (`http://127.0.0.1:PORT/{id}/v1/chat/completions`) — the
  * unambiguous, preferred wiring, since each upstream gets its own OpenClaw
  * custom-provider entry anyway (imajin-ai#1922 Phase 1: one `BRAIN_CONNECTORS`
- * entry per provider). `modelPrefixes` is a fallback for callers that share a
+ * entry per provider). `modelPrefixes` is an optional override for callers that share a
  * single `baseUrl`/`/v1/chat/completions` and rely on the `model` field in the
  * request body to select a route instead.
  *
- * `attestationId` is the `app.authorized` consent record `principalDid`
- * issued to the OpenClaw app DID with the `infer:completions` scope
- * (imajin-ai#1922 finding 5 — use-not-see via an existing delegation grant,
- * no new grant type). Minting a token for this route always resolves back to
- * `principalDid` kernel-side (the token's `sub` is `attestationId`'s
- * `issuerDid`) — `principalDid` is carried here for config validation,
- * logging, and the runbook's per-route bookkeeping, not because the mint
- * call needs it directly.
+ * The kernel resolves `principalDid` to the current live authorization at
+ * mint time. No grant identifier is persisted by this proxy (#3041).
  */
 export interface ProviderRouteConfig {
   /** Stable route id, e.g. 'xai', 'openai', 'gemini', 'moonshot', 'anthropic'. */
   id: string;
   /** The owner DID whose sealed connector card this route spends against. */
   principalDid: string;
-  /** The `app.authorized` attestation granting this app `infer:completions` onBehalfOf principalDid. */
-  attestationId: string;
+  /** @deprecated Ignored; accepted only for migrating old route files. */
+  attestationId?: string;
   /** Model-id prefixes that select this route on the unprefixed `/v1/chat/completions` path. */
   modelPrefixes?: string[];
   /**

@@ -23,8 +23,8 @@
  */
 import type { HealthTracker } from './health.js';
 import type { Logger, LogFields } from './logger.js';
-import { UnknownRouteError } from './router.js';
-import { TokenMintError, type TokenSource } from './token-provider.js';
+import { CatalogError, UnknownRouteError } from './router.js';
+import { NoLiveGrantError, rejectRevokedGrant, TokenMintError, type TokenSource } from './token-provider.js';
 import { NoDirectFallbackError, UpstreamTimeoutError, UpstreamUnavailableError } from './upstream.js';
 import type { ProviderRouteConfig } from './types.js';
 
@@ -63,7 +63,17 @@ export function jsonError(status: number, error: string, message: string): Proxy
  *   - kernel unreachable / timed out / mint 5xx / no fallback → 502
  *   - route id not in the routes config → 404
  */
+export function openAiError(status: number, code: string, message: string): ProxyResponse {
+  return {
+    status,
+    headers: { 'Content-Type': 'application/json' },
+    body: toBody(JSON.stringify({ error: { message, type: 'invalid_request_error', param: null, code } })),
+  };
+}
+
 export function errorToProxyResponse(err: unknown): ProxyResponse | null {
+  if (err instanceof CatalogError) return openAiError(err.status >= 500 ? 502 : err.status, 'catalog_unavailable', err.message);
+  if (err instanceof NoLiveGrantError) return openAiError(403, 'no_live_grant', err.message);
   if (err instanceof TokenMintError) {
     return err.status >= 500
       ? jsonError(502, 'kernel_unavailable', err.message)
@@ -158,12 +168,16 @@ async function attemptKernelCall(
 ): Promise<Response> {
   const token = await tokenProvider.getToken();
   const first = await callKernel(token);
+  await rejectRevokedGrant(first, tokenProvider);
   if (first.status !== 401) return first;
 
   deps.log.warn({ route: deps.route.id, ...logFields }, 'kernel rejected app token with 401 — reminting and retrying once');
   tokenProvider.invalidate();
   const freshToken = await tokenProvider.getToken();
-  return callKernel(freshToken);
+  const retried = await callKernel(freshToken);
+  if (retried.status === 401) tokenProvider.invalidate();
+  await rejectRevokedGrant(retried, tokenProvider);
+  return retried;
 }
 
 /** Break-glass: try the route's direct endpoint, or surface the original kernel failure. */
