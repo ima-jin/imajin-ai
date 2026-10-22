@@ -138,8 +138,10 @@ server's memory, never an API response, log, or command line.
 `apps/kernel/src/lib/dns/provider.ts` provides an internal `resolveDnsProvider`
 seam. Its per-domain configuration is either `{ provider: 'manual' }` or
 `{ provider: 'cloudflare', zoneId }`; configuration contains identifiers, never
-a credential. Cloudflare operations resolve `dns.cloudflare` for the specified
-consumer DID through `resolveDomainCredential` on every apply. No usable scoped
+a credential. Cloudflare operations resolve `cloudflarePurpose(zoneId)`
+(`dns.cloudflare:<zoneId>`) for the node's signing DID through
+`resolveDomainCredential` on every apply, reusing the zone credential sealed by
+the Cloudflare connector (#3003) without a second import or seal. No usable scoped
 grant returns manual records/instructions; unverified ownership, vault failures
 and provider failures do not silently become a successful write.
 
