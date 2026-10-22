@@ -45,7 +45,8 @@ describe('single-query durable Inbox count', () => {
     ]);
     expect(await countInboxApprovals(operator)).toEqual({ pending: 120, total: 121 });
     expect(state.queries).toHaveLength(1);
-    expect(state.queries[0]).toMatch(/^select count\(\*\) filter/i);
+    expect(state.queries[0]).toMatch(/^select coalesce\(jsonb_agg/i);
+    expect(state.queries[0]).not.toMatch(/gateRules|unpublishedTopics|summary|content_hash/);
     expect(state.queries[0]).not.toMatch(/\b(insert|update|delete)\b/i);
     state.queries = [];
     expect(await countInboxApprovals(owner)).toEqual({ pending: 0, total: 0 });

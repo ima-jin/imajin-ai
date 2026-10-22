@@ -19,7 +19,7 @@ function card(source = 'reach'): OperatorApprovalCard {
       rules: 'PRIVATE GATE', unpublishedTopics: ['PRIVATE TOPIC'],
     },
     status: 'pending', decision: null, outcome: null, appliedAt: null,
-    createdAt: '2026-10-01T12:00:00.000Z',
+    createdAt: new Date().toISOString(),
   };
 }
 
@@ -158,6 +158,7 @@ it('announces the signed action using native output and removes completed contro
     decision: { decidedBy: 'did:imajin:ryan', decidedAt: '2026-10-18T12:00:00.000Z', mode: 'block' },
   });
   render(<OperatorApprovalsPanel />);
+  fireEvent.click(await screen.findByRole('button', { name: 'Show history' }));
   const result = await screen.findByRole('status');
   expect(result.tagName).toBe('OUTPUT');
   expect(result.textContent).toBe('Signed action: block');

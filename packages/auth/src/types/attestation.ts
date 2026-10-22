@@ -5,6 +5,7 @@
  */
 
 export const ATTESTATION_TYPES = [
+  'operator.approval.expired',
   // #2997 — node-signed grant authority changes; org delegator and human actor.
   'delegation.grant.issued',
   'delegation.grant.renewed',
@@ -307,6 +308,7 @@ export type AttestationType = typeof ATTESTATION_TYPES[number];
  * excluded from any "pending your countersignature" view or query.
  */
 export const MECHANICAL_ATTESTATION_TYPES = [
+  'operator.approval.expired',
   'agreement.revoked',
   'delegation.grant.issued',
   'delegation.grant.renewed',

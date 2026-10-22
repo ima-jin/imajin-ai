@@ -86,8 +86,8 @@ function baseRow(overrides: Record<string, unknown>) {
     decision: null,
     outcome: null,
     appliedAt: null,
-    createdAt: new Date('2026-10-01T00:00:00.000Z'),
-    updatedAt: new Date('2026-10-01T00:00:00.000Z'),
+    createdAt: new Date(),
+    updatedAt: new Date(),
     ...overrides,
   };
 }

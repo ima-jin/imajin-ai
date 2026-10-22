@@ -99,7 +99,7 @@ function decisionApproval(overrides: Partial<ApprovalFixture> = {}): ApprovalFix
     decision: null,
     outcome: null,
     appliedAt: null,
-    createdAt: new Date('2026-09-08T00:00:00.000Z').toISOString(),
+    createdAt: new Date().toISOString(),
     ...overrides,
   };
 }
@@ -269,17 +269,17 @@ describe('decision card — decision payload', () => {
 });
 
 describe('decision card — decided states', () => {
-  it('shows the chosen option on a decided card, with Withdraw instead of option buttons', async () => {
+  it('shows the chosen option in history without another decision control', async () => {
     installFetch([
       decisionApproval({ status: 'approved', decision: { decidedBy: 'did:imajin:operator', decidedAt: '2026-01-02T00:00:00.000Z', mode: 'b' } }),
     ]);
     render(<OperatorApprovalsPanel />);
 
-    fireEvent.click(await screen.findByRole('button', { name: /Reveal decided/ }));
+    fireEvent.click(await screen.findByRole('button', { name: /Show history/ }));
     const chosen = await screen.findByTestId('decision-chosen');
     expect(chosen.textContent).toContain('b');
     expect(chosen.textContent).toContain('Fix the Sonar warning first');
-    expect(screen.getByRole('button', { name: 'Withdraw' })).toBeDefined();
+    expect(screen.queryByRole('button', { name: 'Withdraw' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'a) Merge now' })).toBeNull();
   });
 
@@ -289,7 +289,7 @@ describe('decision card — decided states', () => {
     ]);
     render(<OperatorApprovalsPanel />);
 
-    fireEvent.click(await screen.findByRole('button', { name: /Reveal decided/ }));
+    fireEvent.click(await screen.findByRole('button', { name: /Show history/ }));
     await screen.findByText('Merge #2323 now?');
     expect(screen.queryByTestId('decision-chosen')).toBeNull();
     expect(screen.queryByRole('button', { name: 'None of these' })).toBeNull();
@@ -306,7 +306,7 @@ describe('decision card — interim Inbox (#2694)', () => {
   }
 
   async function reveal() {
-    const toggle = await screen.findByRole('button', { name: /Reveal decided/ });
+    const toggle = await screen.findByRole('button', { name: /Show history/ });
     expect(toggle.getAttribute('aria-expanded')).toBe('false');
     fireEvent.click(toggle);
     expect(toggle.getAttribute('aria-expanded')).toBe('true');
@@ -322,17 +322,17 @@ describe('decision card — interim Inbox (#2694)', () => {
     render(<OperatorApprovalsPanel />);
     await screen.findByText('Active decision');
     expect(screen.getByText('Other source stays active')).toBeDefined();
-    expect(screen.getByText('Decided (2)')).toBeDefined();
+    expect(screen.getByRole('button', { name: 'Show history' })).toBeDefined();
     expect(screen.queryByText('Merge #2323 now?')).toBeNull();
     expect(screen.queryByText('Rejected decision')).toBeNull();
     await reveal();
     expect(screen.getByText('Merge #2323 now?')).toBeDefined();
     expect(screen.getByText('Rejected decision')).toBeDefined();
-    fireEvent.click(screen.getByRole('button', { name: /Hide decided/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Hide history/ }));
     expect(screen.queryByText('Rejected decision')).toBeNull();
   });
 
-  it('archives via the server, hides the card, and can reveal it after remount with Withdraw intact', async () => {
+  it('archives via the server and retains the card behind history after remount', async () => {
     const row = decided();
     const originalDecision = structuredClone(row.decision);
     const spy = vi.fn(async (url: string, init?: RequestInit) => {
@@ -351,29 +351,27 @@ describe('decision card — interim Inbox (#2694)', () => {
     const mounted = render(<OperatorApprovalsPanel />);
     await reveal();
     fireEvent.click(screen.getByRole('button', { name: 'Archive' }));
-    await screen.findByText('All decided cards are archived.');
+    await screen.findByText('Card archived. The signed decision stays on record.');
+    fireEvent.click(screen.getByRole('button', { name: 'Hide history' }));
     expect(screen.queryByText('Merge #2323 now?')).toBeNull();
     expect(row.decision).toEqual(originalDecision);
     expect(spy).toHaveBeenCalledWith('/jin/api/operator-approvals/dcard_1/archive', { method: 'POST', credentials: 'include' });
     mounted.unmount();
     render(<OperatorApprovalsPanel />);
-    await reveal();
     expect(screen.queryByText('Merge #2323 now?')).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: 'Show archived (1)' }));
+    await reveal();
     expect(screen.getByText('Merge #2323 now?')).toBeDefined();
     expect(screen.queryByRole('button', { name: 'Archive' })).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: 'Withdraw' }));
-    await screen.findByText('Proposal withdrawn.');
-    expect(screen.getByText('withdrawn')).toBeDefined();
-    fireEvent.click(screen.getByRole('button', { name: 'Hide archived (1)' }));
+    expect(screen.queryByRole('button', { name: 'Withdraw' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Hide history' }));
     expect(screen.queryByText('Merge #2323 now?')).toBeNull();
   });
 
   it.each(['approved', 'denied', 'withdrawn', 'applied', 'expired'] as const)('keeps %s decision cards out of active Inbox', async (status) => {
     installFetch([decided({ status })]);
     render(<OperatorApprovalsPanel />);
-    await screen.findByText('Decided (1)');
-    expect(screen.getByText('No active approvals.')).toBeDefined();
+    await screen.findByRole('button', { name: 'Show history' });
+    expect(screen.getByText('No actionable approvals.')).toBeDefined();
     expect(screen.queryByText('Merge #2323 now?')).toBeNull();
     await reveal();
     expect(screen.getByRole('button', { name: 'Archive' })).toBeDefined();
@@ -426,9 +424,9 @@ describe('decision card — interim Inbox (#2694)', () => {
     render(<OperatorApprovalsPanel />);
     await screen.findByText('Merge #2323 now?');
     await waitFor(() => expect(scroll).toHaveBeenCalledTimes(1));
-    expect(screen.getByRole('button', { name: /Hide decided/ }).getAttribute('aria-expanded')).toBe('true');
-    expect(screen.getByRole('button', { name: 'Hide archived (1)' })).toBeDefined();
-    fireEvent.click(screen.getByRole('button', { name: /Hide decided/ }));
+    expect(screen.getByRole('button', { name: /Hide history/ }).getAttribute('aria-expanded')).toBe('true');
+    expect(screen.getByText('Archived')).toBeDefined();
+    fireEvent.click(screen.getByRole('button', { name: /Hide history/ }));
     expect(screen.queryByText('Merge #2323 now?')).toBeNull();
   });
 });

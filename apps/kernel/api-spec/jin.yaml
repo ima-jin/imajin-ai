@@ -104,6 +104,7 @@ components:
             fly for a legacy row that never stored one — since this is what
             an operator countersignature signs over).
         status: { $ref: "#/components/schemas/ApprovalStatus" }
+        actionable: { type: boolean, description: Shared default-list and NEEDS YOU policy including deadline and archive preference. }
         decision:
           type: object
           nullable: true
@@ -122,6 +123,13 @@ components:
             event back via the internal `.../operator-approvals/outcome`
             webhook.
           properties:
+            approvalExpiry:
+              type: object
+              required: [attestationId, previousStatus, reason]
+              properties:
+                attestationId: { type: string }
+                previousStatus: { type: string, enum: [pending, approved] }
+                reason: { type: string }
             exitCode: { type: integer }
             durationMs: { type: integer }
             outputHash: { type: string }
@@ -132,7 +140,7 @@ components:
           nullable: true
           description: >-
             This real session principal's Inbox archive timestamp (#2694),
-            or null. Only decided decision:card proposals support archiving.
+            or null. All decided approval sources support archiving.
             Other principals' markers are never returned, including in outcome.
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
@@ -1397,6 +1405,20 @@ paths:
       operationId: listOperatorApprovals
       summary: List operator approval proposals across every connected source
       description: >-
+        By default only actionable cards are returned. `?history=true` includes
+        resolved, expired, superseded and per-reader archived history, never
+        deleting the signed record. Each card includes `actionable`; `hasHistory`
+        indicates hidden history even when the default list is empty.
+        Fresh legacy approved/pending-apply cards remain withdrawable; native
+        submitted commands and decided decision cards are history.
+        The pending/NEEDS YOU count uses this exact policy, including acting
+        and personal counts. OPERATOR_APPROVAL_EXPIRY_DAYS configures N (default
+        7, positive days). Pending cards expire at the earlier of N days from
+        creation or detail.expiresAt. Approved/unapplied cards expire at
+        detail.expiresAt, or N days from creation when none is valid.
+        The pm2 scheduler sweeps every ten minutes, atomically recording an
+        operator.approval.expired mechanical attestation naming the reason.
+        Decisions past the deadline are refused with 409 between ticks too.
         Each principal sees only proposals addressed to their own Inbox
         (#2723), including their own connector proposals, never another
         principal's. A delegated agent gets `{isOperator: false, approvals: []}`.
@@ -1435,6 +1457,11 @@ paths:
       security:
         - cookieAuth: []
       parameters:
+        - name: history
+          in: query
+          required: false
+          schema: { type: boolean, default: false }
+          description: Include retained history and this reader's archived cards; never widens identity scope.
         - name: view
           in: query
           required: false
@@ -1459,6 +1486,7 @@ paths:
                 type: object
                 properties:
                   isOperator: { type: boolean }
+                  hasHistory: { type: boolean, description: Hidden history exists in this Inbox scope. }
                   canAccess: { type: boolean, description: "Present only for view=acting; shared nav and Inbox visibility." }
                   pending: { type: integer, minimum: 0, description: "Count-only projection; organization-only under act-as." }
                   personalInbox:
@@ -1602,12 +1630,12 @@ paths:
     post:
       tags: [jin]
       operationId: archiveOperatorApproval
-      summary: Archive a decided decision card in the addressee's Inbox
+      summary: Archive a decided approval in the addressee's Inbox
       description: >-
         Self-only: requires the real authenticated session DID, refuses
         delegated and borrowed identities through the same act-as guard as
         the decision rail, and verifies the proposal's resolved addressee.
-        Only source decision, kind decision:card, with status approved,
+        Every source with status approved,
         denied, withdrawn, applied, or expired may be archived.
         Persists an idempotent per-principal timestamp in unsigned outcome
         metadata without deleting the proposal, changing its signed decision,
@@ -1650,7 +1678,7 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
         "409":
-          description: Not a decided decision card, or proposal changed before the write
+          description: Not a decided approval, or proposal changed before the write
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }

@@ -73,6 +73,7 @@ vi.mock('drizzle-orm', () => ({
   desc: (...args: unknown[]) => ({ desc: args }),
   or: (...args: unknown[]) => ({ or: args }),
   sql: (strings: TemplateStringsArray, ...values: unknown[]) => ({ sql: [...strings], values }),
+  inArray: (...args: unknown[]) => ({ inArray: args }),
 }));
 
 vi.mock('@imajin/logger', () => ({
@@ -109,6 +110,16 @@ describe('verified native approvals: one command execution rail', () => {
     native.binding.mockResolvedValue(binding);
     native.verify.mockResolvedValue(frame);
     mockSelectLimit.mockResolvedValue([execCommandRow()]);
+  });
+  it('retains signed expiry references on expired native history cards', async () => {
+    const { db } = await import('@/src/db');
+    const expiry = { attestationId: 'att-expiry', reason: 'not applied before approval deadline', previousStatus: 'approved' };
+    vi.mocked(db.select).mockReturnValueOnce({
+      from: () => ({ where: () => ({ orderBy: vi.fn().mockResolvedValue([execCommandRow({ status: 'expired', outcome: { approvalExpiry: expiry } })]) }) }),
+    } as unknown as ReturnType<typeof db.select>);
+    const [card] = await listApprovalsForOperator(OPERATOR_DID);
+    expect(card.actionable).toBe(false);
+    expect(card.outcome).toEqual({ approvalExpiry: expiry });
   });
   it.each([null, { commandId: frame.commandId, outcome: 'completed', at: frame.issuedAt }])('projects native receipts without legacy applied claims after binding revocation: %j', async (sessionOutcome) => {
     const { db } = await import('@/src/db');
@@ -351,8 +362,8 @@ function row(overrides: Record<string, unknown> = {}) {
     status: 'pending',
     decision: null,
     appliedAt: null,
-    createdAt: new Date('2026-09-08T00:00:00.000Z'),
-    updatedAt: new Date('2026-09-08T00:00:00.000Z'),
+    createdAt: new Date(),
+    updatedAt: new Date(),
     ...overrides,
   };
 }

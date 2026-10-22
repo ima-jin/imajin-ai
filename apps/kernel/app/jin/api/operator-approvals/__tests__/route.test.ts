@@ -153,6 +153,17 @@ describe('OPTIONS /jin/api/operator-approvals', () => {
 });
 
 describe('GET /jin/api/operator-approvals (#2059)', () => {
+  it('returns only actionable cards by default and explicitly retrieves retained history in the same scope', async () => {
+    mockRequireAuth.mockResolvedValue({ identity: operatorIdentity() });
+    const active = pendingApprovalCard({ proposalId: 'active' });
+    const history = pendingApprovalCard({ proposalId: 'history', status: 'expired', actionable: false });
+    mockList.mockResolvedValue([active, history]);
+    const current = await GET(makeReq() as Parameters<typeof GET>[0]);
+    expect(await current.json()).toMatchObject({ approvals: [active], hasHistory: true });
+    const all = await GET(makeReq('?history=true') as Parameters<typeof GET>[0]);
+    expect(await all.json()).toMatchObject({ approvals: [active, history], hasHistory: true });
+    expect(mockList.mock.calls.every(([did]) => did === OPERATOR_DID)).toBe(true);
+  });
   describe('personal attention while acting (#3017)', () => {
     it.each(['?view=acting', '?view=acting&count=true'])('returns only the actor own count and handle in %s', async query => {
       mockRequireAuth.mockResolvedValue({ identity: { ...operatorActingAsGroupIdentity(), handle: 'ryan' } });

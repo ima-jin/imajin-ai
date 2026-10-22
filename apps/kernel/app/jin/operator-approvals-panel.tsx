@@ -81,6 +81,7 @@ import { prepareSignedSessionCommand } from './session-command-client';
 import type { SessionCommandFrame } from '@/src/lib/jin/session-command-contract';
 import { getActingAsHeaders, setActingAs } from '@imajin/ui/server';
 import { PersonalApprovalsNotice, type PersonalInboxAttention } from './personal-approvals-notice';
+import { approvalAge, isApprovalActionable } from '@/src/lib/notify/approval-attention';
 
 interface StoredKeypair {
   privateKey: string;
@@ -88,6 +89,12 @@ interface StoredKeypair {
 }
 
 function approvalStatusBadge(approval: OperatorApprovalCard): ReactNode {
+  const expiry = approval.outcome?.approvalExpiry as { reason?: string; previousStatus?: string } | undefined;
+  if (approval.status === 'expired' && expiry) {
+    return <span className="text-xs text-gray-400">
+      {expiry.previousStatus === 'approved' ? 'expired (not applied)' : 'expired'} — {expiry.reason}
+    </span>;
+  }
   if (approval.sessionOutcome) {
     const label = approval.sessionOutcome.outcome === 'completed'
       ? 'Approval resolved — agent attested' : 'Approval resolution failed — agent attested';
@@ -261,6 +268,7 @@ export interface OperatorApprovalCard {
   outcome: Record<string, unknown> | null;
   appliedAt: string | null;
   archivedAt?: string | null;
+  actionable?: boolean;
   createdAt: string;
   sessionBinding?: { loopId: string; principalDid: string; agentDid: string; approvalId: string } | null;
   sessionOutcome?: { commandId: string; outcome: 'completed' | 'failed'; at: string; reason?: string } | null;
@@ -471,6 +479,7 @@ function ExecCommandDetailView({ approval }: Readonly<{ approval: OperatorApprov
     const timer = setInterval(() => setNowMs(Date.now()), 1000);
     return () => clearInterval(timer);
   }, []);
+
 
   const command = detailString(detail, 'command', '');
   const host = detailString(detail, 'host', 'unknown host');
@@ -1157,7 +1166,7 @@ function CardActions({
   // finding. Stable across renders so it only fires when the button mounts.
   const autoFocusRef = useCallback((el: HTMLButtonElement | null) => el?.focus(), []);
 
-  const decidable = approval.status === 'pending' || approval.status === 'approved';
+  const decidable = approval.actionable ?? isApprovalActionable({ ...approval, nativeDecision: Boolean(approval.sessionBinding) });
   if (!decidable) return null;
   if (approval.sessionOutcome) return null;
 
@@ -1254,7 +1263,9 @@ export function ApprovalCardRow({
             {approval.kind}
           </span>
         </div>
-        <span className="text-xs text-gray-500">{new Date(approval.createdAt).toLocaleString()}</span>
+        <time className="text-xs text-gray-500" dateTime={approval.createdAt} title={new Date(approval.createdAt).toLocaleString()}>
+          {approvalAge(approval.createdAt)}
+        </time>
       </div>
       {renderer.renderDetail(approval)}
       {approval.sessionOutcome?.reason && <p className="text-xs text-red-300">{approval.sessionOutcome.reason}</p>}
@@ -1344,6 +1355,8 @@ export function useRunApprovals(prepareCommand = prepareSignedSessionCommand) {
   const [personalSwitchTarget, setPersonalSwitchTarget] = useState<string | null>(null);
   const [reachActAsAllowed, setReachActAsAllowed] = useState(false);
   const [approvals, setApprovals] = useState<OperatorApprovalCard[]>([]);
+  const [hasHistory, setHasHistory] = useState(false);
+  const historyRef = useRef(false);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState('');
   const [revealedBearer, setRevealedBearer] = useState<RevealedBearer | null>(null);
@@ -1367,7 +1380,7 @@ export function useRunApprovals(prepareCommand = prepareSignedSessionCommand) {
     const generation = ++loadGeneration.current;
     if (!silent) setLoading(true);
     try {
-      const res = await fetch('/jin/api/operator-approvals?view=acting', {
+      const res = await fetch(`/jin/api/operator-approvals?view=acting${historyRef.current ? '&history=true' : ''}`, {
         credentials: 'include', cache: 'no-store', headers: getActingAsHeaders(), signal: controller.signal,
       });
       if (!res.ok) throw new Error('Inbox unavailable');
@@ -1377,6 +1390,7 @@ export function useRunApprovals(prepareCommand = prepareSignedSessionCommand) {
         actAs?: ActAsState | null;
         reachActAsAllowed?: boolean;
         personalInbox?: PersonalInboxAttention;
+        hasHistory?: boolean;
       };
       if (generation !== loadGeneration.current) return;
       setIsOperator(data.isOperator);
@@ -1384,6 +1398,7 @@ export function useRunApprovals(prepareCommand = prepareSignedSessionCommand) {
       setPersonalInbox(data.actAs ? data.personalInbox ?? null : null);
       setReachActAsAllowed(data.reachActAsAllowed === true);
       setApprovals(data.approvals ?? []);
+      setHasHistory(data.hasHistory === true);
       return data.approvals ?? [];
     } catch {
       if (generation !== loadGeneration.current) return;
@@ -1391,10 +1406,17 @@ export function useRunApprovals(prepareCommand = prepareSignedSessionCommand) {
       setActAs(null);
       setPersonalInbox(null);
       setApprovals([]);
+      setHasHistory(false);
+      setHasHistory(false);
     } finally {
       if (generation === loadGeneration.current) setLoading(false);
     }
   }, []);
+
+  const setHistory = useCallback((shown: boolean) => {
+    historyRef.current = shown;
+    void load(true);
+  }, [load]);
 
   useEffect(() => {
     load();
@@ -1560,7 +1582,7 @@ export function useRunApprovals(prepareCommand = prepareSignedSessionCommand) {
   }, [load, notify]);
 
   return {
-    approvals, loading, busyId, isOperator, actAs, reachActAsAllowed, decisionsLocked: actAs !== null,
+    approvals, hasHistory, setHistory, loading, busyId, isOperator, actAs, reachActAsAllowed, decisionsLocked: actAs !== null,
     personalInbox, switchingPersonal, personalSwitchTarget, handleReturnToPersonal,
     error: flash?.type === 'err' ? flash.msg : null, flash,
     refresh: load, handleDecide, handleArchive,
@@ -1582,7 +1604,7 @@ function OperatorApprovalsPanelInner() {
   // connector proposals) — otherwise no header, no empty-state, no card.
   // This also holds during the initial load so nobody briefly sees panel
   // chrome before the first fetch resolves.
-  if (!isOperator && !actAs && approvals.length === 0) return null;
+  if (!isOperator && !actAs && approvals.length === 0 && !controller.hasHistory) return null;
 
   return (
     <section className="mt-8">
@@ -1609,6 +1631,7 @@ function OperatorApprovalsPanelInner() {
       <ApprovalInbox
         approvals={approvals}
         deepLinkedProposalId={deepLinkedProposalId}
+        onHistoryChange={controller.setHistory}
         renderCards={(cards) => renderPanelBody(loading, cards, handleDecide, busyId, deepLinkedProposalId, { decisionsLocked: actAs !== null, reachActAsAllowed }, handleArchive)}
       />
     </section>

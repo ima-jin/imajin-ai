@@ -60,7 +60,7 @@ export const dynamic = 'force-dynamic';
  * principal's Reach/knock cards only (#2597). Backfill recovers failed or
  * pre-upgrade publications before listing.
  */
-async function listInboxApprovals(inboxDid: string, reachPrincipal: string | null, source: string | null) {
+async function listInboxApprovals(inboxDid: string, reachPrincipal: string | null, source: string | null, includeHistory: boolean) {
   const filter = source ? { source } : {};
   const sharedPrincipal = reachPrincipal && reachPrincipal !== inboxDid ? reachPrincipal : null;
   await backfillReachApprovals(inboxDid);
@@ -70,7 +70,7 @@ async function listInboxApprovals(inboxDid: string, reachPrincipal: string | nul
     const shared = await listApprovalsForOperator(sharedPrincipal, filter);
     approvals.push(...shared.filter(isReachApproval));
   }
-  return approvals;
+  return { approvals: includeHistory ? approvals : approvals.filter(card => card.actionable), hasHistory: approvals.some(card => !card.actionable), total: approvals.length };
 }
 
 function emptyInbox(countOnly: boolean, actingView: boolean) {
@@ -132,11 +132,11 @@ export async function GET(request: NextRequest) {
       ...(actingView ? { canAccess: isOperator || Boolean(identity.actingAs) || counts.total > 0 } : {}),
     }, { headers: cors });
   }
-  const approvals = await listInboxApprovals(inboxDid, reachPrincipal, searchParams.get('source'));
+  const { approvals, hasHistory, total } = await listInboxApprovals(inboxDid, reachPrincipal, searchParams.get('source'), searchParams.get('history') === 'true');
   return NextResponse.json(
     {
-      isOperator, approvals, ...personalAttention, actAs: actAsContext(authResult.identity), reachActAsAllowed: reachPrincipal !== null,
-      ...(actingView ? { canAccess: isOperator || Boolean(authResult.identity.actingAs) || approvals.length > 0 } : {}),
+      isOperator, approvals, hasHistory, ...personalAttention, actAs: actAsContext(authResult.identity), reachActAsAllowed: reachPrincipal !== null,
+      ...(actingView ? { canAccess: isOperator || Boolean(authResult.identity.actingAs) || total > 0 } : {}),
     },
     { headers: cors },
   );

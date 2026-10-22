@@ -87,6 +87,36 @@ components:
         error: { type: string }
 
 paths:
+  /api/internal/operator-approvals/state:
+    post:
+      tags: [notify]
+      operationId: reportApprovalSourceState
+      summary: Record authenticated source truth that a proposal is gone or superseded
+      description: >-
+        Same internal credential as the applied hook. Atomically expires pending
+        or approved/unapplied cards with an operator.approval.expired signed
+        mechanical attestation and a reason (source reports gone/superseded).
+        Retains decisions, outcomes and per-reader archive markers. Retries of
+        expired cards are idempotent; applied or rejected cards cannot be expired.
+        A late applied confirmation can transition a previously approved expired
+        card to applied while retaining the expiry evidence.
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [proposalId, state]
+              properties:
+                proposalId: { type: string, minLength: 1 }
+                state: { type: string, enum: [gone, superseded] }
+      responses:
+        "200": { description: Recorded or already expired }
+        "400": { description: Invalid JSON, proposal ID or source state }
+        "401": { description: Internal credential required }
+        "409": { description: Unknown or non-expirable proposal }
+        "500": { description: Signed state change unavailable; no unsigned expiry is committed }
   /api/health:
     get:
       tags: [notify]

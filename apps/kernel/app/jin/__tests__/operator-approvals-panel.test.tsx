@@ -55,6 +55,23 @@ describe('vault import approval renderer (#2260)', () => {
   });
 });
 describe('acting Inbox freshness (#2952)', () => {
+  it('keeps history-only personal Inboxes accessible and fetches history only when requested', async () => {
+    const historical = approval({ status: 'expired' });
+    const spy = vi.fn(async (url: string) => ({
+      ok: true, json: async () => ({ isOperator: false, hasHistory: true, approvals: url.includes('history=true') ? [historical] : [] }),
+    }));
+    vi.stubGlobal('fetch', spy);
+    render(<OperatorApprovalsPanel />);
+    const show = await screen.findByRole('button', { name: 'Show history' });
+    expect(spy.mock.calls[0][0]).toBe('/jin/api/operator-approvals?view=acting');
+    expect(screen.queryByText(historical.summary)).toBeNull();
+    fireEvent.click(show);
+    await screen.findByText(historical.summary);
+    expect(spy.mock.calls.some(([url]) => url.includes('&history=true'))).toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: 'Hide history' }));
+    await waitFor(() => expect(screen.queryByText(historical.summary)).toBeNull());
+    expect(spy.mock.calls.at(-1)?.[0]).toBe('/jin/api/operator-approvals?view=acting');
+  });
   it.each(['focus', 'imajin:acting-as-changed', 'imajin:session-changed'])('clears obsolete cards and refreshes on %s', async event => {
     const spy = installFetch([{ isOperator: true, approvals: [approval()] }]);
     const { result } = renderHook(() => useRunApprovals());
@@ -106,6 +123,7 @@ describe('shared native approval command controller', () => {
   it.each(['approved', 'denied', 'applied'] as const)('shows a bound %s decision as awaiting a signed outcome until attested', async (status) => {
     installFetch([{ isOperator: true, approvals: [gatewayExecApproval({ sessionBinding: binding, status })] }]);
     render(<OperatorApprovalsPanel />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Show history' }));
     expect(await screen.findByText('Awaiting signed agent outcome')).toBeDefined();
     expect(screen.queryByText('approved — pending apply')).toBeNull();
     expect(screen.queryByText('denied')).toBeNull();
@@ -145,6 +163,7 @@ describe('shared native approval command controller', () => {
     const card = gatewayExecApproval({ status: 'approved', sessionBinding: binding, sessionOutcome: { commandId: 'command_1', outcome, at: new Date().toISOString(), reason: 'agent reason' } });
     installFetch([{ isOperator: true, approvals: [card] }]);
     render(<OperatorApprovalsPanel />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Show history' }));
     expect(await screen.findByText(outcome === 'completed' ? 'Approval resolved — agent attested' : 'Approval resolution failed — agent attested')).toBeDefined();
     expect(screen.getByText('agent reason')).toBeDefined();
     expect(screen.queryByRole('button', { name: 'Withdraw' })).toBeNull();
@@ -163,7 +182,8 @@ describe('shared native approval command controller', () => {
   it('renders a submitted command as awaiting attestation and never offers Withdraw', async () => {
     installFetch([{ isOperator: true, approvals: [gatewayExecApproval({ sessionBinding: binding, status: 'approved' })] }]);
     render(<OperatorApprovalsPanel />);
-    expect(await screen.findByText('Decision recorded — awaiting signed agent attestation.')).toBeDefined();
+    fireEvent.click(await screen.findByRole('button', { name: 'Show history' }));
+    expect(await screen.findByText('Awaiting signed agent outcome')).toBeDefined();
     expect(screen.queryByRole('button', { name: 'Withdraw' })).toBeNull();
     expect(screen.queryByText('approved — pending apply')).toBeNull();
   });
@@ -188,7 +208,7 @@ function approval(overrides: Partial<ApprovalFixture> = {}): ApprovalFixture {
     status: 'pending',
     decision: null,
     appliedAt: null,
-    createdAt: new Date('2026-09-08T00:00:00.000Z').toISOString(),
+    createdAt: new Date().toISOString(),
     ...overrides,
   };
 }
@@ -386,7 +406,7 @@ describe('non-operator visibility (#2059 acceptance (c), per-principal Inbox #27
       sessionDid: 'did:imajin:operator', actingDid: 'did:imajin:org',
     } }]);
     render(<OperatorApprovalsPanel />);
-    expect(await screen.findByText('No operator approvals yet.')).toBeDefined();
+    expect(await screen.findByText('No actionable approvals.')).toBeDefined();
     expect(screen.queryByRole('button', { name: 'Approve' })).toBeNull();
   });
   it('renders the Inbox for a non-operator principal who has something addressed to them (their own connector proposal)', async () => {
@@ -415,7 +435,7 @@ describe('non-operator visibility (#2059 acceptance (c), per-principal Inbox #27
       // Before the fetch resolves, isOperator is still its initial `false`.
       expect(container.firstChild).toBeNull();
     });
-    expect(screen.getByText('No operator approvals yet.')).toBeDefined();
+    expect(screen.getByText('No actionable approvals.')).toBeDefined();
   });
 });
 
@@ -453,7 +473,7 @@ describe('operator — empty state', () => {
     render(<OperatorApprovalsPanel />);
 
     expect(await screen.findByText('Inbox')).toBeDefined();
-    expect(screen.getByText('No operator approvals yet.')).toBeDefined();
+    expect(screen.getByText('No actionable approvals.')).toBeDefined();
   });
 });
 
@@ -534,6 +554,7 @@ describe.each([
       credentials: 'include',
       body: JSON.stringify({ decision }),
     });
+    if (decision !== 'approve') fireEvent.click(screen.getByRole('button', { name: 'Show history' }));
     await waitFor(() => expect(screen.getByText(resultingStatusText)).toBeDefined());
   });
 });
@@ -596,6 +617,7 @@ describe('terminal statuses', () => {
   it('shows no action controls for an applied proposal', async () => {
     installFetch([{ isOperator: true, approvals: [approval({ status: 'applied' })] }]);
     render(<OperatorApprovalsPanel />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Show history' }));
 
     await screen.findByText('applied');
     expect(screen.queryByRole('button', { name: 'Approve' })).toBeNull();
@@ -605,6 +627,7 @@ describe('terminal statuses', () => {
   it('shows no action controls for a denied proposal', async () => {
     installFetch([{ isOperator: true, approvals: [approval({ status: 'denied' })] }]);
     render(<OperatorApprovalsPanel />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Show history' }));
 
     await screen.findByText('denied');
     expect(screen.queryByRole('button', { name: 'Deny' })).toBeNull();
@@ -683,7 +706,7 @@ describe('manual refresh', () => {
       { isOperator: true, approvals: [approval()] },
     ]);
     render(<OperatorApprovalsPanel />);
-    await screen.findByText('No operator approvals yet.');
+    await screen.findByText('No actionable approvals.');
 
     fireEvent.click(screen.getByRole('button', { name: '↺ refresh' }));
 
@@ -701,7 +724,7 @@ describe('refresh event (#2367)', () => {
       { isOperator: true, approvals: [approval()] },
     ]);
     const { unmount } = render(<OperatorApprovalsPanel />);
-    await screen.findByText('No operator approvals yet.');
+    await screen.findByText('No actionable approvals.');
     expect(spy).toHaveBeenCalledTimes(1);
 
     requestApprovalsRefresh();
@@ -936,6 +959,7 @@ describe('per-source renderer registry — gateway-exec', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Deny' }));
 
     await screen.findByText('Proposal reject.');
+    fireEvent.click(screen.getByRole('button', { name: 'Show history' }));
     await screen.findByText('denied');
     const decisionCall = spy.mock.calls.find(([url]) => String(url).includes('/decision'));
     expect(decisionCall?.[1]).toMatchObject({ body: JSON.stringify({ decision: 'reject', mode: 'deny' }) });
@@ -947,8 +971,8 @@ describe('per-source renderer registry — gateway-exec', () => {
     });
     installFetch([{ isOperator: true, approvals: [expired] }]);
     render(<OperatorApprovalsPanel />);
-
-    expect(await screen.findByText('expired — can no longer be decided')).toBeDefined();
+    fireEvent.click(await screen.findByRole('button', { name: 'Show history' }));
+    expect(await screen.findByText('expired')).toBeDefined();
     expect(screen.queryByRole('button', { name: 'Allow once' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Deny' })).toBeNull();
   });
@@ -1254,6 +1278,7 @@ describe('per-source renderer registry — github', () => {
   it('shows the expired badge and no decision controls for an expired proposal', async () => {
     installFetch([{ isOperator: true, approvals: [githubApproval({ status: 'expired' })] }]);
     render(<OperatorApprovalsPanel />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Show history' }));
 
     expect(await screen.findByText('expired')).toBeDefined();
     expect(screen.queryByRole('button', { name: 'Yes' })).toBeNull();

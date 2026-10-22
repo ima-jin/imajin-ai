@@ -1,6 +1,7 @@
 import { and, eq, or, sql } from 'drizzle-orm';
 import { db, operatorApprovals } from '@/src/db';
 import { CONNECTOR_KIND_PATTERN } from './approval-addressing';
+import { approvalExpiryDays, isApprovalActionable, type ApprovalAttention } from './approval-attention';
 
 /**
  * Count the durable Inbox projection, not envelopes, notifications or hydrated
@@ -27,11 +28,24 @@ export async function countInboxApprovals(
   const shared = options.sharedReachPrincipal && options.sharedReachPrincipal !== inboxDid
     ? and(eq(addressee, options.sharedReachPrincipal), reachCard) : undefined;
   const [counts] = await db.select({
-    pending: sql<number>`count(*) filter (where ${operatorApprovals.status} = 'pending')`.mapWith(Number),
+    // Only lifecycle metadata crosses the DB boundary, never full cards, topic
+    // payloads or source detail. The exact list policy also handles malformed
+    // legacy deadlines safely without casting arbitrary JSON text in SQL.
+    attention: sql<ApprovalAttention[]>`coalesce(jsonb_agg(jsonb_build_object(
+      'source', ${operatorApprovals.source}, 'kind', ${operatorApprovals.kind},
+      'status', ${operatorApprovals.status}, 'createdAt', ${operatorApprovals.createdAt},
+      'appliedAt', ${operatorApprovals.appliedAt},
+      'nativeDecision', ${operatorApprovals.decision}->'sessionCommand' is not null,
+      'archivedAt', case when jsonb_typeof(${operatorApprovals.outcome}->'inboxArchivedBy'->(${addressee})) = 'string'
+        then ${operatorApprovals.outcome}->'inboxArchivedBy'->>(${addressee}) else null end,
+      'detail', jsonb_build_object('expiresAt', ${operatorApprovals.detail}->'expiresAt')
+    )), '[]'::jsonb)`,
     total: sql<number>`count(*)`.mapWith(Number),
   }).from(operatorApprovals).where(and(
     shared ? or(addressed, shared) : addressed,
     options.source ? eq(operatorApprovals.source, options.source) : undefined,
   ));
-  return counts;
+  const now = Date.now();
+  const days = approvalExpiryDays(process.env.OPERATOR_APPROVAL_EXPIRY_DAYS);
+  return { pending: counts.attention.filter(card => isApprovalActionable(card, now, days)).length, total: counts.total };
 }
