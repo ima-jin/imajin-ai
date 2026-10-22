@@ -116,7 +116,7 @@ export function RecordPanel({ transport = defaultTransport }: Readonly<{ transpo
         </div>
         <div className="flex flex-wrap items-center gap-3">
           <label className="text-xs text-gray-400">
-            Show
+            Show{' '}
             <select
               aria-label="Record actor"
               value={kind}
@@ -133,7 +133,7 @@ export function RecordPanel({ transport = defaultTransport }: Readonly<{ transpo
           </button>
         </div>
       </div>
-      {loading && <p role="status" className="text-sm text-gray-500">Loading record…</p>}
+      {loading && <output className="block text-sm text-gray-500">Loading record…</output>}
       {error && <p role="alert" className="text-sm text-red-300">Could not load record. Refresh to try again.</p>}
       {page && (
         <>
