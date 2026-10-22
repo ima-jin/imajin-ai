@@ -103,6 +103,7 @@ describe('AppSecretsPanel', () => {
     null, {}, { apps: null }, { apps: 'bad' }, { apps: [null] },
     { apps: [{ ...app, secrets: undefined }] },
     { apps: [{ ...app, claimed: 'true' }] },
+    { apps: [{ ...app, provisionFailed: 'true' }] },
     { apps: [{ ...app, claimExpiresAt: 123 }] },
     { apps: [{ ...app, claimExpiresAt: 'not-a-date' }] },
     ...[null, [], {}, 'bad', { ...app.provenance, created: null },

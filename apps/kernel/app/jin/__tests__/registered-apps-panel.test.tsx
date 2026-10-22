@@ -57,6 +57,20 @@ describe('Registered apps engine bay', () => {
     await waitFor(() => expect(fetch).toHaveBeenCalled());
     expect(container.textContent).toBe('');
   });
+  it('clears metadata on identity switch and ignores a stale in-flight response', async () => {
+    let finish!: (response: Response) => void;
+    const fetchMock = install([app]);
+    render(<RegisteredAppsPanel />);
+    await screen.findByText('BrokerAgent');
+    fetchMock.mockImplementationOnce(() => new Promise<Response>(resolve => { finish = resolve; }));
+    fireEvent(globalThis, new Event('imajin:session-changed'));
+    expect(screen.queryByText('BrokerAgent')).toBeNull();
+    fetchMock.mockResolvedValueOnce(new Response(null, { status: 403 }));
+    fireEvent(globalThis, new Event('imajin:session-changed'));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+    finish(Response.json({ apps: [app] }));
+    await waitFor(() => expect(screen.queryByText('BrokerAgent')).toBeNull());
+  });
   it.each([
     null, {}, { apps: null }, { apps: [null] },
     ...[
