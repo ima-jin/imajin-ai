@@ -33,26 +33,58 @@ describe('Registered apps engine bay', () => {
     }));
     expect(fetchMock.mock.calls.every(([, init]) => !init.method || init.method === 'GET')).toBe(true);
   });
-  it('shows zero-consent seeds, DCR, dormant and revoked apps; preserves expired rows in a collapsed group', async () => {
+  it('keeps only active and dormant apps in the main list and collapses expired and revoked history', async () => {
     install([
       { ...app, kind: 'first-party seed', status: 'dormant', firstConsent: { at: null, by: null }, consentingPrincipals: 0 },
       { ...app, id: 'dcr', name: 'MCP', kind: 'MCP/DCR client' },
       { ...app, id: 'revoked', name: 'Retired', status: 'revoked', ended: { at: app.lastSeen, by: 'operator' } },
+      { ...app, id: 'revoked-second', name: 'Retired seed', kind: 'first-party seed', status: 'revoked' },
       { ...app, id: 'expired', name: 'Expired client', status: 'expired', ended: { at: app.lastSeen, by: 'expiry signer' } },
     ]);
     const { container } = render(<RegisteredAppsPanel />);
     await screen.findByText('first-party seed · dormant');
     expect(screen.getByText(/none recorded/)).toBeDefined();
     expect(screen.getByText('MCP/DCR client · active')).toBeDefined();
-    expect(screen.getByText('operator')).toBeDefined();
-    const group = container.querySelector('details')!;
+    const mainList = container.querySelector('section > ul')!;
+    expect(within(mainList).getAllByRole('listitem')).toHaveLength(2);
+    expect(within(mainList).queryByText('Retired')).toBeNull();
+    expect(within(mainList).queryByText('Retired seed')).toBeNull();
+    expect(within(mainList).queryByText('Expired client')).toBeNull();
+    const group = screen.getByText('expired (1)').closest('details')!;
     expect(group.open).toBe(false);
     expect(within(group).getByText('Expired client')).toBeDefined();
     fireEvent.click(within(group).getByText('expired (1)'));
     expect(group.open).toBe(true);
     expect(within(group).getByText('expiry signer')).toBeDefined();
     expect(within(group).queryByRole('button', { name: 'Clear' })).toBeNull();
+    const revoked = screen.getByText('revoked (2)').closest('details')!;
+    expect(revoked.open).toBe(false);
+    expect(revoked.className).toBe(group.className);
+    expect(revoked.querySelector('summary')!.className).toBe(group.querySelector('summary')!.className);
+    fireEvent.click(within(revoked).getByText('revoked (2)'));
+    expect(revoked.open).toBe(true);
+    expect(within(revoked).getAllByRole('listitem')).toHaveLength(2);
+    expect(within(revoked).getByText('Retired seed')).toBeDefined();
+    const row = within(revoked).getByText('Retired').closest('li')!;
+    expect(row.textContent).toContain('delegated app · revoked');
+    expect(row.textContent).toContain('did:imajin:fixture');
+    expect(row.textContent).toContain('Created · registrar · 2026-01-01T00:00:00Z · registrar');
+    expect(row.textContent).toContain('First consent · by · 2026-01-02T00:00:00Z · principal-a');
+    expect(row.textContent).toContain('Consenting principals (live) · 2');
+    expect(row.textContent).toContain(`Last seen · ${app.lastSeen}`);
+    expect(row.textContent).toContain(`revoked · ${app.lastSeen} · operator`);
+    expect(within(revoked).queryByRole('button', { name: 'Clear' })).toBeNull();
+    fireEvent.click(within(revoked).getByText('revoked (2)'));
+    expect(revoked.open).toBe(false);
     expect(screen.getAllByRole('button', { name: 'Clear' })).toHaveLength(2);
+  });
+  it.each([
+    { apps: [] }, { apps: [app] }, { apps: [{ ...app, status: 'expired' }] },
+  ])('omits the revoked section when none are revoked: %j', async ({ apps }) => {
+    install(apps);
+    render(<RegisteredAppsPanel />);
+    const panel = await screen.findByRole('region', { name: 'Registered apps' });
+    expect(within(panel).queryByText(/^revoked \(\d+\)$/)).toBeNull();
   });
   it.each([401, 403])('hides all operator metadata on HTTP %s', async status => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(null, { status })));
@@ -121,7 +153,11 @@ describe('Registered apps engine bay', () => {
     await screen.findByText('delegated app · revoked');
     expect(fetchMock).toHaveBeenNthCalledWith(2, '/api/admin/registry/apps/app_fixture/revoke',
       expect.objectContaining({ method: 'POST', credentials: 'include' }));
-    const row = screen.getByText('BrokerAgent').closest('li')!;
+    const group = screen.getByText('revoked (1)').closest('details')!;
+    expect(group.open).toBe(false);
+    fireEvent.click(within(group).getByText('revoked (1)'));
+    expect(group.open).toBe(true);
+    const row = within(group).getByText('BrokerAgent').closest('li')!;
     expect(row.textContent).toContain(`revoked · ${app.lastSeen} · operator`);
     expect(within(row).queryByRole('button', { name: 'Clear' })).toBeNull();
     const receipt = within(row).getByText('registry.app.revoked').closest('details')!;
