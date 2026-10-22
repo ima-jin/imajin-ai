@@ -115,7 +115,7 @@ function AppRows({ apps, onCleared }: Readonly<{ apps: RegisteredApp[]; onCleare
   ))}</ul>;
 }
 
-/** Operator-only inventory; Clear uses the existing admin revoke route. */
+/** Operator-only inventory preserves registry history; Clear uses the existing admin revoke route. */
 export function RegisteredAppsPanel() {
   const [apps, setApps] = useState<RegisteredApp[] | null>(null);
   const [error, setError] = useState(false);
