@@ -635,6 +635,7 @@ file: ``- `path` — role``.
 - `apps/kernel/src/lib/vault/import.ts` — D2/S3 (v2 static-secret custody and node-attested, human-countersigned import/rotation)
 - `apps/kernel/app/api/vault/import/route.ts` — D2 (pins Cloudflare credential consumer to this kernel node; never releases token material)
 - `apps/kernel/src/lib/cloudflare/authority.ts` — D2 (node consumer identifier for verified-domain credential resolution; edge authority remains owner-granted)
+- `apps/kernel/src/lib/dns/provider.ts` — D2 (node consumer identifier for the connector's existing zone-scoped DNS credential; no signing, sealing or new secret)
 - `apps/kernel/src/lib/vault/cloudflare-import.ts` — D2 (checks node-only token custody against exact verified zone ownership)
 - `apps/kernel/src/lib/vault/group-key.ts` — D2/D3/S3 (explicit node-key configuration gate; countersigned group-to-node custody, wrapped-key revoke and transactional signed audit)
 - `apps/kernel/src/lib/vault/internal-secret.ts` — D2
