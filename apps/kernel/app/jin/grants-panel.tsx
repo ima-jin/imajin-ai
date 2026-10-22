@@ -32,6 +32,7 @@ import type { GrantCard, GrantSourceKind, DeferredAckState, GrantAckEvidence } f
 import styles from './grants-panel.module.css';
 import { forEachSequential } from '@/src/lib/async/sequential';
 import { operatorGrantExpiryWarning } from '@/src/lib/auth/grant-lease';
+import { isGrantUnused30d } from '@/src/lib/jin/grant-activity';
 
 const defaultTransport: typeof fetch = (...args) => fetch(...args);
 
@@ -39,6 +40,12 @@ function surplusIds(card: GrantCard): string[] {
   if (card.source !== 'app-authorization' || card.status !== 'active' || !card.appDid || !card.revocable) return [];
   const survivor = card.id.replace(/^app-authorization:/, '');
   return [...new Set(card.surplusGrantIds ?? [])].filter(id => id && id !== survivor);
+}
+
+function lastUsedLabel(card: GrantCard): string {
+  if (card.lastUsedAt) return `last used ${formatDate(card.lastUsedAt)}`;
+  if (card.lastUsedNotRecordedBefore) return `last used: not recorded before ${card.lastUsedNotRecordedBefore}`;
+  return 'last used never';
 }
 
 const POLL_INTERVAL_MS = 10000;
@@ -127,7 +134,10 @@ function GrantCardView({
           </span>
           <span className="font-mono text-xs text-gray-200 break-all" title={card.grantee}>{card.grantee}</span>
         </div>
-        {statusBadge(card.status)}
+        <div className="flex items-center gap-2">
+          {isGrantUnused30d(card) && <span className="px-1.5 py-0.5 rounded text-xs bg-yellow-900/60 text-yellow-300">unused 30d+</span>}
+          {statusBadge(card.status)}
+        </div>
       </div>
       {surplus.length > 0 && (
         <div className="space-y-2">
@@ -169,7 +179,7 @@ function GrantCardView({
 
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-500">
         <span>issued {formatDate(card.issuedAt)}</span>
-        <span>last used {card.lastUsedAt ? formatDate(card.lastUsedAt) : 'never'}</span>
+        <span>{lastUsedLabel(card)}</span>
       </div>
 
       {card.ackState && <AckBadge ackState={card.ackState} evidence={card.ackEvidence} />}

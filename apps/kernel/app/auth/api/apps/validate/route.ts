@@ -15,6 +15,7 @@ import { eq, and } from 'drizzle-orm';
 import { requireInternalApiKey } from '@/src/lib/auth/require-internal-api-key';
 import { isLiveAppAuthorization } from '@/src/lib/auth/live-app-authorization';
 import { canConsentToApp, PRIVATE_APP_CONSENT_ERROR } from '@/src/lib/kernel/app-consent';
+import { recordAppAuthorizationUse } from '@/src/lib/auth/app-authorization-usage';
 
 export async function POST(request: NextRequest) {
   const authError = await requireInternalApiKey(request);
@@ -79,6 +80,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  void recordAppAuthorizationUse(attestationId);
   return NextResponse.json({
     appDid,
     userDid: att.issuerDid,

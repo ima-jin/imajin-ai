@@ -50,14 +50,15 @@
  *                         own query (also not exported as a reusable
  *                         function). Revoke: `POST /api/auth/revoke`.
  */
-import { and, eq, inArray, isNull } from 'drizzle-orm';
-import { db, identities, identityMembers, attestations, registryApps } from '@/src/db';
+import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { db, identities, identityMembers, attestations, registryApps, oauthRefreshTokens, appAuthorizationUsage } from '@/src/db';
 import { listGrantDetailsForDelegator } from '@/src/lib/auth/grants';
 import { listVaultKeyCards } from '@/src/lib/vault';
 import { mintedKeyField } from '@/src/lib/vault/mint';
 import { listDelegateGrantBearersForPrincipal } from '@/src/lib/access/delegate-grant';
 import { listImportOwners } from '@/src/lib/vault/import-authority';
 import { isCloudflareZoneAudience } from '@/src/lib/cloudflare/contract';
+import { APP_USAGE_RECORDING_STARTED_AT, sortGrantsByActivity } from './grant-activity';
 
 export type GrantSourceKind =
   | 'auth-grant'
@@ -96,6 +97,7 @@ export interface GrantCard {
   issuedAt: string | null;
   expiresAt?: string;
   lastUsedAt: string | null;
+  lastUsedNotRecordedBefore?: string;
   ackState: DeferredAckState | null;
   ackEvidence: GrantAckEvidence | null;
   status: string;
@@ -154,6 +156,8 @@ export interface AppAuthorizationSummary {
   authorizedAt: string;
   revokedAt: string | null;
   expiresAt: string | null;
+  recordedLastUsedAt?: string | null;
+  oauthLastUsedAt?: string | null;
 }
 
 /**
@@ -173,6 +177,10 @@ export async function listAppAuthorizationsForOwner(ownerDid: string): Promise<A
       issuedAt: attestations.issuedAt,
       revokedAt: attestations.revokedAt,
       expiresAt: attestations.expiresAt,
+      recordedLastUsedAt: sql<string | null>`(select ${appAuthorizationUsage.lastUsedAt}
+        from ${appAuthorizationUsage} where ${appAuthorizationUsage.attestationId} = ${attestations.id})`,
+      oauthLastUsedAt: sql<string | null>`(select max(${oauthRefreshTokens.createdAt})
+        from ${oauthRefreshTokens} where ${oauthRefreshTokens.attestationId} = ${attestations.id})`,
     })
     .from(attestations)
     .where(and(eq(attestations.issuerDid, ownerDid), eq(attestations.type, 'app.authorized')));
@@ -198,6 +206,8 @@ export async function listAppAuthorizationsForOwner(ownerDid: string): Promise<A
       authorizedAt: row.issuedAt.toISOString(),
       revokedAt: row.revokedAt ? row.revokedAt.toISOString() : null,
       expiresAt: row.expiresAt ? row.expiresAt.toISOString() : null,
+      recordedLastUsedAt: row.recordedLastUsedAt ? new Date(row.recordedLastUsedAt).toISOString() : null,
+      oauthLastUsedAt: row.oauthLastUsedAt ? new Date(row.oauthLastUsedAt).toISOString() : null,
     };
   });
 }
@@ -229,7 +239,7 @@ function normalizeAuthGrants(grants: Awaited<ReturnType<typeof listGrantDetailsF
 /** Org controllers may read their org's auth grants, never node-operator vault/app sources. */
 export async function listAuthGrantsForDelegator(delegatorDid: string): Promise<GrantCard[]> {
   const grants = await listGrantDetailsForDelegator(delegatorDid);
-  return normalizeAuthGrants(grants).sort((a, b) => (b.issuedAt ?? '').localeCompare(a.issuedAt ?? ''));
+  return sortGrantsByActivity(normalizeAuthGrants(grants));
 }
 
 function normalizeLegacyMemberships(memberships: LegacyAgentMembership[]): GrantCard[] {
@@ -345,6 +355,10 @@ export function normalizeAppAuthorizations(apps: AppAuthorizationSummary[], now 
 }
 
 function appAuthorizationCard(app: AppAuthorizationSummary, status: string): GrantCard {
+  const usage = [app.recordedLastUsedAt, app.oauthLastUsedAt]
+    .filter((value): value is string => Boolean(value))
+    .sort((a, b) => Date.parse(b) - Date.parse(a));
+  const lastUsedAt = usage[0] ?? null;
   return {
     id: `app-authorization:${app.attestationId}`,
     source: 'app-authorization',
@@ -352,7 +366,9 @@ function appAuthorizationCard(app: AppAuthorizationSummary, status: string): Gra
     appDid: app.appDid,
     capabilities: app.scopes,
     issuedAt: app.authorizedAt,
-    lastUsedAt: null,
+    lastUsedAt,
+    ...(lastUsedAt === null && Date.parse(app.authorizedAt) < Date.parse(APP_USAGE_RECORDING_STARTED_AT)
+      ? { lastUsedNotRecordedBefore: APP_USAGE_RECORDING_STARTED_AT.slice(0, 10) } : {}),
     ackState: null,
     ackEvidence: null,
     status,
@@ -394,5 +410,5 @@ export async function listGrantsForOperator(operatorDid: string): Promise<GrantC
     ...normalizeAppAuthorizations(appAuthorizations),
   ];
 
-  return cards.sort((a, b) => (b.issuedAt ?? '').localeCompare(a.issuedAt ?? ''));
+  return sortGrantsByActivity(cards);
 }
