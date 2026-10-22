@@ -3,15 +3,16 @@
  * epic #2288).
  *
  * Per-principal counterpart to `GET /api/admin/events` (requireAdmin
- * only): `requireAuth` + `X-Acting-For` (`resolveActingDid`), never
+ * only): service-scoped `requireAuth` + session act-as, never
  * `requireAdmin`. See `src/lib/jin/record-events.ts` for the full scoping
  * rules, the `approvalRef` join, and `hasOperatorSignature`.
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAuth, resolveActingDid } from '@imajin/auth';
+import { requireAuth } from '@imajin/auth';
 import { createLogger } from '@imajin/logger';
 import { corsHeaders } from '@/src/lib/kernel/cors';
 import { listRecordEventsForPrincipal, type RecordEventFilters } from '@/src/lib/jin/record-events';
+import { isActiveGroupMember } from '@/src/lib/auth/group-membership';
 
 const log = createLogger('kernel');
 
@@ -41,16 +42,26 @@ function readFilters(url: URL): RecordEventFilters {
 export async function GET(request: NextRequest) {
   const cors = corsHeaders(request);
 
-  const authResult = await requireAuth(request);
+  const authResult = await requireAuth(request, { service: 'jin' });
   if ('error' in authResult) {
     return NextResponse.json({ error: authResult.error }, { status: authResult.status, headers: cors });
   }
 
-  const principalDid = resolveActingDid(authResult.identity);
+  const { identity } = authResult;
+  const principalDid = identity.actingAs ?? identity.id;
   const filters = readFilters(new URL(request.url));
 
   try {
-    const page = await listRecordEventsForPrincipal(principalDid, filters);
+    if (identity.actingAs && (
+      identity.subtype !== 'human' || identity.actingFor ||
+      !['owner', 'admin'].includes(identity.actingAsRole ?? '') ||
+      !await isActiveGroupMember(identity.actingAs, identity.id)
+    )) {
+      return NextResponse.json({ error: 'Organization Record requires an owner or admin of a group' }, { status: 403, headers: cors });
+    }
+    const page = identity.actingAs
+      ? await listRecordEventsForPrincipal(principalDid, filters, { organization: true })
+      : await listRecordEventsForPrincipal(principalDid, filters);
     return NextResponse.json(page, { headers: cors });
   } catch (err) {
     log.error({ err: String(err), principalDid }, 'Record lane events query failed');
