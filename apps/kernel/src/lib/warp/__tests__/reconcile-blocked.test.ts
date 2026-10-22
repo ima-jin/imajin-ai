@@ -206,4 +206,21 @@ describe('current Warp blocker reconciliation', () => {
     expect(await reconcile()).toEqual(blocked());
     expect(emit).not.toHaveBeenCalled();
   });
+
+  it('bounds concurrent run reads and preserves page order', async () => {
+    let active = 0;
+    let maximum = 0;
+    getRun.mockImplementation(async (_did, runId) => {
+      active += 1;
+      maximum = Math.max(maximum, active);
+      await Promise.resolve();
+      active -= 1;
+      return run({ runId, artifacts: [] });
+    });
+    const loops = Array.from({ length: 12 }, (_, index) => runLoop({ ...blocked(), loopId: `batch-${index}` }));
+    const result = await reconcileWarpBlockers(principal, loops);
+    expect(maximum).toBe(4);
+    expect(result.map(loop => loop.loopId)).toEqual(loops.map(loop => loop.loopId));
+    expect(await reconcileWarpBlockers(principal, [])).toEqual([]);
+  });
 });

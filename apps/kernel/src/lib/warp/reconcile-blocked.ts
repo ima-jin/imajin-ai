@@ -1,6 +1,7 @@
 import { createLogger } from '@imajin/logger';
 import type { LoopJson } from '@/src/lib/loops/serialize';
 import { redactLoopText } from '@/src/lib/loops/output-redaction';
+import { mapWithConcurrency } from '@/src/lib/async/sequential';
 import { getIssue, getPullRequest } from '@/src/lib/github/connector';
 import { getAgentRun, isTerminalRunState, type WarpAgentRun } from './dispatch';
 import { emitWarpRunLoopEvent, type WarpRunLoopTransition } from './loop-emit';
@@ -59,12 +60,14 @@ async function derivePullRequests(principal: string, prs: string[]): Promise<Der
     return { number, state: pr.merged === true || pr.merged_at ? 'merged' : pr.state, draft: pr.draft };
   })));
   if (states.every(pr => pr.state === 'merged' || pr.state === 'closed')) {
+    const outcomes = states.map(pr => `PR #${pr.number} ${pr.state}`).join(' · ');
     return { type: 'loop.finished', state: 'resolved',
-      summary: `resolved · ${states.map(pr => `PR #${pr.number} ${pr.state}`).join(' · ')}` };
+      summary: `resolved · ${outcomes}` };
   }
   if (states.every(pr => pr.state === 'merged' || pr.state === 'closed' || (pr.state === 'open' && pr.draft === false))) {
+    const awaiting = states.filter(pr => pr.state === 'open').map(pr => `PR #${pr.number}`).join(' · ');
     return { type: 'loop.progress', state: 'awaiting_review',
-      summary: `awaiting review · ${states.filter(pr => pr.state === 'open').map(pr => `PR #${pr.number}`).join(' · ')}` };
+      summary: `awaiting review · ${awaiting}` };
   }
   return undefined;
 }
@@ -119,10 +122,6 @@ async function reconcileOne(principal: string, loop: LoopJson): Promise<LoopJson
 }
 
 export async function reconcileWarpBlockers(principal: string, loops: LoopJson[]): Promise<LoopJson[]> {
-  const reconciled: LoopJson[] = [];
   // Bound provider concurrency even on a 200-row operator page.
-  for (let offset = 0; offset < loops.length; offset += 4) {
-    reconciled.push(...await Promise.all(loops.slice(offset, offset + 4).map(loop => reconcileOne(principal, loop))));
-  }
-  return reconciled;
+  return mapWithConcurrency(loops, 4, loop => reconcileOne(principal, loop));
 }
