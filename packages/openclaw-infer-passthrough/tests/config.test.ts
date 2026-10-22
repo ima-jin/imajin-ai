@@ -16,6 +16,26 @@ describe('loadRoutes', () => {
     if (dir) rmSync(dir, { recursive: true, force: true });
   });
 
+  const minimalEnv = {
+    KERNEL_BASE_URL: 'https://kernel.test',
+    OPENCLAW_APP_DID: 'did:imajin:app',
+    OPENCLAW_APP_PRIVATE_KEY: 'test-placeholder',
+    INFER_PROXY_PRINCIPAL_DID: 'did:imajin:principal',
+  };
+
+  it('needs no routes file or grant ID with the principal env', () => {
+    const config = loadConfig(minimalEnv);
+    expect(config.routes).toEqual(['openai', 'anthropic', 'mcp'].map((id) => ({
+      id, principalDid: minimalEnv.INFER_PROXY_PRINCIPAL_DID,
+    })));
+    expect(JSON.stringify(config)).not.toContain('attestationId');
+  });
+
+  it('requires a principal when no routes file is supplied', () => {
+    expect(() => loadConfig({ ...minimalEnv, INFER_PROXY_PRINCIPAL_DID: undefined }))
+      .toThrow(/INFER_PROXY_PRINCIPAL_DID is required/);
+  });
+
   it('loads a valid route table', () => {
     dir = mkdtempSync(join(tmpdir(), 'infer-proxy-'));
     const path = writeRoutes(dir, [
@@ -28,8 +48,8 @@ describe('loadRoutes', () => {
 
   it('rejects a route missing a required field', () => {
     dir = mkdtempSync(join(tmpdir(), 'infer-proxy-'));
-    const path = writeRoutes(dir, [{ id: 'xai', principalDid: 'did:imajin:ryan' }]);
-    expect(() => loadRoutes(path)).toThrow(/attestationId/);
+    const path = writeRoutes(dir, [{ id: 'xai' }]);
+    expect(() => loadRoutes(path)).toThrow(/principalDid/);
   });
 
   it('rejects duplicate route ids', () => {
@@ -49,6 +69,19 @@ describe('loadRoutes', () => {
 
   it('throws a clear error for a missing file, without leaking any secret env content', () => {
     expect(() => loadRoutes('/nonexistent/path/routes.json')).toThrow(/Could not read routes config/);
+  });
+
+  it('accepts a principal-only route without grant IDs or model prefixes', () => {
+    dir = mkdtempSync(join(tmpdir(), 'infer-proxy-'));
+    const route = { id: 'openai', principalDid: 'did:imajin:principal' };
+    expect(loadRoutes(writeRoutes(dir, [route]))).toEqual([route]);
+  });
+
+  it.each(['gpt-', [1], [''], null])('rejects malformed modelPrefixes: %j', (modelPrefixes) => {
+    dir = mkdtempSync(join(tmpdir(), 'infer-proxy-'));
+    expect(() => loadRoutes(writeRoutes(dir, [
+      { id: 'openai', principalDid: 'did:imajin:principal', modelPrefixes },
+    ]))).toThrow(/modelPrefixes/);
   });
 });
 

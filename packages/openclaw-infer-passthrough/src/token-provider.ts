@@ -8,14 +8,10 @@
  * (`POST /auth/api/apps/token/service`, the shape `apps/broker-agent`'s
  * `mintAppToken` uses) cannot carry it. This shim instead mints the
  * user-delegated app token (`POST /auth/api/apps/token`, `app+jwt`), which
- * additionally requires an `attestationId` — the `app.authorized` consent
- * record the principal granted this app DID with `infer:completions` in
- * scope. The minted token's `sub` (and therefore `resolveInferenceAuth`'s
- * `ownerDid`) is derived kernel-side from that attestation's `issuerDid`;
- * the shim never sends the principal DID directly.
+ * resolves the principal's current live grant at every mint (#3040/#3041).
  *
  * The proof-of-possession challenge shape
- * (`${appDid}:${attestationId}:${nonce}:${timestamp}`, signed with the raw
+ * (`${appDid}:${principalDid}:${nonce}:${timestamp}`, signed with the raw
  * Ed25519 primitive) mirrors `apps/kernel/app/auth/api/apps/token/route.ts`
  * exactly, and `crypto.signSync` (not the `SignedMessage`-wrapping `signSync`
  * also exported from `@imajin/auth`'s top level) is required for the same
@@ -46,6 +42,29 @@ export class TokenMintError extends Error {
   }
 }
 
+/** Match only consent loss, not other 403 boundaries such as insufficient scope. */
+export function isRevokedGrant(body: { code?: unknown; error?: unknown }): boolean {
+  return body.code === 'no_live_grant' ||
+    (typeof body.error === 'string' && /authorization.*revoked/i.test(body.error));
+}
+
+export class NoLiveGrantError extends Error {
+  constructor() {
+    super('Re-grant on /jin → Grants to restore this app’s access');
+    this.name = 'NoLiveGrantError';
+  }
+}
+
+/** Inspect a clone so normal upstream errors and streaming bodies stay untouched. */
+export async function rejectRevokedGrant(response: Response, source: TokenSource): Promise<void> {
+  if (response.status !== 403) return;
+  const body = await response.clone().json().catch(() => ({})) as { code?: unknown; error?: unknown };
+  if (isRevokedGrant(body)) {
+    source.invalidate();
+    throw new NoLiveGrantError();
+  }
+}
+
 /**
  * @param scope Single scope to narrow the mint to (must be one of the
  *   attestation's granted scopes) — defaults to `infer:completions` when
@@ -64,13 +83,13 @@ export async function mintAppToken(
   kernelBaseUrl: string,
   appDid: string,
   privateKeyHex: string,
-  attestationId: string,
+  principalDid: string,
   scope: string | null = APP_TOKEN_SCOPE,
   aud?: string,
 ): Promise<MintedToken> {
   const nonce = randomBytes(16).toString('hex');
   const timestamp = new Date().toISOString();
-  const challenge = `${appDid}:${attestationId}:${nonce}:${timestamp}`;
+  const challenge = `${appDid}:${principalDid}:${nonce}:${timestamp}`;
   const signature = crypto.signSync(challenge, privateKeyHex);
   // `scope === null` must produce an OMITTED key, not a `null` value in the
   // JSON body — the kernel's route only special-cases an absent `scope`,
@@ -84,7 +103,7 @@ export async function mintAppToken(
     res = await fetch(`${stripTrailingSlashes(kernelBaseUrl)}/auth/api/apps/token`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ appDid, attestationId, scope: resolvedScope, aud, nonce, timestamp, signature }),
+      body: JSON.stringify({ appDid, principalDid, scope: resolvedScope, aud, nonce, timestamp, signature }),
     });
   } catch (err) {
     // Network failure reaching the kernel's mint endpoint: a kernel outage,
@@ -93,9 +112,10 @@ export async function mintAppToken(
   }
 
   if (!res.ok) {
-    const body = (await res.json().catch(() => ({ error: res.statusText }))) as { error?: string };
+    const body = (await res.json().catch(() => ({ error: res.statusText }))) as { error?: string; code?: string };
     // Never interpolate the signature/challenge/nonce into this message —
     // only the kernel's own (non-secret) error string and HTTP status.
+    if (res.status === 403 && isRevokedGrant(body)) throw new NoLiveGrantError();
     throw new TokenMintError(res.status, body.error ?? res.statusText);
   }
 
@@ -147,7 +167,7 @@ export class RouteTokenProvider implements ScopedTokenSource {
     private readonly kernelBaseUrl: string,
     private readonly appDid: string,
     private readonly privateKeyHex: string,
-    private readonly attestationId: string,
+    private readonly principalDid: string,
     private readonly refreshSkewMs: number = 60_000,
     private readonly now: () => number = Date.now,
     private readonly scope: string | null = APP_TOKEN_SCOPE,
@@ -177,7 +197,9 @@ export class RouteTokenProvider implements ScopedTokenSource {
   }
 
   private async refresh(): Promise<string> {
-    const minted = await mintAppToken(this.kernelBaseUrl, this.appDid, this.privateKeyHex, this.attestationId, this.scope, this.aud);
+    // A failed mint must not leave an expired/revoked token or scopes cached.
+    this.invalidate();
+    const minted = await mintAppToken(this.kernelBaseUrl, this.appDid, this.privateKeyHex, this.principalDid, this.scope, this.aud);
     this.cached = { token: minted.token, expiresAt: this.now() + minted.expiresIn * 1000, scopes: minted.scopes };
     return this.cached.token;
   }

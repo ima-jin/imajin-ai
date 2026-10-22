@@ -141,6 +141,9 @@ async function writeErrorResponse(res: ServerResponse, health: HealthTracker, er
 }
 
 export function createProxyServer(config: ProxyConfig) {
+  if (config.routes.some((route) => Object.hasOwn(route, 'attestationId'))) {
+    log.warn({}, 'attestationId is deprecated and ignored; minting by principalDid');
+  }
   const health = new HealthTracker();
   const tokenProviders = new Map<string, RouteTokenProvider>();
   const mcpAud = mcpResourceAudience(config);
@@ -159,7 +162,7 @@ export function createProxyServer(config: ProxyConfig) {
         config.kernelBaseUrl,
         config.appDid,
         config.appPrivateKey,
-        route.attestationId,
+        route.principalDid,
         undefined,
         undefined,
         isMcpRoute ? null : undefined,
