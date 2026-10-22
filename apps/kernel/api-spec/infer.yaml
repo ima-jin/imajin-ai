@@ -1,0 +1,72 @@
+openapi: "3.1.0"
+info:
+  title: imajin inference
+  version: "1.0.0"
+  description: Sealed-connector inference discovery.
+servers:
+  - url: https://{node}.imajin.ai/infer
+    variables:
+      node: { default: jin }
+  - url: http://localhost:3000/infer
+components:
+  securitySchemes:
+    appToken:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    UsableModelList:
+      type: object
+      required: [object, data]
+      properties:
+        object: { type: string, const: list }
+        data:
+          type: array
+          items:
+            type: object
+            required: [id, object, owned_by, created, imajin]
+            properties:
+              id:
+                type: string
+                description: Upstream model id; clients may select it as imajin/<id>.
+              object: { type: string, const: model }
+              owned_by: { type: string, description: Connector id. }
+              created: { type: integer, description: Listing time in Unix seconds. }
+              imajin:
+                type: object
+                required: [connector, credentialDid, servable, picked]
+                properties:
+                  connector: { type: string }
+                  credentialDid: { type: string }
+                  servable: { type: boolean, const: true }
+                  picked:
+                    type: boolean
+                    description: True when this is the routing winner's currently picked model.
+paths:
+  /v1/models/usable:
+    get:
+      operationId: listUsableModels
+      summary: List every usable sealed connector's picker models
+      description: |
+        Requires an app.authorized app-token with infer:completions scope.
+        Uses the same live picker loaders as /jin, but only after grant-aware
+        sealed credential resolution. Unsealed, ungranted and modelless cards
+        contribute nothing. Owner, app, then registrant credentials are walked.
+        Each id appears once: exact picked matches win before picker membership,
+        otherwise the first card in resolution order wins, as in resolveBrain.
+        Requests with bare ids or imajin/<id> resolve through that connector;
+        the completion adapters record usage against its credential DID.
+        During a picker failure only that card's picked model is retained.
+        No credentials are returned. OpenAI object:list and data[].id stay compatible.
+      security:
+        - appToken: []
+      responses:
+        "200":
+          description: Usable models, or an empty data array when none are usable.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/UsableModelList" }
+        "401": { description: Missing or invalid app-token. }
+        "403": { description: Missing live authorization or infer:completions scope. }
+        "429": { description: Rate limit exceeded. }
+        "500": { description: Model listing failed. }

@@ -2,10 +2,10 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // ─── Mocks ──────────────────────────────────────────────────────────────────
 
-const { mockResolveInferenceAuth, mockRateLimit, mockListUsableBrains } = vi.hoisted(() => ({
+const { mockResolveInferenceAuth, mockRateLimit, mockListUsableModels } = vi.hoisted(() => ({
   mockResolveInferenceAuth: vi.fn(),
   mockRateLimit: vi.fn(),
-  mockListUsableBrains: vi.fn(),
+  mockListUsableModels: vi.fn(),
 }));
 
 vi.mock('@/src/lib/inference/auth', () => ({
@@ -27,7 +27,7 @@ vi.mock('@imajin/logger', () => ({
 }));
 
 vi.mock('@/src/lib/inference/brain', () => ({
-  listUsableBrains: mockListUsableBrains,
+  listUsableModels: mockListUsableModels,
 }));
 
 // ─── Subject ────────────────────────────────────────────────────────────────
@@ -52,6 +52,7 @@ const XAI_BRAIN = {
   modelId: 'grok-4',
   apiKey: 'xai-secret',
   baseURL: 'https://api.x.ai/v1',
+  picked: true,
 };
 
 const OPENAI_BRAIN = {
@@ -61,13 +62,14 @@ const OPENAI_BRAIN = {
   modelId: 'gpt-6-astra',
   apiKey: 'openai-secret',
   baseURL: 'https://api.openai.com/v1',
+  picked: true,
 };
 
 beforeEach(() => {
   vi.clearAllMocks();
   mockRateLimit.mockReturnValue({ limited: false });
   mockResolveInferenceAuth.mockResolvedValue({ ok: true, context: { ownerDid: OWNER_DID, appDid: APP_DID } });
-  mockListUsableBrains.mockResolvedValue([]);
+  mockListUsableModels.mockResolvedValue([]);
 });
 
 describe('GET /infer/v1/models/usable — request gating', () => {
@@ -92,6 +94,7 @@ describe('GET /infer/v1/models/usable — request gating', () => {
 
     expect(res.status).toBe(401);
     expect(await res.json()).toEqual({ error: 'Invalid app token' });
+    expect(mockListUsableModels).not.toHaveBeenCalled();
   });
 
   it('returns 403 on a wrong-scope grant', async () => {
@@ -100,6 +103,7 @@ describe('GET /infer/v1/models/usable — request gating', () => {
     const res = await GET(makeReq());
 
     expect(res.status).toBe(403);
+    expect(mockListUsableModels).not.toHaveBeenCalled();
   });
 
   it('requests auth with the infer:completions scope, distinct from infer:provide', async () => {
@@ -109,8 +113,20 @@ describe('GET /infer/v1/models/usable — request gating', () => {
 });
 
 describe('GET /infer/v1/models/usable — listing', () => {
+  it('keeps data[].id consumers working and exposes picked metadata for every picker row', async () => {
+    mockListUsableModels.mockResolvedValueOnce([
+      XAI_BRAIN, { ...XAI_BRAIN, modelId: 'grok-other', picked: false },
+    ]);
+    const body = await (await GET(makeReq())).json();
+    expect(body.data.map((model: { id: string }) => model.id)).toEqual(['grok-4', 'grok-other']);
+    expect(body.data.map((model: { imajin: { picked: boolean } }) => model.imajin.picked)).toEqual([true, false]);
+    for (const model of body.data) {
+      expect(model.object).toBe('model');
+      expect(model.created).toEqual(expect.any(Number));
+    }
+  });
   it('lists usable brains in resolution order using the OpenAI list shape', async () => {
-    mockListUsableBrains.mockResolvedValueOnce([XAI_BRAIN, OPENAI_BRAIN]);
+    mockListUsableModels.mockResolvedValueOnce([XAI_BRAIN, OPENAI_BRAIN]);
 
     const res = await GET(makeReq());
     const body = await res.json();
@@ -122,13 +138,13 @@ describe('GET /infer/v1/models/usable — listing', () => {
       id: 'grok-4',
       object: 'model',
       owned_by: 'xai',
-      imajin: { connector: 'xai', credentialDid: OWNER_DID, servable: true },
+      imajin: { connector: 'xai', credentialDid: OWNER_DID, servable: true, picked: true },
     });
     expect(body.data[1]).toMatchObject({ id: 'gpt-6-astra', owned_by: 'openai' });
   });
 
   it('never includes a raw apiKey anywhere in the response', async () => {
-    mockListUsableBrains.mockResolvedValueOnce([XAI_BRAIN]);
+    mockListUsableModels.mockResolvedValueOnce([XAI_BRAIN]);
 
     const res = await GET(makeReq());
     const text = JSON.stringify(await res.json());
@@ -137,7 +153,7 @@ describe('GET /infer/v1/models/usable — listing', () => {
   });
 
   it('returns 200 with an empty data array when nothing is sealed, not 422', async () => {
-    mockListUsableBrains.mockResolvedValueOnce([]);
+    mockListUsableModels.mockResolvedValueOnce([]);
 
     const res = await GET(makeReq());
 
@@ -147,7 +163,7 @@ describe('GET /infer/v1/models/usable — listing', () => {
 
   it('resolves onBehalfOf the principal when an appDid is present', async () => {
     await GET(makeReq());
-    expect(mockListUsableBrains).toHaveBeenCalledWith({ ownerDid: OWNER_DID, appDid: APP_DID });
+    expect(mockListUsableModels).toHaveBeenCalledWith({ ownerDid: OWNER_DID, appDid: APP_DID });
   });
 
   it('resolves by ownerDid alone when calling on ones own behalf', async () => {
@@ -155,11 +171,11 @@ describe('GET /infer/v1/models/usable — listing', () => {
 
     await GET(makeReq());
 
-    expect(mockListUsableBrains).toHaveBeenCalledWith(OWNER_DID);
+    expect(mockListUsableModels).toHaveBeenCalledWith(OWNER_DID);
   });
 
   it('returns 500 when listing fails unexpectedly', async () => {
-    mockListUsableBrains.mockRejectedValueOnce(new Error('vault offline'));
+    mockListUsableModels.mockRejectedValueOnce(new Error('vault offline'));
 
     const res = await GET(makeReq());
 

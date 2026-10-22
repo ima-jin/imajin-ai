@@ -1,11 +1,10 @@
 /**
- * Picker-list catalog expansion is tracked in #3027.
  * GET /infer/v1/models/usable (#2201, sub-issue of the #1926 passthrough
  * epic; depends on #2195/PR #2199).
  *
  * OpenAI-compatible model listing for the principal's USABLE brains: sealed
- * connectors with a resolved model (sealed model id, or the connector's own
- * default). OpenClaw provider plugins discover models live via
+ * connectors expanded to their live picker lists (#3027), with the current
+ * pick marked as `imajin.picked`. OpenClaw plugins discover models live via
  * `GET {baseUrl}/models` (OpenAI list shape, 60s cache, advisory) — this
  * route lets the kernel answer that call so sealing a connector card on
  * `/jin` is the whole provisioning act for a future `imajin` OpenClaw
@@ -24,10 +23,9 @@
  * signal to multiplex on without risking a breaking change to the shipped
  * behavior. `usable` names the actual semantic this endpoint answers.
  *
- * `data` comes from `listUsableBrains` (#2201), the same candidate walk
- * `resolveBrain` (#2195) performs — factored out of `brain.ts` so this list
- * can never drift from what a `POST /infer/v1/chat/completions` call without
- * an explicit `model` would actually resolve to. Modelless sealed cards
+ * `data` comes from `listUsableModels`, expanding the same candidate walk
+ * `resolveBrain` performs with the connector cards' own picker loaders.
+ * Duplicate ids use the same routing winner as resolution. Modelless sealed cards
  * (connected but no model chosen) are omitted: they cannot serve a request,
  * so they should not advertise as servable here either.
  *
@@ -46,7 +44,8 @@ import { corsHeaders } from '@/src/lib/kernel/cors';
 import { rateLimit, getClientIP } from '@imajin/config';
 import { createLogger } from '@imajin/logger';
 import { resolveInferenceAuth } from '@/src/lib/inference/auth';
-import { listUsableBrains, type ResolvedBrain } from '@/src/lib/inference/brain';
+import { listUsableModels } from '@/src/lib/inference/brain';
+import type { UsableModel } from '@/src/lib/inference/model-catalog';
 
 const log = createLogger('kernel:inference:usable-models-route');
 
@@ -75,7 +74,7 @@ export async function GET(request: NextRequest) {
 
   try {
     const context = appDid ? { ownerDid, appDid } : ownerDid;
-    const brains = await listUsableBrains(context);
+    const brains = await listUsableModels(context);
 
     log.info({ ownerDid, appDid: appDid ?? null, count: brains.length }, 'usable models list: resolved usable brains');
 
@@ -90,7 +89,7 @@ export async function GET(request: NextRequest) {
 }
 
 /** OpenAI `GET /v1/models` list shape — `data` in resolution order, one row per usable (connector, model). */
-function toModelList(brains: readonly ResolvedBrain[]) {
+function toModelList(brains: readonly UsableModel[]) {
   const created = Math.floor(Date.now() / 1000);
   return {
     object: 'list' as const,
@@ -103,6 +102,7 @@ function toModelList(brains: readonly ResolvedBrain[]) {
         connector: brain.connector,
         credentialDid: brain.credentialDid,
         servable: true,
+        picked: brain.picked,
       },
     })),
   };
