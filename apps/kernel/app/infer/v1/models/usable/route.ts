@@ -88,7 +88,7 @@ export async function GET(request: NextRequest) {
   }
 }
 
-/** OpenAI `GET /v1/models` list shape — `data` in resolution order, one row per usable (connector, model). */
+/** OpenAI list shape, one row per id with metadata for the same winner resolveBrain selects. */
 function toModelList(brains: readonly UsableModel[]) {
   const created = Math.floor(Date.now() / 1000);
   return {

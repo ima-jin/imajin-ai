@@ -71,4 +71,3 @@ export async function probeModel(creds: GeminiCredentials, modelId: string): Pro
   }
   return { ok: false, deprecated: false, status: res.status, statusText: res.statusText };
 }
-

@@ -111,4 +111,3 @@ export async function probeModel(creds: AnthropicCredentials, modelId: string): 
     statusText: await describeAnthropicError(res, res.statusText),
   };
 }
-
