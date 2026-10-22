@@ -6,7 +6,7 @@ import { generateId } from '@/src/lib/kernel/id';
  * Independent of optional application logging; cannot affect auth availability.
  */
 export async function recordRegistryActivity(
-  appDid: string, action: 'app.token.minted' | 'app.authorization.validated',
+  appDid: string, action: 'app.token.minted',
 ): Promise<void> {
   try {
     await db.insert(systemEvents).values({

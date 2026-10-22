@@ -84,6 +84,9 @@ export async function listRegisteredApps(): Promise<RegisteredApp[]> {
       from kernel.app_signing_key_claims where app_did = ${registryApps.appDid})`,
     lastSeen: sql<string | null>`greatest(
       (select max(greatest(created_at, last_used_at)) from auth.oauth_refresh_tokens where client_id = ${registryApps.id}),
+      (select max(u.last_used_at) from auth.app_authorization_usage u
+        join auth.attestations a on a.id = u.attestation_id
+        where a.subject_did = ${registryApps.appDid} and a.type = 'app.authorized'),
       (select max(created_at) from registry.system_events where did = ${registryApps.appDid}
         and action in ('app.token.minted', 'app.authorization.validated')),
       (select max(created_at) from registry.app_logs

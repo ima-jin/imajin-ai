@@ -21,6 +21,14 @@ function isApp(value: unknown): value is RegisteredApp {
     && Number.isInteger(value.consentingPrincipals) && Number(value.consentingPrincipals) >= 0
     && isTimestamp(value.lastSeen);
 }
+async function readRegisteredApps(signal: AbortSignal): Promise<RegisteredApp[] | null> {
+  const response = await fetch('/jin/api/registered-apps', { credentials: 'include', cache: 'no-store', signal });
+  if (response.status === 401 || response.status === 403) return null;
+  if (!response.ok) throw new Error('Unavailable');
+  const body: unknown = await response.json();
+  if (!isRecord(body) || !Array.isArray(body.apps) || !body.apps.every(isApp)) throw new Error('Invalid metadata');
+  return body.apps;
+}
 
 function Time({ at, fallback = 'unknown (not recorded)' }: Readonly<{ at: string | null; fallback?: string }>) {
   return at ? <time dateTime={at}>{at}</time> : <>{fallback}</>;
@@ -67,28 +75,20 @@ export function RegisteredAppsPanel() {
       const current = new AbortController();
       controller = current;
       try {
-        const response = await fetch('/jin/api/registered-apps', {
-          credentials: 'include', cache: 'no-store', signal: current.signal,
-        });
+        const result = await readRegisteredApps(current.signal);
         if (cancelled || current.signal.aborted) return;
-        if (response.status === 401 || response.status === 403) {
-          setApps(null); setError(false); return;
-        }
-        if (!response.ok) throw new Error('Unavailable');
-        const body: unknown = await response.json();
-        if (cancelled) return;
-        if (!isRecord(body) || !Array.isArray(body.apps) || !body.apps.every(isApp)) throw new Error('Invalid metadata');
-        setApps(body.apps); setError(false);
+        setApps(result); setError(false);
       } catch {
         if (!cancelled && !current.signal.aborted) { setApps(null); setError(true); }
       }
     };
+    const sessionChanged = () => { setApps(null); setError(false); void load(); };
     void load();
     const timer = setInterval(() => void load(), 30_000);
-    globalThis.addEventListener('imajin:session-changed', load);
+    globalThis.addEventListener('imajin:session-changed', sessionChanged);
     return () => {
       cancelled = true; controller?.abort(); clearInterval(timer);
-      globalThis.removeEventListener('imajin:session-changed', load);
+      globalThis.removeEventListener('imajin:session-changed', sessionChanged);
     };
   }, []);
   if (!apps && !error) return null;

@@ -917,9 +917,10 @@ paths:
         First consent includes historical revoked/expired consents; the count is
         distinct currently consenting principals (unrevoked, unexpired).
         Last seen is the maximum refresh-token creation/rotation, successful
-        token mint, or authorization validation. Successful delegated/service/
-        session mints and validations record metadata-only registry.system_events
-        (app DID, action, time), not registry.apps writes. Existing mint logs
+        token mint, or authorization validation. Delegated mint/validate reads
+        auth.app_authorization_usage (#3009). Service/session mints record
+        metadata-only registry.system_events (app DID, action, time), not
+        registry.apps writes. Existing mint logs
         supply historical activity where available; missing history is null,
         not an invented timestamp. Registrar uses the registration attestation
         issuer with owner_did fallback for older rows. Terminal actor comes from

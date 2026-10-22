@@ -65,6 +65,7 @@ beforeAll(async () => {
     CREATE TABLE kernel.app_provisions (app_did text, created_at timestamptz);
     CREATE TABLE kernel.app_signing_key_claims (app_did text, created_at timestamptz, claimed_at timestamptz);
     CREATE TABLE auth.oauth_refresh_tokens (client_id text, created_at timestamptz, last_used_at timestamptz);
+    CREATE TABLE auth.app_authorization_usage (attestation_id text, last_used_at timestamptz);
     CREATE TABLE registry.system_events (did text, action text, created_at timestamptz);
     CREATE TABLE registry.app_logs (metadata jsonb, message text, created_at timestamptz);
     INSERT INTO registry.apps VALUES
@@ -126,5 +127,9 @@ describe('real SQL inventory', () => {
     expect(apps.find(app => app.id === 'legacy')?.lastSeen).toBe('2026-10-15T00:00:00.000Z');
     await client.query('INSERT INTO auth.oauth_refresh_tokens VALUES ($1,$2,$3)', ['dcr', '2026-10-16', '2026-10-17']);
     expect((await listRegisteredApps()).find(app => app.id === 'dcr')?.lastSeen).toBe('2026-10-17T00:00:00.000Z');
+  });
+  it('reuses durable delegated mint/validate usage from #3009, including historical grants', async () => {
+    await client.query('INSERT INTO auth.app_authorization_usage VALUES ($1,$2)', ['first', '2026-10-18']);
+    expect((await listRegisteredApps()).find(app => app.id === 'dcr')?.lastSeen).toBe('2026-10-18T00:00:00.000Z');
   });
 });

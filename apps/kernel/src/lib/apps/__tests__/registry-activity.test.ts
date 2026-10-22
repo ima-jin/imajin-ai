@@ -10,7 +10,8 @@ beforeEach(() => {
   mocks.insert.mockReturnValue({ values: mocks.values });
 });
 describe('metadata-only activity', () => {
-  it.each(['app.token.minted', 'app.authorization.validated'] as const)('records %s without any registry write or credential fields', async action => {
+  it('records a mint without any registry write or credential fields', async () => {
+    const action = 'app.token.minted';
     await recordRegistryActivity('did:imajin:fixture', action);
     expect(mocks.insert).toHaveBeenCalledTimes(1);
     expect(mocks.insert).toHaveBeenCalledWith('events-only');

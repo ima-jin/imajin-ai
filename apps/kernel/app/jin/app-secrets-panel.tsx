@@ -22,6 +22,10 @@ interface AppSecretCard {
 }
 
 const UNKNOWN_PROVENANCE = 'unknown (pre-#3006 row)';
+function claimLabel(app: AppSecretCard): string {
+  if (app.claimed) return 'claimed';
+  return app.provisionFailed ? 'provision failed' : 'awaiting claim';
+}
 
 function ProvenanceTime({ at }: Readonly<{ at?: string | null }>) {
   return at ? <time dateTime={at}>{at}</time> : UNKNOWN_PROVENANCE;
@@ -199,7 +203,7 @@ export function AppSecretsPanel() {
       {apps.length === 0 && <p className="text-xs text-gray-500">No apps on the self-secret rail yet.</p>}
       {apps.map((app) => (
         <article key={app.appDid ?? app.slug} className="min-w-0 border border-gray-800 p-3 space-y-2">
-          <h3 className="font-mono text-sm font-medium">{app.name} <span className={`text-xs ${app.claimed ? 'text-green-400' : 'text-amber-400'}`}>{app.claimed ? 'claimed' : app.provisionFailed ? 'provision failed' : 'awaiting claim'}</span></h3>
+          <h3 className="font-mono text-sm font-medium">{app.name} <span className={`text-xs ${app.claimed ? 'text-green-400' : 'text-amber-400'}`}>{claimLabel(app)}</span></h3>
           <p className="text-xs font-mono text-gray-500">{app.appDid ?? 'Awaiting registry identity'}</p>
           <AppProvenanceLines app={app} />
           {app.active && app.claimed && app.appDid && app.slug && (
