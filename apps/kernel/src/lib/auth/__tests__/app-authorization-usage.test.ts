@@ -92,7 +92,7 @@ describe('app authorization usage storage (#3009)', () => {
     h.failWrite = true;
     await expect(recordAppAuthorizationUse('grant')).resolves.toBeUndefined();
     expect(h.warn).toHaveBeenCalledOnce();
-    expect(h.warn).toHaveBeenCalledWith('app authorization usage recording unavailable');
+    expect(h.warn).toHaveBeenCalledWith({}, 'app authorization usage recording unavailable');
     h.failWrite = false;
   });
 });

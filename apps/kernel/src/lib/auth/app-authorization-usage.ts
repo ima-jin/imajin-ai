@@ -24,6 +24,6 @@ export async function recordAppAuthorizationUse(attestationId: string): Promise<
     });
   } catch {
     // No token, request body, grant identifier or database error in telemetry logs.
-    log.warn('app authorization usage recording unavailable');
+    log.warn({}, 'app authorization usage recording unavailable');
   }
 }
