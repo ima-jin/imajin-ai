@@ -149,4 +149,61 @@ describe('current Warp blocker reconciliation', () => {
     expect(pr).toHaveBeenCalledTimes(1);
     expect(emit).toHaveBeenCalledTimes(1);
   });
+
+  it('leaves resumed running segments to their lifecycle watch', async () => {
+    getRun.mockResolvedValue(run({ state: 'INPROGRESS' }));
+    expect(await reconcile()).toEqual(blocked());
+    expect(emit).not.toHaveBeenCalled();
+  });
+
+  it('keeps the last signed blocker when Warp has no status message', async () => {
+    getRun.mockResolvedValue(run({ artifacts: [], statusMessage: null }));
+    const loop = blocked();
+    loop.summary = 'Operator grant needed\nAdditional context';
+    expect((await reconcile(loop)).summary).toBe('Operator grant needed');
+  });
+
+  it('uses persisted PR linkage when a later run read omits artifacts', async () => {
+    getRun.mockResolvedValue(run({ artifacts: [] }));
+    pr.mockResolvedValue({ number: 2993, state: 'closed', merged: true });
+    expect((await reconcile(runLoop({ ...blocked(), refs: { pr: url } }))).state).toBe('resolved');
+  });
+
+  it('uses persisted parent linkage without superseding PR-backed children', async () => {
+    getRun.mockImplementation(async (_did, id) => id === 'parent' ? makeAgentRun() : run({ artifacts: [] }));
+    expect((await reconcile(runLoop({ ...blocked(), parentLoopId: 'parent' }))).state).toBe('superseded');
+    vi.advanceTimersByTime(61_000);
+    getRun.mockResolvedValue(run({ parentRunId: 'parent' }));
+    expect((await reconcile()).state).toBe('blocked');
+    expect(getRun).toHaveBeenLastCalledWith(principal, 'loop-1');
+  });
+
+  it('does not let issue closure hide a held draft PR', async () => {
+    getRun.mockResolvedValue(run({ triggerUrl: 'https://github.com/ima-jin/imajin-ai/issues/3011' }));
+    issue.mockResolvedValue({ state: 'closed' });
+    expect(isBlockedLoop(await reconcile())).toBe(true);
+    expect(issue).not.toHaveBeenCalled();
+  });
+
+  it('retries failed authority instead of caching a denied read', async () => {
+    getRun.mockRejectedValueOnce(new Error('grant revoked'));
+    expect(await reconcile()).toEqual(blocked());
+    expect((await reconcile()).summary).toBe('Waiting on Postal decision');
+    expect(getRun).toHaveBeenCalledTimes(2);
+  });
+
+  it('scopes cached provider observations to the principal', async () => {
+    await reconcile();
+    const other = 'did:imajin:other';
+    await reconcileWarpBlockers(other, [runLoop({ ...blocked(), principal: other })]);
+    expect(getRun).toHaveBeenCalledWith(other, 'loop-1');
+    expect(pr).toHaveBeenCalledWith(other, 'ima-jin/imajin-ai', 2993);
+  });
+
+  it('uses the same non-PR issue read boundary and retains blockers on denial', async () => {
+    getRun.mockResolvedValue(run({ artifacts: [], triggerUrl: 'https://github.com/ima-jin/imajin-ai/issues/3011' }));
+    issue.mockRejectedValue(new Error('denied'));
+    expect(await reconcile()).toEqual(blocked());
+    expect(emit).not.toHaveBeenCalled();
+  });
 });

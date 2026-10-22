@@ -69,6 +69,7 @@ describe('Runs operator adapters', () => {
     expect(await (await detail()).json()).toEqual({ isOperator: false, detail: null });
     expect(list).not.toHaveBeenCalled();
     expect(history).not.toHaveBeenCalled();
+    expect(reconcile).not.toHaveBeenCalled();
   });
 
   it('hides both routes when the node has no operator', async () => {
