@@ -6,7 +6,7 @@ import { execFileSync, spawnSync } from 'node:child_process';
 
 const root = resolve(import.meta.dirname, '../..');
 const updater = join(root, 'deploy/infer-passthrough/update.sh');
-const git = (cwd, ...args) => execFileSync('git', ['-C', cwd, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+const git = (cwd, ...args) => execFileSync('git', ['-c', `safe.directory=${root}`, '-C', cwd, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
 let dir;
 let state;
 let repo;
@@ -29,7 +29,7 @@ beforeEach(() => {
   symlinkSync(previous, join(state, 'current'));
   const origin = join(dir, 'origin');
   // Local-only fixtures inherit actual commit objects, requiring no git identity.
-  execFileSync('git', ['clone', '--bare', '--shared', root, origin], { stdio: 'pipe' });
+  execFileSync('git', ['-c', `safe.directory=${root}`, 'clone', '--bare', '--shared', root, origin], { stdio: 'pipe' });
   for (const ref of git(origin, 'for-each-ref', '--format=%(refname)', 'refs/tags').split('\n').filter(Boolean)) {
     git(origin, 'update-ref', '-d', ref);
   }
@@ -116,7 +116,13 @@ describe('pull-based passthrough release updater (#3041)', () => {
 
   it('rejects a candidate directory containing another commit', () => {
     const candidate = join(state, 'releases', sha);
-    git(repo, 'worktree', 'add', '--detach', candidate, `${sha}^`);
+    // Copy existing commit metadata unchanged; no fixture identity/config needed.
+    // A parentless variant also works when CI has only fetched one commit.
+    const variant = execFileSync('git', ['-C', repo, 'hash-object', '-t', 'commit', '-w', '--stdin'], {
+      input: `${git(repo, 'cat-file', 'commit', sha).replace(/^parent .*\n/gm, '')}\nfixture variant\n`,
+      encoding: 'utf8',
+    }).trim();
+    git(repo, 'worktree', 'add', '--detach', candidate, variant);
     const result = run();
     expect(result.status).not.toBe(0);
     expect(result.stdout).toContain('candidate SHA mismatch');
