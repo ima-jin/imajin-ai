@@ -56,6 +56,13 @@ components:
       in: header
       name: x-internal-key
   schemas:
+    RegistryProvenancePoint:
+      type: object
+      required: [at, by]
+      additionalProperties: false
+      properties:
+        at: { type: [string, "null"], format: date-time }
+        by: { type: [string, "null"], description: "Recorded actor DID, or null when not recorded." }
     MailSenderInput:
       type: object
       additionalProperties: false
@@ -895,6 +902,59 @@ components:
         errorMessage: { type: string, nullable: true }
 
 paths:
+  /jin/api/registered-apps:
+    get:
+      tags: [jin, apps]
+      summary: Read registered app lifecycle and provenance (node operator only)
+      description: >-
+        Read-only engine-bay inventory; never writes registry rows. Includes every
+        registry app, including legacy zero-consent apps, first-party seeds,
+        provisioned apps, and expired/revoked history. Kind is MCP/DCR client,
+        delegated app, or first-party seed. Status is active, dormant, expired,
+        or revoked; dormant is display-only for consented/provisioned/claimed or
+        first-party apps with no recorded mint/refresh/validate for 90 days.
+        Without activity, age starts at the latest creation/consent/provision/claim.
+        First consent includes historical revoked/expired consents; the count is
+        distinct currently consenting principals (unrevoked, unexpired).
+        Last seen is the maximum refresh-token creation/rotation, successful
+        token mint, or authorization validation. Successful delegated/service/
+        session mints and validations record metadata-only registry.system_events
+        (app DID, action, time), not registry.apps writes. Existing mint logs
+        supply historical activity where available; missing history is null,
+        not an invented timestamp. Registrar uses the registration attestation
+        issuer with owner_did fallback for older rows. Terminal actor comes from
+        the matching registry.app.revoked/expired attestation. Expired apps are
+        returned normally; the UI groups them in a collapsed expired disclosure.
+        No credential, bearer, hash, claim code, or attestation payload is returned.
+      security: [{ cookieAuth: [] }, { bearerAuth: [] }]
+      responses:
+        "200":
+          description: Metadata only; Cache-Control no-store.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [apps]
+                properties:
+                  apps:
+                    type: array
+                    items:
+                      type: object
+                      required: [id, appDid, name, kind, status, created, firstConsent, consentingPrincipals, lastSeen, ended]
+                      properties:
+                        id: { type: string }
+                        appDid: { type: string }
+                        name: { type: string }
+                        kind: { type: string, enum: ["MCP/DCR client", "delegated app", "first-party seed"] }
+                        status: { type: string, enum: [active, dormant, expired, revoked] }
+                        created: { $ref: "#/components/schemas/RegistryProvenancePoint" }
+                        firstConsent: { $ref: "#/components/schemas/RegistryProvenancePoint" }
+                        consentingPrincipals: { type: integer, minimum: 0 }
+                        lastSeen: { type: [string, "null"], format: date-time }
+                        ended: { $ref: "#/components/schemas/RegistryProvenancePoint" }
+        "401": { description: Authentication required. }
+        "403": { description: Node operator required; no metadata returned. }
+        "503": { description: Metadata unavailable; provider detail is redacted. }
   /api/cloudflare-grants:
     get:
       tags: [jin]

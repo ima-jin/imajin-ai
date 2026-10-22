@@ -9,6 +9,7 @@ vi.mock('../vault-keys-panel', () => ({ VaultKeysPanel: () => null }));
 vi.mock('../access-bearers-panel', () => ({ AccessBearersPanel: () => null }));
 vi.mock('../provision-app-panel', () => ({ ProvisionAppPanel: () => null }));
 vi.mock('../app-secrets-panel', () => ({ AppSecretsPanel: () => null }));
+vi.mock('../registered-apps-panel', () => ({ RegisteredAppsPanel: () => <section aria-label="Registered apps">Registered apps fixture</section> }));
 vi.mock('../grants-panel', () => ({ GrantsPanel: () => null }));
 vi.mock('../spend-panel', () => ({ SpendPanel: () => null }));
 vi.mock('../runs-panel', () => ({ RunsPanel: () => null }));
@@ -20,4 +21,5 @@ afterEach(cleanup);
 it('links organization mail sender settings from the jin header', () => {
   render(<JinPage />);
   expect(screen.getByRole('link', { name: 'Organization settings' }).getAttribute('href')).toBe('/jin/org-settings');
+  expect(screen.getByRole('region', { name: 'Registered apps' })).toBeDefined();
 });

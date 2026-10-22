@@ -17,6 +17,7 @@ vi.mock('next/server', () => ({
       }),
   },
 }));
+vi.mock('@/src/lib/apps/registry-activity', () => ({ recordRegistryActivity: mocks.activity }));
 
 const mocks = vi.hoisted(() => ({
   verifySessionTokenMock: vi.fn(),
@@ -24,6 +25,7 @@ const mocks = vi.hoisted(() => ({
   resolveActiveAppByAudienceMock: vi.fn(),
   resolveTokenGrantMock: vi.fn(),
   validateActingAsMock: vi.fn(),
+  activity: vi.fn(),
 }));
 
 vi.mock('@imajin/config', () => ({
@@ -90,6 +92,7 @@ describe('POST /auth/api/tokens/app — requires a valid session (#1069 Phase 1)
 
     expect(res.status).toBe(401);
     expect(mocks.createSessionAppTokenMock).not.toHaveBeenCalled();
+    expect(mocks.activity).not.toHaveBeenCalled();
   });
 
   it('rejects with 401 when the session cookie does not verify', async () => {
@@ -122,6 +125,7 @@ describe('POST /auth/api/tokens/app — minting (#1069 Phase 1)', () => {
     expect(body.token).toBe('signed.session-app.jwt');
     expect(body.expiresIn).toBe(600);
     expect(body.scopes).toEqual(['profile:read']);
+    expect(mocks.activity).toHaveBeenCalledWith('did:imajin:app-coffee', 'app.token.minted');
     expect(mocks.createSessionAppTokenMock).toHaveBeenCalledWith({
       sub: USER_DID,
       aud: ['coffee.imajin.ai'],

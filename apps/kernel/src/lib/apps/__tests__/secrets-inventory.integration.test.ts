@@ -168,4 +168,20 @@ describe('self-secret inventory against real Postgres semantics', () => {
     });
     expect(holder.list).not.toHaveBeenCalledWith(did('retired'));
   });
+  it('marks failed and abandoned pending provisions with no live code as failed, but preserves a live pending claim', async () => {
+    for (const [slug, status, code] of [
+      ['failed-fixture', 'failed', false], ['abandoned-fixture', 'pending', false],
+      ['live-fixture', 'pending', true],
+    ] as const) {
+      await client.query('INSERT INTO kernel.app_provisions VALUES ($1,$2,$3,$4,$4)', [slug, did(slug), status, at]);
+      if (code) await client.query('INSERT INTO kernel.app_signing_key_claims VALUES ($1,$2,$3,NULL,NULL,NULL,$4)', [
+        did(slug), 'pending', '2099-01-01T00:00:00Z', at,
+      ]);
+    }
+    const apps = await listOperatorAppSecrets();
+    expect(apps.find(app => app.slug === 'failed-fixture')?.provisionFailed).toBe(true);
+    expect(apps.find(app => app.slug === 'abandoned-fixture')?.provisionFailed).toBe(true);
+    expect(apps.find(app => app.slug === 'live-fixture')?.provisionFailed).toBe(false);
+  });
+
 });

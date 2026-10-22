@@ -14,6 +14,7 @@ export interface OperatorAppSecrets {
   claimed: boolean;
   active: boolean;
   claimExpiresAt: string | null;
+  provisionFailed?: boolean;
   provenance: AppSecretsProvenance;
   secrets: AppDeclaredSecretStatus[];
 }
@@ -24,6 +25,7 @@ export function publicAppSecrets(app: OperatorAppSecrets): OperatorAppSecrets {
   return {
     appDid: app.appDid, slug: app.slug, name: app.name, claimed: app.claimed, active: app.active,
     claimExpiresAt: app.claimExpiresAt,
+    ...(app.provisionFailed === undefined ? {} : { provisionFailed: app.provisionFailed }),
     provenance: {
       created: { at: created.at, by: created.by },
       provisioned: { at: provisioned.at, proposedBy: provisioned.proposedBy, approvedBy: provisioned.approvedBy },

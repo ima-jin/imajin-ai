@@ -245,9 +245,11 @@ describe('metadata and manifest preview', () => {
     };
     expect(await listOperatorAppSecrets()).toEqual([
       { appDid: 'did:imajin:fake-old', name: 'Old app', slug: 'old-app', active: true, claimed: true,
+        provisionFailed: false,
         claimExpiresAt: '2026-10-14T00:00:00.000Z', provenance,
         secrets: [{ ...declaration, status: 'active', timeline: [] }] },
       { appDid: 'did:imajin:fake-new', name: 'new-app', slug: 'new-app', active: false, claimed: false,
+        provisionFailed: false,
         claimExpiresAt: null, provenance, secrets: [] },
     ]);
   });

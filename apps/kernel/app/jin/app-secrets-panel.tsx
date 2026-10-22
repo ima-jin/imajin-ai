@@ -14,6 +14,7 @@ interface AppSecretCard {
   slug: string | null;
   active: boolean;
   claimed: boolean;
+  provisionFailed?: boolean;
   // Optional only for older metadata responses; new API responses include both.
   claimExpiresAt?: string | null;
   provenance?: AppSecretsProvenance;
@@ -116,6 +117,7 @@ function isAppSecretCard(value: unknown): value is AppSecretCard {
   return (value.appDid === null || typeof value.appDid === 'string')
     && (value.slug === null || typeof value.slug === 'string') && typeof value.name === 'string'
     && typeof value.active === 'boolean' && typeof value.claimed === 'boolean'
+    && (value.provisionFailed === undefined || typeof value.provisionFailed === 'boolean')
     && (value.claimExpiresAt === undefined || isNullableTimestamp(value.claimExpiresAt))
     && (value.provenance === undefined || isAppProvenance(value.provenance))
     && Array.isArray(value.secrets) && value.secrets.every(isSecretMetadata);
@@ -197,14 +199,14 @@ export function AppSecretsPanel() {
       {apps.length === 0 && <p className="text-xs text-gray-500">No apps on the self-secret rail yet.</p>}
       {apps.map((app) => (
         <article key={app.appDid ?? app.slug} className="min-w-0 border border-gray-800 p-3 space-y-2">
-          <h3 className="font-mono text-sm font-medium">{app.name} <span className={`text-xs ${app.claimed ? 'text-green-400' : 'text-amber-400'}`}>{app.claimed ? 'claimed' : 'awaiting claim'}</span></h3>
+          <h3 className="font-mono text-sm font-medium">{app.name} <span className={`text-xs ${app.claimed ? 'text-green-400' : 'text-amber-400'}`}>{app.claimed ? 'claimed' : app.provisionFailed ? 'provision failed' : 'awaiting claim'}</span></h3>
           <p className="text-xs font-mono text-gray-500">{app.appDid ?? 'Awaiting registry identity'}</p>
           <AppProvenanceLines app={app} />
           {app.active && app.claimed && app.appDid && app.slug && (
             <button type="button" disabled={busy} className="text-xs text-amber-300 disabled:opacity-40"
               onClick={() => void propose(app.appDid!, 'sync')}>Sync manifest secrets</button>
           )}
-          {!app.claimed && <AwaitingClaim app={app} />}
+          {!app.claimed && !app.provisionFailed && <AwaitingClaim app={app} />}
           {app.secrets.length === 0 && <p className="text-xs text-gray-500">No registered self-secret declarations.</p>}
           {app.secrets.map((secret) => (
             <div key={secret.name} className="border-t border-gray-800 pt-2 space-y-1">
