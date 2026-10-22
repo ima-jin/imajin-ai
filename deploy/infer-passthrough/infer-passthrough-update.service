@@ -1,0 +1,12 @@
+[Unit]
+Description=Health-gated infer-passthrough release updater
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+Environment=PATH=/usr/local/bin:/usr/bin:/bin
+EnvironmentFile=-/etc/imajin/infer-passthrough-update.env
+ExecStart=/usr/local/libexec/infer-passthrough/update.sh
+TimeoutStartSec=20min
+UMask=0022

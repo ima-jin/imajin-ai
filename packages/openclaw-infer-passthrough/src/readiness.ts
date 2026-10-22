@@ -3,7 +3,7 @@ import type { TokenSource } from './token-provider.js';
 
 /** A probe shares the request cache, but never falls back to a direct provider. */
 export async function checkRouteMints(
-  routes: ProviderRouteConfig[],
+  routes: readonly ProviderRouteConfig[],
   getTokenProvider: (routeId: string) => TokenSource,
 ) {
   const results = await Promise.all(routes.map(async (route) => {
