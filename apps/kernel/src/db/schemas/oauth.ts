@@ -1,4 +1,4 @@
-import { text, timestamp, index } from 'drizzle-orm/pg-core';
+import { text, timestamp, index, integer } from 'drizzle-orm/pg-core';
 import { authSchema } from './auth';
 
 /**
@@ -29,6 +29,14 @@ export const oauthAuthorizationCodes = authSchema.table('oauth_authorization_cod
   expiresIdx: index('idx_oauth_codes_expires').on(table.expiresAt),
 }));
 
+/** Mutable usage evidence kept separate from the signed app.authorized row. */
+export const appAuthorizationUsage = authSchema.table('app_authorization_usage', {
+  attestationId: text('attestation_id').primaryKey(),
+  lastUsedAt: timestamp('last_used_at', { withTimezone: true }).notNull(),
+  // Counts recorded minute windows, not individual requests suppressed by the throttle.
+  useCount: integer('use_count').notNull().default(1),
+});
+
 /**
  * OAuth 2.1 refresh tokens — opaque, rotating, hashed at rest. Public client
  * (Claude), so no client secret; rotation + the attestation-revocation check at
@@ -49,6 +57,7 @@ export const oauthRefreshTokens = authSchema.table('oauth_refresh_tokens', {
   lastUsedAt: timestamp('last_used_at', { withTimezone: true }),
 }, (table) => ({
   userIdx: index('idx_oauth_refresh_user').on(table.userDid),
+  attestationCreatedIdx: index('idx_oauth_refresh_attestation_created').on(table.attestationId, table.createdAt),
 }));
 
 export type OauthAuthorizationCode = typeof oauthAuthorizationCodes.$inferSelect;

@@ -18,6 +18,12 @@
     }
   },
   "tables": {
+    "auth.app_authorization_usage": {
+      "owner": "kernel",
+      "schema": "auth",
+      "firstMigration": "0219_app_authorization_usage.sql",
+      "notes": ""
+    },
     "auth.domain_bindings": {
       "owner": "kernel",
       "schema": "auth",

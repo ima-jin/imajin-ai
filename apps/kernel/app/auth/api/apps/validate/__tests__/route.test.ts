@@ -2,10 +2,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 const h = vi.hoisted(() => ({
   auth: vi.fn(),
+  recordUse: vi.fn(),
   rows: [] as Record<string, unknown>[],
   apps: [] as Record<string, unknown>[],
 }));
 vi.mock('@/src/lib/auth/require-internal-api-key', () => ({ requireInternalApiKey: h.auth }));
+vi.mock('@/src/lib/auth/app-authorization-usage', () => ({ recordAppAuthorizationUse: h.recordUse }));
 vi.mock('@/src/db', () => {
   const registryApps = {};
   const from = (table: unknown) => ({ where: () => {
@@ -19,6 +21,7 @@ function request(body: unknown = { appDid: 'app', attestationId: 'grant' }) {
   return new NextRequest('https://example.com/auth/api/apps/validate', { method: 'POST', body: JSON.stringify(body) });
 }
 beforeEach(() => {
+  h.recordUse.mockReset().mockResolvedValue(undefined);
   h.auth.mockResolvedValue(null);
   h.apps = [{ visibility: 'public' }];
   h.rows = [{ issuerDid: 'person', revokedAt: null, expiresAt: null, payload: { scopes: ['profile:read'] } }];
@@ -27,33 +30,51 @@ describe('app authorization validation', () => {
   it('rejects invalid internal credentials before reading grants', async () => {
     h.auth.mockResolvedValue(new Response(null, { status: 401 }));
     expect((await POST(request())).status).toBe(401);
+    expect(h.recordUse).not.toHaveBeenCalled();
+  });
+  it('does not wait for a telemetry write', async () => {
+    h.recordUse.mockReturnValue(new Promise(() => {}));
+    expect((await POST(request())).status).toBe(200);
+    expect(h.recordUse).toHaveBeenCalledWith('grant');
+  });
+  it('does not record a private-app permission denial', async () => {
+    h.apps = [{ visibility: 'private', ownerDid: 'someone-else' }];
+    expect((await POST(request())).status).toBe(403);
+    expect(h.recordUse).not.toHaveBeenCalled();
   });
   it('rejects invalid JSON', async () => {
     expect((await POST(new NextRequest('https://example.com', { method: 'POST', body: '{' }))).status).toBe(400);
+    expect(h.recordUse).not.toHaveBeenCalled();
   });
   it.each([{ attestationId: 'grant' }, { appDid: 'app' }, { appDid: 1, attestationId: 'grant' }])('requires identifiers', async (body) => {
     expect((await POST(request(body))).status).toBe(400);
+    expect(h.recordUse).not.toHaveBeenCalled();
   });
   it('returns not found for missing grants', async () => {
     h.rows = [];
     expect((await POST(request())).status).toBe(404);
+    expect(h.recordUse).not.toHaveBeenCalled();
   });
   it('refuses grants whose app registration is missing', async () => {
     h.apps = [];
     expect((await POST(request())).status).toBe(403);
+    expect(h.recordUse).not.toHaveBeenCalled();
   });
   it('rejects revoked grants', async () => {
     h.rows[0].revokedAt = new Date();
     expect((await POST(request())).status).toBe(403);
+    expect(h.recordUse).not.toHaveBeenCalled();
   });
   it.each([new Date(0), new Date(Date.now())])('rejects expired grants', async (expiresAt) => {
     h.rows[0].expiresAt = expiresAt;
     const response = await POST(request());
     expect(response.status).toBe(403);
     expect(await response.json()).toEqual({ error: 'Authorization has expired' });
+    expect(h.recordUse).not.toHaveBeenCalled();
   });
   it('rejects scopes that were not granted', async () => {
     expect((await POST(request({ appDid: 'app', attestationId: 'grant', scope: 'write' }))).status).toBe(403);
+    expect(h.recordUse).not.toHaveBeenCalled();
   });
   it('accepts live granted scopes', async () => {
     h.rows[0].expiresAt = new Date(Date.now() + 60_000);
@@ -61,6 +82,7 @@ describe('app authorization validation', () => {
     expect(await response.json()).toEqual({
       appDid: 'app', userDid: 'person', scopes: ['profile:read'], attestationId: 'grant',
     });
+    expect(h.recordUse).toHaveBeenCalledWith('grant');
   });
   it('accepts indefinite empty grants without a requested scope', async () => {
     h.rows[0].payload = null;

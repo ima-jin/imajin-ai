@@ -23,13 +23,45 @@ const mocks = vi.hoisted(() => {
   const fromMock = vi.fn(() => ({ where: whereMock }));
   const selectMock = vi.fn(() => ({ from: fromMock }));
   const verifySignatureMock = vi.fn();
+  const recordUse = vi.fn();
   const createAppTokenMock = vi.fn().mockResolvedValue('signed.app.jwt');
   // Minting a token must be read-only w.r.t. the consent attestation (#1795):
   // these spies let tests assert the route never reaches for a mutation path.
   const insertMock = vi.fn();
   const updateMock = vi.fn();
   const resolveActiveAppByAudienceMock = vi.fn();
-  return { whereMock, selectMock, verifySignatureMock, createAppTokenMock, insertMock, updateMock, resolveActiveAppByAudienceMock };
+  return { whereMock, selectMock, verifySignatureMock, createAppTokenMock, insertMock, updateMock, resolveActiveAppByAudienceMock, recordUse };
+});
+
+describe('successful mint usage recording (#3009)', () => {
+  it('records the resolved attestation only after minting, without awaiting telemetry', async () => {
+    nextSelect([REGISTRY_APP_ROW]);
+    nextSelect([ATTESTATION_ROW]);
+    mocks.recordUse.mockReturnValue(new Promise(() => {}));
+    const response = await POST(makeRequest(VALID_BODY) as never);
+    expect(response.status).toBe(200);
+    expect(mocks.recordUse).toHaveBeenCalledWith(ATTESTATION_ID);
+    expect(mocks.createAppTokenMock.mock.invocationCallOrder[0]).toBeLessThan(mocks.recordUse.mock.invocationCallOrder[0]);
+  });
+
+  it.each(['proof', 'missing', 'revoked', 'scope', 'private'] as const)('does not record a denied %s mint', async failure => {
+    nextSelect([{ ...REGISTRY_APP_ROW, ...(failure === 'private' ? { visibility: 'private', ownerDid: 'other' } : {}) }]);
+    if (failure === 'proof') mocks.verifySignatureMock.mockResolvedValue(false);
+    nextSelect(failure === 'missing' ? [] : [{ ...ATTESTATION_ROW, revokedAt: failure === 'revoked' ? new Date() : null }]);
+    const response = await POST(makeRequest({
+      ...VALID_BODY, ...(failure === 'scope' ? { scope: 'not-granted' } : {}),
+    }) as never);
+    expect(response.status).toBeGreaterThanOrEqual(400);
+    expect(mocks.recordUse).not.toHaveBeenCalled();
+  });
+
+  it('does not record a failed token signing operation', async () => {
+    nextSelect([REGISTRY_APP_ROW]);
+    nextSelect([ATTESTATION_ROW]);
+    mocks.createAppTokenMock.mockRejectedValue(new Error('signing unavailable'));
+    await expect(POST(makeRequest(VALID_BODY) as never)).rejects.toThrow('signing unavailable');
+    expect(mocks.recordUse).not.toHaveBeenCalled();
+  });
 });
 
 function nextSelect(rows: unknown[]): void {
@@ -60,6 +92,7 @@ vi.mock('drizzle-orm', () => ({
 vi.mock('@imajin/config', () => ({ corsHeaders: () => ({}) }));
 vi.mock('@/src/lib/auth/crypto', () => ({ verifySignature: mocks.verifySignatureMock }));
 vi.mock('@/src/lib/auth/jwt', () => ({ createAppToken: mocks.createAppTokenMock }));
+vi.mock('@/src/lib/auth/app-authorization-usage', () => ({ recordAppAuthorizationUse: mocks.recordUse }));
 vi.mock('@/src/lib/kernel/app-registry', () => ({
   resolveActiveAppByAudience: mocks.resolveActiveAppByAudienceMock,
   appNotRegisteredResponse: () =>
@@ -110,6 +143,7 @@ beforeEach(() => {
   mocks.whereMock.mockReset();
   mocks.verifySignatureMock.mockResolvedValue(true);
   mocks.createAppTokenMock.mockResolvedValue('signed.app.jwt');
+  mocks.recordUse.mockReset().mockResolvedValue(undefined);
   mocks.resolveActiveAppByAudienceMock.mockReset().mockResolvedValue({
     id: 'app_first_party_coffee',
     appDid: 'did:imajin:app-coffee',

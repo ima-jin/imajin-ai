@@ -33,6 +33,7 @@ import { resolveActiveAppByAudience, appNotRegisteredResponse } from '@/src/lib/
 import { createLogger } from '@imajin/logger';
 import { canConsentToApp, PRIVATE_APP_CONSENT_ERROR } from '@/src/lib/kernel/app-consent';
 import { isLiveAppAuthorization } from '@/src/lib/auth/live-app-authorization';
+import { recordAppAuthorizationUse } from '@/src/lib/auth/app-authorization-usage';
 
 const log = createLogger('kernel');
 
@@ -175,6 +176,7 @@ export async function POST(request: NextRequest) {
   });
 
   log.info({ appDid, userDid: att.issuerDid, scopes: grantedScopes }, 'minted app token');
+  void recordAppAuthorizationUse(att.id);
 
   return NextResponse.json(
     { token, expiresIn: 600, scopes: grantedScopes },

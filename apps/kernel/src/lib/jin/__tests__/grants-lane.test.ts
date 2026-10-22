@@ -58,6 +58,33 @@ describe('live app authorization grouping (#3008)', () => {
     };
   }
 
+  it.each([
+    { recordedLastUsedAt: '2026-10-20T11:00:00Z', oauthLastUsedAt: '2026-10-19T12:00:00Z', expected: '2026-10-20T11:00:00Z' },
+    { recordedLastUsedAt: '2026-10-19T12:00:00Z', oauthLastUsedAt: '2026-10-20T11:00:00Z', expected: '2026-10-20T11:00:00Z' },
+    { recordedLastUsedAt: null, oauthLastUsedAt: '2026-10-20T11:00:00Z', expected: '2026-10-20T11:00:00Z' },
+    { recordedLastUsedAt: '2026-10-20T11:00:00Z', oauthLastUsedAt: null, expected: '2026-10-20T11:00:00Z' },
+    { recordedLastUsedAt: null, oauthLastUsedAt: null, expected: null },
+    { recordedLastUsedAt: '2026-10-20T12:00:00+02:00', oauthLastUsedAt: '2026-10-20T11:00:00Z', expected: '2026-10-20T11:00:00Z' },
+  ])('picks newest evidence for this attestation: %j', ({ expected, ...usage }) => {
+    expect(normalizeAppAuthorizations([app(usage)], now)[0].lastUsedAt).toBe(expected);
+  });
+
+  it('distinguishes unrecorded pre-ship history from newly issued never-used grants', () => {
+    expect(normalizeAppAuthorizations([app()], now)[0].lastUsedNotRecordedBefore).toBe('2026-10-22');
+    const shipped = Date.parse('2026-10-22T00:00:00.000Z');
+    expect(normalizeAppAuthorizations([app({ authorizedAt: new Date(shipped).toISOString() })], shipped)[0].lastUsedNotRecordedBefore).toBeUndefined();
+    expect(normalizeAppAuthorizations([app({ oauthLastUsedAt: '2026-10-20T11:00:00Z' })], now)[0].lastUsedNotRecordedBefore).toBeUndefined();
+  });
+
+  it('does not borrow usage evidence from another app or a surplus attestation', () => {
+    const cards = normalizeAppAuthorizations([
+      app({ attestationId: 'old', authorizedAt: '2026-10-19T00:00:00Z', recordedLastUsedAt: '2026-10-20T11:00:00Z' }),
+      app({ attestationId: 'new' }),
+      app({ attestationId: 'different-app', appDid: 'did:imajin:other', oauthLastUsedAt: '2026-10-20T11:00:00Z' }),
+    ], now);
+    expect(cards.find(card => card.id === 'app-authorization:new')?.lastUsedAt).toBeNull();
+  });
+
   it('collapses ten live grants to newest plus nine exact surplus ids without mutating input', () => {
     const apps = Array.from({ length: 10 }, (_, index) => app({
       attestationId: `att_${index}`,
@@ -159,6 +186,8 @@ vi.mock('@/src/db', () => ({
     expiresAt: 'attestations.expiresAt',
   },
   registryApps: { appDid: 'registryApps.appDid', name: 'registryApps.name' },
+  appAuthorizationUsage: { lastUsedAt: 'usage.lastUsedAt', attestationId: 'usage.attestationId' },
+  oauthRefreshTokens: { createdAt: 'refresh.createdAt', attestationId: 'refresh.attestationId' },
 }));
 vi.mock('@/src/lib/vault/import-authority', () => ({
   listImportOwners: vi.fn(async (did: string) => [{ did, name: did }]),
@@ -169,6 +198,7 @@ vi.mock('drizzle-orm', () => ({
   eq: (...args: unknown[]) => ({ eq: args }),
   isNull: (...args: unknown[]) => ({ isNull: args }),
   inArray: (...args: unknown[]) => ({ inArray: args }),
+  sql: (strings: TemplateStringsArray, ...values: unknown[]) => ({ strings, values }),
 }));
 
 vi.mock('@/src/lib/auth/grants', () => ({
@@ -254,6 +284,8 @@ describe('listAppAuthorizationsForOwner', () => {
         authorizedAt: '2026-02-01T00:00:00.000Z',
         revokedAt: null,
         expiresAt: null,
+        recordedLastUsedAt: null,
+        oauthLastUsedAt: null,
       },
     ]);
   });
@@ -397,6 +429,7 @@ describe('listGrantsForOperator', () => {
     expect(result[0]!.issuedAt! >= result[result.length - 1]!.issuedAt!).toBe(true);
 
     const authGrantCard = result.find((c) => c.source === 'auth-grant')!;
+    expect(authGrantCard.lastUsedAt).toBe('2026-03-02T00:00:00.000Z');
     expect(authGrantCard).toMatchObject({
       id: 'auth-grant:grant_1',
       grantee: 'did:imajin:agent1',
@@ -413,6 +446,7 @@ describe('listGrantsForOperator', () => {
     });
 
     const vaultCard = result.find((c) => c.source === 'vault-delegation')!;
+    expect(vaultCard.lastUsedAt).toBeNull();
     expect(vaultCard).toMatchObject({
       id: 'vault-delegation:vdg_1',
       grantee: 'did:imajin:consumer1',
@@ -423,6 +457,7 @@ describe('listGrantsForOperator', () => {
     });
 
     const bearerCard = result.find((c) => c.source === 'access-bearer')!;
+    expect(bearerCard.lastUsedAt).toBeNull();
     expect(bearerCard).toMatchObject({
       id: 'access-bearer:dgb_1',
       grantee: 'Muse Code',
