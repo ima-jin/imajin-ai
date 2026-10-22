@@ -1920,6 +1920,10 @@ function progressSummary(
   newMessageCount: number,
   statusMessage: WarpRunStatusMessage | null,
 ): string {
+  // A BLOCKED run's progress is telemetry, not a replacement human request.
+  if (state === BLOCKED_STATE && statusMessage?.message.trim()) {
+    return statusMessage.message.trim().split(/\r?\n/, 1)[0];
+  }
   const parts: string[] = [];
 
   if (changed.includes('state')) {
@@ -1992,6 +1996,8 @@ async function publishRunProgress(
 
   // #2296: loop.progress alongside warp.run.progress — same timestamp and
   // summary, so a loop reader and a warp.run.* reader see the same story.
+  // Without a blocker message, telemetry must leave the existing summary alone.
+  if (run.state === BLOCKED_STATE && !run.statusMessage?.message.trim()) return;
   await bridgeWarpRunToLoop(
     warpRunLoopTransition(
       'loop.progress',
@@ -2333,7 +2339,7 @@ async function publishRunFailed(
  * the first-class, immediate nudge instead.
  */
 async function publishRunBlocked(principalDid: string, run: WarpAgentRun): Promise<void> {
-  const summary = runStatusSummary(run.statusMessage, 'BLOCKED');
+  const summary = (run.statusMessage?.message.trim() || 'BLOCKED').split(/\r?\n/, 1)[0];
   const blockedAt = new Date().toISOString();
 
   await publish('warp.run.blocked', {

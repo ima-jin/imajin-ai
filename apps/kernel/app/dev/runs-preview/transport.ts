@@ -5,6 +5,7 @@ import type { OperatorApprovalCard } from '@/app/jin/operator-approvals-panel';
 import type { LoopOutput, StoredLoopOutput } from '@imajin/bus';
 import { canonicalCommandJson, prepareSignedSessionCommand, dispatchSessionCommand, type SessionCommandClient } from '@/app/jin/session-command-client';
 import { createHorizonFixture } from './horizon-fixture';
+import { blockedFixtureLoops } from './blocked-fixture';
 
 const principal = 'did:imajin:fixture-principal';
 const agent = 'did:imajin:fixture-agent';
@@ -69,7 +70,7 @@ function fixtureApproval(proposalId: string, approvalId: string): OperatorApprov
 }
 
 /** Local fixture only. All API calls are intercepted; production code and auth are unchanged. */
-export async function createRunsPreviewTransport(horizonState = 'active') {
+export async function createRunsPreviewTransport(horizonState = 'active', blockers?: string) {
   if (process.env.NODE_ENV !== 'development') throw new Error('Development fixture only');
   const principalKey = crypto.getRandomValues(new Uint8Array(32));
   const kernelKey = crypto.getRandomValues(new Uint8Array(32));
@@ -80,8 +81,12 @@ export async function createRunsPreviewTransport(horizonState = 'active') {
   const loops = [fixtureLoop('fixture-session', 'openclaw.session'), fixtureLoop('fixture-warp', 'warp.run')];
   const horizon = createHorizonFixture('fixture-session', principal, agent);
   const lastStepEventAt = horizonState === 'unpublished' ? null : new Date().toISOString();
-  loops[0].state = 'blocked';
-  loops[0].lastEventType = 'loop.blocked';
+  if (blockers === 'before' || blockers === 'after') {
+    loops.splice(1, 1, ...blockedFixtureLoops(principal, blockers));
+  } else {
+    loops[0].state = 'blocked';
+    loops[0].lastEventType = 'loop.blocked';
+  }
   const events: LoopEventJson[] = fixtureOutputs().map((output, index) => ({
     id: `fixture-output-${index}`, loopId: 'fixture-session', type: 'loop.progress', issuer: agent, principal,
     payload: { output }, occurredAt: new Date().toISOString(), createdAt: new Date().toISOString(),
@@ -189,7 +194,8 @@ export async function createRunsPreviewTransport(horizonState = 'active') {
 
 export async function installRunsPreview() {
   const requested = new URLSearchParams(window.location.search).get('horizon');
-  const fixture = await createRunsPreviewTransport(requested === 'unpublished' || requested === 'drained' ? requested : 'active');
+  const blockers = new URLSearchParams(window.location.search).get('blockers') ?? undefined;
+  const fixture = await createRunsPreviewTransport(requested === 'unpublished' || requested === 'drained' ? requested : 'active', blockers);
   const previousFetch = globalThis.fetch;
   globalThis.fetch = fixture.fetcher;
   const client: SessionCommandClient = {

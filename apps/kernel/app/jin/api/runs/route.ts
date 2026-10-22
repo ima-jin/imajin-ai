@@ -1,10 +1,11 @@
-/** Operator-only adapter over the signed loop registry; no harness/gateway reads. */
+/** Operator-only signed registry adapter with current provider blocker observations. */
 import { NextResponse, type NextRequest } from 'next/server';
 import { createLogger } from '@imajin/logger';
 import { corsHeaders } from '@/src/lib/kernel/cors';
 import { gateOperator } from '@/src/lib/jin/spend-route-gate';
 import { listLoopsPage } from '@/src/lib/loops/query';
 import { orderRuns } from '@/src/lib/jin/runs-lane';
+import { reconcileWarpBlockers } from '@/src/lib/warp/reconcile-blocked';
 
 const log = createLogger('kernel');
 export const dynamic = 'force-dynamic';
@@ -34,7 +35,8 @@ export async function GET(request: NextRequest) {
       cursor: params.get('cursor'),
       limit,
     });
-    return NextResponse.json({ isOperator: true, page: { ...page, loops: orderRuns(page.loops) } }, { headers: cors });
+    const loops = await reconcileWarpBlockers(gate.operatorDid, page.loops);
+    return NextResponse.json({ isOperator: true, page: { ...page, loops: orderRuns(loops) } }, { headers: cors });
   } catch (err) {
     log.error({ err: String(err) }, 'jin runs read failed');
     return NextResponse.json({ error: 'Runs unavailable' }, { status: 500, headers: cors });

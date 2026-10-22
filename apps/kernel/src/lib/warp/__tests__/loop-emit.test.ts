@@ -62,6 +62,17 @@ beforeEach(() => {
 });
 
 describe('emitWarpRunLoopEvent', () => {
+  it('confirms accepted reconciliation through node-witnessed ingest, not a row write', async () => {
+    const accepted = await emitWarpRunLoopEvent({
+      ...TRANSITION, type: 'loop.finished', state: 'resolved', summary: 'resolved · PR #2993 merged',
+    });
+    expect(accepted).toBe(true);
+    expect(ingestLoopEventMock).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'loop.finished', publisherDid: NODE_IDENTITY.senderDid,
+      payload: expect.objectContaining({ state: 'resolved', summary: 'resolved · PR #2993 merged' }),
+      signature: expect.objectContaining({ alg: 'ed25519' }),
+    }));
+  });
   it('observes every confirmed PR artifact in the same transition without treating a run finish as PR closure', async () => {
     const prs = ['https://github.com/o/r/pull/1', 'https://github.com/o/r/pull/2'];
     await emitWarpRunLoopEvent({ ...TRANSITION, type: 'loop.finished', prArtifacts: prs });

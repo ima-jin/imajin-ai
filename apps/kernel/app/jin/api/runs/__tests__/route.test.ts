@@ -1,9 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { runLoop } from '@/src/lib/jin/__tests__/runs-fixture';
 
-const { auth, operator, list, history, target } = vi.hoisted(() => ({
-  auth: vi.fn(), operator: vi.fn(), list: vi.fn(), history: vi.fn(), target: vi.fn(),
+const { auth, operator, list, history, target, reconcile } = vi.hoisted(() => ({
+  auth: vi.fn(), operator: vi.fn(), list: vi.fn(), history: vi.fn(), target: vi.fn(), reconcile: vi.fn(),
 }));
+vi.mock('@/src/lib/warp/reconcile-blocked', () => ({ reconcileWarpBlockers: reconcile }));
 vi.mock('@imajin/auth', () => ({ requireAuth: auth }));
 vi.mock('@imajin/logger', () => ({ createLogger: () => ({ error: vi.fn() }) }));
 vi.mock('@/src/lib/kernel/cors', () => ({
@@ -32,6 +33,7 @@ beforeEach(() => {
   list.mockResolvedValue({ loops: [runLoop()], hasNextPage: false, nextCursor: null });
   history.mockResolvedValue({ loop: runLoop(), events: [] });
   target.mockResolvedValue('did:imajin:agent');
+  reconcile.mockImplementation(async (_principal, loops) => loops);
 });
 
 describe('Runs operator adapters', () => {
@@ -52,6 +54,7 @@ describe('Runs operator adapters', () => {
     expect((await detail()).status).toBe(401);
     expect(list).not.toHaveBeenCalled();
     expect(history).not.toHaveBeenCalled();
+    expect(reconcile).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -66,6 +69,7 @@ describe('Runs operator adapters', () => {
     expect(await (await detail()).json()).toEqual({ isOperator: false, detail: null });
     expect(list).not.toHaveBeenCalled();
     expect(history).not.toHaveBeenCalled();
+    expect(reconcile).not.toHaveBeenCalled();
   });
 
   it('hides both routes when the node has no operator', async () => {
@@ -89,6 +93,14 @@ describe('Runs operator adapters', () => {
   it('passes validated filters, lineage and pagination only for the operator principal', async () => {
     await getList(request(`?principal=${DID}&state=blocked&kind=warp.run&since=2026-10-01&ancestor=root&cursor=next&limit=12`));
     expect(list).toHaveBeenCalledWith({ principal: DID, state: 'blocked', kind: 'warp.run', since: '2026-10-01', ancestor: 'root', cursor: 'next', limit: 12 });
+  });
+
+  it('awaits signed reconciliation before exposing historical blockers', async () => {
+    const resolved = runLoop({ state: 'resolved', summary: 'resolved · PR #2993 merged', finishedAt: new Date().toISOString() });
+    reconcile.mockResolvedValue([resolved]);
+    const response = await getList(request());
+    expect(reconcile).toHaveBeenCalledWith(DID, [runLoop()]);
+    expect((await response.json()).page.loops).toEqual([resolved]);
   });
 
   it.each(['?since=nope', '?limit=0', '?limit=201', '?limit=1.5', '?limit=NaN'])('rejects invalid filters %s', async (query) => {

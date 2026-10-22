@@ -5,7 +5,11 @@ import { runLoop } from './runs-fixture';
 
 describe('Runs lane ordering', () => {
   it('recognizes arbitrary blocked states from lifecycle and never flags finished loops', () => {
-    expect(isBlockedLoop(runLoop({ lastEventType: 'loop.blocked', state: 'awaiting_review' }))).toBe(true);
+    expect(isBlockedLoop(runLoop({ lastEventType: 'loop.blocked', state: 'awaiting_review' }))).toBe(false);
+    expect(isBlockedLoop(runLoop({ kind: 'custom', lastEventType: 'loop.blocked', state: 'awaiting_review' }))).toBe(true);
+    for (const state of ['resolved', 'superseded']) {
+      expect(isBlockedLoop(runLoop({ lastEventType: 'loop.blocked', state }))).toBe(false);
+    }
     expect(isBlockedLoop(runLoop({ state: 'BLOCKED' }))).toBe(true);
     expect(isBlockedLoop(runLoop())).toBe(false);
     expect(isBlockedLoop(runLoop({ state: 'blocked', finishedAt: '2026-10-03T00:00:00Z' }))).toBe(false);
