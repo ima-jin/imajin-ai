@@ -13,8 +13,10 @@ export interface RegisteredApp {
   created: AppProvenancePoint;
   firstConsent: AppProvenancePoint;
   consentingPrincipals: number;
+  liveConsents: number;
   lastSeen: string | null;
   ended: AppProvenancePoint;
+  revocationId: string | null;
 }
 
 type RegistryTimestamp = Date | string | null;
@@ -23,9 +25,10 @@ interface RegistryLifecycleRow {
   id: string; appDid: string; name: string; tier: string; status: string;
   createdAt: RegistryTimestamp; ownerDid: string;
   registrar: string | null; consentAt: string | null; consentBy: string | null;
-  consentingPrincipals: number; hasConsent: boolean; hasProvision: boolean; hasClaim: boolean;
+  consentingPrincipals: number; liveConsents: number; hasConsent: boolean; hasProvision: boolean; hasClaim: boolean;
   provisionAt: string | null; claimAt: string | null; lastSeen: string | null;
   endedAt: RegistryTimestamp; endedBy: string | null;
+  revocationId: string | null;
 }
 
 function timestamp(value: RegistryTimestamp): string | null {
@@ -52,8 +55,10 @@ export function registeredApp(row: RegistryLifecycleRow, now = Date.now()): Regi
     created: { at: timestamp(row.createdAt), by: row.registrar?.trim() || row.ownerDid?.trim() || null },
     firstConsent: { at: timestamp(row.consentAt), by: row.consentBy },
     consentingPrincipals: Number(row.consentingPrincipals),
+    liveConsents: Number(row.liveConsents),
     lastSeen,
     ended: { at: timestamp(row.endedAt), by: row.endedBy },
+    revocationId: row.revocationId,
   };
 }
 
@@ -76,6 +81,9 @@ export async function listRegisteredApps(): Promise<RegisteredApp[]> {
       where subject_did = ${registryApps.appDid} and type = 'app.authorized'
       order by issued_at, id limit 1)`,
     consentingPrincipals: sql<number>`(select count(distinct issuer_did)::int from auth.attestations
+      where subject_did = ${registryApps.appDid} and type = 'app.authorized'
+      and revoked_at is null and (expires_at is null or expires_at > now()))`,
+    liveConsents: sql<number>`(select count(*)::int from auth.attestations
       where subject_did = ${registryApps.appDid} and type = 'app.authorized'
       and revoked_at is null and (expires_at is null or expires_at > now()))`,
     hasConsent: sql<boolean>`exists(select 1 from auth.attestations
@@ -101,6 +109,10 @@ export async function listRegisteredApps(): Promise<RegisteredApp[]> {
     endedBy: sql<string | null>`(select issuer_did from auth.attestations
       where subject_did = ${registryApps.appDid}
         and type = case when ${registryApps.status} = 'expired' then 'registry.app.expired' else 'registry.app.revoked' end
+      order by issued_at desc, id desc limit 1)`,
+    revocationId: sql<string | null>`(select id from auth.attestations
+      where subject_did = ${registryApps.appDid} and type = 'registry.app.revoked'
+        and context_id = registry.apps.id and context_type = 'registry_app'
       order by issued_at desc, id desc limit 1)`,
   }).from(registryApps).orderBy(asc(registryApps.name), asc(registryApps.id));
   const now = Date.now();
