@@ -40,6 +40,7 @@ import { verifySessionToken, createSessionAppToken } from '@/src/lib/auth/jwt';
 import { resolveActiveAppByAudience, resolveTokenGrant, appNotRegisteredResponse } from '@/src/lib/kernel/app-registry';
 import { resolveMintActAs } from '@/src/lib/kernel/app-act-as';
 import { createLogger } from '@imajin/logger';
+import { recordRegistryActivity } from '@/src/lib/apps/registry-activity';
 
 const log = createLogger('kernel');
 
@@ -108,6 +109,7 @@ export async function POST(request: NextRequest) {
   });
 
   log.info({ did: session.sub, aud, audiences, scopes: grantedScopes, actingAs }, 'minted session app token');
+  await recordRegistryActivity(registeredApp.appDid, 'app.token.minted');
 
   return NextResponse.json(
     { token, expiresIn: 600, scopes: grantedScopes, aud: audiences, ...(actingAs ? { actingAs } : {}) },

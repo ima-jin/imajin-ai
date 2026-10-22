@@ -27,8 +27,9 @@ const mocks = vi.hoisted(() => {
   const whereMock = vi.fn();
   const fromMock = vi.fn(() => ({ where: whereMock }));
   const selectMock = vi.fn(() => ({ from: fromMock }));
-  return { whereMock, fromMock, selectMock };
+  return { whereMock, fromMock, selectMock, activity: vi.fn() };
 });
+vi.mock('@/src/lib/apps/registry-activity', () => ({ recordRegistryActivity: mocks.activity }));
 
 function nextSelect(rows: unknown[]): void {
   mocks.whereMock.mockImplementationOnce(() => Promise.resolve(rows));
@@ -97,6 +98,7 @@ describe('POST /auth/api/apps/token/service — issuance (#1800, supply:read fli
     expect(res.status).toBe(200);
 
     const body = await res.json();
+    expect(mocks.activity).toHaveBeenCalledWith(APP_DID, 'app.token.minted');
     expect(body.scopes).toEqual(['supply:read']);
 
     const payload = await verifyAppToken(body.token);
@@ -152,6 +154,7 @@ describe('POST /auth/api/apps/token/service — revocation is enforced at mint t
     expect(res.status).toBe(403);
     const body = await res.json();
     expect(body.error).toMatch(/not active/i);
+    expect(mocks.activity).not.toHaveBeenCalled();
   });
 
   it('returns 404 for an unregistered app DID — nothing to revoke or mint against', async () => {

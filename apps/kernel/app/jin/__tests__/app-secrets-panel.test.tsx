@@ -23,6 +23,18 @@ const app = {
   ] }],
 };
 describe('AppSecretsPanel', () => {
+  it('shows provision failed without awaiting claim, reissue links, or mutation controls', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(Response.json({ apps: [{
+      ...app, claimed: false, provisionFailed: true, claimExpiresAt: null, secrets: [],
+    }] }));
+    vi.stubGlobal('fetch', fetchMock);
+    render(<AppSecretsPanel />);
+    await screen.findByText('provision failed');
+    expect(screen.queryByText('awaiting claim')).toBeNull();
+    expect(screen.queryByRole('link', { name: 'Reissue claim code' })).toBeNull();
+    expect(screen.queryAllByRole('button')).toHaveLength(0);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
   it.each([
     ['missing', 'Set', 'set'],
     ['revoked', 'Set', 'set'],
@@ -91,6 +103,7 @@ describe('AppSecretsPanel', () => {
     null, {}, { apps: null }, { apps: 'bad' }, { apps: [null] },
     { apps: [{ ...app, secrets: undefined }] },
     { apps: [{ ...app, claimed: 'true' }] },
+    { apps: [{ ...app, provisionFailed: 'true' }] },
     { apps: [{ ...app, claimExpiresAt: 123 }] },
     { apps: [{ ...app, claimExpiresAt: 'not-a-date' }] },
     ...[null, [], {}, 'bad', { ...app.provenance, created: null },

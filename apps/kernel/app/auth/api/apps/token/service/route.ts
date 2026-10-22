@@ -36,6 +36,7 @@ import { mintableServiceScopes } from '@/src/lib/apps/service-scopes';
 import { verifySignature } from '@/src/lib/auth/crypto';
 import { createAppServiceToken } from '@/src/lib/auth/jwt';
 import { createLogger } from '@imajin/logger';
+import { recordRegistryActivity } from '@/src/lib/apps/registry-activity';
 
 const log = createLogger('kernel');
 
@@ -108,6 +109,7 @@ export async function POST(request: NextRequest) {
   });
 
   log.info({ appDid, scopes }, 'minted app service token');
+  await recordRegistryActivity(appDid, 'app.token.minted');
 
   return NextResponse.json({ token, expiresIn: 600, scopes }, { headers: cors });
 }

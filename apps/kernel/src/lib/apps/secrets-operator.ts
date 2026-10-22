@@ -61,6 +61,7 @@ export async function listOperatorAppSecrets(): Promise<OperatorAppSecrets[]> {
   )`)).orderBy(asc(registryApps.name));
   const provisions = await db.select({
     appDid: appProvisions.appDid, slug: appProvisions.slug,
+    status: appProvisions.status,
     createdAt: appProvisions.createdAt, registeredAt: appProvisions.registeredAt,
   }).from(appProvisions).orderBy(asc(appProvisions.slug));
   const dids = [...new Set([...apps, ...provisions].flatMap((app) => app.appDid ? [app.appDid] : []))];
@@ -94,12 +95,16 @@ export async function listOperatorAppSecrets(): Promise<OperatorAppSecrets[]> {
     const appClaims = claims.filter((row) => row.appDid === app.appDid);
     const claimed = appClaims.find((row) => row.status === 'claimed');
     const claim = claimed ?? appClaims[0];
+    const liveCode = claim?.status === 'pending' && claim.expiresAt.getTime() > Date.now();
+    const provisionFailed = !claimed && Boolean(provision)
+      && (provision?.status === 'failed' || (provision?.status === 'pending' && !liveCode));
     const secrets = app.active && app.appDid ? await secretMetadata(app.appDid) : [];
     const fetched = secrets.flatMap((secret) => secret.timeline).filter((entry) => entry.phase === 'fetched')
       .sort((a, b) => Date.parse(b.at) - Date.parse(a.at))[0];
     return {
       appDid: app.appDid, slug: app.slug, name: app.name, active: app.active, claimed: Boolean(claimed),
       claimExpiresAt: claim?.expiresAt.toISOString() ?? null,
+      provisionFailed,
       provenance: {
         created: { at: app.createdAt?.toISOString() ?? null, by: provenanceIdentity(app.ownerDid) },
         provisioned: {

@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { AppSecretsPanel } from '../../jin/app-secrets-panel';
 import { ProvisionedAppsList } from '../../jin/provisioned-apps-list';
+import { RegisteredAppsPanel } from '../../jin/registered-apps-panel';
 
 const OPERATOR = `did:imajin:fixture-operator-${'a1b2c3d4'.repeat(8)}`;
 const APP = `did:imajin:fixture-app-${'1234abcd'.repeat(8)}`;
@@ -35,6 +36,28 @@ const apps = [
       claimed: UNKNOWN_LINE, lastSeen: UNKNOWN_LINE,
     },
   },
+  {
+    appDid: null, slug: 'fixture-failed', name: 'Failed provision fixture app', claimed: false,
+    active: false, provisionFailed: true, claimExpiresAt: null, secrets: [],
+    provenance: { ...provenance, claimed: UNKNOWN_LINE, lastSeen: UNKNOWN_LINE },
+  },
+];
+const registryFixture = {
+  id: 'fixture-dcr', appDid: APP, name: 'Claude connector fixture', kind: 'MCP/DCR client',
+  status: 'active', created: provenance.created,
+  firstConsent: { at: '2026-10-13T09:00:00Z', by: OPERATOR }, consentingPrincipals: 2,
+  lastSeen: provenance.lastSeen.at, ended: UNKNOWN_LINE,
+};
+const registeredApps = [
+  registryFixture,
+  { ...registryFixture, id: 'fixture-legacy', name: 'BrokerAgent fixture (zero consent)', kind: 'delegated app',
+    firstConsent: UNKNOWN_LINE, consentingPrincipals: 0, lastSeen: null },
+  { ...registryFixture, id: 'fixture-seed', name: 'Links seed fixture', kind: 'first-party seed', status: 'dormant',
+    firstConsent: UNKNOWN_LINE, consentingPrincipals: 0, lastSeen: '2026-01-01T00:00:00Z' },
+  { ...registryFixture, id: 'fixture-revoked', name: 'Revoked fixture app', kind: 'delegated app',
+    status: 'revoked', ended: { at: '2026-10-20T20:00:00Z', by: OPERATOR } },
+  { ...registryFixture, id: 'fixture-expired', name: 'Expired connector fixture', status: 'expired',
+    ended: { at: '2026-10-20T21:00:00Z', by: 'did:imajin:fixture-node' } },
 ];
 
 export default function AppSecretsPreview() {
@@ -50,6 +73,9 @@ export default function AppSecretsPreview() {
         if (method !== 'GET') return Response.json({ error: 'Fixture only — no proposals are sent.' }, { status: 403 });
         return Response.json({ apps });
       }
+      if (new URL(url, window.location.origin).pathname === '/jin/api/registered-apps') {
+        return Response.json({ apps: registeredApps });
+      }
       return originalFetch(input, init);
     };
     setReady(true);
@@ -63,7 +89,7 @@ export default function AppSecretsPreview() {
         <p className="text-sm text-amber-300">Development fixture only — not live data. No secret values, claim codes, or real mutations.</p>
         <p className="text-xs text-gray-400">Real panel with claimed, awaiting claim (expired), and legacy-unknown metadata. Inspect at desktop and 390px width.</p>
       </header>
-      {ready && <AppSecretsPanel />}
+      {ready && <><AppSecretsPanel /><RegisteredAppsPanel /></>}
       <section className="mt-6">
         <h2 className="font-mono text-sm">Provision app · fixture reissue destination</h2>
         <ProvisionedAppsList apps={[awaiting]} reissueBusy={false}

@@ -20,8 +20,10 @@ describe('App secrets development preview', () => {
     const { unmount } = render(<AppSecretsPreview />);
     expect(screen.getByText(/Development fixture only/)).toBeDefined();
     await screen.findByText('awaiting claim');
-    expect(screen.getAllByText('Created')).toHaveLength(3);
-    expect(screen.getAllByText('Last seen')).toHaveLength(3);
+    expect(screen.getAllByText('Created')).toHaveLength(4);
+    expect(screen.getAllByText('Last seen')).toHaveLength(9);
+    expect(await screen.findByRole('region', { name: 'Registered apps' })).toBeDefined();
+    expect(screen.getByText('provision failed')).toBeDefined();
     expect(screen.getAllByText('unknown (pre-#3006 row)').length).toBeGreaterThan(0);
     expect(screen.getByText(/Claim code expired/).textContent).toContain('2020-01-02T03:04:05Z');
     fireEvent.click(screen.getByRole('button', { name: 'Reissue claim code' }));
