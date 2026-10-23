@@ -63,6 +63,7 @@ import { POST as importCredential } from '@/app/api/vault/import/route';
 import { POST as publicFetch } from '@/app/api/vault/delegation/grants/[grantId]/fetch/route';
 import { PATCH as patchRecord } from '@/app/cloudflare/api/zones/[zoneId]/dns/[recordId]/route';
 import { GET as zoneGrants, POST as delegateZone } from '@/app/jin/api/cloudflare-grants/route';
+import { GET as receivedZoneGrants } from '@/app/cloudflare/api/grants/route';
 import { DELETE as revokeZone } from '@/app/auth/api/grants/[grantId]/route';
 import { POST as renewZone } from '@/app/auth/api/grants/[grantId]/renew/route';
 import { decideOperatorApproval } from '@/src/lib/notify/operator-approvals-service';
@@ -225,6 +226,30 @@ async function edit(zoneId = ZONE, domain = 'example.com') {
 }
 
 describe('issue #2995 operator acceptance across real import, vault and delegation primitives', () => {
+  it('discovers only the grantee’s live zone metadata from the real applied import without fetching the credential', async () => {
+    const grant = await sealForAgent();
+    const request = new NextRequest(`https://kernel.test/cloudflare/api/grants?agentDid=${GROUP}`);
+    const providerCalls = vi.mocked(fetch).mock.calls.length;
+    const [before] = await db.select().from(vaultDelegationGrants);
+    const result = await receivedZoneGrants(request);
+    const body = await result.json();
+    visible.push(body);
+    expect(result.status).toBe(200);
+    expect(body.grants).toEqual([{
+      grantId: grant.id, agentDid: AGENT, delegatorDid: GROUP,
+      audience: { type: 'dids', values: [`did:imajin:cloudflare-${ZONE}`] },
+      zoneId: ZONE, domain: 'example.com', capabilities: ['cloudflare:dns'],
+      issuedAt: grant.issuedAt.toISOString(), expiresAt: grant.expiresAt.toISOString(),
+    }]);
+    expect(vi.mocked(fetch).mock.calls).toHaveLength(providerCalls);
+    expect(await db.select().from(vaultDelegationGrants)).toEqual([before]);
+    expect((await db.select().from(delegationGrants))[0].lastUsedAt).toBeNull();
+    h.identity = { id: HUMAN, scope: 'actor', subtype: 'human' };
+    expect(await receivedZoneGrants(request).then(r => r.json())).toEqual({ grants: [] });
+    h.identity = { id: AGENT, scope: 'actor', subtype: 'agent' };
+    await db.update(vaultDelegationGrants).set({ status: 'revoked' });
+    expect(await receivedZoneGrants(request).then(r => r.json())).toEqual({ grants: [] });
+  });
   it('allows the current group human controller to grant, list, renew and revoke on /jin without repasting a token', async () => {
     await sealForAgent();
     h.identity = { id: HUMAN, scope: 'actor', subtype: 'human' };

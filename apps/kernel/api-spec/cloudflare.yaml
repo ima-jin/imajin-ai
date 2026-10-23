@@ -24,6 +24,7 @@ security:
 components:
   securitySchemes:
     cookieAuth: { type: apiKey, in: cookie, name: imajin_session }
+    bearerAuth: { type: http, scheme: bearer }
   parameters:
     zoneId:
       name: zoneId
@@ -49,6 +50,35 @@ components:
     BadRequest:
       description: Invalid domain, zone ID or operation payload.
   schemas:
+    ZoneGrant:
+      type: object
+      additionalProperties: false
+      required: [grantId, agentDid, delegatorDid, audience, zoneId, domain, capabilities, issuedAt, expiresAt]
+      properties:
+        grantId: { type: string }
+        agentDid: { type: string, description: Actual authenticated grantee DID }
+        delegatorDid: { type: string, description: Current verified zone owner }
+        audience:
+          type: object
+          additionalProperties: false
+          required: [type, values]
+          properties:
+            type: { type: string, const: dids }
+            values:
+              type: array
+              minItems: 1
+              maxItems: 1
+              items: { type: string, pattern: "^did:imajin:cloudflare-[a-f0-9]{32}$" }
+        zoneId: { type: string, pattern: "^[a-f0-9]{32}$" }
+        domain: { type: string, description: Exact lowercase canonical verified zone domain }
+        capabilities:
+          type: array
+          minItems: 1
+          items:
+            type: string
+            enum: ["cloudflare:read", "cloudflare:dns", "cloudflare:cache", "cloudflare:ssl", "cloudflare:custom-hostnames"]
+        issuedAt: { type: string, format: date-time }
+        expiresAt: { type: string, format: date-time }
     DnsInput:
       type: object
       properties:
@@ -82,6 +112,45 @@ components:
                 mode: { type: string, enum: [respect_origin, bypass_by_default, override_origin] }
                 default: { type: integer, minimum: 1 }
 paths:
+  /api/grants:
+    get:
+      operationId: cloudflareGranteeZoneGrants
+      summary: List the authenticated grantee's live Cloudflare zone grants
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      description: >-
+        Metadata-only discovery for the actual authenticated DID. Session cookies,
+        session bearers and app credentials use the same authentication as zone
+        operations; app credentials enumerate appDid, never userDid. No action
+        scope is required to discover one's own grants (including DNS-only grants).
+        X-Acting-For, act-as, ownerDid, agentDid and other query parameters never
+        select another principal. Unlike /auth/api/grants, this is grantee-side,
+        not a delegator management list. Returns only active, unexpired grants
+        with at least one active Cloudflare capability and one exact zone DID
+        audience. Revoked capabilities are omitted; revoked/expired grants,
+        absent/expired/revoked or ambiguous credential imports, and domains without
+        current verified ownership are excluded. Canonical domains come from the
+        applied Cloudflare import, not arbitrary domains belonging to the owner.
+        Never returns credential values, ciphertext, wrapped keys or import details;
+        never unseals a credential, contacts Cloudflare, or changes grants.
+        An empty result is 200 with grants: []. Responses are no-store.
+        This snapshot does not confer authority: every operation still checks
+        its live capability, verified ownership and provider zone/domain binding.
+      responses:
+        "200":
+          description: Live zone grant metadata only
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [grants]
+                properties:
+                  grants: { type: array, items: { $ref: "#/components/schemas/ZoneGrant" } }
+        "401": { description: Authentication required or invalid credential }
+        "403": { description: App authentication refused; no session fallback for an authenticated but forbidden app }
+        "503": { description: Grant metadata unavailable; no partial result or underlying error disclosed }
   /api/zones/{zoneId}/classification:
     parameters:
       - $ref: "#/components/parameters/zoneId"
