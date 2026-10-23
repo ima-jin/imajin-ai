@@ -1582,6 +1582,7 @@ export function canonicalizeGrantPayload(grant: {
   wrappedNonce: string;
   keyId: string;
   expiresAt: Date | null;
+  sshScope?: VaultDelegationGrant['sshScope'];
 }): string {
   return JSON.stringify({
     expiresAt: grant.expiresAt?.toISOString() ?? null,
@@ -1590,6 +1591,10 @@ export function canonicalizeGrantPayload(grant: {
     keyId: grant.keyId,
     ownerXPub: grant.ownerXPub,
     subject: grant.subject,
+    ...(grant.sshScope ? { sshScope: {
+      caId: grant.sshScope.caId, principals: grant.sshScope.principals,
+      forceCommand: grant.sshScope.forceCommand, allowedHosts: grant.sshScope.allowedHosts,
+    } } : {}),
     wrappedKey: grant.wrappedKey,
     wrappedNonce: grant.wrappedNonce,
   });
@@ -1622,7 +1627,7 @@ export async function _applyDelegationGrant(
   grant: Pick<VaultDelegationGrant,
     'subject' | 'grantedTo' | 'field' | 'ownerXPub' |
     'wrappedKey' | 'wrappedNonce' | 'keyId' | 'ownerSignature' | 'expiresAt'
-  >,
+  > & { sshScope?: VaultDelegationGrant['sshScope'] },
   nodeXPriv: string,
   ownerEdPub: string,
 ): Promise<string> {

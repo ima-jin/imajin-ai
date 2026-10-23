@@ -80,6 +80,25 @@ CA under the new custody root; old public trust overlaps for the shared
 maximum certificate TTL, then disappears on the next trusted-keys read.
 Never move a CA seed through the node rotation handoff.
 
+SSH signing (#3064), `apps/kernel/src/lib/vault/ssh-cert.ts`, uses D2/D3 to
+open the live node-only CA custody grant in-process and S3 for issuance,
+refusal and operation-grant attestations. Operation grants contain no CA key
+material; their principal/command/host scope is signed by the node root.
+Replacing that root invalidates the old operation grants as well as custody.
+Grant signing authority for the replacement CA through the vault grant route;
+never re-sign a stored scope implicitly or move a private key through a shell.
+
+Issuance records bind job, grantee, principal, host, TTL, serial, keyId, caId,
+grantId and `publicKeyFingerprint`: the OpenSSH `SHA256:...` fingerprint of
+the caller's throwaway public wire key, not the key material. Anonymous signing
+requests return 401 without signing or storing refusal records. Authenticated
+refusals retain their signed audit. Each grant may issue at most 10 certificates
+in a rolling 60-second window (`SSH_CERT_ISSUANCE_LIMIT` /
+`SSH_CERT_ISSUANCE_WINDOW_SECONDS`). The signing transaction counts that grant's
+existing issuance events under its locks before signing, so concurrent requests
+cannot exceed the budget. Excess requests return 429, record an authenticated
+refusal, and return no certificate. No separate rate-limit store or config exists.
+
 ### 2.2 Derived-secret roles (HKDF / HMAC; nobody outside the process can verify these)
 
 | Role | Consumers | What breaks on rotation | Who can read the old material |
@@ -643,6 +662,7 @@ file: ``- `path` — role``.
 - `apps/kernel/src/lib/vault/field-status.ts` — D2
 - `apps/kernel/src/lib/vault/mint.ts` — D2
 - `apps/kernel/src/lib/vault/ssh-ca.ts` — D2/D3/S3 (independent in-vault CA mint, node-only custody, transactional signed lifecycle; never exported by node-root handoff)
+- `apps/kernel/src/lib/vault/ssh-cert.ts` — D2/D3/S3 (locked live CA custody unseal, signed SSH operation scope, issuance/refusal audit; no private-key export)
 - `apps/kernel/src/lib/vault/mint-authority.ts` — D2
 - `apps/kernel/src/lib/vault/import-authority.ts` — D2 (node identity comparison only; real human/group ownership remains independently checked)
 - `apps/kernel/src/lib/vault/import.ts` — D2/S3 (v2 static-secret custody and node-attested, human-countersigned import/rotation)

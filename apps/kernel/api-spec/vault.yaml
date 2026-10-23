@@ -104,7 +104,7 @@ paths:
         rotation export or plaintext route may disclose it, even to the node.
         The resolved acting DID must be the vault node or its authorized delegate.
         Tier-1 external custody is refused before generation. One active signer
-        per purpose; repeated mint returns 409. No signing operation is provided.
+        per purpose; repeated mint returns 409. Sign with the separate sign route.
         Commits a node-signed vault.ssh-ca.minted attestation with CA id,
         purpose, actor, composedBy and fingerprint, never key material.
       security: [{ cookieAuth: [] }, { bearerAuth: [] }]
@@ -136,7 +136,7 @@ paths:
       summary: Mint a replacement signer and overlap public trust
       description: |
         Same authority as mint. Serializes per purpose with mint, revoke and
-        trusted reads. Mints through vault.mint, then atomically withdraws the
+        signing. Public trusted reads are lock-free. Mints through vault.mint, then atomically withdraws the
         previous private signing grant and marks its mint record retiring.
         revokedAt records the signing withdrawal instant. Both public keys stay
         trusted for SSH_CA_MAX_CERT_TTL_SECONDS (900 seconds) after that instant.
@@ -218,15 +218,15 @@ paths:
       description: |
         Anonymous public-only route, Cache-Control no-store. Returns newline-
         terminated ssh-ed25519 lines (or an empty file for unknown/revoked
-        purposes). Reads reconcile retirement durably, including after restart:
+        purposes). Reads are lock-free projections with no writes:
         once the signing-withdrawal instant plus the 900-second maximum cert
-        TTL is reached, the old key drops off automatically and a signed
+        TTL is reached, the old key drops off automatically. On the next
+        mutation or signing operation a signed
         vault.ssh-ca.retired attestation records CA id, purpose, node actor and
-        fingerprint. No scheduler or operator action is required.
-        Retirement and lifecycle changes commit with their signed attestations;
-        audit/storage failure returns 503 rather than an unaudited trust list.
+        fingerprint. No scheduler is required to exclude expired public trust.
+        Retirement and lifecycle changes commit with their signed attestations.
         A deploy consumer ships these contents to its host; host configuration
-        and certificate signing are separate phases.
+        is separate from certificate issuance.
       security: []
       parameters:
         - in: query
@@ -241,6 +241,148 @@ paths:
               schema: { type: string }
         "400": { description: Missing or invalid purpose }
         "503": { description: Trust projection unavailable; generic error without secret details }
+  /api/vault/ssh-ca/sign:
+    post:
+      tags: [vault-mint]
+      operationId: vaultSshCertSign
+      summary: Sign a restricted throwaway Ed25519 user public key
+      description: |
+        Authenticated credential DID must hold the named live vault grant.
+        Acting-for is not substituted for the grantee. Under the CA purpose
+        lock the vault rechecks the active CA, operation scope, and live private
+        custody grant. The caller provides only its public key, never its seed.
+        Returns one granted principal, the grant's force-command and NO
+        extensions: no port/agent/X11 forwarding, pty or user-rc.
+        Host is checked against allowedHosts at issuance; OpenSSH user certs
+        do not bind destination hosts, so hosts must enforce CA/principal trust.
+        TTL defaults to 600, accepts 1–900 integer seconds, refuses larger
+        requests, and validity cannot outlive either grant lease.
+        Signed vault.ssh-cert.issued commits before returning, binding job,
+        grantee, principal, host, TTL, unique serial, keyId, caId, grantId and
+        publicKeyFingerprint (OpenSSH SHA256 fingerprint of the caller's public
+        wire key, never key material). Each grant is limited to 10 issuances
+        in a rolling 60-second window, counting existing issued events inside
+        the signing transaction/lock. Over-budget requests return 429 and no cert.
+        Only authenticated refusals commit vault.ssh-cert.refused with grantee and HTTP status,
+        never raw request bytes. Audit failure returns 503 and no certificate.
+        Anonymous requests return 401 without signing or storing any audit record.
+      security: [{ cookieAuth: [] }, { bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [purpose, caId, grantId, publicKey, principal, host, job]
+              properties:
+                purpose: { $ref: "#/components/schemas/SshCaPurpose" }
+                caId: { type: string }
+                grantId: { type: string }
+                publicKey: { type: string, description: Canonical ssh-ed25519 public key line }
+                principal: { type: string, pattern: "^[a-z_][a-z0-9_-]{0,63}$" }
+                host: { type: string, description: Exact canonical host from the grant }
+                job: { type: string, minLength: 1, maxLength: 200 }
+                ttl: { type: integer, minimum: 1, maximum: 900, default: 600 }
+      responses:
+        "201":
+          description: Certificate and public issuance metadata only; Cache-Control no-store
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [certificate, serial, keyId, caId, grantId, job, grantee, principal, host, ttl, purpose, validAfter, validBefore, publicKeyFingerprint]
+                properties:
+                  certificate: { type: string, pattern: "^ssh-ed25519-cert-v01@openssh.com " }
+                  serial: { type: string, description: Unsigned 64-bit integer encoded as decimal }
+                  keyId: { type: string }
+                  caId: { type: string }
+                  grantId: { type: string }
+                  job: { type: string }
+                  grantee: { type: string }
+                  principal: { type: string }
+                  host: { type: string }
+                  purpose: { type: string }
+                  ttl: { type: integer, maximum: 900 }
+                  validAfter: { type: integer, description: Unix seconds inclusive }
+                  validBefore: { type: integer, description: Unix seconds exclusive }
+                  publicKeyFingerprint: { type: string, description: OpenSSH SHA256 fingerprint of the caller public wire key }
+        "400": { description: Invalid public key, principal, TTL, job or unexpected option }
+        "401": { description: Authentication required }
+        "403": { description: No matching live grant or active signer }
+        "429": { description: Grant has already issued 10 certificates in the last 60 seconds; signed authenticated refusal, no certificate }
+        "503": { description: Signing or signed audit unavailable; no certificate }
+  /api/vault/ssh-ca/grants:
+    post:
+      tags: [vault-mint]
+      operationId: vaultSshCertGrant
+      summary: Grant scoped SSH signing authority on an active CA
+      description: |
+        Node or its authorized delegate only, same authority as CA mint.
+        Uses vault_delegation_grants with signed SSH scope and no wrapped
+        private key. Grant binds CA, grantee, principals, force-command,
+        allowedHosts and expiry. Rotation requires a grant for the new CA.
+        Emits signed vault.ssh-cert.grant-issued. No wildcards or empty policy.
+      security: [{ cookieAuth: [] }, { bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [purpose, caId, grantee, principals, forceCommand, allowedHosts, expiresAt]
+              properties:
+                purpose: { $ref: "#/components/schemas/SshCaPurpose" }
+                caId: { type: string }
+                grantee: { type: string, description: Credential DID, not the node custody identity }
+                principals:
+                  type: array
+                  minItems: 1
+                  maxItems: 16
+                  items: { type: string, pattern: "^[a-z_][a-z0-9_-]{0,63}$" }
+                forceCommand: { type: string, minLength: 1, maxLength: 2048 }
+                allowedHosts:
+                  type: array
+                  minItems: 1
+                  maxItems: 64
+                  items: { type: string, maxLength: 253, pattern: "^[a-z0-9]+(?:[.-][a-z0-9]+)*$" }
+                expiresAt: { type: string, format: date-time }
+      responses:
+        "201": { description: Grant id and public policy; Cache-Control no-store }
+        "400": { description: Invalid or empty policy or expiry }
+        "401": { description: Authentication required }
+        "403": { description: Not authorized or CA inactive }
+        "503": { description: Grant or audit unavailable }
+  /api/vault/ssh-ca/grants/revoke:
+    post:
+      tags: [vault-mint]
+      operationId: vaultSshCertGrantRevoke
+      summary: Withdraw SSH signing authority without deleting history
+      description: |
+        Same authority as grant creation. Serializes with signing, tombstones
+        the existing vault grant, and commits vault.ssh-cert.grant-revoked.
+        Repeating revocation is an idempotent no-op. Existing certs retain
+        their bounded lifetime; emergency CA revocation removes public trust.
+      security: [{ cookieAuth: [] }, { bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [purpose, grantId]
+              properties:
+                purpose: { $ref: "#/components/schemas/SshCaPurpose" }
+                grantId: { type: string }
+      responses:
+        "200": { description: Grant id and alreadyRevoked boolean; Cache-Control no-store }
+        "400": { description: Invalid purpose or grant id }
+        "401": { description: Authentication required }
+        "403": { description: Not authorized }
+        "404": { description: SSH grant not found for purpose }
+        "503": { description: Revocation or audit unavailable }
   /api/vault/import:
     get:
       tags: [vault-import]
