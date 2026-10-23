@@ -1,5 +1,5 @@
-import { randomBytes, randomUUID } from 'node:crypto';
-import { and, eq } from 'drizzle-orm';
+import { createHash, randomBytes, randomUUID } from 'node:crypto';
+import { and, count, eq, gt, sql } from 'drizzle-orm';
 import { crypto } from '@imajin/auth';
 import { db, attestations, vaultDelegationGrants, type VaultDelegationGrant } from '@/src/db';
 import { prepareMechanicalAttestation } from '@/src/lib/auth/emit-mechanical-attestation';
@@ -9,6 +9,7 @@ import { lockSshCaPurpose, retireSshCas, sshCaRecords, SshCaError } from './ssh-
 import { encodeSshUserCert, parseSshPublicKey } from './ssh-cert-wire';
 import { parseSignInput, validSshScope, type SshSignInput } from './ssh-cert-policy';
 import type { MintAuthority } from './mint-authority';
+import { SSH_CERT_ISSUANCE_LIMIT, SSH_CERT_ISSUANCE_WINDOW_SECONDS } from './ssh-ca-policy';
 
 type Transaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
 export type SshScope = NonNullable<VaultDelegationGrant['sshScope']>;
@@ -25,9 +26,19 @@ async function audit(tx: Pick<Transaction, 'insert'>, type: 'issued' | 'refused'
   }));
 }
 
+/** Caller holds the purpose and grant locks through issuance/audit commit. */
+async function checkIssuanceBudget(tx: Transaction, grantId: string) {
+  const [issued] = await tx.select({ total: count() }).from(attestations).where(and(
+    eq(attestations.type, 'vault.ssh-cert.issued'),
+    eq(sql`${attestations.payload}->>'grantId'`, grantId),
+    gt(attestations.issuedAt, new Date(Date.now() - SSH_CERT_ISSUANCE_WINDOW_SECONDS * 1000)),
+  ));
+  if (issued.total >= SSH_CERT_ISSUANCE_LIMIT) throw new SshCaError(429, 'SSH certificate grant issuance limit exceeded');
+}
+
 /** Refusals never persist untrusted request bytes (which might contain a private key). */
-export function recordSshRefusal(grantee: string | null, status: number) {
-  return audit(db, 'refused', grantee ?? getNodeSigningIdentity().senderDid, { grantee, status });
+export function recordSshRefusal(grantee: string, status: number) {
+  return audit(db, 'refused', grantee, { grantee, status });
 }
 
 export function issueSshGrant(purpose: string, grantee: string, scope: SshScope, expiresAt: Date,
@@ -96,6 +107,7 @@ export function signSshCert(input: SshSignInput, grantee: string) {
       || !validSshScope(grant.sshScope)
       || !grant.sshScope.principals.includes(input.principal) || !grant.sshScope.allowedHosts.includes(input.host)
       || !crypto.verifySync(grant.ownerSignature, canonicalizeGrantPayload(grant), node.senderPubkey)) throw denied();
+    await checkIssuanceBudget(tx, grant.id);
     const principal = grant.sshScope.principals.find(value => value === input.principal)!;
     const [custody] = await tx.select().from(vaultDelegationGrants)
       .where(and(eq(vaultDelegationGrants.id, ca.grantId ?? ''), eq(vaultDelegationGrants.field, ca.field))).for('update');
@@ -123,6 +135,8 @@ export function signSshCert(input: SshSignInput, grantee: string) {
     const payload = {
       job: input.job, grantee, principal, host: input.host, ttl: validBefore - now,
       serial, keyId, caId: ca.id, grantId: grant.id, purpose: input.purpose, validAfter: now, validBefore,
+      publicKeyFingerprint: `SHA256:${createHash('sha256').update(Buffer.from(input.publicKey.split(' ')[1], 'base64'))
+        .digest('base64').replaceAll('=', '')}`,
     };
     await audit(tx, 'issued', grantee, payload);
     return { certificate, ...payload };

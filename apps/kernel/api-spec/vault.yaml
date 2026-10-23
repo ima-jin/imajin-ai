@@ -258,9 +258,14 @@ paths:
         TTL defaults to 600, accepts 1–900 integer seconds, refuses larger
         requests, and validity cannot outlive either grant lease.
         Signed vault.ssh-cert.issued commits before returning, binding job,
-        grantee, principal, host, TTL, unique serial, keyId, caId and grantId.
-        Refusals commit vault.ssh-cert.refused with grantee and HTTP status,
+        grantee, principal, host, TTL, unique serial, keyId, caId, grantId and
+        publicKeyFingerprint (OpenSSH SHA256 fingerprint of the caller's public
+        wire key, never key material). Each grant is limited to 10 issuances
+        in a rolling 60-second window, counting existing issued events inside
+        the signing transaction/lock. Over-budget requests return 429 and no cert.
+        Only authenticated refusals commit vault.ssh-cert.refused with grantee and HTTP status,
         never raw request bytes. Audit failure returns 503 and no certificate.
+        Anonymous requests return 401 without signing or storing any audit record.
       security: [{ cookieAuth: [] }, { bearerAuth: [] }]
       requestBody:
         required: true
@@ -286,7 +291,7 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [certificate, serial, keyId, caId, grantId, job, grantee, principal, host, ttl, purpose, validAfter, validBefore]
+                required: [certificate, serial, keyId, caId, grantId, job, grantee, principal, host, ttl, purpose, validAfter, validBefore, publicKeyFingerprint]
                 properties:
                   certificate: { type: string, pattern: "^ssh-ed25519-cert-v01@openssh.com " }
                   serial: { type: string, description: Unsigned 64-bit integer encoded as decimal }
@@ -301,9 +306,11 @@ paths:
                   ttl: { type: integer, maximum: 900 }
                   validAfter: { type: integer, description: Unix seconds inclusive }
                   validBefore: { type: integer, description: Unix seconds exclusive }
+                  publicKeyFingerprint: { type: string, description: OpenSSH SHA256 fingerprint of the caller public wire key }
         "400": { description: Invalid public key, principal, TTL, job or unexpected option }
         "401": { description: Authentication required }
         "403": { description: No matching live grant or active signer }
+        "429": { description: Grant has already issued 10 certificates in the last 60 seconds; signed authenticated refusal, no certificate }
         "503": { description: Signing or signed audit unavailable; no certificate }
   /api/vault/ssh-ca/grants:
     post:

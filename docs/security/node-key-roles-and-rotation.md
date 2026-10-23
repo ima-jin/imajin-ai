@@ -88,6 +88,17 @@ Replacing that root invalidates the old operation grants as well as custody.
 Grant signing authority for the replacement CA through the vault grant route;
 never re-sign a stored scope implicitly or move a private key through a shell.
 
+Issuance records bind job, grantee, principal, host, TTL, serial, keyId, caId,
+grantId and `publicKeyFingerprint`: the OpenSSH `SHA256:...` fingerprint of
+the caller's throwaway public wire key, not the key material. Anonymous signing
+requests return 401 without signing or storing refusal records. Authenticated
+refusals retain their signed audit. Each grant may issue at most 10 certificates
+in a rolling 60-second window (`SSH_CERT_ISSUANCE_LIMIT` /
+`SSH_CERT_ISSUANCE_WINDOW_SECONDS`). The signing transaction counts that grant's
+existing issuance events under its locks before signing, so concurrent requests
+cannot exceed the budget. Excess requests return 429, record an authenticated
+refusal, and return no certificate. No separate rate-limit store or config exists.
+
 ### 2.2 Derived-secret roles (HKDF / HMAC; nobody outside the process can verify these)
 
 | Role | Consumers | What breaks on rotation | Who can read the old material |

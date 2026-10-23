@@ -4,6 +4,13 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createPrivateKey, createPublicKey, createHash, sign, verify } from 'node:crypto';
 import { expect } from 'vitest';
+/** Only the caller's public line is handed to OpenSSH. */
+export function openSshPublicKeyFingerprint(publicKey: string) {
+  const dir = mkdtempSync(join(tmpdir(), 'ssh-public-fingerprint-'));
+  const file = join(dir, 'key.pub');
+  writeFileSync(file, `${publicKey}\n`);
+  return execFileSync('ssh-keygen', ['-lf', file, '-E', 'sha256'], { encoding: 'utf8' }).trim().split(/\s+/)[1];
+}
 
 /** Independent test decoder, not the production encoder. Only public certs touch disk. */
 export function inspectCertificate(certificate: string) {

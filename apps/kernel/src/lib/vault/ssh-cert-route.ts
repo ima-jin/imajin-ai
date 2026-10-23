@@ -21,7 +21,7 @@ export async function signSshCertRoute(request: Request) {
     const input = parseSignInput(await readInput(request));
     return sshCaJson(await signSshCert(input, grantee), 201);
   } catch (error) {
-    try { await recordSshRefusal(grantee, error instanceof SshCaError ? error.status : 503); }
+    try { if (grantee) await recordSshRefusal(grantee, error instanceof SshCaError ? error.status : 503); }
     catch { return sshCaFailure(new Error('Audit unavailable')); }
     return sshCaFailure(error);
   }
