@@ -69,6 +69,17 @@ countersign fresh custody from the group's original server-encrypted key.
 Keep the independent group-encryption secret unchanged. If that source cannot
 be authenticated, stop: do not export a seed or invent a replacement.
 
+SSH CAs (#3063) use `apps/kernel/src/lib/vault/ssh-ca.ts`: the CA Ed25519
+key is independently minted by `vault.mint`, not derived from the node key.
+Its sealed custody still depends on D2/D3, and its lifecycle receipts use S3.
+Protected `vault-ssh-ca:*` fields never enter generic fetch, grant renewal or
+rotation export. CA rotation itself is the vault action
+`POST /api/vault/ssh-ca/rotate` plus a trust-file deploy, not a key-export
+runbook. If the node root is replaced, use that action to mint a usable new
+CA under the new custody root; old public trust overlaps for the shared
+maximum certificate TTL, then disappears on the next trusted-keys read.
+Never move a CA seed through the node rotation handoff.
+
 ### 2.2 Derived-secret roles (HKDF / HMAC; nobody outside the process can verify these)
 
 | Role | Consumers | What breaks on rotation | Who can read the old material |
@@ -631,6 +642,7 @@ file: ``- `path` — role``.
 - `apps/kernel/src/lib/vault/grant.ts` — D2
 - `apps/kernel/src/lib/vault/field-status.ts` — D2
 - `apps/kernel/src/lib/vault/mint.ts` — D2
+- `apps/kernel/src/lib/vault/ssh-ca.ts` — D2/D3/S3 (independent in-vault CA mint, node-only custody, transactional signed lifecycle; never exported by node-root handoff)
 - `apps/kernel/src/lib/vault/mint-authority.ts` — D2
 - `apps/kernel/src/lib/vault/import-authority.ts` — D2 (node identity comparison only; real human/group ownership remains independently checked)
 - `apps/kernel/src/lib/vault/import.ts` — D2/S3 (v2 static-secret custody and node-attested, human-countersigned import/rotation)

@@ -3,7 +3,7 @@ import { requireAdmin } from '@imajin/auth';
 import { createLogger } from '@imajin/logger';
 import { migrateCustody, selectLiveV1Fields } from '@/src/lib/vault/migrate-custody';
 import { toVaultErrorResponse } from '@/src/lib/vault/errors';
-import { parseVaultFieldName, isGroupKeyField } from '@/src/lib/vault/field-grammar';
+import { parseVaultFieldName, isPrivateCustodyField } from '@/src/lib/vault/field-grammar';
 
 const log = createLogger('kernel');
 
@@ -86,7 +86,7 @@ export async function POST(request: NextRequest) {
     // An untargeted migration also discovers fields internally. Inspect only
     // candidate metadata, never unseal a group seed through the legacy rail.
     const candidates = fields ?? (!dryRun ? (await selectLiveV1Fields()).map(({ field }) => field) : []);
-    if (candidates.some(isGroupKeyField)) {
+    if (candidates.some(isPrivateCustodyField)) {
       return NextResponse.json({ error: 'Group keys require countersigned group custody' }, { status: 403 });
     }
     const report = await migrateCustody({ dryRun, limit, fields });

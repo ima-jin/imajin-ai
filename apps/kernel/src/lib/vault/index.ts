@@ -41,7 +41,7 @@ import { VaultDelegationError } from './errors';
 import { isInternalSecretField } from './internal-secret';
 import { rotateInternalSecret } from './internal-secret-rotate';
 import { reissueFieldGrants } from './shared-internal-secret';
-import { isCloudflareImportedKeyField, isGroupKeyField } from './field-grammar';
+import { isCloudflareImportedKeyField, isPrivateCustodyField, isSshCaField } from './field-grammar';
 import { isCloudflarePurpose } from '@/src/lib/cloudflare/contract';
 import { forEachSequential, mapWithConcurrency } from '@/src/lib/async/sequential';
 
@@ -893,7 +893,7 @@ export async function vaultFieldExists(field: string): Promise<boolean> {
  * No plaintext is logged at any point.
  */
 export async function loadAndUnseal(field: string): Promise<string | undefined> {
-  if (isGroupKeyField(field)) throw new Error('Group keys require an in-process purpose grant');
+  if (isPrivateCustodyField(field)) throw new Error('Group keys require an in-process purpose grant');
   const entry = await vaultService.get(field);
   if (!entry) {
     return undefined;
@@ -1162,7 +1162,7 @@ export async function loadAndUnsealByGrantee(
   field: string,
   granteeDid: string,
 ): Promise<string | undefined> {
-  if (isGroupKeyField(field)) throw new Error('Group keys require an in-process purpose grant');
+  if (isPrivateCustodyField(field)) throw new Error('Group keys require an in-process purpose grant');
   const entry = await vaultService.get(field);
   if (!entry || entry.deleted) {
     return undefined;
@@ -1395,7 +1395,8 @@ export async function listRenewableGrants(options: {
   const now = options.now ?? new Date();
   const horizon = new Date(now.getTime() + (options.withinMs ?? 0));
 
-  const envelopes = await db.select().from(vaultOwnerEnvelopes);
+  const envelopes = (await db.select().from(vaultOwnerEnvelopes))
+    .filter(envelope => !isSshCaField(envelope.field));
 
   // Each envelope's grant lookups are independent reads: scan a few envelopes at a
   // time, then flatten in envelope order so the worklist order is unchanged.
@@ -1725,7 +1726,7 @@ export async function fetchGrantSecret(params: {
     // someone else would let a caller enumerate grantIds it cannot use.
     return { status: 'not_grantee' };
   }
-  if (!params.kernelCredentialUse && (isCloudflarePurpose(grant.purpose) || isCloudflareImportedKeyField(grant.field))) {
+  if (isSshCaField(grant.field) || (!params.kernelCredentialUse && (isCloudflarePurpose(grant.purpose) || isCloudflareImportedKeyField(grant.field)))) {
     return { status: 'not_grantee' };
   }
   if (grant.status !== 'active') {

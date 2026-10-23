@@ -2,7 +2,7 @@ import { ed25519 } from '@noble/curves/ed25519';
 import { randomBytes } from 'node:crypto';
 const rotationPublicKey = Buffer.from(ed25519.getPublicKey(randomBytes(32))).toString('hex');
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { GROUP_KEY_NAMESPACE, isGroupKeyField } from '@/src/lib/vault/field-grammar';
+import { GROUP_KEY_NAMESPACE, SSH_CA_NAMESPACE, isPrivateCustodyField } from '@/src/lib/vault/field-grammar';
 
 const mocks = vi.hoisted(() => ({
   requireAdmin: vi.fn(),
@@ -75,152 +75,154 @@ vi.mock('@/src/lib/vault/errors', () => ({
     new Response(JSON.stringify({ error }), { status }),
 }));
 
-const FIELD = `${GROUP_KEY_NAMESPACE}:did:imajin:group-test`;
-// Generated test-only seed; neither snapshots nor assertion diagnostics print it.
-const seed = randomBytes(32).toString('hex');
-const mutationEdges = [
-  mocks.fetchGrantSecret, mocks.loadAndUnseal, mocks.sealAndStore, mocks.sealAndStoreV2,
-  mocks.rotateAndStore, mocks.eraseInactiveGrantKeyMaterial, mocks.deleteSecretAndRevokeGrants,
-  mocks.update, mocks.insert, mocks.migrateCustody, mocks.publish,
-];
+describe.each([GROUP_KEY_NAMESPACE, SSH_CA_NAMESPACE])('%s private custody', namespace => {
+  const FIELD = `${namespace}:did:imajin:group-test`;
+  // Generated test-only seed; neither snapshots nor assertion diagnostics print it.
+  const seed = randomBytes(32).toString('hex');
+  const mutationEdges = [
+    mocks.fetchGrantSecret, mocks.loadAndUnseal, mocks.sealAndStore, mocks.sealAndStoreV2,
+    mocks.rotateAndStore, mocks.eraseInactiveGrantKeyMaterial, mocks.deleteSecretAndRevokeGrants,
+    mocks.update, mocks.insert, mocks.migrateCustody, mocks.publish,
+  ];
 
-function request(path: string, body: unknown, method = 'POST'): never {
-  return new Request(`https://kernel.example/api/vault/${path}`, {
-    method, body: JSON.stringify(body),
-  }) as never;
-}
+  function request(path: string, body: unknown, method = 'POST'): never {
+    return new Request(`https://kernel.example/api/vault/${path}`, {
+      method, body: JSON.stringify(body),
+    }) as never;
+  }
 
-async function expectPrivateRefusal(response: Response, status: number) {
-  expect(response.status).toBe(status);
-  const text = await response.text();
-  // Fail with a constant message rather than printing the secret as an
-  // expected/actual matcher argument if the non-disclosure invariant breaks.
-  if (text.includes(seed)) throw new Error('Group key material disclosed in response');
-  expect(text).not.toContain(FIELD);
-  expect(JSON.stringify(mocks.log.mock.calls).includes(seed)).toBe(false);
-  expect(mocks.log).not.toHaveBeenCalled();
-  expect(mocks.audit).not.toHaveBeenCalled();
-  for (const edge of mutationEdges) expect(edge).not.toHaveBeenCalled();
-}
+  async function expectPrivateRefusal(response: Response, status: number) {
+    expect(response.status).toBe(status);
+    const text = await response.text();
+    // Fail with a constant message rather than printing the secret as an
+    // expected/actual matcher argument if the non-disclosure invariant breaks.
+    if (text.includes(seed)) throw new Error('Group key material disclosed in response');
+    expect(text).not.toContain(FIELD);
+    expect(JSON.stringify(mocks.log.mock.calls).includes(seed)).toBe(false);
+    expect(mocks.log).not.toHaveBeenCalled();
+    expect(mocks.audit).not.toHaveBeenCalled();
+    for (const edge of mutationEdges) expect(edge).not.toHaveBeenCalled();
+  }
 
-beforeEach(() => {
-  vi.clearAllMocks();
-  mocks.requireAdmin.mockResolvedValue(true);
-  mocks.requireAuth.mockResolvedValue({ identity: { id: 'did:imajin:grantee-test' } });
-  mocks.getGrantById.mockResolvedValue({
-    field: FIELD, oneTime: true, wrappedKey: seed, ownerSignature: seed,
-  });
-  mocks.loadAndUnseal.mockResolvedValue(seed);
-  mocks.selectDistinct.mockReturnValue({ from: () => ({ where: mocks.rows }) });
-  mocks.rows.mockResolvedValue([{ field: FIELD }]);
-  mocks.selectLiveV1Fields.mockResolvedValue([{ field: FIELD }]);
-  mocks.getNodeSigningIdentity.mockReturnValue({ senderDid: 'did:imajin:node-test' });
-});
-
-describe('group-key field grammar', () => {
-  it('recognizes only the parsed exact namespace, with normal grammar trimming', () => {
-    expect(GROUP_KEY_NAMESPACE).toBe('vault-group-key');
-    expect(isGroupKeyField(` ${FIELD} `)).toBe(true);
-    for (const field of ['vault-group-key', 'vault-group-key:', 'vault-group-key::bad',
-      'vault-group-key-other:test', 'other:vault-group-key:test', 'VAULT-GROUP-KEY:test']) {
-      expect(isGroupKeyField(field)).toBe(false);
-    }
-  });
-});
-
-describe('group-key plaintext HTTP surfaces', () => {
-  it.each([true, false])('blocks fetch before decrypt or one-time consumption (grantee=%s)', async (isGrantee) => {
-    if (!isGrantee) mocks.requireAuth.mockResolvedValue({ identity: { id: 'did:imajin:other-test' } });
-    const { POST } = await import('../delegation/grants/[grantId]/fetch/route');
-    const response = await POST(request('delegation/grants/test/fetch', {}), {
-      params: Promise.resolve({ grantId: 'test-grant' }),
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.requireAdmin.mockResolvedValue(true);
+    mocks.requireAuth.mockResolvedValue({ identity: { id: 'did:imajin:grantee-test' } });
+    mocks.getGrantById.mockResolvedValue({
+      field: FIELD, oneTime: true, wrappedKey: seed, ownerSignature: seed,
     });
-    expect(response.headers.get('cache-control')).toBe('no-store');
-    await expectPrivateRefusal(response, 403);
+    mocks.loadAndUnseal.mockResolvedValue(seed);
+    mocks.selectDistinct.mockReturnValue({ from: () => ({ where: mocks.rows }) });
+    mocks.rows.mockResolvedValue([{ field: FIELD }]);
+    mocks.selectLiveV1Fields.mockResolvedValue([{ field: FIELD }]);
+    mocks.getNodeSigningIdentity.mockReturnValue({ senderDid: 'did:imajin:node-test' });
   });
 
-  it('also blocks the auth-prefixed fetch alias', async () => {
-    const { POST } = await import('@/app/auth/api/vault/delegation/grants/[grantId]/fetch/route');
-    await expectPrivateRefusal(await POST(request('fetch', {}), {
-      params: Promise.resolve({ grantId: 'test-grant' }),
-    }), 403);
+  describe('private custody field grammar', () => {
+    it('recognizes only the parsed exact namespace, with normal grammar trimming', () => {
+      expect(GROUP_KEY_NAMESPACE).toBe('vault-group-key');
+      expect(isPrivateCustodyField(` ${FIELD} `)).toBe(true);
+      for (const field of ['vault-group-key', 'vault-group-key:', 'vault-group-key::bad',
+        'vault-group-key-other:test', 'other:vault-group-key:test', 'VAULT-GROUP-KEY:test']) {
+        expect(isPrivateCustodyField(field)).toBe(false);
+      }
+    });
   });
 
-  it('redacts metadata lookup errors before any decrypt or diagnostic logging', async () => {
-    mocks.getGrantById.mockRejectedValue(new Error(seed));
-    const { POST } = await import('../delegation/grants/[grantId]/fetch/route');
-    await expectPrivateRefusal(await POST(request('fetch', {}), {
-      params: Promise.resolve({ grantId: 'test-grant' }),
-    }), 403);
+  describe('group-key plaintext HTTP surfaces', () => {
+    it.each([true, false])('blocks fetch before decrypt or one-time consumption (grantee=%s)', async (isGrantee) => {
+      if (!isGrantee) mocks.requireAuth.mockResolvedValue({ identity: { id: 'did:imajin:other-test' } });
+      const { POST } = await import('../delegation/grants/[grantId]/fetch/route');
+      const response = await POST(request('delegation/grants/test/fetch', {}), {
+        params: Promise.resolve({ grantId: 'test-grant' }),
+      });
+      expect(response.headers.get('cache-control')).toBe('no-store');
+      await expectPrivateRefusal(response, 403);
+    });
+
+    it('also blocks the auth-prefixed fetch alias', async () => {
+      const { POST } = await import('@/app/auth/api/vault/delegation/grants/[grantId]/fetch/route');
+      await expectPrivateRefusal(await POST(request('fetch', {}), {
+        params: Promise.resolve({ grantId: 'test-grant' }),
+      }), 403);
+    });
+
+    it('redacts metadata lookup errors before any decrypt or diagnostic logging', async () => {
+      mocks.getGrantById.mockRejectedValue(new Error(seed));
+      const { POST } = await import('../delegation/grants/[grantId]/fetch/route');
+      await expectPrivateRefusal(await POST(request('fetch', {}), {
+        params: Promise.resolve({ grantId: 'test-grant' }),
+      }), 403);
+    });
+
+    it('omits group keys from rotation export without unsealing them', async () => {
+      const { POST } = await import('../rotation-sweep/route');
+      const response = await POST(request('rotation-sweep', { phase: 'export', newPublicKey: rotationPublicKey }));
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({ exported: 0, newPublicKey: rotationPublicKey });
+      expect(mocks.loadAndUnseal).not.toHaveBeenCalled();
+      expect(mocks.log).not.toHaveBeenCalled();
+    });
+
+    it('retains ordinary rotation exports alongside protected group keys', async () => {
+      mocks.rows.mockResolvedValue([{ field: FIELD }, { field: 'GH_TOKEN' }]);
+      const { POST } = await import('../rotation-sweep/route');
+      const response = await POST(request('rotation-sweep', { phase: 'export', newPublicKey: rotationPublicKey }));
+      expect(response.status).toBe(200);
+      const body = await response.json();
+      expect(body).toEqual({ exported: 1, newPublicKey: rotationPublicKey });
+      expect(mocks.loadAndUnseal.mock.calls.map(([field]) => field)).toEqual(['GH_TOKEN']);
+      expect(mocks.log).not.toHaveBeenCalled();
+    });
+
+    it('rejects an entire mixed reimport batch before any ordinary field is written', async () => {
+      const { POST } = await import('../rotation-sweep/route');
+      await expectPrivateRefusal(await POST(request('rotation-sweep', {
+        phase: 'reimport',
+        fields: [{ field: 'GH_TOKEN', plaintext: seed }, { field: ` ${FIELD} `, plaintext: seed }],
+      })), 403);
+    });
   });
 
-  it('omits group keys from rotation export without unsealing them', async () => {
-    const { POST } = await import('../rotation-sweep/route');
-    const response = await POST(request('rotation-sweep', { phase: 'export', newPublicKey: rotationPublicKey }));
+  describe('group-key generic custody mutation refusals', () => {
+    const grantBody = {
+      subject: 'did:imajin:group-test', grantedTo: 'did:imajin:grantee-test',
+      ownerXPub: 'test-public-key', wrappedKey: seed, wrappedNonce: 'test-nonce',
+      keyId: 'test-key', ownerSignature: seed,
+    };
+    it.each([
+      ['set', () => import('../set/route'), { field: ` ${FIELD} `, value: seed }, 409],
+      ['set v2', () => import('../set/route'), { field: FIELD, value: seed, custodyScheme: 'delegation-grant' }, 409],
+      ['rotate', () => import('../rotate/route'), { field: ` ${FIELD} `, value: seed }, 409],
+      ['upgrade-custody', () => import('../upgrade-custody/route'), { field: ` ${FIELD} ` }, 403],
+      ['delegation/grant renewal', () => import('../delegation/grant/route'), { ...grantBody, field: FIELD }, 409],
+      ['delegation/grant handshake', () => import('../delegation/grant/route'), { ...grantBody, field: FIELD, requestId: 'test-request' }, 409],
+      ['delegation/revoke', () => import('../delegation/revoke/route'), { field: ` ${FIELD} ` }, 409],
+      ['migrate-custody explicit', () => import('../migrate-custody/route'), { fields: ['GH_TOKEN', ` ${FIELD} `], dryRun: false }, 403],
+      ['migrate-custody automatic', () => import('../migrate-custody/route'), { dryRun: false }, 403],
+    ] as const)('%s refuses using field metadata only', async (path, load, body, status) => {
+      const { POST } = await load();
+      await expectPrivateRefusal(await POST(request(path, body)), status);
+      expect(mocks.vaultGet).not.toHaveBeenCalled();
+      expect(mocks.vaultPeek).not.toHaveBeenCalled();
+      expect(mocks.getNodeSigningIdentity).not.toHaveBeenCalled();
+    });
+
+    it('refuses delete even when the caller confirms the exact field', async () => {
+      const { DELETE } = await import('../delete/route');
+      await expectPrivateRefusal(await DELETE(request('delete', { field: FIELD, confirmField: FIELD }, 'DELETE')), 409);
+      expect(mocks.vaultPeek).not.toHaveBeenCalled();
+    });
+  });
+
+  it('preserves admin grantee metadata visibility without unsealing', async () => {
+    const grantees = [{ grantId: 'test-grant', grantedTo: 'did:imajin:grantee-test', purpose: 'group-signing' }];
+    mocks.getRotateGranteeGuard.mockResolvedValue({ grantees, reissuedOnRotate: false });
+    const { GET } = await import('../grantees/[field]/route');
+    const response = await GET(request('grantees', {}), { params: Promise.resolve({ field: FIELD }) });
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ exported: 0, newPublicKey: rotationPublicKey });
+    expect(await response.json()).toEqual({ field: FIELD, count: 1, grantees, reissuedOnRotate: false });
     expect(mocks.loadAndUnseal).not.toHaveBeenCalled();
-    expect(mocks.log).not.toHaveBeenCalled();
+    expect(mocks.fetchGrantSecret).not.toHaveBeenCalled();
   });
-
-  it('retains ordinary rotation exports alongside protected group keys', async () => {
-    mocks.rows.mockResolvedValue([{ field: FIELD }, { field: 'GH_TOKEN' }]);
-    const { POST } = await import('../rotation-sweep/route');
-    const response = await POST(request('rotation-sweep', { phase: 'export', newPublicKey: rotationPublicKey }));
-    expect(response.status).toBe(200);
-    const body = await response.json();
-    expect(body).toEqual({ exported: 1, newPublicKey: rotationPublicKey });
-    expect(mocks.loadAndUnseal.mock.calls.map(([field]) => field)).toEqual(['GH_TOKEN']);
-    expect(mocks.log).not.toHaveBeenCalled();
-  });
-
-  it('rejects an entire mixed reimport batch before any ordinary field is written', async () => {
-    const { POST } = await import('../rotation-sweep/route');
-    await expectPrivateRefusal(await POST(request('rotation-sweep', {
-      phase: 'reimport',
-      fields: [{ field: 'GH_TOKEN', plaintext: seed }, { field: ` ${FIELD} `, plaintext: seed }],
-    })), 403);
-  });
-});
-
-describe('group-key generic custody mutation refusals', () => {
-  const grantBody = {
-    subject: 'did:imajin:group-test', grantedTo: 'did:imajin:grantee-test',
-    ownerXPub: 'test-public-key', wrappedKey: seed, wrappedNonce: 'test-nonce',
-    keyId: 'test-key', ownerSignature: seed,
-  };
-  it.each([
-    ['set', () => import('../set/route'), { field: ` ${FIELD} `, value: seed }, 409],
-    ['set v2', () => import('../set/route'), { field: FIELD, value: seed, custodyScheme: 'delegation-grant' }, 409],
-    ['rotate', () => import('../rotate/route'), { field: ` ${FIELD} `, value: seed }, 409],
-    ['upgrade-custody', () => import('../upgrade-custody/route'), { field: ` ${FIELD} ` }, 403],
-    ['delegation/grant renewal', () => import('../delegation/grant/route'), { ...grantBody, field: FIELD }, 409],
-    ['delegation/grant handshake', () => import('../delegation/grant/route'), { ...grantBody, field: FIELD, requestId: 'test-request' }, 409],
-    ['delegation/revoke', () => import('../delegation/revoke/route'), { field: ` ${FIELD} ` }, 409],
-    ['migrate-custody explicit', () => import('../migrate-custody/route'), { fields: ['GH_TOKEN', ` ${FIELD} `], dryRun: false }, 403],
-    ['migrate-custody automatic', () => import('../migrate-custody/route'), { dryRun: false }, 403],
-  ] as const)('%s refuses using field metadata only', async (path, load, body, status) => {
-    const { POST } = await load();
-    await expectPrivateRefusal(await POST(request(path, body)), status);
-    expect(mocks.vaultGet).not.toHaveBeenCalled();
-    expect(mocks.vaultPeek).not.toHaveBeenCalled();
-    expect(mocks.getNodeSigningIdentity).not.toHaveBeenCalled();
-  });
-
-  it('refuses delete even when the caller confirms the exact field', async () => {
-    const { DELETE } = await import('../delete/route');
-    await expectPrivateRefusal(await DELETE(request('delete', { field: FIELD, confirmField: FIELD }, 'DELETE')), 409);
-    expect(mocks.vaultPeek).not.toHaveBeenCalled();
-  });
-});
-
-it('preserves admin grantee metadata visibility without unsealing', async () => {
-  const grantees = [{ grantId: 'test-grant', grantedTo: 'did:imajin:grantee-test', purpose: 'group-signing' }];
-  mocks.getRotateGranteeGuard.mockResolvedValue({ grantees, reissuedOnRotate: false });
-  const { GET } = await import('../grantees/[field]/route');
-  const response = await GET(request('grantees', {}), { params: Promise.resolve({ field: FIELD }) });
-  expect(response.status).toBe(200);
-  expect(await response.json()).toEqual({ field: FIELD, count: 1, grantees, reissuedOnRotate: false });
-  expect(mocks.loadAndUnseal).not.toHaveBeenCalled();
-  expect(mocks.fetchGrantSecret).not.toHaveBeenCalled();
 });

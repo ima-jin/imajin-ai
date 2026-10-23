@@ -38,6 +38,7 @@ import { generateId } from '@/src/lib/kernel/id';
 import { getNodeSigningIdentity, isVaultTier1 } from './sealing';
 import { canonicalizeGrantPayload } from './index';
 import type { VaultAuthorization } from './authorization';
+import { isSshCaField } from './field-grammar';
 
 const log = createLogger('kernel');
 
@@ -80,7 +81,7 @@ export async function grantExistingMintedKey(
     .from(vaultMintedKeys)
     .where(eq(vaultMintedKeys.did, did))
     .limit(1);
-  if (!mintedKey) {
+  if (!mintedKey || isSshCaField(mintedKey.field)) {
     return { status: 'not_found' };
   }
   if (mintedKey.status === 'revoked') {
