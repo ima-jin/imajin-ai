@@ -42,8 +42,8 @@ export default function LegalEntityForm({ did }: Readonly<{ did: string }>) {
         setRecord(data.document.record);
         setExists(true);
       }
-    }).catch((failure: Error) => {
-      if (active) { setError(failure.message); setLoadFailed(true); }
+    }).catch((error_: Error) => {
+      if (active) { setError(error_.message); setLoadFailed(true); }
     }).finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, [did]);
@@ -63,8 +63,8 @@ export default function LegalEntityForm({ did }: Readonly<{ did: string }>) {
     let input: LegalEntityInput;
     try {
       input = validateLegalEntityInput(record);
-    } catch (failure) {
-      setError((failure as Error).message);
+    } catch (error_) {
+      setError((error_ as Error).message);
       return;
     }
     setBusy(true);
@@ -77,8 +77,8 @@ export default function LegalEntityForm({ did }: Readonly<{ did: string }>) {
       setRecord(input);
       setExists(true);
       setStatus('Signed legal-entity document saved.');
-    } catch (failure) {
-      setError((failure as Error).message);
+    } catch (error_) {
+      setError((error_ as Error).message);
     } finally {
       setBusy(false);
     }
@@ -96,14 +96,14 @@ export default function LegalEntityForm({ did }: Readonly<{ did: string }>) {
       setRecord(emptyRecord());
       setExists(false);
       setStatus('Legal-entity document revoked. Signed history is retained.');
-    } catch (failure) {
-      setError((failure as Error).message);
+    } catch (error_) {
+      setError((error_ as Error).message);
     } finally {
       setBusy(false);
     }
   }
 
-  if (loading) return <p className="text-sm text-zinc-400" role="status">Loading legal details…</p>;
+  if (loading) return <output className="block text-sm text-zinc-400">Loading legal details…</output>;
   return (
     <section className="space-y-4 max-w-2xl">
       <h1 className="font-mono text-xl">Legal entity</h1>
@@ -111,7 +111,7 @@ export default function LegalEntityForm({ did }: Readonly<{ did: string }>) {
       <p className="text-sm text-zinc-400">Saved as a signed legal-entity:v1 document in your media space at assets/legal-entity.md. Tax numbers stay in Tax registrations.</p>
       <p className="text-sm text-zinc-400">Public releases a field to anyone. On-consent requires a current raw-data consent grant. Never withholds it from all readers; you can still edit it here.</p>
       {error && <p role="alert" className="text-sm text-red-400">{error}</p>}
-      {status && <p role="status" className="text-sm text-green-400">{status}</p>}
+      {status && <output className="block text-sm text-green-400">{status}</output>}
       <form onSubmit={submit} noValidate className="space-y-3">
         <fieldset disabled={busy || loadFailed} className="space-y-3 disabled:opacity-60">
           <legend className="sr-only">Legal details and per-field visibility</legend>
@@ -121,7 +121,7 @@ export default function LegalEntityForm({ did }: Readonly<{ did: string }>) {
                 <span>{LABELS[field]}</span>
                 <input id={field} value={legalEntityFieldValue(record, field) ?? ''} maxLength={200}
                   onChange={event => changeValue(field, event.target.value)}
-                  className="block w-full bg-surface-input border border-zinc-700 px-3 py-2 text-zinc-100 focus:border-violet-500" />
+                  className="block w-full bg-zinc-900 border border-zinc-700 px-3 py-2 text-zinc-100 focus:border-violet-500" />
               </label>
               <label className="text-sm font-mono space-y-1" htmlFor={`${field}-visibility`}>
                 <span>Visibility</span>
@@ -131,14 +131,14 @@ export default function LegalEntityForm({ did }: Readonly<{ did: string }>) {
                     setRecord(current => ({ ...current, visibility: { ...current.visibility, [field]: visibility } }));
                     setStatus('');
                   }}
-                  className="block w-full bg-surface-input border border-zinc-700 px-3 py-2 text-zinc-100 focus:border-violet-500">
+                  className="block w-full bg-zinc-900 border border-zinc-700 px-3 py-2 text-zinc-100 focus:border-violet-500">
                   {LEGAL_ENTITY_VISIBILITIES.map(visibility => <option key={visibility} value={visibility}>{visibility}</option>)}
                 </select>
               </label>
             </div>
           ))}
           <div className="flex flex-wrap gap-3 pt-2">
-            <button type="submit" className="sunset-gradient px-4 py-2 font-mono text-zinc-100">{busy ? 'Saving…' : 'Save signed document'}</button>
+            <button type="submit" className="bg-gradient-to-r from-violet-600 via-indigo-600 to-orange-600 px-4 py-2 font-mono text-zinc-100">{busy ? 'Saving…' : 'Save signed document'}</button>
             {exists && <button type="button" onClick={revoke} className="border border-red-700 px-4 py-2 font-mono text-red-400">Revoke document</button>}
           </div>
         </fieldset>

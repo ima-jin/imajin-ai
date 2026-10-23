@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { Readable } from 'node:stream';
+import type { ReadableStream } from 'node:stream/web';
 import { requireDocumentActor } from '@/src/lib/auth/document-authorization';
 import { getOwnerLegalEntity, saveLegalEntity } from '@/src/lib/profile/legal-entity';
 import {
@@ -11,27 +13,21 @@ const headers = { 'Cache-Control': 'private, no-store' };
 async function readInput(request: Request): Promise<unknown> {
   const tooLarge = () => new LegalEntityValidationError('legalEntity', `exceeds ${LEGAL_ENTITY_MAX_BYTES} bytes`);
   if (Number(request.headers.get('content-length')) > LEGAL_ENTITY_MAX_BYTES) throw tooLarge();
-  const reader = request.body?.getReader();
-  if (!reader) throw new LegalEntityValidationError('legalEntity', 'invalid JSON');
+  if (!request.body) throw new LegalEntityValidationError('legalEntity', 'invalid JSON');
   const chunks: Uint8Array[] = [];
   let size = 0;
   try {
-    while (true) {
-      const chunk = await reader.read();
-      if (chunk.done) break;
-      size += chunk.value.byteLength;
+    for await (const chunk of Readable.fromWeb(request.body as ReadableStream<Uint8Array>)) {
+      size += chunk.byteLength;
       if (size > LEGAL_ENTITY_MAX_BYTES) {
-        await reader.cancel();
         throw tooLarge();
       }
-      chunks.push(chunk.value);
+      chunks.push(chunk);
     }
     return JSON.parse(Buffer.concat(chunks).toString('utf8')) as unknown;
   } catch (error) {
     if (error instanceof LegalEntityValidationError) throw error;
     throw new LegalEntityValidationError('legalEntity', 'invalid JSON');
-  } finally {
-    reader.releaseLock();
   }
 }
 

@@ -1,4 +1,5 @@
 import { broker, isBrokerRelease } from '@imajin/bus';
+import { forEachSequential } from '../async/sequential';
 import type { ReleasePolicy } from '../media/release-policy';
 import {
   LEGAL_ENTITY_FIELDS, legalEntityFieldValue,
@@ -27,12 +28,12 @@ export async function releaseLegalEntity(
   policy: ReleasePolicy,
 ): Promise<ReleasedLegalEntity> {
   const result: ReleasedLegalEntity = {};
-  for (const field of LEGAL_ENTITY_FIELDS) {
+  await forEachSequential(LEGAL_ENTITY_FIELDS, async field => {
     const rule = policy[field];
     const value = legalEntityFieldValue(values, field);
-    if (!rule || value === undefined || (rule.viewer && rule.viewer !== viewerDid)) continue;
+    if (!rule || value === undefined || (rule.viewer && rule.viewer !== viewerDid)) return;
     if (rule.release === 'silent') setField(result, field, value);
-    if (rule.release !== 'on-consent' || !viewerDid) continue;
+    if (rule.release !== 'on-consent' || !viewerDid) return;
     try {
       const released = await broker('legal-entity.field.request', {
         type: 'legal-entity.field.request',
@@ -52,6 +53,6 @@ export async function releaseLegalEntity(
     } catch {
       // Broker unavailable => field stays absent. Never substitute source data.
     }
-  }
+  });
   return result;
 }

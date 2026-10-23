@@ -77,10 +77,11 @@ export async function getOwnerLegalEntity(did: string) {
 }
 
 /** Serializes create/edit/revoke per DID across processes, without any schema additions. */
-export async function saveLegalEntity(did: string, composedBy: string, input: LegalEntityInput | null) {
+export function saveLegalEntity(did: string, composedBy: string, input: LegalEntityInput | null) {
   const content = input ? composeLegalEntity(did, input) : composeLegalEntityRevocation(did);
+  const lockKey = `legal-entity:${did}`;
   return db.transaction(async tx => {
-    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${`legal-entity:${did}`}, 0))`);
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))`);
     let asset = await findLegalEntityAsset(did);
     if (!asset) {
       if (!input) return;

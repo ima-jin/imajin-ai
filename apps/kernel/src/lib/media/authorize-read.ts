@@ -63,9 +63,12 @@ export async function authorizeAssetRead(
   deps: AuthorizeDeps = {},
 ): Promise<ReadDecision> {
   if (isLegalEntityAsset(subject.metadata)) {
-    // The source contains unreleased values. Neither group membership nor an
-    // asset-level grant can bypass per-field disclosure through getLegalEntity.
-    return canReadAsset({ ownerDid: subject.ownerDid, access: 'private' }, requesterDid);
+    // A broad media token may carry the owner's effective DID. Raw source is
+    // therefore settings-only, even for that DID; consumers use getLegalEntity.
+    return {
+      allowed: false, requiresAuth: true, accessType: 'private',
+      reason: 'Use legal-entity settings or the per-field disclosure helper',
+    };
   }
   const base = canReadAsset({ ownerDid: subject.ownerDid, access: subject.access }, requesterDid);
 

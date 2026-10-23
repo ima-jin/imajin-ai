@@ -204,6 +204,52 @@ async function applyArticleProjection(
   }
 }
 
+async function prepareAssetManifest(input: CreateAssetInput, assetId: string) {
+  const { ownerDid, buffer, mimeType } = input;
+  const uploadedBy = input.uploadedBy ?? ownerDid;
+  const fairManifest = getDefaultManifest(mimeType, ownerDid);
+  fairManifest.id = assetId;
+  fairManifest.created = new Date().toISOString();
+  fairManifest.access = { type: deriveAccessLevel(input.context, input.access) };
+
+  if (input.controlDocument) {
+    const signedManifest = await signLegalEntityDocument(fairManifest, buffer.toString('utf8'), ownerDid, uploadedBy);
+    const change = await prepareLegalEntityChange(assetId, ownerDid, uploadedBy, buffer.toString('utf8'), null);
+    return { signedManifest, change };
+  }
+  const platformDid = process.env.PLATFORM_DID;
+  const platformKeyHex = process.env.AUTH_PRIVATE_KEY;
+  let signedManifest = fairManifest;
+  if (platformDid && platformKeyHex) {
+    try {
+      signedManifest = await signManifest(fairManifest, { did: platformDid, privateKey: hexToBytes(platformKeyHex) });
+    } catch (err) {
+      log.warn({ err: String(err) }, "Manifest signing failed, using unsigned manifest");
+    }
+  }
+  return { signedManifest, change: null };
+}
+
+function createMetadata(input: CreateAssetInput): Record<string, unknown> {
+  if (input.controlDocument) return { kind: input.controlDocument };
+  return input.context ? { context: input.context } : {};
+}
+
+async function insertAssetRecord(
+  values: typeof assets.$inferInsert,
+  change: Awaited<ReturnType<typeof prepareLegalEntityChange>> | null,
+): Promise<Asset> {
+  if (change) {
+    return db.transaction(async tx => {
+      const [created] = await tx.insert(assets).values(values).returning();
+      await tx.insert(attestations).values(change);
+      return created;
+    });
+  }
+  const [record] = await db.insert(assets).values(values).returning();
+  return record;
+}
+
 export async function createAsset(input: CreateAssetInput): Promise<CreateAssetResult> {
   const {
     ownerDid,
@@ -245,28 +291,8 @@ export async function createAsset(input: CreateAssetInput): Promise<CreateAssetR
     : `${dirPath}/${assetId}${ext}`;
   const fairPath = `${dirPath}/${input.controlDocument ?? assetId}.fair.json`;
 
-  // .fair manifest — context-aware access, signed with the platform key.
-  const accessLevel = deriveAccessLevel(context, input.access);
-  const fairManifest = getDefaultManifest(mimeType, ownerDid);
-  fairManifest.id = assetId;
-  fairManifest.created = new Date().toISOString();
-  fairManifest.access = { type: accessLevel };
-
-  const platformDid = process.env.PLATFORM_DID;
-  const platformKeyHex = process.env.AUTH_PRIVATE_KEY;
-  let signedManifest = fairManifest;
-  if (input.controlDocument) {
-    signedManifest = await signLegalEntityDocument(fairManifest, buffer.toString('utf8'), ownerDid, uploadedBy);
-  } else if (platformDid && platformKeyHex) {
-    try {
-      signedManifest = await signManifest(fairManifest, { did: platformDid, privateKey: hexToBytes(platformKeyHex) });
-    } catch (err) {
-      log.warn({ err: String(err) }, "Manifest signing failed, using unsigned manifest");
-    }
-  }
-  const change = input.controlDocument
-    ? await prepareLegalEntityChange(assetId, ownerDid, uploadedBy, buffer.toString('utf8'), null)
-    : null;
+  // Legal control records require both signatures before any bytes are changed.
+  const { signedManifest, change } = await prepareAssetManifest(input, assetId);
 
   try {
     await mkdir(dirPath, { recursive: true });
@@ -302,18 +328,10 @@ export async function createAsset(input: CreateAssetInput): Promise<CreateAssetR
         loreRef: blobRef?.loreRef ?? null,
         versionCount: 1,
         status: "active",
-        metadata: input.controlDocument ? { kind: input.controlDocument } : context ? { context } : {},
+        metadata: createMetadata(input),
         immutable: Boolean(input.controlDocument),
       };
-    if (change) {
-      record = await db.transaction(async tx => {
-        const [created] = await tx.insert(assets).values(values).returning();
-        await tx.insert(attestations).values(change);
-        return created;
-      });
-    } else {
-      [record] = await db.insert(assets).values(values).returning();
-    }
+    record = await insertAssetRecord(values, change);
   } catch (err) {
     log.error({ err: String(err) }, "DB insert failed");
     throw new Error(`Database failure: ${String(err)}`);

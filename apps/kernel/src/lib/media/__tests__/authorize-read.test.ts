@@ -4,7 +4,7 @@ import { authorizeAssetRead } from '../authorize-read';
 import { isLegalEntityAsset } from '../control-document-kind';
 
 describe('legal-entity raw source protection', () => {
-  it.each([null, 'member', 'unrelated'])('does not let %s bypass per-field gates through group/media access', async requester => {
+  it.each([null, 'member', 'unrelated', 'owner'])('does not let %s bypass per-field gates through group/media access', async requester => {
     const isGroupMember = vi.fn().mockResolvedValue(true);
     const result = await authorizeAssetRead({
       ownerDid: 'owner', access: { type: 'trust-graph', allowedDids: ['member'] }, metadata: { kind: 'legal-entity' },
@@ -12,8 +12,8 @@ describe('legal-entity raw source protection', () => {
     expect(result.allowed).toBe(false);
     expect(isGroupMember).not.toHaveBeenCalled();
   });
-  it('allows only the owner to edit/read the whole private source', async () => {
-    expect((await authorizeAssetRead({ ownerDid: 'owner', access: 'private', metadata: { kind: 'legal-entity' } }, 'owner')).allowed).toBe(true);
+  it('keeps the whole source exclusive to the separately authorized settings API', async () => {
+    expect((await authorizeAssetRead({ ownerDid: 'owner', access: 'private', metadata: { kind: 'legal-entity' } }, 'owner')).allowed).toBe(false);
     expect(isLegalEntityAsset(null)).toBe(false);
   });
 });
