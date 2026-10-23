@@ -46,7 +46,7 @@ export default async function IdentityDetail({ did, sessionDid }: Readonly<Props
   const badge = tierBadge(identity.tier);
   const displayName = identity.name || (identity.handle ? `@${identity.handle}` : null);
 
-  // Determine edit href based on scope and membership role
+  // Determine edit href based on scope, preferring owner/admin authority over stub maintenance.
   let editHref: string | null = null;
   if (identity.scope === 'actor') {
     // If viewing own profile, no param needed. If acting-as, pass the DID.
