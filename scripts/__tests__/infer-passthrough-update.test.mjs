@@ -34,6 +34,7 @@ beforeEach(() => {
     git(origin, 'update-ref', '-d', ref);
   }
   sha = git(root, 'rev-parse', 'HEAD');
+  git(origin, 'update-ref', 'refs/heads/main', sha);
   for (const tag of ['v0.8.9', 'v0.8.10', 'v0.9.0-rc.1', 'unrelated']) {
     git(origin, 'update-ref', `refs/tags/${tag}`, sha);
   }
@@ -58,6 +59,12 @@ beforeEach(() => {
 [[ "$FAIL_PHASE" != inactive || "$1" != is-active ]] || exit 1
 if [[ "$FAIL_PHASE" == restart && "$1" == restart && "$(readlink -f "$INFER_UPDATE_STATE_DIR/current")" != "$PREVIOUS" ]]; then exit 1; fi`);
   stub('node', `
+if [[ "$1" == */production-deployment.mjs ]]; then
+  printf "production %s\\n" "$2" >> "$CALLS"
+  [[ "$FAIL_PHASE" != unapproved ]] || exit 1
+  [[ "$FAIL_PHASE" != api ]] || exit 2
+  exit 0
+fi
 printf "health %s\\n" "$*" >> "$CALLS"
 [[ "$FAIL_PHASE" != preflight || "\${2:-}" != 8788 ]] || exit 1
 if [[ "$FAIL_PHASE" == live && "\${2:-}" == 8787 && "$(readlink -f "$INFER_UPDATE_STATE_DIR/current")" != "$PREVIOUS" ]]; then exit 1; fi
@@ -72,7 +79,56 @@ function run(args = []) {
 const calls = () => readFileSync(logFile, 'utf8');
 const current = () => realpathSync(join(state, 'current'));
 
-describe('pull-based passthrough release updater (#3041)', () => {
+function unrelatedCommit() {
+  return execFileSync('git', ['-C', repo, 'hash-object', '-t', 'commit', '-w', '--stdin'], {
+    input: `${git(repo, 'cat-file', 'commit', sha).replace(/^parent .*\n/gm, '')}\nfixture variant\n`,
+    encoding: 'utf8',
+  }).trim();
+}
+
+describe('pull-based passthrough release updater (#3041, #3082)', () => {
+  it('refuses tags not on freshly fetched origin/main before calling the API or staging code', () => {
+    const variant = unrelatedCommit();
+    for (const tag of ['v0.8.9', 'v0.8.10']) {
+      // Copy fixture objects without authoring commits or configuring identity.
+      execFileSync('git', ['-C', join(dir, 'origin'), 'fetch', repo, `${variant}:refs/tags/${tag}`, '--force'], { stdio: 'pipe' });
+    }
+    // Simulate remote tags before the updater fetch.
+    for (const tag of ['v0.8.9', 'v0.8.10']) git(repo, 'update-ref', `refs/tags/${tag}`, variant);
+    const result = run();
+    expect(result.status).not.toBe(0);
+    expect(result.stdout).toContain('tag commit is not on origin/main');
+    expect(calls()).toContain('+refs/heads/main:refs/remotes/origin/main');
+    expect(calls()).not.toMatch(/production |worktree add|pnpm |candidate |systemctl /);
+    expect(current()).toBe(previous);
+  });
+
+  it.each(['unapproved', 'api'])('refuses %s production verification without installing/restarting or moving current', (phase) => {
+    env.FAIL_PHASE = phase;
+    const result = run();
+    expect(result.status).not.toBe(0);
+    expect(result.stdout).toContain('no verified successful production deployment');
+    expect(calls()).toContain(`production ${sha}`);
+    expect(calls()).not.toMatch(/worktree add|pnpm |candidate |systemctl /);
+    expect(current()).toBe(previous);
+  });
+
+  it('does not let a stray high off-main tag pin out a later authorized release', () => {
+    const variant = unrelatedCommit();
+    execFileSync('git', ['-C', join(dir, 'origin'), 'fetch', repo, `${variant}:refs/tags/v99.0.0`], { stdio: 'pipe' });
+    const result = run();
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toContain('refusing v99.0.0: tag commit is not on origin/main');
+    expect(result.stdout).toContain('approved v0.8.10');
+    expect(current()).toBe(join(state, 'releases', sha));
+  });
+
+  it('dry-run also refuses a release that has not passed the production gate', () => {
+    env.FAIL_PHASE = 'unapproved';
+    expect(run(['--dry-run']).status).not.toBe(0);
+    expect(current()).toBe(previous);
+    expect(calls()).not.toMatch(/pnpm |candidate |systemctl /);
+  });
   it('dry-run fetches and picks the numerically newest stable tag without install/restart/switch', () => {
     const result = run(['--dry-run']);
     expect(result.status, result.stderr).toBe(0);
@@ -118,10 +174,7 @@ describe('pull-based passthrough release updater (#3041)', () => {
     const candidate = join(state, 'releases', sha);
     // Copy existing commit metadata unchanged; no fixture identity/config needed.
     // A parentless variant also works when CI has only fetched one commit.
-    const variant = execFileSync('git', ['-C', repo, 'hash-object', '-t', 'commit', '-w', '--stdin'], {
-      input: `${git(repo, 'cat-file', 'commit', sha).replace(/^parent .*\n/gm, '')}\nfixture variant\n`,
-      encoding: 'utf8',
-    }).trim();
+    const variant = unrelatedCommit();
     git(repo, 'worktree', 'add', '--detach', candidate, variant);
     const result = run();
     expect(result.status).not.toBe(0);
@@ -135,6 +188,7 @@ describe('pull-based passthrough release updater (#3041)', () => {
     expect(result.status, result.stderr).toBe(0);
     expect(current()).toBe(join(state, 'releases', sha));
     const trace = calls();
+    expect(trace.indexOf(`production ${sha}`)).toBeLessThan(trace.indexOf('worktree add'));
     expect(trace).toContain('install --frozen-lockfile --ignore-scripts');
     expect(trace).toContain('turbo run build --filter=@imajin/auth');
     expect(trace).toContain('--uid=fixture-user');

@@ -7,6 +7,7 @@ After=network-online.target
 Type=oneshot
 Environment=PATH=/usr/local/bin:/usr/bin:/bin
 EnvironmentFile=-/etc/imajin/infer-passthrough-update.env
+LoadCredential=github-token:/etc/imajin/infer-passthrough-github-token
 ExecStart=/usr/local/libexec/infer-passthrough/update.sh
 TimeoutStartSec=20min
 UMask=0022

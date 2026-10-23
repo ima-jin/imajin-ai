@@ -37,22 +37,35 @@ health() {
 # One updater at a time. The directory and current link are root-owned.
 exec 9>"$state/update.lock"
 flock -n 9 || { log 'another updater holds the lock'; exit 1; }
-as_user git -C "$repo" fetch --tags origin
+as_user git -C "$repo" fetch --tags origin '+refs/heads/main:refs/remotes/origin/main'
 tags_output=$(as_user git -C "$repo" for-each-ref --sort=-v:refname --format='%(refname:short)' refs/tags)
 mapfile -t tags <<< "$tags_output"
 tag=
 for value in "${tags[@]}"; do
   if [[ "$value" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    sha=$(as_user git -C "$repo" rev-parse --verify "refs/tags/$value^{commit}")
+    if ! as_user git -C "$repo" merge-base --is-ancestor "$sha" origin/main; then
+      log "refusing $value: tag commit is not on origin/main; current release unchanged"
+      continue
+    fi
+    if node "$script_dir/production-deployment.mjs" "$sha"; then
+      log "approved $value ($sha): on main with successful production deployment"
+    else
+      gate_status=$?
+      log "refusing $value: no verified successful production deployment; current release unchanged"
+      # A lookup failure must not be mistaken for an unapproved tag.
+      (( gate_status == 1 )) || exit 1
+      continue
+    fi
     tag=$value
     break
   fi
 done
-[[ -n "$tag" ]] || { log 'no stable release tag found'; exit 1; }
-sha=$(as_user git -C "$repo" rev-parse --verify "refs/tags/$tag^{commit}")
+[[ -n "$tag" ]] || { log 'no stable release tag found with main + production approval; current release unchanged'; exit 1; }
 candidate="$state/releases/$sha"
 previous=$(readlink -f -- "$state/current") || { log 'current release link is required; see one-time install'; exit 1; }
 [[ -d "$previous" && -L "$state/current" ]] || { log 'current must link to an existing checkout'; exit 1; }
-log "latest release $tag ($sha)"
+log "latest release $tag ($sha) eligible after the production gate"
 if [[ "$mode" == --dry-run ]]; then
   log "dry-run: stage $tag; install/build; mint-check candidate /health; promote and restart; rollback to previous checkout if live /health fails"
   exit 0

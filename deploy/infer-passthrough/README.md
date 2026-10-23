@@ -1,14 +1,31 @@
-# Release deployment for infer-passthrough (#3041)
+# Release deployment for infer-passthrough (#3041, #3082)
 
 This is a **one-time operator install**, not a change to any live host by this PR.
-Thereafter the timer fetches release tags every two minutes, selects the highest
-stable `vX.Y.Z` (not a prerelease), and deploys without a recurring hand step.
-No release tags are created here. This is independent of the production kernel's
-existing deploy approval gate; it only updates this local proxy.
+Thereafter the timer fetches release tags and `origin/main` every two minutes.
+It selects the highest eligible stable `vX.Y.Z` (not a prerelease), without a
+recurring hand step. **The updater follows the production gate**: a tag alone is
+not permission to run code with production app credentials. No tags or deployments
+are created here, and Ryan's existing `production` approval gate is not bypassed.
 
 ## Deployment contract
 
-The updater stages a detached checkout for the release SHA, installs the frozen
+Before staging, installing, building or starting any tagged code, it requires:
+
+1. The tag's exact commit is on freshly fetched `origin/main`, verified with
+   `git merge-base --is-ancestor`.
+2. GitHub's Deployments API returns a deployment for **that exact SHA** and
+   `environment=production` whose **latest status is `success`**. Pending approval,
+   an in-progress/failed/inactive deployment, and another SHA/environment do not
+   qualify. An older success on the same deployment cannot override a newer status.
+
+An ineligible tag is logged and skipped; the newest eligible release is selected.
+A stray high off-main tag therefore cannot pin out future legitimate releases.
+If none qualifies, the updater logs refusal and leaves `current` and the live
+unit untouched. Credential/API errors abort the update, never authorize a fallback.
+The API check is read-only, paginated and bounded; it refuses malformed evidence
+and redirects. The credential is separate from the app's minting key.
+
+The updater stages a detached checkout for the approved release SHA, installs the frozen
 lockfile without lifecycle scripts, and builds `@imajin/auth` and its workspace
 dependencies. Install/build and the proxy run as `imajin`, **not root**. Root only
 orchestrates worktrees, the atomic `current` symlink and systemd.
@@ -33,41 +50,54 @@ and an existing `imajin` service account with read-only repository access.
 If the host currently uses another service user, use that account consistently
 in the live unit and `INFER_UPDATE_USER` below. Never give repository code root.
 
-Run the following as the operator with root privileges, **from this repository**:
+Keep the existing unit as-is until this change lands and its release completes
+the normal `production` deployment. Then install **from that approved release's
+tracked `deploy/infer-passthrough/` files**, not an arbitrary main working tree.
+These are the one-time operator steps, not host actions performed by this PR.
+Run with root privileges from the approved release artifact:
 
 ```bash
 install -d -m 0755 /usr/local/libexec/infer-passthrough
 install -m 0755 deploy/infer-passthrough/update.sh /usr/local/libexec/infer-passthrough/
 install -m 0644 deploy/infer-passthrough/check-health.mjs /usr/local/libexec/infer-passthrough/
+install -m 0644 deploy/infer-passthrough/production-deployment.mjs /usr/local/libexec/infer-passthrough/
 install -d -m 0755 /var/lib/imajin/infer-passthrough
 install -d -o imajin -g imajin -m 0755 /var/lib/imajin/infer-passthrough/releases
-runuser -u imajin -- git clone https://github.com/ima-jin/imajin-ai.git /var/lib/imajin/infer-passthrough/releases/bootstrap
+install -d -o imajin -g imajin -m 0755 /var/lib/imajin/infer-passthrough/repo
+runuser -u imajin -- git clone --bare https://github.com/ima-jin/imajin-ai.git /var/lib/imajin/infer-passthrough/repo
 ```
 
 The root-owned state directory must stay non-writable by the service account.
-Use the bootstrap checkout as the repository for worktree operations by placing
-this **non-secret** config in `/etc/imajin/infer-passthrough-update.env`:
+The bare repository is only a fetch/object store, never a working tree to pull or
+run. Place this **non-secret** config in
+`/etc/imajin/infer-passthrough-update.env`:
 
 ```ini
-INFER_UPDATE_REPO=/var/lib/imajin/infer-passthrough/releases/bootstrap
+INFER_UPDATE_REPO=/var/lib/imajin/infer-passthrough/repo
 INFER_UPDATE_USER=imajin
 INFER_UPDATE_PORT=8787
 INFER_UPDATE_CANDIDATE_PORT=8788
 ```
 
-Prepare the bootstrap code as `imajin` (the updater cannot roll back to an
-uninstalled checkout):
+Provision a **read-only**, repository-scoped GitHub credential through the normal
+secret-management channel into `/etc/imajin/infer-passthrough-github-token`
+(root-owned, mode 0600). Use a fine-grained token or GitHub App installation token
+with **Deployments: read**, **Contents: read** (for separate git access if needed)
+and metadata read only; **no write, Actions-write or administration permissions**.
+Rotate it through that same channel. Never put its value in env files, commands,
+logs, a unit, or this repository. The tracked updater unit uses
+`LoadCredential=github-token:...`; the helper reads it from systemd's restricted
+credential directory. It makes only GET requests to the fixed GitHub API origin.
+No credential value is passed in argv/env or to a release's candidate process.
+An absent/expired/unauthorized credential fails closed before tagged code runs.
 
-```bash
-runuser -u imajin -- pnpm --dir /var/lib/imajin/infer-passthrough/releases/bootstrap install --frozen-lockfile --ignore-scripts --loglevel=error
-runuser -u imajin -- pnpm --dir /var/lib/imajin/infer-passthrough/releases/bootstrap exec turbo run build --filter=@imajin/auth --output-logs=errors-only
-ln -s /var/lib/imajin/infer-passthrough/releases/bootstrap /var/lib/imajin/infer-passthrough/current
-```
-
-Alternatively, point `current` at the existing **installed** proxy checkout for
-the first rollback target, retaining that directory unchanged. The dedicated
-bootstrap repo above is still used to fetch/stage releases. Never deploy by
-`git pull` or update a shared working checkout in place.
+As part of this one-time install only, initialize `current` as a symlink to the
+existing **installed** service checkout, readable by the service account, as the
+initial rollback target. Do not pull, install, build or modify that checkout.
+The updater replaces this initial link with an approved detached release
+directory only after its mint health succeeds. It retains prior release
+directories for rollback. Thereafter all release code comes from the tag's pinned
+SHA, not a mutable working checkout. Never deploy by `git pull`.
 
 1. Retain the app identity/key and kernel URL in
    `/etc/imajin/infer-passthrough.env`; use `infer-passthrough.env.example` for
@@ -99,9 +129,10 @@ systemctl start infer-passthrough-update.service
 systemctl enable --now infer-passthrough-update.timer
 ```
 
-The first updater run must select a release containing this fix; older releases
+The first updater run must select a production-approved release containing this fix; older releases
 do not have mint-backed `/health` and fail safely before promotion. Do not enable
-the timer until that release is tagged through the normal release workflow.
+the timer until that release has successfully deployed through the normal
+production workflow after Ryan's gate tap.
 
 ## Release check and diagnosis
 
@@ -122,11 +153,14 @@ refuses redirects; its port argument cannot supply a host or path.
 Mint success does not claim a billed model completion happened or that no grant
 was revoked after the last mint; cached tokens retain the kernel's normal TTL.
 
-`update.sh --dry-run` fetches tags and reports the newest stable release and
+`update.sh --dry-run` fetches main/tags, checks ancestry and production approval,
+and reports the newest eligible stable release and
 health/rollback steps, without installing, switching code or calling systemd.
-Run it with the updater's non-secret config loaded, or via its environment
-overrides. `update.sh --check` only checks live `/health`.
-The updater fails closed on missing release tags, dirty/mismatched staged
+Run it with the updater's non-secret config loaded and a systemd credential
+context (a transient service may use the same `LoadCredential` setting).
+`update.sh --check` only checks live `/health` and needs no GitHub credential.
+The updater fails closed on missing eligible release tags, off-main commits,
+missing successful production deployments, unreadable credentials/API errors, dirty/mismatched staged
 checkouts, failed install/build, failed candidate health, or failed live health.
 Polling retries a failed release on the next timer tick. Inspect the health body
 for the route to re-consent; no grant ID needs copying.

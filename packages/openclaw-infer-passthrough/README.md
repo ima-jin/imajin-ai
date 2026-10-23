@@ -376,7 +376,9 @@ container or code change, and the deployment is off the direct-key deviation.
 
 For release-by-release deployment, install the
 [pull-based updater, systemd unit and timer](../../deploy/infer-passthrough/README.md)
-once. It stages and mint-checks each stable release before restarting live, then
+once from an approved release artifact. It first verifies main ancestry and a
+successful `production` deployment for the exact release SHA, then stages and
+mint-checks that release before restarting live, and
 rolls back on failed post-restart health. No live host is touched by this change.
 
 These are rollout instructions, **not changes applied by this PR**. Do not edit
