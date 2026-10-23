@@ -13,7 +13,7 @@
 import { desc, eq, inArray } from 'drizzle-orm';
 import { db, vaultDelegationGrants, vaultMintedKeys, type VaultMintedKey, type VaultDelegationGrant } from '@/src/db';
 import { vaultService, listActiveGrantsForField } from './index';
-import { isMintedKeyField, isAppSecretStagingField } from './field-grammar';
+import { isMintedKeyField, isAppSecretStagingField, isSshCaField } from './field-grammar';
 
 export type VaultKeyTimelineEventType = 'minted' | 'granted' | 'fetched' | 'acked' | 'rotated' | 'revoked';
 
@@ -152,10 +152,11 @@ function buildTimeline(row: VaultMintedKey, grant: VaultDelegationGrant | null):
  * since several minted keys never legitimately share one field in practice.
  */
 export async function listVaultKeyCards(): Promise<VaultKeyCard[]> {
-  const mintedKeys = await db
+  const allMintedKeys = await db
     .select()
     .from(vaultMintedKeys)
     .orderBy(desc(vaultMintedKeys.createdAt));
+  const mintedKeys = allMintedKeys.filter(row => !isSshCaField(row.field));
 
   const grantIds = mintedKeys.map((row) => row.grantId).filter((id): id is string => id !== null);
   const grantRows = grantIds.length > 0
@@ -220,7 +221,7 @@ export interface HandProvisionedField {
 export async function listHandProvisionedFields(): Promise<HandProvisionedField[]> {
   const entries = await vaultService.list();
   return entries
-    .filter((entry) => !isMintedKeyField(entry.field) && !isAppSecretStagingField(entry.field))
+    .filter((entry) => !isMintedKeyField(entry.field) && !isAppSecretStagingField(entry.field) && !isSshCaField(entry.field))
     .map((entry) => ({
       field: entry.field,
       senderDid: entry.senderDid,
@@ -233,5 +234,5 @@ export async function listHandProvisionedFields(): Promise<HandProvisionedField[
 /** Single-card lookup used by the vault-proposal execution bridge. */
 export async function getMintedKeyByDid(did: string): Promise<VaultMintedKey | undefined> {
   const [row] = await db.select().from(vaultMintedKeys).where(eq(vaultMintedKeys.did, did)).limit(1);
-  return row;
+  return row && !isSshCaField(row.field) ? row : undefined;
 }

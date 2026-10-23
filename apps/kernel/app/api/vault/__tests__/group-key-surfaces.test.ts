@@ -2,7 +2,7 @@ import { ed25519 } from '@noble/curves/ed25519';
 import { randomBytes } from 'node:crypto';
 const rotationPublicKey = Buffer.from(ed25519.getPublicKey(randomBytes(32))).toString('hex');
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { GROUP_KEY_NAMESPACE, isGroupKeyField } from '@/src/lib/vault/field-grammar';
+import { GROUP_KEY_NAMESPACE, SSH_CA_NAMESPACE, isPrivateCustodyField } from '@/src/lib/vault/field-grammar';
 
 const mocks = vi.hoisted(() => ({
   requireAdmin: vi.fn(),
@@ -75,7 +75,8 @@ vi.mock('@/src/lib/vault/errors', () => ({
     new Response(JSON.stringify({ error }), { status }),
 }));
 
-const FIELD = `${GROUP_KEY_NAMESPACE}:did:imajin:group-test`;
+describe.each([GROUP_KEY_NAMESPACE, SSH_CA_NAMESPACE])('%s private custody', namespace => {
+const FIELD = `${namespace}:did:imajin:group-test`;
 // Generated test-only seed; neither snapshots nor assertion diagnostics print it.
 const seed = randomBytes(32).toString('hex');
 const mutationEdges = [
@@ -117,13 +118,13 @@ beforeEach(() => {
   mocks.getNodeSigningIdentity.mockReturnValue({ senderDid: 'did:imajin:node-test' });
 });
 
-describe('group-key field grammar', () => {
+describe('private custody field grammar', () => {
   it('recognizes only the parsed exact namespace, with normal grammar trimming', () => {
     expect(GROUP_KEY_NAMESPACE).toBe('vault-group-key');
-    expect(isGroupKeyField(` ${FIELD} `)).toBe(true);
+    expect(isPrivateCustodyField(` ${FIELD} `)).toBe(true);
     for (const field of ['vault-group-key', 'vault-group-key:', 'vault-group-key::bad',
       'vault-group-key-other:test', 'other:vault-group-key:test', 'VAULT-GROUP-KEY:test']) {
-      expect(isGroupKeyField(field)).toBe(false);
+      expect(isPrivateCustodyField(field)).toBe(false);
     }
   });
 });
@@ -223,4 +224,5 @@ it('preserves admin grantee metadata visibility without unsealing', async () => 
   expect(await response.json()).toEqual({ field: FIELD, count: 1, grantees, reissuedOnRotate: false });
   expect(mocks.loadAndUnseal).not.toHaveBeenCalled();
   expect(mocks.fetchGrantSecret).not.toHaveBeenCalled();
+});
 });
