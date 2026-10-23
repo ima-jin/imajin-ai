@@ -136,8 +136,8 @@ export function revokeSshCa(purpose: string, caId: string, authority: MintAuthor
 /** Anonymous reads never take the signing lock or write retirement attestations. */
 export async function trustedSshCaKeys(purpose: string): Promise<string> {
   if (!isSshCaPurpose(purpose)) throw new SshCaError(400, 'Invalid SSH CA purpose');
-  const now = Date.now();
   const rows = await sshCaRecords(db, purpose);
+  const now = Date.now();
   const keys = rows.filter(row => row.status === 'active' || (row.status === 'retiring'
     && row.revokedAt && row.revokedAt.getTime() + SSH_CA_MAX_CERT_TTL_SECONDS * 1000 > now))
     .sort((a, b) => a.id.localeCompare(b.id))

@@ -66,7 +66,7 @@ import { POST as signRoute } from '@/app/api/vault/ssh-ca/sign/route';
 import { POST as grantRoute } from '@/app/api/vault/ssh-ca/grants/route';
 import { POST as withdrawRoute } from '@/app/api/vault/ssh-ca/grants/revoke/route';
 import { canonicalizeGrantPayload } from '../index';
-import { inspectCertificate, acceptsCertificate } from './ssh-cert-inspect';
+import { inspectCertificate, acceptsCertificate, openSshAccepts } from './ssh-cert-inspect';
 
 const nodeKeys = generateKeypair();
 const tables = [attestations, vaultMintedKeys, vaultDelegationGrants, vaultOwnerEnvelopes, vaultGrantRequests];
@@ -410,6 +410,10 @@ describe('restricted SSH certificates (#3064)', () => {
     expect(acceptsCertificate(inspected, ca.publicKey, 'root', inspected.validAfter)).toBe(false);
     expect(acceptsCertificate(inspected, ca.publicKey, 'deploy', inspected.validBefore)).toBe(false);
     expect(acceptsCertificate(inspected, input.publicKey as string, 'deploy', inspected.validAfter)).toBe(false);
+    expect(openSshAccepts(result.certificate, ca.publicKey, clientKeys.privateKey, 'deploy', inspected.validAfter)).toBe(true);
+    expect(openSshAccepts(result.certificate, ca.publicKey, clientKeys.privateKey, 'root', inspected.validAfter)).toBe(false);
+    expect(openSshAccepts(result.certificate, ca.publicKey, clientKeys.privateKey, 'deploy', inspected.validBefore)).toBe(false);
+    expect(openSshAccepts(result.certificate, input.publicKey as string, clientKeys.privateKey, 'deploy', inspected.validAfter)).toBe(false);
     const issued = (await audits()).find(row => row.type === 'vault.ssh-cert.issued')!;
     expect(issued.payload).toMatchObject({
       job: input.job, grantee, principal: 'deploy', host: input.host, ttl: 600, serial: result.serial, keyId: result.keyId,

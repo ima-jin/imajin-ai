@@ -96,6 +96,7 @@ export function signSshCert(input: SshSignInput, grantee: string) {
       || !validSshScope(grant.sshScope)
       || !grant.sshScope.principals.includes(input.principal) || !grant.sshScope.allowedHosts.includes(input.host)
       || !crypto.verifySync(grant.ownerSignature, canonicalizeGrantPayload(grant), node.senderPubkey)) throw denied();
+    const principal = grant.sshScope.principals.find(value => value === input.principal)!;
     const [custody] = await tx.select().from(vaultDelegationGrants)
       .where(and(eq(vaultDelegationGrants.id, ca.grantId ?? ''), eq(vaultDelegationGrants.field, ca.field))).for('update');
     if (!live(custody, Date.now()) || custody.grantedTo !== node.senderDid || custody.subject !== ca.did
@@ -113,14 +114,14 @@ export function signSshCert(input: SshSignInput, grantee: string) {
     if (validBefore <= Math.floor(Date.now() / 1000)) throw denied();
     const certificate = encodeSshUserCert({
       publicKey: parseSshPublicKey(input.publicKey)!, caPublicKey: ca.publicKey, caSeed: seed,
-      principal: input.principal, forceCommand: grant.sshScope.forceCommand, serial, keyId,
+      principal, forceCommand: grant.sshScope.forceCommand, serial, keyId,
       validAfter: now, validBefore,
     });
     // No result escapes until its signed event and any one-time consumption commit.
     if (grant.oneTime) await tx.update(vaultDelegationGrants).set({ consumedAt: new Date() })
       .where(eq(vaultDelegationGrants.id, grant.id));
     const payload = {
-      job: input.job, grantee, principal: input.principal, host: input.host, ttl: validBefore - now,
+      job: input.job, grantee, principal, host: input.host, ttl: validBefore - now,
       serial, keyId, caId: ca.id, grantId: grant.id, purpose: input.purpose, validAfter: now, validBefore,
     };
     await audit(tx, 'issued', grantee, payload);

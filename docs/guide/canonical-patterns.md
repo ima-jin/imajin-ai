@@ -37,6 +37,18 @@
 | **Server-held group signing-key custody** | `vault:custody-group-key` / `vault:revoke-group-key` on the existing `/jin` vault proposal rail | `apps/kernel/src/lib/vault/group-key.ts` | Decrypt in a shell, generate replacement secrets, export custody fields, or grant to caller-selected nodes. The current owner/admin operator countersigns identifiers only; the kernel authenticates the stored seed, matches its public key and reuses static-secret sealing and purpose fetch. |
 | **SSH CA lifecycle and public trust** | `mintSshCa`, `revokeSshCa`, `trustedSshCaKeys`, `lockSshCaPurpose` | `apps/kernel/src/lib/vault/ssh-ca.ts` | Generate another keypair path, export the CA seed, or mutate its grant through generic vault tools. Lifecycle uses `mintKeypair` and retained mint records with atomic signed attestations. Certificate issuance must import the max-TTL cap from `ssh-ca-policy.ts` and hold the purpose lock through active lookup and signing; never cache a signer. |
 
+### SSH certificate signing
+
+SSH certificate issuance uses `signSshCert` in `apps/kernel/src/lib/vault/ssh-cert.ts`
+and the `/api/vault/ssh-ca/sign` contract. Create/revoke SSH operation grants on
+`/api/vault/ssh-ca/grants` and `/api/vault/ssh-ca/grants/revoke` with CA-mint authority.
+These reuse vault delegation rows, with signed principal/forced-command/host scope
+and **no wrapped CA key**. The CA's separate custody grant remains node-only.
+Signing holds the purpose lock and grant row locks through the signed issuance
+commit. Never expose an unseal API or let a caller supply certificate options.
+Public trust is a lock-free, non-mutating deadline projection; mutations and
+successful signing reconcile retirement attestations. Allowed hosts gate issuance;
+OpenSSH user certificates do not constrain the destination host by themselves.
 ### App-owned checkout patterns
 
 For onboarding email after an app-owned hosted checkout, call
