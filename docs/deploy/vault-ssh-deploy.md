@@ -87,8 +87,12 @@ No GitHub credential or token is sent as a command-line argument.
 
 ## Verification without deployment
 `pnpm --silent test:agent scripts/__tests__/vault-ssh-deploy.test.mjs` dry-runs
-the action contract and actual runner implementation with real tmpfs key
-generation and mocked OIDC/vault/SSH transports. It checks success/failure/
+the action contract and actual runner implementation with tmpfs fixtures
+and mocked OIDC/vault/SSH transports. On swap-free hosts an additional test
+uses real key generation with the production memory guard enabled.
+Swap-enabled CI generates no private keys: the default dry-run uses
+non-credential fixtures and emulates the memory precondition, while separate
+negative tests exercise the real swap/disk refusal guard. It checks success/failure/
 cancellation cleanup, host verification and invalid configurations. The
 `Vault SSH dry-run` CI workflow runs the same Python contract without OIDC
 permissions, vault credentials, or host access. Kernel unit/integration tests

@@ -5,7 +5,7 @@ import { expect, it } from 'vitest';
 
 const action = parse(readFileSync('.github/actions/vault-ssh-deploy/action.yml', 'utf8'));
 
-it('dry-runs the reusable action credential lifecycle with real tmpfs keys and mocked transports', () => {
+it('dry-runs the reusable action lifecycle with tmpfs fixtures and mocked transports', () => {
   const result = spawnSync('python3', ['scripts/__tests__/vault-ssh-deploy.test.py'], {
     encoding: 'utf8', env: { ...process.env, PYTHONDONTWRITEBYTECODE: '1' },
   });

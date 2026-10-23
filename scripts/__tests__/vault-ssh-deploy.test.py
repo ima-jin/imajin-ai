@@ -13,10 +13,30 @@ import uuid
 spec = importlib.util.spec_from_file_location("vault_ssh", "deploy/vault-ssh-deploy.py")
 runner = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(runner)
+SWAP_FREE = len(Path("/proc/swaps").read_text().splitlines()) <= 1
 
 
 class DeployTests(unittest.TestCase):
     def setUp(self):
+        self.real_memory_check = runner.check_memory
+        self.memory_guard = patch.object(runner, "check_memory")
+        self.memory_guard.start()
+        self.addCleanup(self.memory_guard.stop)
+        real_run = subprocess.run
+
+        def fixture_keygen(args, **kwargs):
+            if args[0] != "ssh-keygen":
+                return real_run(args, **kwargs)
+            key = Path(args[args.index("-f") + 1])
+            key.write_bytes(b"noncredential-fixture")
+            key.chmod(0o600)
+            key.with_suffix(".pub").write_text("ssh-ed25519 AAAA")
+            return subprocess.CompletedProcess(args, 0)
+
+        # The default dry-run never generates private material on a swappable CI host.
+        self.keygen_guard = patch.object(runner.subprocess, "run", side_effect=fixture_keygen)
+        self.keygen_guard.start()
+        self.addCleanup(self.keygen_guard.stop)
         self.env = {
             "VAULT_KERNEL_URL": "https://kernel.example.com", "VAULT_PURPOSE": "deploy",
             "VAULT_CA_ID": "vmk_test", "VAULT_GRANT_ID": "vdg_test", "VAULT_HOST": "host.example.com",
@@ -48,14 +68,15 @@ class DeployTests(unittest.TestCase):
         self.assertTrue(body["publicKey"].startswith("ssh-ed25519 "))
         self.assertEqual((self.path / "identity").stat().st_mode & 0o777, 0o600)
         # Test boolean only: never print generated key bytes even on assertion failure.
-        self.assertTrue((self.path / "identity").read_bytes().startswith(b"-----BEGIN OPENSSH PRIVATE KEY-----"))
+        private = (self.path / "identity").read_bytes()
+        self.assertTrue(private == b"noncredential-fixture" or private.startswith(b"-----BEGIN OPENSSH PRIVATE KEY-----"))
         return {"certificate": "ssh-ed25519-cert-v01@openssh.com AAAA"}
 
     def invoke(self):
         with patch.object(sys, "argv", ["runner", "deploy"]):
             return runner.main()
 
-    def test_success_and_remote_failure_discard_real_key_and_certificate(self):
+    def test_success_and_remote_failure_discard_credentials(self):
         real_run = subprocess.run
         for exit_code in [0, 23]:
             if not self.path.exists():
@@ -79,6 +100,27 @@ class DeployTests(unittest.TestCase):
                 self.assertEqual(self.invoke(), exit_code)
             self.assertFalse(self.path.exists())
 
+    @unittest.skipUnless(SWAP_FREE, "Real private keys require a swap-free runner")
+    def test_real_key_generation_only_on_verified_nonswappable_tmpfs(self):
+        self.memory_guard.stop()
+        self.keygen_guard.stop()
+        real_run = subprocess.run
+
+        def execute(args, **kwargs):
+            if args[0] == "ssh":
+                return subprocess.CompletedProcess(args, 0)
+            return real_run(args, **kwargs)
+
+        def respond(url, headers, body=None):
+            if body is not None:
+                self.assertTrue((self.path / "identity").read_bytes().startswith(b"-----BEGIN OPENSSH PRIVATE KEY-----"))
+            return self.response(url, headers, body)
+
+        with patch.object(runner, "request_json", side_effect=respond), \
+                patch.object(runner.subprocess, "run", side_effect=execute):
+            self.assertEqual(self.invoke(), 0)
+        self.assertFalse(self.path.exists())
+
     def test_signing_failure_and_signal_discard_credentials_without_error_details(self):
         for failure in [RuntimeError("unsafe-response-must-not-print"), KeyboardInterrupt()]:
             if not self.path.exists():
@@ -94,10 +136,10 @@ class DeployTests(unittest.TestCase):
     def test_no_disk_fallback_no_swap_and_no_symlink_cleanup(self):
         with patch.object(runner.subprocess, "run", return_value=subprocess.CompletedProcess([], 0, stdout="ext4")):
             with self.assertRaises(ValueError):
-                runner.check_memory()
+                self.real_memory_check()
         with patch.object(Path, "read_text", return_value="Filename\n/swapfile"):
             with self.assertRaises(ValueError):
-                runner.check_memory()
+                self.real_memory_check()
         with patch.dict(os.environ, {"VAULT_SSH_DIR": "/tmp/vault-ssh-test"}):
             with self.assertRaises(ValueError):
                 runner.cleanup()
