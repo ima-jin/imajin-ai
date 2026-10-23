@@ -110,6 +110,7 @@ export function signSshCert(input: SshSignInput, grantee: string) {
     const serial = randomBytes(8).readBigUInt64BE().toString();
     const keyId = `ssh-cert:${randomUUID()}`;
     const seed = await _applyDelegationGrant(entry, custody, getNodeXPrivateKey(), node.senderPubkey);
+    if (validBefore <= Math.floor(Date.now() / 1000)) throw denied();
     const certificate = encodeSshUserCert({
       publicKey: parseSshPublicKey(input.publicKey)!, caPublicKey: ca.publicKey, caSeed: seed,
       principal: input.principal, forceCommand: grant.sshScope.forceCommand, serial, keyId,
