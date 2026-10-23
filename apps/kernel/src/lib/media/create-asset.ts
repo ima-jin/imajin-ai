@@ -3,7 +3,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { safeExtension } from "@/src/lib/media/safe-path";
 import { nanoid } from "nanoid";
 import { eq, and, sql } from "drizzle-orm";
-import { db, assets, assetFolders, type Asset } from "@/src/db";
+import { db, assets, assetFolders, attestations, type Asset } from "@/src/db";
 import { getOrCreateSystemFolder } from '@/src/lib/media/folders';
 import { hexToBytes } from "@imajin/auth";
 import { classifyAsset } from "@/src/lib/media/classify";
@@ -15,6 +15,7 @@ import { blobStore } from "@/src/lib/media/blob-store-lore";
 import { deriveArticleProjection, mergeArticleMetadata } from "@/src/lib/media/article-core";
 import { emitUploadAttestation } from "@/src/lib/media/emit-upload-attestation";
 import { resolveContextFolder } from '@/src/lib/media/context-folder';
+import { signLegalEntityDocument, prepareLegalEntityChange } from './control-document';
 
 const log = createLogger("kernel");
 
@@ -67,6 +68,8 @@ export interface AssetContext {
 }
 
 export interface CreateAssetInput {
+  /** Reserved authored control record: private, signed, immutable to generic media tools. */
+  controlDocument?: 'legal-entity';
   /** Owner DID the asset is pinned to. */
   ownerDid: string;
   /** Actual uploader DID (audit trail). Defaults to ownerDid when omitted. */
@@ -227,7 +230,7 @@ export async function createAsset(input: CreateAssetInput): Promise<CreateAssetR
   const cid = await computeCid(new Uint8Array(buffer));
 
   // ── Dedup (HTTP upload only) ──────────────────────────────────────────────
-  if (dedup) {
+  if (dedup && !input.controlDocument) {
     const existing = await findDedupTarget(cid, hash, ownerDid);
     if (existing) {
       return { asset: existing, deduplicated: true };
@@ -237,8 +240,10 @@ export async function createAsset(input: CreateAssetInput): Promise<CreateAssetR
   // Storage path: {MEDIA_ROOT}/{didPath}/assets/{assetId}{ext}
   const didPath = didToPath(ownerDid);
   const dirPath = `${MEDIA_ROOT}/${didPath}/assets`;
-  const storagePath = `${dirPath}/${assetId}${ext}`;
-  const fairPath = `${dirPath}/${assetId}.fair.json`;
+  const storagePath = input.controlDocument
+    ? `${dirPath}/legal-entity.md`
+    : `${dirPath}/${assetId}${ext}`;
+  const fairPath = `${dirPath}/${input.controlDocument ?? assetId}.fair.json`;
 
   // .fair manifest — context-aware access, signed with the platform key.
   const accessLevel = deriveAccessLevel(context, input.access);
@@ -250,13 +255,18 @@ export async function createAsset(input: CreateAssetInput): Promise<CreateAssetR
   const platformDid = process.env.PLATFORM_DID;
   const platformKeyHex = process.env.AUTH_PRIVATE_KEY;
   let signedManifest = fairManifest;
-  if (platformDid && platformKeyHex) {
+  if (input.controlDocument) {
+    signedManifest = await signLegalEntityDocument(fairManifest, buffer.toString('utf8'), ownerDid, uploadedBy);
+  } else if (platformDid && platformKeyHex) {
     try {
       signedManifest = await signManifest(fairManifest, { did: platformDid, privateKey: hexToBytes(platformKeyHex) });
     } catch (err) {
       log.warn({ err: String(err) }, "Manifest signing failed, using unsigned manifest");
     }
   }
+  const change = input.controlDocument
+    ? await prepareLegalEntityChange(assetId, ownerDid, uploadedBy, buffer.toString('utf8'), null)
+    : null;
 
   try {
     await mkdir(dirPath, { recursive: true });
@@ -277,9 +287,7 @@ export async function createAsset(input: CreateAssetInput): Promise<CreateAssetR
 
   let record: Asset;
   try {
-    [record] = await db
-      .insert(assets)
-      .values({
+    const values = {
         id: assetId,
         ownerDid,
         uploadedBy,
@@ -294,9 +302,18 @@ export async function createAsset(input: CreateAssetInput): Promise<CreateAssetR
         loreRef: blobRef?.loreRef ?? null,
         versionCount: 1,
         status: "active",
-        metadata: context ? { context } : {},
-      })
-      .returning();
+        metadata: input.controlDocument ? { kind: input.controlDocument } : context ? { context } : {},
+        immutable: Boolean(input.controlDocument),
+      };
+    if (change) {
+      record = await db.transaction(async tx => {
+        const [created] = await tx.insert(assets).values(values).returning();
+        await tx.insert(attestations).values(change);
+        return created;
+      });
+    } else {
+      [record] = await db.insert(assets).values(values).returning();
+    }
   } catch (err) {
     log.error({ err: String(err) }, "DB insert failed");
     throw new Error(`Database failure: ${String(err)}`);
@@ -335,12 +352,12 @@ export async function createAsset(input: CreateAssetInput): Promise<CreateAssetR
   // header (plain notes). Runs before the classification block so
   // existingMeta already includes the article projection when classification
   // merges its result.
-  if (mimeType === "text/markdown") {
+  if (mimeType === "text/markdown" && !input.controlDocument) {
     record = { ...record, metadata: await applyArticleProjection(assetId, buffer, record.metadata) };
   }
 
   // Fire-and-forget async classification.
-  if (classify) {
+  if (classify && !input.controlDocument) {
     const existingMeta = record.metadata;
     classifyAsset(buffer, filename, mimeType)
       .then(async (result) => {

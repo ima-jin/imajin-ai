@@ -109,6 +109,8 @@ export async function patchArticle(
       storage_failed: 500,
       db_failed: 500,
       article_frontmatter_required: 400,
+      invalid_document: 400,
+      signing_failed: 500,
     } as const;
     return NextResponse.json({ error: result.message }, { status: statusByCode[result.code], headers: cors });
   }

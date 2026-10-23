@@ -1,6 +1,6 @@
 import { writeFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
-import { db, assets, type Asset } from "@/src/db";
+import { db, assets, attestations, type Asset } from "@/src/db";
 import { eq, sql } from "drizzle-orm";
 import type { FairManifest, FairManifestV11 } from "@imajin/fair";
 import { isFairManifestV11 } from "@imajin/fair";
@@ -14,6 +14,9 @@ import { checkArticleFrontmatter, type ArticleFrontmatterCheck } from "./article
 import { ensureProjectReactorRegistered } from "./projection-reactor";
 import { ensureChannelLinksSurfaceRegistered } from "./channel-links-surface";
 import { publish } from "@imajin/bus";
+import { isLegalEntityAsset, signLegalEntityDocument, prepareLegalEntityChange } from "./control-document";
+import { LegalEntityValidationError } from "../profile/legal-entity-schema";
+import { parseLegalEntity } from "../profile/legal-entity-document";
 
 const log = createLogger("kernel");
 
@@ -35,6 +38,9 @@ const AUTHORED_DOC_MIME_TYPES = new Set([
 const DOCUMENT_CHANGED_SCOPE = "media";
 
 export interface UpdateAssetContentInput {
+  /** Internal owner-settings rail only; generic media writes cannot change this record. */
+  controlDocument?: 'legal-entity';
+  composedBy?: string;
   assetId: string;
   requesterDid: string;
   /** New UTF-8 text content (empty string is allowed — clears the file). */
@@ -85,6 +91,8 @@ export type UpdateAssetContentResult =
         | "unsupported_media"
         | "storage_failed"
         | "db_failed"
+        | "invalid_document"
+        | "signing_failed"
         | "article_frontmatter_required";
       message: string;
     };
@@ -186,7 +194,11 @@ export async function updateAssetContent(input: UpdateAssetContentInput): Promis
   // prev→new transition (#1205).
   const prevCid = asset.cid ?? null;
 
-  const decision = canWriteAssetContent({ ownerDid: asset.ownerDid, immutable: asset.immutable }, requesterDid);
+  const legalEntity = isLegalEntityAsset(asset.metadata);
+  if (legalEntity && input.controlDocument !== 'legal-entity') {
+    return { ok: false, code: "forbidden", message: "Use legal-entity settings to edit or revoke this document" };
+  }
+  const decision = canWriteAssetContent({ ownerDid: asset.ownerDid, immutable: legalEntity ? false : asset.immutable }, requesterDid);
   if (!decision.allowed) {
     return { ok: false, code: decision.code, message: decision.reason };
   }
@@ -199,6 +211,26 @@ export async function updateAssetContent(input: UpdateAssetContentInput): Promis
   const articleWarning = guardArticleUpdate(asset, content, assetId);
   if (articleWarning && strict) {
     return { ok: false, code: "article_frontmatter_required", message: articleWarning.warning };
+  }
+  let legalManifest: FairManifestV11 | undefined;
+  let legalChange: Awaited<ReturnType<typeof prepareLegalEntityChange>> | undefined;
+  let revoked = false;
+  if (legalEntity) {
+    try {
+      revoked = parseLegalEntity(content, asset.ownerDid).input === null;
+      legalManifest = await signLegalEntityDocument(
+        asset.fairManifest as FairManifestV11, content, asset.ownerDid, input.composedBy ?? requesterDid,
+      );
+      legalChange = await prepareLegalEntityChange(
+        assetId, asset.ownerDid, input.composedBy ?? requesterDid, content, asset.hash,
+      );
+    } catch (err) {
+      return {
+        ok: false,
+        code: err instanceof LegalEntityValidationError ? "invalid_document" : "signing_failed",
+        message: err instanceof LegalEntityValidationError ? err.message : "Document signing failed",
+      };
+    }
   }
 
   try {
@@ -224,12 +256,11 @@ export async function updateAssetContent(input: UpdateAssetContentInput): Promis
 
   // Re-sign the .fair manifest so the signature covers the current content state
   // (non-fatal: content is saved regardless).
-  const updatedFairManifest = await resignFairManifest(asset, assetId);
+  const updatedFairManifest = legalManifest ?? await resignFairManifest(asset, assetId);
+  if (legalManifest && asset.fairPath) await mirrorFairToDisk(asset.fairPath, legalManifest, assetId);
 
   try {
-    await db
-      .update(assets)
-      .set({
+    const values = {
         hash,
         size,
         versionCount: sql`${assets.versionCount} + 1`,
@@ -237,8 +268,17 @@ export async function updateAssetContent(input: UpdateAssetContentInput): Promis
         loreRef: blobRef?.loreRef ?? asset.loreRef, // keep prior ref if Lore put failed
         fairManifest: updatedFairManifest ?? asset.fairManifest,
         updatedAt: new Date(),
-      })
-      .where(eq(assets.id, assetId));
+        ...(revoked ? { status: "deleted" } : {}),
+      };
+    if (legalChange) {
+      const change = legalChange;
+      await db.transaction(async tx => {
+        await tx.update(assets).set(values).where(eq(assets.id, assetId));
+        await tx.insert(attestations).values(change);
+      });
+    } else {
+      await db.update(assets).set(values).where(eq(assets.id, assetId));
+    }
   } catch (err) {
     log.error({ err: String(err), assetId }, "DB update failed");
     return { ok: false, code: "db_failed", message: "Database update failed" };
@@ -248,7 +288,7 @@ export async function updateAssetContent(input: UpdateAssetContentInput): Promis
   // is the source of truth (#1193): markdown-only, and a no-op for plain notes
   // (content with no article header). Best-effort — the file is authoritative, so
   // a projection failure self-heals on the next write rather than failing it.
-  if (asset.mimeType === "text/markdown") {
+  if (asset.mimeType === "text/markdown" && !legalEntity) {
     try {
       await deriveArticleProjection(assetId, content, asset.metadata);
     } catch (err) {

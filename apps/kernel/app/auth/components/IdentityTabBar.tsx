@@ -34,6 +34,7 @@ const ALL_TABS: Tab[] = [
   { label: 'Connections', href: '/auth/connectors', exact: false },
   { label: 'Money', href: '/auth/money', exact: false },
   { label: 'Tax', href: '/auth/tax', exact: false },
+  { label: 'Legal entity', href: '/auth/legal-entity', exact: false },
   { label: 'Corpus', href: '/auth/corpus', exact: false },
   { label: 'Security', href: '/auth/security', exact: false },
   { label: 'Settings', href: '/auth/settings', exact: false },

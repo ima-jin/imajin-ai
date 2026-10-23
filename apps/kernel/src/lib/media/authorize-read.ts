@@ -1,5 +1,6 @@
 import type { FairManifest } from '@imajin/fair';
 import { canReadAsset, type ReadDecision } from './read-access';
+import { isLegalEntityAsset } from './control-document-kind';
 
 /**
  * Async per-asset READ authorization (#1166, closes #1168, closes #1851).
@@ -61,6 +62,11 @@ export async function authorizeAssetRead(
   requesterDid: string | null,
   deps: AuthorizeDeps = {},
 ): Promise<ReadDecision> {
+  if (isLegalEntityAsset(subject.metadata)) {
+    // The source contains unreleased values. Neither group membership nor an
+    // asset-level grant can bypass per-field disclosure through getLegalEntity.
+    return canReadAsset({ ownerDid: subject.ownerDid, access: 'private' }, requesterDid);
+  }
   const base = canReadAsset({ ownerDid: subject.ownerDid, access: subject.access }, requesterDid);
 
   // Already allowed, or no authenticated requester to re-check against.

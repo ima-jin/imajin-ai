@@ -1,6 +1,22 @@
 import { describe, it, expect, vi } from 'vitest';
 import type { FairManifest } from '@imajin/fair';
 import { authorizeAssetRead } from '../authorize-read';
+import { isLegalEntityAsset } from '../control-document-kind';
+
+describe('legal-entity raw source protection', () => {
+  it.each([null, 'member', 'unrelated'])('does not let %s bypass per-field gates through group/media access', async requester => {
+    const isGroupMember = vi.fn().mockResolvedValue(true);
+    const result = await authorizeAssetRead({
+      ownerDid: 'owner', access: { type: 'trust-graph', allowedDids: ['member'] }, metadata: { kind: 'legal-entity' },
+    }, requester, { isGroupMember });
+    expect(result.allowed).toBe(false);
+    expect(isGroupMember).not.toHaveBeenCalled();
+  });
+  it('allows only the owner to edit/read the whole private source', async () => {
+    expect((await authorizeAssetRead({ ownerDid: 'owner', access: 'private', metadata: { kind: 'legal-entity' } }, 'owner')).allowed).toBe(true);
+    expect(isLegalEntityAsset(null)).toBe(false);
+  });
+});
 
 const OWNER = 'did:imajin:owner';
 const MEMBER = 'did:imajin:member';
