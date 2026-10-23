@@ -4,6 +4,12 @@ import { sendConsentRequestNotification } from '../src/reactors/consent-request-
 
 const mocks = vi.hoisted(() => ({ key: vi.fn(), fetch: vi.fn() }));
 vi.mock('@imajin/auth', () => ({ getVaultInternalApiKey: mocks.key }));
+vi.mock('@imajin/db', () => ({
+  getClient: () => ({
+    begin: async (callback: (tx: (strings: TemplateStringsArray) => Promise<unknown[]>) => Promise<void>) =>
+      callback(async strings => strings.join('').includes('pg_try_advisory_xact_lock') ? [{ acquired: true }] : []),
+  }),
+}));
 vi.mock('../src/publish', () => ({ publish: vi.fn() }));
 beforeEach(() => {
   vi.clearAllMocks();
