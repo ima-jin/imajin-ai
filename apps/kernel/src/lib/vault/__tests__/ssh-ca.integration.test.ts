@@ -3,10 +3,7 @@ import { PGlite } from '@electric-sql/pglite';
 import { drizzle } from 'drizzle-orm/pglite';
 import { getTableConfig, type PgTable } from 'drizzle-orm/pg-core';
 import { eq } from 'drizzle-orm';
-import { execFileSync } from 'node:child_process';
-import { mkdtempSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
-import { tmpdir } from 'node:os';
+import { createHash } from 'node:crypto';
 import type { VaultFile } from '@imajin/vault-core';
 
 vi.setConfig({ testTimeout: 30_000, hookTimeout: 30_000 });
@@ -156,12 +153,15 @@ describe('SSH CA custody and lifecycle (#3063)', () => {
     h.auth = { error: 'Not authenticated', status: 401 }; // public trust does not need a credential
     const text = await trusted();
     expect(text).toBe(`${body.publicKey}\n`);
-    // Only the PUBLIC line is written; no fixture key is generated in a shell.
-    const publicFile = join(mkdtempSync(join(tmpdir(), 'ssh-ca-public-')), 'trusted.pub');
-    writeFileSync(publicFile, text);
-    const fingerprint = execFileSync('ssh-keygen', ['-l', '-f', publicFile], { encoding: 'utf8' });
-    expect(fingerprint).toContain(body.fingerprint);
-    expect(fingerprint).toContain('256 ');
+    // Independently parse RFC 8709; CI's minimal image has no ssh-keygen.
+    // The same returned line was also checked with ssh-keygen locally.
+    const wire = Buffer.from(text.split(' ')[1], 'base64');
+    expect(wire.readUInt32BE(0)).toBe(11);
+    expect(wire.subarray(4, 15).toString()).toBe('ssh-ed25519');
+    expect(wire.readUInt32BE(15)).toBe(32);
+    expect(wire.subarray(19).toString('hex')).toBe(record.publicKey);
+    expect(wire.length).toBe(51);
+    expect(body.fingerprint).toBe(`SHA256:${createHash('sha256').update(wire).digest('base64url').replaceAll('-', '+').replaceAll('_', '/')}`);
   });
 
   it('overlaps until exactly max TTL, then retires once without deleting history', async () => {
@@ -269,6 +269,29 @@ describe('SSH CA custody and lifecycle (#3063)', () => {
     await mint();
     await expect(mint()).rejects.toMatchObject({ status: 409 });
     expect(h.seeds).toHaveLength(1);
+  });
+
+  it('serializes concurrent mints to one signer and one signed mint event', async () => {
+    const attempts = await Promise.allSettled([mint(), mint()]);
+    expect(attempts.filter(result => result.status === 'fulfilled')).toHaveLength(1);
+    expect(await rows()).toHaveLength(1);
+    expect((await audits()).filter(row => row.type === 'vault.ssh-ca.minted')).toHaveLength(1);
+    expect(h.seeds).toHaveLength(1);
+  });
+
+  it('does not serve expired public trust if retirement audit signing fails', async () => {
+    const first = await mint();
+    await mint(true);
+    const [old] = (await rows()).filter(row => row.id === first.caId);
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(old.revokedAt!.getTime() + SSH_CA_MAX_CERT_TTL_SECONDS * 1000);
+    vi.stubEnv('AUTH_PRIVATE_KEY', '');
+    const response = await trustedRoute(new Request(`https://kernel.test/trusted-keys?purpose=${purpose}`));
+    responses.push(await response.text());
+    expect(response.status).toBe(503);
+    expect((await rows()).find(row => row.id === first.caId)?.status).toBe('retiring');
+    vi.stubEnv('AUTH_PRIVATE_KEY', nodeKeys.privateKey);
+    expect(await trusted()).not.toContain(first.publicKey);
   });
 
   it('rolls back replacement, grants and audit together on sealed-storage failure, without disclosure', async () => {

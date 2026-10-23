@@ -49,7 +49,7 @@ describe.each(actions)('$name SSH CA route', ({ name, handler, body }) => {
     expect(h.revoke).not.toHaveBeenCalled();
   });
   it.each([null, [], 'deploy', {}, { purpose: 1 }, { purpose: '' }, { purpose: 'Deploy' },
-    { purpose: 'a\nbad' }, { purpose: 'a'.repeat(65) }, { purpose: ' deploy ' },
+    { purpose: 'a\nbad' }, { purpose: 'deploy\n' }, { purpose: 'a'.repeat(65) }, { purpose: ' deploy ' },
     { purpose: 'deploy', requesterDid: 'did:imajin:other' }, { purpose: 'deploy', privateKey: 'not-accepted' },
   ])('refuses invalid body %#', async invalid => {
     expect((await handler(request(invalid))).status).toBe(400);
