@@ -160,7 +160,7 @@ describe('SSH CA custody and lifecycle (#3063)', () => {
     expect(wire.subarray(4, 15).toString()).toBe('ssh-ed25519');
     expect(wire.readUInt32BE(15)).toBe(32);
     expect(wire.subarray(19).toString('hex')).toBe(record.publicKey);
-    expect(wire.length).toBe(51);
+    expect(wire).toHaveLength(51);
     expect(body.fingerprint).toBe(`SHA256:${createHash('sha256').update(wire).digest('base64url').replaceAll('-', '+').replaceAll('_', '/')}`);
   });
 
@@ -172,7 +172,7 @@ describe('SSH CA custody and lifecycle (#3063)', () => {
     expect(old.status).toBe('retiring');
     const [grant] = await database.select().from(vaultDelegationGrants).where(eq(vaultDelegationGrants.id, old.grantId!));
     expect(grant.status).toBe('revoked');
-    expect(grant.wrappedKey.length).toBe(0);
+    expect(grant.wrappedKey.length === 0, 'Revoked wrapping material must be erased').toBe(true);
     const deadline = old.revokedAt!.getTime() + SSH_CA_MAX_CERT_TTL_SECONDS * 1000;
     vi.useFakeTimers({ toFake: ['Date'] });
     vi.setSystemTime(deadline - 1);

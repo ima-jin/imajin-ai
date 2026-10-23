@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { eq, sql } from 'drizzle-orm';
 import { db, attestations, vaultMintedKeys, type VaultMintedKey } from '@/src/db';
 import { prepareMechanicalAttestation } from '@/src/lib/auth/emit-mechanical-attestation';
+import { forEachSequential } from '@/src/lib/async/sequential';
 import { mintKeypair } from './mint';
 import { revokeStaticSecretGrant } from './index';
 import { getNodeSigningIdentity, isVaultTier1 } from './sealing';
@@ -29,7 +30,7 @@ export function sshCaPublicKey(publicKey: string, purpose: string, caId: string)
   Buffer.from(publicKey, 'hex').copy(wire, 8 + algorithm.length);
   return {
     publicKey: `ssh-ed25519 ${wire.toString('base64')} imajin-ssh-ca:${purpose}:${caId}`,
-    fingerprint: `SHA256:${createHash('sha256').update(wire).digest('base64').replace(/=+$/, '')}`,
+    fingerprint: `SHA256:${createHash('sha256').update(wire).digest('base64url').replaceAll('-', '+').replaceAll('_', '/')}`,
   };
 }
 
@@ -40,7 +41,8 @@ function publicRecord(row: Pick<VaultMintedKey, 'id' | 'publicKey' | 'status'>, 
 /** Same lock must cover #3064's active lookup and signing, never a cached signer. */
 export async function lockSshCaPurpose(tx: Transaction, purpose: string) {
   if (!isSshCaPurpose(purpose)) throw new SshCaError(400, 'Invalid SSH CA purpose');
-  await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${`vault.ssh-ca:${purpose}`}, 0))`);
+  const lockKey = `vault.ssh-ca:${purpose}`;
+  await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))`);
 }
 
 async function records(tx: Transaction, purpose: string) {
@@ -65,21 +67,21 @@ async function attest(tx: Transaction, action: Action, row: Pick<VaultMintedKey,
  * trust ends. A retiring key remains trusted for precisely MAX_CERT_TTL after it.
  * All records and attestations survive; no rows or sealed history are deleted.
  */
-async function retire(tx: Transaction, rows: VaultMintedKey[], purpose: string, now: Date) {
-  for (const row of rows) {
-    if (row.status !== 'retiring') continue;
+function retire(tx: Transaction, rows: VaultMintedKey[], purpose: string, now: Date) {
+  return forEachSequential(rows, async row => {
+    if (row.status !== 'retiring') return;
     if (!row.revokedAt) throw new Error('Invalid CA retirement state');
-    if (row.revokedAt.getTime() + SSH_CA_MAX_CERT_TTL_SECONDS * 1000 > now.getTime()) continue;
+    if (row.revokedAt.getTime() + SSH_CA_MAX_CERT_TTL_SECONDS * 1000 > now.getTime()) return;
     await attest(tx, 'retired', row, purpose, {
       actingDid: getNodeSigningIdentity().senderDid, composedBy: null,
     }, { signingStoppedAt: row.revokedAt.toISOString() });
     await tx.update(vaultMintedKeys).set({ status: 'retired' }).where(eq(vaultMintedKeys.id, row.id));
     row.status = 'retired';
-  }
+  });
 }
 
 /** Tier 1 cannot synchronously self-grant; refuse before generating a key. */
-export async function mintSshCa(purpose: string, authority: MintAuthority, rotate = false) {
+export function mintSshCa(purpose: string, authority: MintAuthority, rotate = false) {
   if (isVaultTier1()) throw new SshCaError(409, 'SSH CA requires kernel custody');
   return db.transaction(async tx => {
     await lockSshCaPurpose(tx, purpose);
@@ -114,7 +116,7 @@ export async function mintSshCa(purpose: string, authority: MintAuthority, rotat
   });
 }
 
-export async function revokeSshCa(purpose: string, caId: string, authority: MintAuthority) {
+export function revokeSshCa(purpose: string, caId: string, authority: MintAuthority) {
   return db.transaction(async tx => {
     await lockSshCaPurpose(tx, purpose);
     const row = (await records(tx, purpose)).find(record => record.id === caId);
@@ -130,7 +132,7 @@ export async function revokeSshCa(purpose: string, caId: string, authority: Mint
 }
 
 /** Public trust projection: retirement is reconciled on every read, even after restart. */
-export async function trustedSshCaKeys(purpose: string): Promise<string> {
+export function trustedSshCaKeys(purpose: string): Promise<string> {
   return db.transaction(async tx => {
     await lockSshCaPurpose(tx, purpose);
     const rows = await records(tx, purpose);
