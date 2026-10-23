@@ -15,7 +15,10 @@ export interface GithubJob {
   runId: string;
   runAttempt: string;
 }
-const hasControls = (value: string) => Array.from(value).some(char => char.charCodeAt(0) < 32 || char.charCodeAt(0) === 127);
+const hasControls = (value: string) => Array.from(value).some(char => {
+  const code = char.codePointAt(0)!;
+  return code < 32 || code === 127;
+});
 
 /** Canonical, domain-separated principal fits existing signed delegation grants. */
 export function githubGrantee(repository: unknown, environment: unknown): string {
@@ -33,8 +36,8 @@ function verifiedJob(payload: JWTPayload): GithubJob {
   if (typeof workflow !== 'string' || workflow.length > 512 || hasControls(workflow)
     || !workflow.startsWith(`${repository}/.github/workflows/`)
     || !/\/\.github\/workflows\/[a-zA-Z0-9_.-]+\.ya?ml@refs\/(?:heads|tags)\/\S+$/.test(workflow)
-    || typeof runId !== 'string' || !/^[1-9][0-9]{0,19}$/.test(runId)
-    || typeof runAttempt !== 'string' || !/^[1-9][0-9]{0,9}$/.test(runAttempt)
+    || typeof runId !== 'string' || !/^[1-9]\d{0,19}$/.test(runId)
+    || typeof runAttempt !== 'string' || !/^[1-9]\d{0,9}$/.test(runAttempt)
     || payload.sub !== `repo:${repository}:environment:${String(environment).replaceAll(':', '%3A')}`) {
     throw new SshCaError(401, 'Invalid GitHub job identity');
   }

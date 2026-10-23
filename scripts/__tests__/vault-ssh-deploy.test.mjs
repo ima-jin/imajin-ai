@@ -7,7 +7,7 @@ const action = parse(readFileSync('.github/actions/vault-ssh-deploy/action.yml',
 
 it('dry-runs the reusable action lifecycle with tmpfs fixtures and mocked transports', () => {
   const result = spawnSync('python3', ['scripts/__tests__/vault-ssh-deploy.test.py'], {
-    encoding: 'utf8', env: { ...process.env, PYTHONDONTWRITEBYTECODE: '1' },
+    encoding: 'utf8', env: { ...process.env, PYTHONDONTWRITEBYTECODE: '1', TMPDIR: '/dev/shm' },
   });
   expect(result.status, result.stderr).toBe(0);
   expect(result.stderr).toContain('OK');
@@ -25,6 +25,7 @@ it('keeps one cross-repository action generic, input-injection safe and always c
     expect(step.run).not.toContain('${{');
     expect(step.run).toContain('$GITHUB_ACTION_PATH/../../../deploy/vault-ssh-deploy.py');
     expect(step.shell).toBe('bash');
+    expect(step.env.TMPDIR).toBe('/dev/shm');
   }
   expect(action.runs.steps[1].env.VAULT_SSH_DIR).toBe('${{ steps.memory.outputs.directory }}');
   expect(action.runs.steps[2].env.VAULT_SSH_DIR).toBe('${{ steps.memory.outputs.directory }}');

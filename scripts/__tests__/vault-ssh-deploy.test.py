@@ -38,6 +38,7 @@ class DeployTests(unittest.TestCase):
         self.keygen_guard.start()
         self.addCleanup(self.keygen_guard.stop)
         self.env = {
+            "TMPDIR": str(runner.ROOT),
             "VAULT_KERNEL_URL": "https://kernel.example.com", "VAULT_PURPOSE": "deploy",
             "VAULT_CA_ID": "vmk_test", "VAULT_GRANT_ID": "vdg_test", "VAULT_HOST": "host.example.com",
             "VAULT_PRINCIPAL": "deploy", "VAULT_COMMAND": "/usr/local/bin/deploy",
@@ -134,6 +135,9 @@ class DeployTests(unittest.TestCase):
             runner.interrupted(signal.SIGTERM, None)
 
     def test_no_disk_fallback_no_swap_and_no_symlink_cleanup(self):
+        with patch.dict(os.environ, {"TMPDIR": "/not-the-selected-memory-mount"}):
+            with self.assertRaises(ValueError):
+                self.real_memory_check()
         with patch.object(runner.subprocess, "run", return_value=subprocess.CompletedProcess([], 0, stdout="ext4")):
             with self.assertRaises(ValueError):
                 self.real_memory_check()
@@ -185,8 +189,9 @@ class DeployTests(unittest.TestCase):
                     execute.assert_not_called()
 
     def test_redirects_and_oversized_http_responses_are_refused(self):
+        handler = runner.NoRedirect()
         with self.assertRaises(ValueError):
-            runner.NoRedirect().redirect_request(None, None, 302, "", {}, "https://attacker.invalid")
+            handler.redirect_request(None, None, 302, "", {}, "https://attacker.invalid")
         with patch.object(runner.urllib.request, "build_opener") as opener:
             response = opener.return_value.open.return_value.__enter__.return_value
             response.read.return_value = b"x" * 65537

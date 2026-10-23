@@ -34,10 +34,13 @@ runs:
     - name: Allocate credential tmpfs
       id: memory
       shell: bash
+      env:
+        TMPDIR: /dev/shm
       run: python3 "$GITHUB_ACTION_PATH/../../../deploy/vault-ssh-deploy.py" prepare
     - name: Sign and deploy
       shell: bash
       env:
+        TMPDIR: /dev/shm
         VAULT_SSH_DIR: ${{ steps.memory.outputs.directory }}
         VAULT_KERNEL_URL: ${{ inputs.kernel-url }}
         VAULT_PURPOSE: ${{ inputs.purpose }}
@@ -53,5 +56,6 @@ runs:
       if: ${{ always() }}
       shell: bash
       env:
+        TMPDIR: /dev/shm
         VAULT_SSH_DIR: ${{ steps.memory.outputs.directory }}
       run: python3 "$GITHUB_ACTION_PATH/../../../deploy/vault-ssh-deploy.py" cleanup
