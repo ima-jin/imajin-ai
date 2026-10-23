@@ -1,4 +1,4 @@
-import { db, identities, attestations, connections, identityMembers, profiles } from '@/src/db';
+import { db, identities, attestations, connections, identityMembers } from '@/src/db';
 import { eq, or, and, isNull, count } from 'drizzle-orm';
 import Link from 'next/link';
 import IdentityOwner from './IdentityOwner';
@@ -46,35 +46,28 @@ export default async function IdentityDetail({ did, sessionDid }: Readonly<Props
   const badge = tierBadge(identity.tier);
   const displayName = identity.name || (identity.handle ? `@${identity.handle}` : null);
 
-  // Determine edit href based on scope and membership role
+  // Determine edit href based on scope, preferring owner/admin authority over stub maintenance.
   let editHref: string | null = null;
   if (identity.scope === 'actor') {
     // If viewing own profile, no param needed. If acting-as, pass the DID.
     editHref = did === sessionDid ? '/profile/edit' : `/profile/edit?did=${encodeURIComponent(did)}`;
   } else {
-    const [[membership], [profile]] = await Promise.all([
-      db
-        .select({ role: identityMembers.role })
-        .from(identityMembers)
-        .where(
-          and(
-            eq(identityMembers.identityDid, did),
-            eq(identityMembers.memberDid, sessionDid),
-            isNull(identityMembers.removedAt)
-          )
+    const [membership] = await db
+      .select({ role: identityMembers.role })
+      .from(identityMembers)
+      .where(
+        and(
+          eq(identityMembers.identityDid, did),
+          eq(identityMembers.memberDid, sessionDid),
+          isNull(identityMembers.removedAt)
         )
-        .limit(1),
-      db
-        .select({ claimedBy: profiles.claimedBy })
-        .from(profiles)
-        .where(eq(profiles.did, did))
-        .limit(1),
-    ]);
+      )
+      .limit(1);
 
-    if (membership?.role === 'maintainer' || profile?.claimedBy === null) {
-      editHref = `/auth/stubs/${did}`;
-    } else if (membership?.role === 'owner' || membership?.role === 'admin') {
+    if (membership?.role === 'owner' || membership?.role === 'admin') {
       editHref = `/auth/settings`;
+    } else if (membership?.role === 'maintainer') {
+      editHref = `/auth/stubs/${did}`;
     }
   }
 
