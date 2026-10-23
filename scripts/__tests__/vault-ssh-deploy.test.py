@@ -38,7 +38,7 @@ class DeployTests(unittest.TestCase):
         self.keygen_guard.start()
         self.addCleanup(self.keygen_guard.stop)
         self.env = {
-            "TMPDIR": str(runner.ROOT),
+            "VAULT_SSH_MEMORY_ROOT": str(runner.ROOT),
             "VAULT_KERNEL_URL": "https://kernel.example.com", "VAULT_PURPOSE": "deploy",
             "VAULT_CA_ID": "vmk_test", "VAULT_GRANT_ID": "vdg_test", "VAULT_HOST": "host.example.com",
             "VAULT_PRINCIPAL": "deploy", "VAULT_COMMAND": "/usr/local/bin/deploy",
@@ -135,7 +135,7 @@ class DeployTests(unittest.TestCase):
             runner.interrupted(signal.SIGTERM, None)
 
     def test_no_disk_fallback_no_swap_and_no_symlink_cleanup(self):
-        with patch.dict(os.environ, {"TMPDIR": "/not-the-selected-memory-mount"}):
+        with patch.object(runner, "ROOT", Path("relative")):
             with self.assertRaises(ValueError):
                 self.real_memory_check()
         with patch.object(runner.subprocess, "run", return_value=subprocess.CompletedProcess([], 0, stdout="ext4")):

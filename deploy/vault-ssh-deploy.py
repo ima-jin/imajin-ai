@@ -13,9 +13,9 @@ import urllib.parse
 import urllib.request
 
 AUDIENCE = "urn:imajin:vault:ssh-cert"
-# The action selects TMPDIR=/dev/shm. mkdtemp creates a random owner-only
-# child; check_memory independently verifies the selected filesystem, with no disk fallback.
-ROOT = Path(tempfile.gettempdir())
+# The action selects the RAM mount explicitly, never a generic temp resolver.
+# mkdtemp creates an exclusive random owner-only child under the verified mount.
+ROOT = Path(os.environ["VAULT_SSH_MEMORY_ROOT"])
 
 
 def require(condition):
@@ -25,7 +25,7 @@ def require(condition):
 
 def check_memory():
     require(sys.platform == "linux")
-    require(str(ROOT) == os.environ.get("TMPDIR"))
+    require(ROOT.is_absolute())
     result = subprocess.run(["stat", "-f", "-c", "%T", str(ROOT)],
                             check=True, capture_output=True, text=True)
     require(result.stdout.strip() == "tmpfs")

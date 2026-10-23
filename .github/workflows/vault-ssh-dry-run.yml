@@ -23,5 +23,5 @@ jobs:
       - name: Dry-run keypair, OIDC request, signing request, deploy and cleanup
         env:
           PYTHONDONTWRITEBYTECODE: '1'
-          TMPDIR: /dev/shm
+          VAULT_SSH_MEMORY_ROOT: /dev/shm
         run: python3 scripts/__tests__/vault-ssh-deploy.test.py
