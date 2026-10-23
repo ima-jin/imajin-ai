@@ -49,8 +49,6 @@ export async function listCloudflareZoneGrants(agentDid: string) {
     if (candidates.length !== 1) continue;
     const domain = candidates[0].cloudflare!.domain;
     if (!domainSchema.safeParse(domain).success) continue;
-    const binding = await resolveVerifiedDomain(domain);
-    if (binding?.domain !== domain || binding.zoneOwner !== row.delegatorDid) continue;
     grants.set(row.grantId, {
       grantId: row.grantId, agentDid, delegatorDid: row.delegatorDid,
       audience: { type: 'dids', values: [cloudflareZoneDid(zoneId)] },
@@ -58,5 +56,11 @@ export async function listCloudflareZoneGrants(agentDid: string) {
       issuedAt: row.issuedAt.toISOString(), expiresAt: row.expiresAt.toISOString(),
     });
   }
-  return [...grants.values()].map(grant => ({ ...grant, capabilities: grant.capabilities.sort() }));
+  const verified = await Promise.all([...grants.values()].map(async grant => {
+    const binding = await resolveVerifiedDomain(grant.domain);
+    if (binding?.domain !== grant.domain || binding.zoneOwner !== grant.delegatorDid) return null;
+    grant.capabilities.sort((a, b) => a.localeCompare(b));
+    return grant;
+  }));
+  return verified.filter(grant => grant !== null);
 }
