@@ -54,6 +54,13 @@ describe('read-only exact-SHA production deployment gate (#3082)', () => {
     }
   });
 
+  it('fails closed if listing deployments succeeds but reading statuses is forbidden', async () => {
+    request.mockResolvedValueOnce(Response.json([deployment()]))
+      .mockResolvedValueOnce(Response.json({ error: 'untrusted status detail' }, { status: 403 }));
+    expect(await verifyProduction(SHA)).toBe(2);
+    expect(console.error.mock.calls.flat().join(' ')).not.toMatch(/untrusted|non-secret-test-fixture/);
+  });
+
   it.each(['queued', 'pending', 'in_progress', 'failure', 'error', 'inactive'])('refuses latest status %s even with an older success', async (state) => {
     replies([deployment()], [{ state }, { state: 'success' }]);
     expect(await verifyProduction(SHA)).toBe(1);
