@@ -5,7 +5,7 @@ import { vaultService } from '@/src/lib/vault';
 import { deleteSecretAndRevokeGrants } from '@/src/lib/vault/delete-secret';
 import { toVaultErrorResponse } from '@/src/lib/vault/errors';
 import { listOtherActiveGrantees } from '@/src/lib/vault/grantees';
-import { isInternalSecretField, isGroupKeyField, parseVaultFieldName } from '@/src/lib/vault/field-grammar';
+import { isInternalSecretField, isPrivateCustodyField, parseVaultFieldName } from '@/src/lib/vault/field-grammar';
 import { getNodeSigningIdentity } from '@/src/lib/vault/sealing';
 
 const log = createLogger('kernel');
@@ -57,7 +57,7 @@ export async function DELETE(request: NextRequest) {
     return NextResponse.json({ error: parsedField.message }, { status: 400 });
   }
   const trimmedField = parsedField.value.field;
-  if (isGroupKeyField(trimmedField)) {
+  if (isPrivateCustodyField(trimmedField)) {
     return NextResponse.json({ error: 'Group keys require countersigned group custody revocation' }, { status: 409 });
   }
 

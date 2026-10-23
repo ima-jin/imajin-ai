@@ -28,13 +28,13 @@
  * deferred to a later revocation tier (see the #2242 PR description).
  */
 import { generateKeypair, emitAttestation } from '@imajin/auth';
-import { MINTED_KEY_NAMESPACE } from './field-grammar';
+import { MINTED_KEY_NAMESPACE, SSH_CA_NAMESPACE, isSshCaField } from './field-grammar';
 import { publish } from '@imajin/bus';
 import { createLogger } from '@imajin/logger';
 import { eq } from 'drizzle-orm';
 import { db, vaultMintedKeys, type VaultMintedKey } from '@/src/db';
 import { generateId } from '@/src/lib/kernel/id';
-import { sealAndGrantStaticSecret, revokeStaticSecretGrant } from './index';
+import { sealAndGrantStaticSecret, revokeStaticSecretGrant, vaultService, type DbExecutor } from './index';
 import type { VaultAuthorization } from './authorization';
 
 const log = createLogger('kernel');
@@ -76,6 +76,10 @@ export interface MintKeypairParams {
    * retries of the external Actions-secret seal step.
    */
   oneTime?: boolean;
+  /** Kernel-only custody mode; never populated from generic mint HTTP input. */
+  custody?: 'ssh-ca';
+  /** CA mint, grants and signed lifecycle records commit together. */
+  tx?: DbExecutor;
 }
 
 export interface MintKeypairResult {
@@ -106,18 +110,19 @@ async function sealAndRecordMintedKeypair(
   params: MintKeypairParams,
 ): Promise<MintKeypairResult> {
   const { purpose, requesterDid, mintedBy, expiresAt = null, oneTime = true } = params;
-  const field = mintedKeyField(did);
+  const field = params.custody === 'ssh-ca' ? `${SSH_CA_NAMESPACE}:${did}` : mintedKeyField(did);
 
-  const { grantId, requestId } = await sealAndGrantStaticSecret(field, privateKey, {
+  const { grantId, requestId, entry } = await sealAndGrantStaticSecret(field, privateKey, {
     principalDid: did,
     granteeDid: requesterDid,
     expiresAt,
     purpose,
     oneTime,
+    ...(params.tx ? { tx: params.tx } : {}),
   });
 
   const mintId = generateId('vmk');
-  await db.insert(vaultMintedKeys).values({
+  await (params.tx ?? db).insert(vaultMintedKeys).values({
     id: mintId,
     did,
     publicKey,
@@ -128,6 +133,8 @@ async function sealAndRecordMintedKeypair(
     grantId,
     status: 'active',
   });
+  // Rollback leaves at most inaccessible ciphertext at a unique field.
+  if (params.tx) await vaultService.set(entry);
 
   log.info(
     { mintId, did, requesterDid, mintedBy, purpose, pendingGrant: grantId === null },
@@ -319,6 +326,8 @@ export async function revokeMintedKey(params: {
   if (!record) {
     return { status: 'not_found' };
   }
+  // CA revocation has its own atomic signed lifecycle and trust withdrawal.
+  if (isSshCaField(record.field)) return { status: 'not_found' };
   if (record.status === 'revoked') {
     return { status: 'already_revoked', record };
   }

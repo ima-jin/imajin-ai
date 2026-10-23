@@ -6,7 +6,7 @@ import { crypto as authCrypto } from '@imajin/auth';
 import { extractPrivateKeySeed } from '@imajin/vault-core';
 import { getNodeSigningIdentity } from './sealing';
 import { resolveVaultPath } from './vault-path';
-import { isAppSelfSecretField, isGroupKeyField, isImportedKeyField, parseVaultFieldName } from './field-grammar';
+import { isAppSelfSecretField, isPrivateCustodyField, isImportedKeyField, parseVaultFieldName } from './field-grammar';
 
 type Field = { field: string; plaintext: string };
 type Envelope = {
@@ -27,7 +27,7 @@ const HEX_KEY = /^[0-9a-f]{64}$/;
 /** Private custody rails must never be migrated through the ordinary sweep. */
 export function isSweepField(field: unknown): field is string {
   return typeof field === 'string' && parseVaultFieldName(field).ok &&
-    !isAppSelfSecretField(field) && !isGroupKeyField(field) && !isImportedKeyField(field);
+    !isAppSelfSecretField(field) && !isPrivateCustodyField(field) && !isImportedKeyField(field);
 }
 
 function metadata(e: Omit<Envelope, 'signature'>, context: string): Buffer {

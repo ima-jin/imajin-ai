@@ -41,7 +41,7 @@ import { VaultDelegationError } from './errors';
 import { isInternalSecretField } from './internal-secret';
 import { rotateInternalSecret } from './internal-secret-rotate';
 import { reissueFieldGrants } from './shared-internal-secret';
-import { isCloudflareImportedKeyField, isGroupKeyField } from './field-grammar';
+import { isCloudflareImportedKeyField, isPrivateCustodyField } from './field-grammar';
 import { isCloudflarePurpose } from '@/src/lib/cloudflare/contract';
 import { forEachSequential, mapWithConcurrency } from '@/src/lib/async/sequential';
 
@@ -893,7 +893,7 @@ export async function vaultFieldExists(field: string): Promise<boolean> {
  * No plaintext is logged at any point.
  */
 export async function loadAndUnseal(field: string): Promise<string | undefined> {
-  if (isGroupKeyField(field)) throw new Error('Group keys require an in-process purpose grant');
+  if (isPrivateCustodyField(field)) throw new Error('Group keys require an in-process purpose grant');
   const entry = await vaultService.get(field);
   if (!entry) {
     return undefined;
@@ -1162,7 +1162,7 @@ export async function loadAndUnsealByGrantee(
   field: string,
   granteeDid: string,
 ): Promise<string | undefined> {
-  if (isGroupKeyField(field)) throw new Error('Group keys require an in-process purpose grant');
+  if (isPrivateCustodyField(field)) throw new Error('Group keys require an in-process purpose grant');
   const entry = await vaultService.get(field);
   if (!entry || entry.deleted) {
     return undefined;
@@ -1725,7 +1725,7 @@ export async function fetchGrantSecret(params: {
     // someone else would let a caller enumerate grantIds it cannot use.
     return { status: 'not_grantee' };
   }
-  if (!params.kernelCredentialUse && (isCloudflarePurpose(grant.purpose) || isCloudflareImportedKeyField(grant.field))) {
+  if (isPrivateCustodyField(grant.field) || (!params.kernelCredentialUse && (isCloudflarePurpose(grant.purpose) || isCloudflareImportedKeyField(grant.field)))) {
     return { status: 'not_grantee' };
   }
   if (grant.status !== 'active') {

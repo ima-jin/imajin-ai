@@ -5,6 +5,10 @@
  */
 
 export const ATTESTATION_TYPES = [
+  'vault.ssh-ca.minted',
+  'vault.ssh-ca.rotated',
+  'vault.ssh-ca.revoked',
+  'vault.ssh-ca.retired',
   'operator.approval.expired',
   // #2997 — node-signed grant authority changes; org delegator and human actor.
   'delegation.grant.issued',
@@ -309,6 +313,10 @@ export type AttestationType = typeof ATTESTATION_TYPES[number];
  * excluded from any "pending your countersignature" view or query.
  */
 export const MECHANICAL_ATTESTATION_TYPES = [
+  'vault.ssh-ca.minted',
+  'vault.ssh-ca.rotated',
+  'vault.ssh-ca.revoked',
+  'vault.ssh-ca.retired',
   'operator.approval.expired',
   'agreement.revoked',
   'delegation.grant.issued',

@@ -46,6 +46,20 @@ components:
       type: http
       scheme: bearer
   schemas:
+    SshCaPurpose:
+      type: string
+      pattern: "^[a-z][a-z0-9._-]{0,63}$"
+      description: Canonical reusable purpose; not tied to a particular consumer.
+    SshCa:
+      type: object
+      additionalProperties: false
+      required: [caId, purpose, status, publicKey, fingerprint]
+      properties:
+        caId: { type: string }
+        purpose: { $ref: "#/components/schemas/SshCaPurpose" }
+        status: { type: string, const: active }
+        publicKey: { type: string, description: OpenSSH ssh-ed25519 line with comment }
+        fingerprint: { type: string, description: OpenSSH SHA256 fingerprint of the public wire blob }
     CloudflareAuthority:
       type: object
       additionalProperties: false
@@ -66,6 +80,154 @@ components:
         error: { type: string }
 
 paths:
+  /api/vault/ssh-ca:
+    post:
+      tags: [vault-mint]
+      operationId: vaultSshCaMint
+      summary: Mint a kernel-custodied SSH CA through vault.mint
+      description: |
+        Uses the existing mintKeypair path. The private key is sealed with a
+        node-only grant in a protected namespace: no generic fetch, grant,
+        rotation export or plaintext route may disclose it, even to the node.
+        The resolved acting DID must be the vault node or its authorized delegate.
+        Tier-1 external custody is refused before generation. One active signer
+        per purpose; repeated mint returns 409. No signing operation is provided.
+        Commits a node-signed vault.ssh-ca.minted attestation with CA id,
+        purpose, actor, composedBy and fingerprint, never key material.
+      security: [{ cookieAuth: [] }, { bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [purpose]
+              properties:
+                purpose: { $ref: "#/components/schemas/SshCaPurpose" }
+      responses:
+        "201":
+          description: Public metadata only; Cache-Control no-store
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SshCa" }
+        "400": { description: Invalid JSON, purpose or unexpected property }
+        "401": { description: Authentication required }
+        "403": { description: Not the vault node or its delegate }
+        "409": { description: Active CA already exists or unsupported custody }
+        "503": { description: CA unavailable; generic error without secret details }
+  /api/vault/ssh-ca/rotate:
+    post:
+      tags: [vault-mint]
+      operationId: vaultSshCaRotate
+      summary: Mint a replacement signer and overlap public trust
+      description: |
+        Same authority as mint. Serializes per purpose with mint, revoke and
+        trusted reads. Mints through vault.mint, then atomically withdraws the
+        previous private signing grant and marks its mint record retiring.
+        revokedAt records the signing withdrawal instant. Both public keys stay
+        trusted for SSH_CA_MAX_CERT_TTL_SECONDS (900 seconds) after that instant.
+        The default certificate TTL for phase 2 is 600 seconds; phase 2 must
+        enforce the cap and use the same purpose lock, never cache a signer.
+        Further rotations preserve each older key's original deadline.
+        Emits signed minted and rotated attestations; rotated binds old/new
+        ids and fingerprints, actor, purpose and previousTrustedUntil.
+        No rows or sealed history are deleted. Host trust changes require deploy.
+      security: [{ cookieAuth: [] }, { bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [purpose]
+              properties:
+                purpose: { $ref: "#/components/schemas/SshCaPurpose" }
+      responses:
+        "201":
+          description: Replacement signer public metadata; Cache-Control no-store
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SshCa" }
+        "400": { description: Invalid JSON, purpose or unexpected property }
+        "401": { description: Authentication required }
+        "403": { description: Not the vault node or its delegate }
+        "404": { description: No active signer for this purpose }
+        "409": { description: Unsupported custody }
+        "503": { description: Rotation unavailable; old signer unchanged on rollback }
+  /api/vault/ssh-ca/revoke:
+    post:
+      tags: [vault-mint]
+      operationId: vaultSshCaRevoke
+      summary: Immediately withdraw a particular CA from public trust
+      description: |
+        Same authority as mint. Revokes an active or overlapping key by CA id
+        AND purpose. Atomically revokes its signing grant, marks the mint row
+        revoked and stores a signed vault.ssh-ca.revoked attestation with
+        CA id, purpose, actor, composedBy and fingerprint. History survives.
+        Already-revoked keys are successful no-ops with no duplicate attestation.
+        The next trusted read excludes the key immediately; one host deploy
+        removes it from TrustedUserCAKeys. Does not mint a replacement.
+      security: [{ cookieAuth: [] }, { bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [purpose, caId]
+              properties:
+                purpose: { $ref: "#/components/schemas/SshCaPurpose" }
+                caId: { type: string, pattern: "^vmk_[a-zA-Z0-9_-]{1,100}$" }
+      responses:
+        "200":
+          description: Revoked or already revoked; Cache-Control no-store
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [caId, alreadyRevoked]
+                properties:
+                  caId: { type: string }
+                  alreadyRevoked: { type: boolean }
+        "400": { description: Invalid JSON, purpose, CA id or unexpected property }
+        "401": { description: Authentication required }
+        "403": { description: Not the vault node or its delegate }
+        "404": { description: No CA with this id and purpose }
+        "503": { description: Revocation unavailable; generic error without secret details }
+  /api/vault/ssh-ca/trusted-keys:
+    get:
+      tags: [vault-mint]
+      operationId: vaultSshCaTrustedKeys
+      summary: Public OpenSSH TrustedUserCAKeys contents for one purpose
+      description: |
+        Anonymous public-only route, Cache-Control no-store. Returns newline-
+        terminated ssh-ed25519 lines (or an empty file for unknown/revoked
+        purposes). Reads reconcile retirement durably, including after restart:
+        once the signing-withdrawal instant plus the 900-second maximum cert
+        TTL is reached, the old key drops off automatically and a signed
+        vault.ssh-ca.retired attestation records CA id, purpose, node actor and
+        fingerprint. No scheduler or operator action is required.
+        Retirement and lifecycle changes commit with their signed attestations;
+        audit/storage failure returns 503 rather than an unaudited trust list.
+        A deploy consumer ships these contents to its host; host configuration
+        and certificate signing are separate phases.
+      security: []
+      parameters:
+        - in: query
+          name: purpose
+          required: true
+          schema: { $ref: "#/components/schemas/SshCaPurpose" }
+      responses:
+        "200":
+          description: Public CA lines only; never private or wrapped key material
+          content:
+            text/plain:
+              schema: { type: string }
+        "400": { description: Missing or invalid purpose }
+        "503": { description: Trust projection unavailable; generic error without secret details }
   /api/vault/import:
     get:
       tags: [vault-import]

@@ -7,7 +7,7 @@ import { ensureVaultHotReloadReactorRegistered } from '@/src/lib/vault/subscribe
 import { toVaultErrorResponse } from '@/src/lib/vault/errors';
 import { getNodeSigningIdentity } from '@/src/lib/vault/sealing';
 import { getRotateGranteeGuard } from '@/src/lib/vault/grantees';
-import { isAppSelfSecretField, isGroupKeyField, parseVaultFieldName } from '@/src/lib/vault/field-grammar';
+import { isAppSelfSecretField, isPrivateCustodyField, parseVaultFieldName } from '@/src/lib/vault/field-grammar';
 
 const log = createLogger('kernel');
 ensureVaultHotReloadReactorRegistered();
@@ -41,7 +41,7 @@ export async function POST(request: NextRequest) {
   }
 
   const trimmedField = parsedField.value.field;
-  if (isGroupKeyField(trimmedField)) {
+  if (isPrivateCustodyField(trimmedField)) {
     return NextResponse.json({ error: 'Group keys require countersigned group custody' }, { status: 409 });
   }
   if (isAppSelfSecretField(trimmedField)) {
