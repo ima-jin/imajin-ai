@@ -37,6 +37,6 @@ it('documents a cross-repository caller and provides a credential-free CI dry-ru
   expect(guide).toContain('uses: ima-jin/imajin-ai/.github/actions/vault-ssh-deploy@REVIEWED_COMMIT_SHA');
   expect(guide).toContain('id-token: write');
   expect(guide).toContain('environment: production');
-  expect(workflow.permissions).toEqual({ contents: 'read' });
+  expect(workflow.permissions).toEqual({ contents: 'read', packages: 'read' });
   expect(workflow.jobs['dry-run'].steps.at(-1).run).toBe('python3 scripts/__tests__/vault-ssh-deploy.test.py');
 });
