@@ -11,7 +11,7 @@ const log = createLogger('bus:broker:consent-request-notify');
  * loads while one worker waits for the notify service's persisted insert.
  */
 async function notifyOnce(request: BrokerPipelineState['request'], send: () => Promise<void>): Promise<void> {
-  const fields = [...new Set(request.fields)].sort();
+  const fields = [...new Set(request.fields)].sort((left, right) => left.localeCompare(right, 'en'));
   const key = createHash('sha256')
     .update(JSON.stringify([request.requester, request.subject, request.purpose, fields]))
     .digest('hex');
@@ -28,10 +28,8 @@ async function notifyOnce(request: BrokerPipelineState['request'], send: () => P
         AND (data->>'expiresAt' IS NULL OR (data->>'expiresAt')::timestamptz > NOW())
         AND data->>'requesterDid' = ${request.requester}
         AND data->>'purpose' = ${request.purpose}
-        AND COALESCE((
-          SELECT jsonb_agg(field ORDER BY field)
-          FROM (SELECT DISTINCT jsonb_array_elements_text(data->'fields') AS field) normalized
-        ), '[]'::jsonb) = ${JSON.stringify(fields)}::jsonb
+        AND data->'fields' @> ${JSON.stringify(fields)}::jsonb
+        AND data->'fields' <@ ${JSON.stringify(fields)}::jsonb
       LIMIT 1
     `;
     if (existing.length === 0) await send();

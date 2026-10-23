@@ -102,7 +102,7 @@ describe('pending consent request dedupe (#3081)', () => {
     const query = mockSql.mock.calls[1];
     expect(query[0].join('')).toContain('read = false');
     expect(query[0].join('')).toContain("(data->>'expiresAt')::timestamptz > NOW()");
-    expect(query.slice(1)).toEqual([OWNER, OWNER, 'document.projection', '["moonshot:infer"]']);
+    expect(query.slice(1)).toEqual([OWNER, OWNER, 'document.projection', '["moonshot:infer"]', '["moonshot:infer"]']);
   });
 
   it('canonicalizes fields as a set, sharing a lock across order and duplicates', async () => {
@@ -110,7 +110,8 @@ describe('pending consent request dedupe (#3081)', () => {
     await sendConsentRequestNotification(makeRequest({ fields: ['email', 'phone'] }), 'no_consent');
     expect(mockSql.mock.calls[0][1]).toBe(mockSql.mock.calls[2][1]);
     expect(mockSql.mock.calls[1].at(-1)).toBe('["email","phone"]');
-    expect(mockSql.mock.calls[1][0].join('')).toContain('SELECT DISTINCT jsonb_array_elements_text');
+    expect(mockSql.mock.calls[1][0].join('')).toContain("data->'fields' @>");
+    expect(mockSql.mock.calls[1][0].join('')).toContain("data->'fields' <@");
   });
 
   it.each([
