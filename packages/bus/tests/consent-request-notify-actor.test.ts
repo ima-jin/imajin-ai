@@ -101,7 +101,7 @@ describe('pending consent request dedupe (#3081)', () => {
     expect(fetchMock).toHaveBeenCalledOnce();
     const query = mockSql.mock.calls[1];
     expect(query[0].join('')).toContain('read = false');
-    expect(query[0].join('')).toContain("created_at > NOW() - INTERVAL '24 hours'");
+    expect(query[0].join('')).toContain("(data->>'expiresAt')::timestamptz > NOW()");
     expect(query.slice(1)).toEqual([OWNER, OWNER, 'document.projection', '["moonshot:infer"]']);
   });
 
@@ -129,11 +129,53 @@ describe('pending consent request dedupe (#3081)', () => {
     expect(mockSql).toHaveBeenCalledOnce();
     expect(fetchMock).not.toHaveBeenCalled();
   });
+  it('notifies only once while simultaneous loads race an in-flight delivery', async () => {
+    let locked = false;
+    mockBegin.mockImplementation(async (callback: (tx: typeof mockSql) => Promise<void>) => {
+      let ownsLock = false;
+      try {
+        return await callback(vi.fn(async (strings: TemplateStringsArray) => {
+          if (!strings.join('').includes('pg_try_advisory_xact_lock')) return [];
+          const acquired = !locked;
+          ownsLock = acquired;
+          locked = true;
+          return [{ acquired }];
+        }));
+      } finally {
+        if (ownsLock) locked = false;
+      }
+    });
+    let completeDelivery!: () => void;
+    const delivery = new Promise<void>(resolve => { completeDelivery = resolve; });
+    fetchMock.mockImplementation(async () => {
+      await delivery;
+      return { ok: true };
+    });
+    const first = sendConsentRequestNotification(makeRequest(), 'no_consent');
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
+    await Promise.all(Array.from({ length: 5 }, () => sendConsentRequestNotification(makeRequest(), 'no_consent')));
+    completeDelivery();
+    await first;
+    expect(fetchMock).toHaveBeenCalledOnce();
+  });
 
-  it.each(['decided', 'expired'])('sends again when no pending alert remains (%s)', async () => {
+  it.each([
+    { read: true, expired: false },
+    { read: false, expired: true },
+    { read: false, expired: false },
+    { read: false, expired: null },
+  ])('suppresses only undecided, unexpired alerts (%j)', async ({ read, expired }) => {
+    mockSql.mockImplementation(async (strings: TemplateStringsArray) => {
+      const query = strings.join('');
+      if (query.includes('pg_try_advisory_xact_lock')) return [{ acquired: true }];
+      // The existing bell uses read for decisions; absent expiry stays pending.
+      expect(query).toContain('read = false');
+      expect(query).toContain("data->>'expiresAt' IS NULL");
+      expect(query).toContain("(data->>'expiresAt')::timestamptz > NOW()");
+      return !read && !expired ? [{ id: 'ntf_existing' }] : [];
+    });
     await sendConsentRequestNotification(makeRequest(), 'no_consent');
-    await sendConsentRequestNotification(makeRequest(), 'no_consent');
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock).toHaveBeenCalledTimes(!read && !expired ? 0 : 1);
   });
 
   it('skips delivery on a dedupe database error rather than stacking unguarded alerts', async () => {

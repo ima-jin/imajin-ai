@@ -6,7 +6,7 @@ import type { BrokerPipelineState } from '../types';
 const log = createLogger('bus:broker:consent-request-notify');
 /**
  * The bell's Approve/Deny path marks the notification read. Until then (or
- * the 24-hour request TTL), reuse that pending alert, including alerts made
+ * an explicit expiry), reuse that pending alert, including alerts made
  * before dedupe shipped. A nonblocking transaction-scoped lock drops racing
  * loads while one worker waits for the notify service's persisted insert.
  */
@@ -25,7 +25,7 @@ async function notifyOnce(request: BrokerPipelineState['request'], send: () => P
       WHERE recipient_did = ${request.subject}
         AND scope = 'broker:consent-request'
         AND read = false
-        AND created_at > NOW() - INTERVAL '24 hours'
+        AND (data->>'expiresAt' IS NULL OR (data->>'expiresAt')::timestamptz > NOW())
         AND data->>'requesterDid' = ${request.requester}
         AND data->>'purpose' = ${request.purpose}
         AND COALESCE((
