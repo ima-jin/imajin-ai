@@ -45,6 +45,11 @@ components:
     bearerAuth:
       type: http
       scheme: bearer
+    githubOidc:
+      type: apiKey
+      in: header
+      name: x-github-oidc-token
+      description: GitHub Actions RS256 OIDC token, audience urn:imajin:vault:ssh-cert
   schemas:
     SshCaPurpose:
       type: string
@@ -248,6 +253,17 @@ paths:
       summary: Sign a restricted throwaway Ed25519 user public key
       description: |
         Authenticated credential DID must hold the named live vault grant.
+        Alternatively x-github-oidc-token authenticates a GitHub Actions job:
+        RS256 verified against the fixed token.actions.githubusercontent.com
+        issuer/JWKS, audience urn:imajin:vault:ssh-cert, exp/iat/nbf/sub/jti,
+        max age 10 minutes. Requires repository, environment, workflow_ref,
+        run_id and run_attempt; subject must bind that repository/environment.
+        Workflow must belong to the repository and a heads/tags ref.
+        GitHub grants bind the exact case-sensitive repository + environment.
+        OIDC requests MUST OMIT job: it is derived from verified claims.
+        Invalid OIDC never falls back to cookie/DID auth. did:github principals
+        cannot use cookie/DID auth. Issuance additionally records githubJob
+        (repository, workflow, environment, runId, runAttempt), never the token.
         Acting-for is not substituted for the grantee. Under the CA purpose
         lock the vault rechecks the active CA, operation scope, and live private
         custody grant. The caller provides only its public key, never its seed.
@@ -266,7 +282,7 @@ paths:
         Only authenticated refusals commit vault.ssh-cert.refused with grantee and HTTP status,
         never raw request bytes. Audit failure returns 503 and no certificate.
         Anonymous requests return 401 without signing or storing any audit record.
-      security: [{ cookieAuth: [] }, { bearerAuth: [] }]
+      security: [{ cookieAuth: [] }, { bearerAuth: [] }, { githubOidc: [] }]
       requestBody:
         required: true
         content:
@@ -274,7 +290,7 @@ paths:
             schema:
               type: object
               additionalProperties: false
-              required: [purpose, caId, grantId, publicKey, principal, host, job]
+              required: [purpose, caId, grantId, publicKey, principal, host]
               properties:
                 purpose: { $ref: "#/components/schemas/SshCaPurpose" }
                 caId: { type: string }
@@ -282,7 +298,7 @@ paths:
                 publicKey: { type: string, description: Canonical ssh-ed25519 public key line }
                 principal: { type: string, pattern: "^[a-z_][a-z0-9_-]{0,63}$" }
                 host: { type: string, description: Exact canonical host from the grant }
-                job: { type: string, minLength: 1, maxLength: 200 }
+                job: { type: string, minLength: 1, maxLength: 200, description: Required for DID auth; forbidden for GitHub OIDC }
                 ttl: { type: integer, minimum: 1, maximum: 900, default: 600 }
       responses:
         "201":
@@ -299,6 +315,15 @@ paths:
                   caId: { type: string }
                   grantId: { type: string }
                   job: { type: string }
+                  githubJob:
+                    type: object
+                    required: [repository, workflow, environment, runId, runAttempt]
+                    properties:
+                      repository: { type: string }
+                      workflow: { type: string }
+                      environment: { type: string }
+                      runId: { type: string }
+                      runAttempt: { type: string }
                   grantee: { type: string }
                   principal: { type: string }
                   host: { type: string }
@@ -323,6 +348,11 @@ paths:
         private key. Grant binds CA, grantee, principals, force-command,
         allowedHosts and expiry. Rotation requires a grant for the new CA.
         Emits signed vault.ssh-cert.grant-issued. No wildcards or empty policy.
+        For GitHub Actions supply repository + environment instead of grantee.
+        The kernel derives did:github:SHA256(JSON([repository, environment]));
+        this deterministic identity is bound by the existing owner signature.
+        Grant response and signed grant-issued event name both GitHub fields.
+        Raw did:github grantees and mixed DID/GitHub inputs are refused.
       security: [{ cookieAuth: [] }, { bearerAuth: [] }]
       requestBody:
         required: true
@@ -331,11 +361,21 @@ paths:
             schema:
               type: object
               additionalProperties: false
-              required: [purpose, caId, grantee, principals, forceCommand, allowedHosts, expiresAt]
+              required: [purpose, caId, principals, forceCommand, allowedHosts, expiresAt]
+              oneOf:
+                - required: [grantee]
+                  not:
+                    anyOf:
+                      - required: [repository]
+                      - required: [environment]
+                - required: [repository, environment]
+                  not: { required: [grantee] }
               properties:
                 purpose: { $ref: "#/components/schemas/SshCaPurpose" }
                 caId: { type: string }
                 grantee: { type: string, description: Credential DID, not the node custody identity }
+                repository: { type: string, description: Exact case-sensitive owner/repository for GitHub OIDC }
+                environment: { type: string, minLength: 1, maxLength: 128, description: Exact GitHub job environment; no control characters }
                 principals:
                   type: array
                   minItems: 1

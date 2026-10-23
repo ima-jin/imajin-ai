@@ -15,12 +15,13 @@ export interface GithubJob {
   runId: string;
   runAttempt: string;
 }
+const hasControls = (value: string) => Array.from(value).some(char => char.charCodeAt(0) < 32 || char.charCodeAt(0) === 127);
 
 /** Canonical, domain-separated principal fits existing signed delegation grants. */
 export function githubGrantee(repository: unknown, environment: unknown): string {
-  if (typeof repository !== 'string' || !/^[a-zA-Z0-9_.-]{1,100}\/[a-zA-Z0-9_.-]{1,100}$/.test(repository)
+  if (typeof repository !== 'string' || !/^[a-zA-Z0-9_.-]{1,39}\/[a-zA-Z0-9_.-]{1,100}$/.test(repository)
     || typeof environment !== 'string' || environment.length < 1 || environment.length > 128
-    || /[\x00-\x1f\x7f]/.test(environment)) {
+    || hasControls(environment)) {
     throw new SshCaError(400, 'Invalid GitHub repository or environment');
   }
   return `did:github:${createHash('sha256').update(JSON.stringify([repository, environment])).digest('hex')}`;
@@ -29,9 +30,9 @@ export function githubGrantee(repository: unknown, environment: unknown): string
 function verifiedJob(payload: JWTPayload): GithubJob {
   const { repository, environment, workflow_ref: workflow, run_id: runId, run_attempt: runAttempt } = payload;
   githubGrantee(repository, environment);
-  if (typeof workflow !== 'string' || workflow.length > 512
+  if (typeof workflow !== 'string' || workflow.length > 512 || hasControls(workflow)
     || !workflow.startsWith(`${repository}/.github/workflows/`)
-    || !/\/\.github\/workflows\/[a-zA-Z0-9_.-]+\.ya?ml@refs\/(?:heads|tags)\/[^\s\x00-\x1f]+$/.test(workflow)
+    || !/\/\.github\/workflows\/[a-zA-Z0-9_.-]+\.ya?ml@refs\/(?:heads|tags)\/\S+$/.test(workflow)
     || typeof runId !== 'string' || !/^[1-9][0-9]{0,19}$/.test(runId)
     || typeof runAttempt !== 'string' || !/^[1-9][0-9]{0,9}$/.test(runAttempt)
     || payload.sub !== `repo:${repository}:environment:${String(environment).replaceAll(':', '%3A')}`) {

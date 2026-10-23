@@ -610,7 +610,8 @@ describe('restricted SSH certificates (#3064)', () => {
     const fixture = await oidcFixture();
     const realVerify = githubOidc.verifyGithubJob;
     const spy = vi.spyOn(githubOidc, 'verifyGithubJob').mockImplementation(token => realVerify(token, fixture.keys));
-    const { job: _job, ...body } = { ...input, grantId: grant.grantId };
+    const body: Record<string, unknown> = { ...input, grantId: grant.grantId };
+    delete body.job;
     async function githubRequest(token: string, override = {}) {
       return signRoute(new Request('https://kernel.test/api/vault/ssh-ca/sign', {
         method: 'POST', headers: { 'x-github-oidc-token': token }, body: JSON.stringify({ ...body, ...override }),

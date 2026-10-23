@@ -1,0 +1,25 @@
+name: Vault SSH dry-run
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  dry-run:
+    runs-on: imajin-self-hosted
+    container:
+      image: ghcr.io/ima-jin/ci-runner@sha256:fcc0fb4320e709976a93ac9f940bb2f532a82d3e7f953798c48dc4b0d8435681
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install OpenSSH client for real ephemeral key generation
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends openssh-client python3
+      - name: Dry-run keypair, OIDC request, signing request, deploy and cleanup
+        env:
+          PYTHONDONTWRITEBYTECODE: '1'
+        run: python3 scripts/__tests__/vault-ssh-deploy.test.py
