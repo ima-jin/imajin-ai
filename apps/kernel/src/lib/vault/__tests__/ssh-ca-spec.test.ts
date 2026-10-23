@@ -3,11 +3,29 @@ import { resolve } from 'node:path';
 import { parse } from 'yaml';
 import { afterEach, expect, it, vi } from 'vitest';
 import { listApiSpecs, readApiSpec } from '@/src/lib/kernel/api-specs';
+import * as specReader from '@/src/lib/kernel/api-specs';
+import { GET as serveVaultSpec } from '@/app/vault/api/spec/route';
 import { ATTESTATION_TYPES, MECHANICAL_ATTESTATION_TYPES } from '@imajin/auth';
 
 const root = resolve('apps/kernel');
 const spec = parse(readFileSync(resolve(root, 'api-spec/vault.yaml'), 'utf8'));
 afterEach(() => vi.restoreAllMocks());
+
+it('serves the real contract at the endpoint advertised by the catalogue', async () => {
+  vi.spyOn(process, 'cwd').mockReturnValue(root);
+  const catalogue = listApiSpecs().find(item => item.service === 'vault');
+  expect(catalogue?.endpoint).toBe('/vault/api/spec');
+  expect(spec.paths[catalogue!.endpoint].get.operationId).toBe('vaultApiSpec');
+  const response = serveVaultSpec();
+  expect(response.status).toBe(200);
+  expect(response.headers.get('Content-Type')).toBe('text/yaml');
+  expect(parse(await response.text())).toEqual(spec);
+});
+
+it('fails closed when the vault spec is not available', () => {
+  vi.spyOn(specReader, 'readApiSpec').mockReturnValue(null);
+  expect(serveVaultSpec().status).toBe(503);
+});
 
 it.each(['', '/rotate', '/revoke', '/trusted-keys'])('discovers the live SSH CA route %s in the spec catalogue', suffix => {
   vi.spyOn(process, 'cwd').mockReturnValue(root);

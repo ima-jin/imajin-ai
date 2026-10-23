@@ -22,7 +22,7 @@ vi.mock('@/src/db', async () => {
 vi.mock('@imajin/auth', async original => {
   const actual = await original<typeof import('@imajin/auth')>();
   return {
-    ...actual, requireAuth: vi.fn(async () => h.auth),
+    ...actual, requireAuth: vi.fn(async () => h.auth), requireAdmin: vi.fn(async () => true),
     generateKeypair: () => {
       const keys = actual.generateKeypair();
       h.seeds.push(keys.privateKey);
@@ -59,6 +59,7 @@ import { POST as mintRoute } from '@/app/api/vault/ssh-ca/route';
 import { POST as rotateRoute } from '@/app/api/vault/ssh-ca/rotate/route';
 import { POST as revokeRoute } from '@/app/api/vault/ssh-ca/revoke/route';
 import { GET as trustedRoute } from '@/app/api/vault/ssh-ca/trusted-keys/route';
+import { GET as listRoute } from '@/app/api/vault/list/route';
 
 const nodeKeys = generateKeypair();
 const tables = [attestations, vaultMintedKeys, vaultDelegationGrants, vaultOwnerEnvelopes, vaultGrantRequests];
@@ -257,6 +258,11 @@ describe('SSH CA custody and lifecycle (#3063)', () => {
     expect(await getMintedKeyByDid(row.did)).toBeUndefined();
     expect((await listVaultKeyCards()).some(card => card.did === row.did)).toBe(false);
     expect((await listHandProvisionedFields()).some(entry => entry.field === row.field)).toBe(false);
+    const listing = await listRoute();
+    const listBody = await listing.json();
+    responses.push(listBody);
+    expect(listing.status).toBe(200);
+    expect(JSON.stringify(listBody)).not.toContain(row.field);
     await mint(true);
     expect((await listRenewableGrants({ nodeDid: h.nodeDid })).some(grant => grant.field === row.field)).toBe(false);
     expect(await trusted()).toContain(result.publicKey);

@@ -80,6 +80,19 @@ components:
         error: { type: string }
 
 paths:
+  /vault/api/spec:
+    get:
+      tags: [vault-mint]
+      operationId: vaultApiSpec
+      summary: Read the public vault OpenAPI contract advertised by the spec catalogue
+      security: []
+      responses:
+        "200":
+          description: Vault OpenAPI source, including every SSH CA route
+          content:
+            text/yaml:
+              schema: { type: string }
+        "503": { description: Vault spec unavailable }
   /api/vault/ssh-ca:
     post:
       tags: [vault-mint]
