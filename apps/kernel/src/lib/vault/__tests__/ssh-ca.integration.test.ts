@@ -69,6 +69,8 @@ import { canonicalizeGrantPayload } from '../index';
 import { inspectCertificate, acceptsCertificate, openSshAccepts, openSshPublicKeyFingerprint } from './ssh-cert-inspect';
 import * as mechanicalAudit from '@/src/lib/auth/emit-mechanical-attestation';
 import { SSH_CERT_ISSUANCE_LIMIT, SSH_CERT_ISSUANCE_WINDOW_SECONDS } from '../ssh-ca-policy';
+import * as githubOidc from '../github-oidc';
+import { oidcFixture } from './github-oidc-fixture';
 
 const nodeKeys = generateKeypair();
 const tables = [attestations, vaultMintedKeys, vaultDelegationGrants, vaultOwnerEnvelopes, vaultGrantRequests];
@@ -593,5 +595,73 @@ describe('restricted SSH certificates (#3064)', () => {
     expect(response.status).toBe(503);
     expect(result).toEqual({ error: 'SSH CA unavailable' });
     expect((await audits()).filter(row => row.type === 'vault.ssh-cert.issued')).toHaveLength(0);
+  });
+
+  it('binds GitHub grants to repo/environment and signs verified job identity into issuance history', async () => {
+    h.auth = { identity: { id: h.nodeDid } };
+    const grantResponse = await grantRoute(request({
+      purpose, caId: ca.caId, repository: 'ima-jin/example', environment: 'production',
+      principals: ['deploy'], forceCommand: '/usr/local/bin/deploy', allowedHosts: ['host.example.com'],
+      expiresAt: new Date(Date.now() + 3600_000).toISOString(),
+    }));
+    expect(grantResponse.status).toBe(201);
+    const grant = await grantResponse.json();
+    expect(grant.github).toEqual({ repository: 'ima-jin/example', environment: 'production' });
+    const fixture = await oidcFixture();
+    const realVerify = githubOidc.verifyGithubJob;
+    const spy = vi.spyOn(githubOidc, 'verifyGithubJob').mockImplementation(token => realVerify(token, fixture.keys));
+    const { job: _job, ...body } = { ...input, grantId: grant.grantId };
+    async function githubRequest(token: string, override = {}) {
+      return signRoute(new Request('https://kernel.test/api/vault/ssh-ca/sign', {
+        method: 'POST', headers: { 'x-github-oidc-token': token }, body: JSON.stringify({ ...body, ...override }),
+      }));
+    }
+    try {
+      const valid = await fixture.token();
+      const response = await githubRequest(valid);
+      expect(response.status).toBe(201);
+      const result = await response.json();
+      expect(result.ttl).toBe(600);
+      expect(inspectCertificate(result.certificate).principal).toBe('deploy');
+      const issued = (await audits()).find(row => row.type === 'vault.ssh-cert.issued')!;
+      expect(issued.payload?.githubJob).toEqual({
+        repository: 'ima-jin/example', environment: 'production',
+        workflow: 'ima-jin/example/.github/workflows/deploy.yml@refs/heads/main', runId: '42', runAttempt: '1',
+      });
+      expect(crypto.verifySync(issued.signature, canonicalize({
+        subject_did: issued.subjectDid, type: issued.type, context_id: issued.contextId,
+        context_type: issued.contextType, payload: issued.payload, issued_at: issued.issuedAt.getTime(),
+      }), nodeKeys.publicKey)).toBe(true);
+      expect((await githubRequest(await fixture.token({
+        repository: 'ima-jin/other', sub: 'repo:ima-jin/other:environment:production',
+        workflow_ref: 'ima-jin/other/.github/workflows/deploy.yml@refs/heads/main',
+      }))).status).toBe(403);
+      expect((await githubRequest(await fixture.token({
+        environment: 'dev', sub: 'repo:ima-jin/example:environment:dev',
+      }))).status).toBe(403);
+      expect((await githubRequest(await (await oidcFixture()).token())).status).toBe(401);
+      expect((await githubRequest('', {})).status).toBe(401); // no fallback to node auth
+      expect((await githubRequest(valid, { job: 'spoofed' })).status).toBe(400);
+      expect((await githubRequest(valid, { privateKey: 'rejected' })).status).toBe(400);
+      h.auth = { identity: { id: grant.grantee } };
+      expect((await invoke({ ...input, grantId: grant.grantId })).response.status).toBe(401);
+      h.auth = { identity: { id: h.nodeDid } };
+      await withdrawRoute(request({ purpose, grantId: grant.grantId }));
+      expect((await githubRequest(valid)).status).toBe(403);
+      expect(JSON.stringify(await audits()).includes(valid), 'OIDC token persisted').toBe(false);
+    } finally { spy.mockRestore(); }
+  });
+
+  it.each([
+    { repository: 'bad', environment: 'production' }, { repository: 'ima-jin/example' },
+    { environment: 'production' }, { repository: 'ima-jin/example', environment: '' },
+    { repository: 'ima-jin/example', environment: 'production', grantee: 'did:imajin:other' },
+    { grantee: 'did:github:arbitrary' },
+  ])('refuses ambiguous or invalid GitHub grant identity %j', async identity => {
+    h.auth = { identity: { id: h.nodeDid } };
+    expect((await grantRoute(request({
+      purpose, caId: ca.caId, principals: ['deploy'], forceCommand: '/bin/deploy',
+      allowedHosts: ['host.example.com'], expiresAt: new Date(Date.now() + 60_000).toISOString(), ...identity,
+    }))).status).toBe(400);
   });
 });

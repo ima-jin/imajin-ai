@@ -5,6 +5,7 @@ import { SshCaError } from './ssh-ca';
 import { isSshCaPurpose } from './ssh-ca-policy';
 import { objectInput, onlyKeys, parseSignInput } from './ssh-cert-policy';
 import { issueSshGrant, recordSshRefusal, revokeSshGrant, signSshCert, type SshScope } from './ssh-cert';
+import { githubGrantee, verifyGithubJob } from './github-oidc';
 
 async function readInput(request: Request) {
   try { return await request.json(); }
@@ -14,10 +15,20 @@ async function readInput(request: Request) {
 export async function signSshCertRoute(request: Request) {
   let grantee: string | null = null;
   try {
+    if (request.headers.has('x-github-oidc-token')) {
+      const job = await verifyGithubJob(request.headers.get('x-github-oidc-token')!);
+      grantee = githubGrantee(job.repository, job.environment);
+      const body = objectInput(await readInput(request));
+      // The caller cannot substitute audit identity; retain the original route's validation.
+      onlyKeys(body, ['purpose', 'caId', 'grantId', 'publicKey', 'principal', 'host', 'ttl']);
+      const input = parseSignInput({ ...body, job: `github:${job.repository}:${job.runId}:${job.runAttempt}` });
+      return sshCaJson(await signSshCert(input, grantee, job), 201);
+    }
     const auth = await requireAuth(request);
     if ('error' in auth) throw new SshCaError(auth.status, 'Authentication required');
     // The authenticated credential is the grantee. Acting-for cannot borrow a grant.
     grantee = auth.identity.id;
+    if (grantee.startsWith('did:github:')) throw new SshCaError(401, 'GitHub OIDC token required');
     const input = parseSignInput(await readInput(request));
     return sshCaJson(await signSshCert(input, grantee), 201);
   } catch (error) {
@@ -33,7 +44,7 @@ export async function sshGrantRoute(request: Request, revoke = false) {
     if (!auth.ok) return auth.response;
     const body = objectInput(await readInput(request));
     onlyKeys(body, revoke ? ['purpose', 'grantId']
-      : ['purpose', 'grantee', 'caId', 'principals', 'forceCommand', 'allowedHosts', 'expiresAt']);
+      : ['purpose', 'grantee', 'repository', 'environment', 'caId', 'principals', 'forceCommand', 'allowedHosts', 'expiresAt']);
     if (!isSshCaPurpose(body.purpose)) throw new SshCaError(400, 'Invalid SSH CA purpose');
     if (revoke) {
       if (typeof body.grantId !== 'string' || !/^vdg_[a-zA-Z0-9_-]{1,100}$/.test(body.grantId)) {
@@ -41,11 +52,18 @@ export async function sshGrantRoute(request: Request, revoke = false) {
       }
       return sshCaJson(await revokeSshGrant(body.purpose, body.grantId, auth.authority));
     }
-    if (typeof body.grantee !== 'string' || typeof body.expiresAt !== 'string') {
+    const github = body.repository !== undefined || body.environment !== undefined;
+    if (github && body.grantee !== undefined) throw new SshCaError(400, 'Choose GitHub identity or DID');
+    const grantee = github ? githubGrantee(body.repository, body.environment) : body.grantee;
+    if (!github && typeof grantee === 'string' && grantee.startsWith('did:github:')) {
+      throw new SshCaError(400, 'GitHub grants require repository and environment');
+    }
+    if (typeof grantee !== 'string' || typeof body.expiresAt !== 'string') {
       throw new SshCaError(400, 'Grantee and expiry required');
     }
     const scope = { caId: body.caId, principals: body.principals, forceCommand: body.forceCommand,
       allowedHosts: body.allowedHosts } as SshScope;
-    return sshCaJson(await issueSshGrant(body.purpose, body.grantee, scope, new Date(body.expiresAt), auth.authority), 201);
+    const binding = github ? { repository: body.repository as string, environment: body.environment as string } : undefined;
+    return sshCaJson(await issueSshGrant(body.purpose, grantee, scope, new Date(body.expiresAt), auth.authority, binding), 201);
   } catch (error) { return sshCaFailure(error); }
 }
