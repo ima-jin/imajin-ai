@@ -66,6 +66,25 @@ afterEach(() => {
 // ─── usage.incurred emission (#1956) ──────────────────────────────────────────
 
 describe('presence stream — usage.incurred emission (#1956)', () => {
+  it('keeps the public text/tool-call/tool-result protocol with SDK 5 parts', async () => {
+    async function* toolStream() {
+      yield { type: 'text-delta', text: 'hello' };
+      yield { type: 'tool-call', toolName: 'lookup', input: { query: 'hello' } };
+      yield { type: 'tool-result', toolName: 'lookup', output: { found: true } };
+    }
+    mockStreamText.mockReturnValueOnce({ fullStream: toolStream() });
+    const response = await POST(makeReq(), params);
+    const events = (await response.text()).trim().split('\n').map(line => JSON.parse(line));
+    expect(events).toEqual([
+      { type: 'text', text: 'hello' },
+      { type: 'tool_call', name: 'lookup', args: { query: 'hello' } },
+      { type: 'tool_result', name: 'lookup', result: { found: true } },
+      { type: 'done' },
+    ]);
+    const options = mockStreamText.mock.calls[0][0];
+    expect(options.stopWhen({ steps: Array.from({ length: 5 }, () => ({})) })).toBe(true);
+    options.onStepFinish({ finishReason: 'tool-calls', toolCalls: [{}], toolResults: [{}], text: '' });
+  });
   it('omits unregistered app tool endpoints rather than inventing env destinations', async () => {
     mockRegistryUrl.mockResolvedValue(null);
     await POST(makeReq(), params);

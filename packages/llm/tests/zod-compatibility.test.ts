@@ -22,6 +22,7 @@ describe('presence tools with AI SDK 5 and Zod 4', () => {
     eventsUrl: 'https://example.test/events', connectionsUrl: 'https://example.test/connections',
     authUrl: 'https://example.test/auth', payUrl: 'https://example.test/pay',
     profileUrl: 'https://example.test/profile', learnUrl: 'https://example.test/learn',
+    mediaUrl: 'https://example.test/media', mediaApiKey: 'fixture-only-not-a-credential',
     targetDid: 'did:imajin:owner', requesterDid: 'did:imajin:owner', trustDistance: 0,
   });
 

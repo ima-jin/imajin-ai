@@ -121,6 +121,19 @@ describe('forwardAnthropic', () => {
   });
 
   describe('streaming', () => {
+    it('meters SDK 5 input/output tokens from the completion callback', async () => {
+      mockStreamText.mockReturnValueOnce({ fullStream: fakeFullStream() });
+      await forwardAnthropic(ANTHROPIC_BRAIN, { messages: [], stream: true }, { sessionId: 'session-fixture' });
+      const { onFinish } = mockStreamText.mock.calls[0][0];
+      onFinish({
+        finishReason: 'stop',
+        usage: { inputTokens: 7, outputTokens: 3, totalTokens: 10 },
+        response: { id: 'response-fixture' },
+      });
+      expect(mockRecordInferenceUsage).toHaveBeenCalledWith(expect.objectContaining({
+        tokensIn: 7, tokensOut: 3, externalId: 'response-fixture', sessionId: 'session-fixture',
+      }));
+    });
     it('preserves incremental tool input, avoids duplicate calls, and forwards final usage', async () => {
       async function* toolStream() {
         yield { type: 'tool-input-start', id: 'call_1', toolName: 'lookup' };

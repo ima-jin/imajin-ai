@@ -24,6 +24,13 @@ describe('mapFinishReason', () => {
 });
 
 describe('buildChatCompletion', () => {
+  it('keeps optional SDK token fields numeric in the public response', () => {
+    const completion = buildChatCompletion('local-model', {
+      text: 'hello', toolCalls: [], finishReason: 'stop',
+      usage: { inputTokens: undefined, outputTokens: undefined, totalTokens: undefined },
+    });
+    expect(completion.usage).toEqual({ prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 });
+  });
   it('builds a chat.completion with text content and no tool_calls', () => {
     const completion = buildChatCompletion('claude-sonnet-4-20250514', {
       text: 'hello there',
