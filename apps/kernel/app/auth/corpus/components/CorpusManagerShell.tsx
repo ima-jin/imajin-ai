@@ -10,6 +10,7 @@
  */
 
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { computeFreshness } from '../lib/freshness';
 import { iconForSource, composeSource, SOURCE_TYPE_OPTIONS } from '../lib/source-type';
 
@@ -203,7 +204,7 @@ function LoadSourceForm({
           </select>
           {connectorError && <p role="alert" className="text-sm text-red-400">{connectorError}</p>}
           <p className="text-xs text-gray-400">
-            No token is needed here. <a className="text-amber-400 underline" href="/auth/connectors">Manage profile connectors</a>.
+            No token is needed here. <Link className="text-amber-400 underline" href="/auth/connectors">Manage profile connectors</Link>.
           </p>
         </div>
       )}
