@@ -14,6 +14,7 @@
 
 import type { CorpusAccessScope } from './corpus-access-claim';
 import { corpusErrorMessage, corpusHttpRequest } from './corpus-http';
+import { forEachSequential } from '../async/sequential';
 
 export interface CorpusSourceFreshness {
   source: string;
@@ -104,10 +105,10 @@ export async function fetchCorpusStatus(did: string): Promise<CorpusStatus> {
   const { grantedCorpusOwners, authorizeCorpusOwner } = await import('./corpus-owner');
   const owners = [did, ...await grantedCorpusOwners(did)];
   const statuses: CorpusStatus[] = [];
-  for (const ownerDid of owners) {
+  await forEachSequential(owners, async ownerDid => {
     if (!await authorizeCorpusOwner(did, ownerDid, 'corpus:read')) throw new CorpusServiceError(403, 'Corpus grant is no longer active');
     statuses.push(await corpusRequest('GET', did, 'corpus:read', '/status', undefined, ownerDid) as CorpusStatus);
-  }
+  });
   return {
     sources: statuses.flatMap((status, index) => status.sources.map(source => ({ ...source, ownerDid: owners[index] }))),
     threadCount: statuses.reduce((total, status) => total + status.threadCount, 0),

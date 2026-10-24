@@ -123,9 +123,9 @@ async function verifySourceOwner(request: Request): Promise<void> {
   for (const document of documents) {
     if (typeof document?.source === 'string') sources.add(document.source);
   }
-  for (const source of sources) {
+  await Promise.all([...sources].map(async source => {
     if (await resolveCorpusDid(source, did) !== did) throw new Error('Corpus owner mismatch');
-  }
+  }));
 }
 
 export function createCorpusApp(engine = new CorpusEngine(), options: CorpusRouterOptions = {}): express.Express {

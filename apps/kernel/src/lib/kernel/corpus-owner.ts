@@ -1,5 +1,6 @@
 import { resolveCorpusDid as resolveSourceDid } from '@imajin/auth';
 import type { CorpusAccessScope } from './corpus-access-claim';
+import { forEachSequential } from '../async/sequential';
 
 /** Resolve identity, not authority. A source reference never grants access. */
 export function resolveCorpusDid(source: string, principalDid: string): Promise<string> {
@@ -11,7 +12,8 @@ export function resolveCorpusDid(source: string, principalDid: string): Promise<
     const { prepareMechanicalAttestation } = await import('../auth/emit-mechanical-attestation');
     return db.transaction(async tx => {
       // Also serializes alias publication with identity creation: no half-created stub.
-      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`corpus:github:${owner}`}))`);
+      const lockKey = `corpus:github:${owner}`;
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${lockKey}))`);
       const result = await resolveOrMintIdentity(identityRepo(null, tx), {
         namespace: 'github', ref: `org:${owner}`, type: 'organization',
         metadata: {},
@@ -19,7 +21,7 @@ export function resolveCorpusDid(source: string, principalDid: string): Promise<
       if ('error' in result) throw new Error(result.error);
       const [group] = await tx.select({ scope: identities.scope, suspendedAt: identities.suspendedAt })
         .from(identities).where(eq(identities.id, result.did)).limit(1);
-      if (!group || group.scope !== 'business' || group.suspendedAt) throw new Error('Corpus owner must be an active group identity');
+      if (group?.scope !== 'business' || group.suspendedAt) throw new Error('Corpus owner must be an active group identity');
       if (result.minted) {
         await tx.insert(attestations).values(await prepareMechanicalAttestation({
           subjectDid: result.did, type: 'identity.created',
@@ -49,8 +51,8 @@ export async function grantedCorpusOwners(principalDid: string): Promise<string[
     .where(and(eq(delegationGrants.agentDid, principalDid), eq(delegationGrants.status, 'active'), gt(delegationGrants.expiresAt, new Date())));
   const owners = [...new Set(grants.map(row => row.did))];
   const authorized: string[] = [];
-  for (const did of owners) {
+  await forEachSequential(owners, async did => {
     if (did !== principalDid && await authorizeCorpusOwner(principalDid, did, 'corpus:read')) authorized.push(did);
-  }
+  });
   return authorized;
 }
