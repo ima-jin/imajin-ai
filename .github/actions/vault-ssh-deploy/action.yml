@@ -1,0 +1,61 @@
+name: Vault SSH deploy
+description: Ephemeral tmpfs key, GitHub OIDC vault certificate, SSH, discard
+inputs:
+  kernel-url:
+    description: HTTPS kernel base URL (no trailing /api)
+    required: true
+  purpose:
+    description: Vault SSH CA purpose
+    required: true
+  ca-id:
+    description: Active public CA record id
+    required: true
+  grant-id:
+    description: Repository/environment sign-cert grant id (not a credential)
+    required: true
+  host:
+    description: Vault-granted destination hostname
+    required: true
+  principal:
+    description: Vault-granted SSH user
+    required: true
+  command:
+    description: Remote command (the certificate's forced command remains authoritative)
+    required: true
+  known-hosts:
+    description: Pinned public SSH host keys; never use ssh-keyscan at deploy time
+    required: true
+  ttl:
+    description: Certificate lifetime in seconds (1–900)
+    default: '600'
+runs:
+  using: composite
+  steps:
+    - name: Allocate credential tmpfs
+      id: memory
+      shell: bash
+      env:
+        VAULT_SSH_MEMORY_ROOT: /dev/shm
+      run: python3 "$GITHUB_ACTION_PATH/../../../deploy/vault-ssh-deploy.py" prepare
+    - name: Sign and deploy
+      shell: bash
+      env:
+        VAULT_SSH_MEMORY_ROOT: /dev/shm
+        VAULT_SSH_DIR: ${{ steps.memory.outputs.directory }}
+        VAULT_KERNEL_URL: ${{ inputs.kernel-url }}
+        VAULT_PURPOSE: ${{ inputs.purpose }}
+        VAULT_CA_ID: ${{ inputs.ca-id }}
+        VAULT_GRANT_ID: ${{ inputs.grant-id }}
+        VAULT_HOST: ${{ inputs.host }}
+        VAULT_PRINCIPAL: ${{ inputs.principal }}
+        VAULT_COMMAND: ${{ inputs.command }}
+        VAULT_KNOWN_HOSTS: ${{ inputs.known-hosts }}
+        VAULT_TTL: ${{ inputs.ttl }}
+      run: python3 "$GITHUB_ACTION_PATH/../../../deploy/vault-ssh-deploy.py" deploy
+    - name: Discard credentials
+      if: ${{ always() }}
+      shell: bash
+      env:
+        VAULT_SSH_MEMORY_ROOT: /dev/shm
+        VAULT_SSH_DIR: ${{ steps.memory.outputs.directory }}
+      run: python3 "$GITHUB_ACTION_PATH/../../../deploy/vault-ssh-deploy.py" cleanup
