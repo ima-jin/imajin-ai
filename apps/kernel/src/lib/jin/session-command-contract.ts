@@ -39,7 +39,7 @@ export interface SessionCommandFrame extends SessionCommandBody {
 export const sessionCommandFrameSchema = z.object({
   type: sessionCommandTypeSchema, commandId: identifier, to: did, principal: did, issuer: did,
   issuedAt: z.string().datetime(), expiresAt: z.string().datetime(),
-  payload: z.record(z.string()),
+  payload: z.record(z.string(), z.string()),
   signature: sessionCommandSignatureSchema, countersignature: sessionCommandSignatureSchema.optional(),
 }).strict();
 export const sessionBindingSchema = z.object({
@@ -59,7 +59,7 @@ export function parseSessionCommandPayload(type: SessionCommandType, payload: un
 
 export const sessionAttestationSchema = z.object({
   from: did, type: z.literal('agent'), timestamp: z.number().int().nonnegative(),
-  payload: z.record(z.unknown()), signature: z.string().regex(/^[a-f0-9]{128}$/i),
+  payload: z.record(z.string(), z.unknown()), signature: z.string().regex(/^[a-f0-9]{128}$/i),
 }).strict();
 export type SessionAttestation = z.infer<typeof sessionAttestationSchema>;
 export const sessionOutcomeSchema = z.object({

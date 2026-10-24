@@ -15,7 +15,7 @@ export function createAttestationTools(config: {
   return {
     getAttestations: tool({
       description: 'Get attestations (vouches, transactions, session history) for a conversation participant',
-      parameters: z.object({
+      inputSchema: z.object({
         did: z.string().describe('The DID to look up attestations for (must be a conversation participant)'),
         type: z.string().optional().describe('Filter by attestation type (e.g. vouch, transaction.settled, session.created)'),
       }),

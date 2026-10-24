@@ -15,7 +15,7 @@ export function createLearnTools(config: {
   return {
     getCourses: tool({
       description: 'List available courses on the platform',
-      parameters: z.object({
+      inputSchema: z.object({
         query: z.string().optional().describe('Optional search query'),
       }),
       execute: async ({ query }) => {
@@ -27,7 +27,7 @@ export function createLearnTools(config: {
 
     getEnrollments: tool({
       description: 'Get course enrollments for a conversation participant',
-      parameters: z.object({
+      inputSchema: z.object({
         did: z.string().describe('DID to check enrollments for (must be a conversation participant)'),
       }),
       execute: async ({ did }) => {

@@ -7,7 +7,7 @@ import {
   sseEncode,
 } from '../response-mapping';
 
-const USAGE = { promptTokens: 10, completionTokens: 5, totalTokens: 15 };
+const USAGE = { inputTokens: 10, outputTokens: 5, totalTokens: 15 };
 
 describe('mapFinishReason', () => {
   it('maps known AI SDK finish reasons to OpenAI codes', () => {
@@ -24,6 +24,13 @@ describe('mapFinishReason', () => {
 });
 
 describe('buildChatCompletion', () => {
+  it('keeps optional SDK token fields numeric in the public response', () => {
+    const completion = buildChatCompletion('local-model', {
+      text: 'hello', toolCalls: [], finishReason: 'stop',
+      usage: { inputTokens: undefined, outputTokens: undefined, totalTokens: undefined },
+    });
+    expect(completion.usage).toEqual({ prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 });
+  });
   it('builds a chat.completion with text content and no tool_calls', () => {
     const completion = buildChatCompletion('claude-sonnet-4-20250514', {
       text: 'hello there',
@@ -47,7 +54,7 @@ describe('buildChatCompletion', () => {
   it('builds a chat.completion with tool_calls and null content when text is empty', () => {
     const completion = buildChatCompletion('claude-sonnet-4-20250514', {
       text: '',
-      toolCalls: [{ type: 'tool-call', toolCallId: 'call_1', toolName: 'get_weather', args: { city: 'nyc' } }],
+      toolCalls: [{ type: 'tool-call', toolCallId: 'call_1', toolName: 'get_weather', input: { city: 'nyc' } }],
       finishReason: 'tool-calls',
       usage: USAGE,
     });
