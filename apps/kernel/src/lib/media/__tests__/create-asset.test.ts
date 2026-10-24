@@ -205,6 +205,35 @@ describe('createAsset — signed legal control document', () => {
 afterEach(() => vi.unstubAllEnvs());
 
 describe('createAsset — JSON MIME allowlist (#2889)', () => {
+  const staged = {
+    ...MARKDOWN_INPUT, context: null, dedup: false, classify: false,
+    immutable: true, status: 'processing' as const, access: 'private',
+  };
+  it('stages a signed immutable row on its caller transaction without upload side effects', async () => {
+    setupInsert();
+    const tx = { insert: vi.fn(() => ({ values: mockInsertValues })) };
+    await createAsset({ ...staged, tx: tx as never });
+    expect(tx.insert).toHaveBeenCalledOnce();
+    expect(mockInsertValues).toHaveBeenCalledWith(expect.objectContaining({ status: 'processing', immutable: true }));
+    expect(legalMocks.sign).toHaveBeenCalledOnce();
+    expect(mockEmitAttestation).not.toHaveBeenCalled();
+    expect(mockDeriveArticleProjection).not.toHaveBeenCalled();
+  });
+  it.each([
+    { tx: undefined }, { immutable: false }, { access: 'public' },
+    { dedup: true }, { classify: true }, { context: { app: 'profile' } }, { controlDocument: 'legal-entity' as const },
+  ])('refuses an unsafe staged configuration before storage', async override => {
+    const tx = { insert: vi.fn() };
+    await expect(createAsset({ ...staged, tx: tx as never, ...override })).rejects.toThrow('Staged assets require');
+    expect(writeFile).not.toHaveBeenCalled();
+    expect(mockInsertValues).not.toHaveBeenCalled();
+  });
+  it('fails closed if staged signing fails, before any file or row write', async () => {
+    legalMocks.sign.mockRejectedValueOnce(new Error('Synthetic signing failure'));
+    await expect(createAsset({ ...staged, tx: {} as never })).rejects.toThrow('Synthetic signing failure');
+    expect(writeFile).not.toHaveBeenCalled();
+    expect(mockInsertValues).not.toHaveBeenCalled();
+  });
   it('allows application/json as an exact MIME type', () => {
     expect(isAllowedMime('application/json')).toBe(true);
     expect(isAllowedMime('application/pdf')).toBe(true);

@@ -99,6 +99,11 @@ export interface CreateAssetInput {
   dedup?: boolean;
   /** Run fire-and-forget classification after insert. Defaults to true. */
   classify?: boolean;
+  /** Authored control-plane records are immutable and staged until their transaction commits. */
+  immutable?: boolean;
+  status?: 'active' | 'processing';
+  /** Staged control-plane records commit their row and signed provenance together. */
+  tx?: Pick<typeof db, 'insert'>;
 }
 
 export interface CreateAssetResult {
@@ -204,6 +209,11 @@ async function applyArticleProjection(
   }
 }
 
+function validateStagedAsset(input: CreateAssetInput): void {
+  if (!input.tx || !input.immutable || input.access !== 'private' || input.dedup !== false || input.classify !== false || input.context || input.controlDocument) {
+    throw new Error('Staged assets require a transaction, immutable private access, and no upload side effects');
+  }
+}
 async function prepareAssetManifest(input: CreateAssetInput, assetId: string) {
   const { ownerDid, buffer, mimeType } = input;
   const uploadedBy = input.uploadedBy ?? ownerDid;
@@ -216,6 +226,11 @@ async function prepareAssetManifest(input: CreateAssetInput, assetId: string) {
     const signedManifest = await signLegalEntityDocument(fairManifest, buffer.toString('utf8'), ownerDid, uploadedBy);
     const change = await prepareLegalEntityChange(assetId, ownerDid, uploadedBy, buffer.toString('utf8'), null);
     return { signedManifest, change };
+  }
+  // Staged bank records carry their own transactional create/revoke provenance.
+  if (input.status === 'processing') {
+    const { contentSigner } = await import('@/src/lib/media/content-signer');
+    return { signedManifest: await contentSigner.sign(fairManifest), change: null };
   }
   const platformDid = process.env.PLATFORM_DID;
   const platformKeyHex = process.env.AUTH_PRIVATE_KEY;
@@ -230,6 +245,18 @@ async function prepareAssetManifest(input: CreateAssetInput, assetId: string) {
   return { signedManifest, change: null };
 }
 
+function isImmutableAsset(input: CreateAssetInput): boolean {
+  return Boolean(input.controlDocument || input.immutable);
+}
+function assetStoragePaths(input: CreateAssetInput, assetId: string) {
+  const dirPath = `${MEDIA_ROOT}/${didToPath(input.ownerDid)}/assets`;
+  const storagePath = input.controlDocument
+    ? `${dirPath}/legal-entity.md`
+    : `${dirPath}/${assetId}${safeExtension(input.filename)}`;
+  const fairPath = `${dirPath}/${input.controlDocument ?? assetId}.fair.json`;
+  return { dirPath, storagePath, fairPath };
+}
+
 function createMetadata(input: CreateAssetInput): Record<string, unknown> {
   if (input.controlDocument) return { kind: input.controlDocument };
   return input.context ? { context: input.context } : {};
@@ -238,6 +265,7 @@ function createMetadata(input: CreateAssetInput): Record<string, unknown> {
 async function insertAssetRecord(
   values: typeof assets.$inferInsert,
   change: Awaited<ReturnType<typeof prepareLegalEntityChange>> | null,
+  executor: Pick<typeof db, 'insert'> = db,
 ): Promise<Asset> {
   if (change) {
     return db.transaction(async tx => {
@@ -246,7 +274,7 @@ async function insertAssetRecord(
       return created;
     });
   }
-  const [record] = await db.insert(assets).values(values).returning();
+  const [record] = await executor.insert(assets).values(values).returning();
   return record;
 }
 
@@ -261,6 +289,8 @@ export async function createAsset(input: CreateAssetInput): Promise<CreateAssetR
     classify = true,
   } = input;
   const uploadedBy = input.uploadedBy ?? ownerDid;
+  const staged = input.status === 'processing';
+  if (staged) validateStagedAsset(input);
 
   // Defense-in-depth for non-HTTP callers (the route also 415s before this).
   if (!isAllowedMime(mimeType)) {
@@ -268,7 +298,6 @@ export async function createAsset(input: CreateAssetInput): Promise<CreateAssetR
   }
 
   const assetId = `asset_${nanoid(16)}`;
-  const ext = safeExtension(filename);
   const size = buffer.byteLength;
 
   // SHA-256 (legacy identity) + CID (content-addressed identity, #1122 Layer A).
@@ -284,12 +313,7 @@ export async function createAsset(input: CreateAssetInput): Promise<CreateAssetR
   }
 
   // Storage path: {MEDIA_ROOT}/{didPath}/assets/{assetId}{ext}
-  const didPath = didToPath(ownerDid);
-  const dirPath = `${MEDIA_ROOT}/${didPath}/assets`;
-  const storagePath = input.controlDocument
-    ? `${dirPath}/legal-entity.md`
-    : `${dirPath}/${assetId}${ext}`;
-  const fairPath = `${dirPath}/${input.controlDocument ?? assetId}.fair.json`;
+  const { dirPath, storagePath, fairPath } = assetStoragePaths(input, assetId);
 
   // Legal control records require both signatures before any bytes are changed.
   const { signedManifest, change } = await prepareAssetManifest(input, assetId);
@@ -327,16 +351,19 @@ export async function createAsset(input: CreateAssetInput): Promise<CreateAssetR
         cid,
         loreRef: blobRef?.loreRef ?? null,
         versionCount: 1,
-        status: "active",
+        status: input.status ?? "active",
         metadata: createMetadata(input),
-        immutable: Boolean(input.controlDocument),
+        immutable: isImmutableAsset(input),
       };
-    record = await insertAssetRecord(values, change);
+    record = await insertAssetRecord(values, change, input.tx);
   } catch (err) {
     log.error({ err: String(err) }, "DB insert failed");
     throw new Error(`Database failure: ${String(err)}`);
   }
 
+  // The control-plane caller activates this row and records signed provenance
+  // in its transaction. Never announce or classify a not-yet-committed record.
+  if (staged) return { asset: record, deduplicated: false };
   // Publish signed manifest to DFOS federation (best-effort, never blocks).
   const baseUrl = resolveBaseUrl(input.baseUrl);
   const manifestUrl = `${baseUrl}/media/api/assets/${assetId}/fair`;

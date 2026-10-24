@@ -44,6 +44,12 @@ export const GROUP_KEY_NAMESPACE = 'vault-group-key';
 
 /** SSH CA seeds are kernel-only, with no generic fetch or export surface. */
 export const SSH_CA_NAMESPACE = 'vault-ssh-ca';
+/** Financial fields are released only through the bank-details disclosure rail. */
+export const BANK_DETAILS_NAMESPACE = 'bank-details';
+
+export function isBankDetailsField(field: string): boolean {
+  return vaultFieldNamespace(field) === BANK_DETAILS_NAMESPACE;
+}
 
 export function isSshCaField(field: string): boolean {
   return vaultFieldNamespace(field) === SSH_CA_NAMESPACE;
@@ -51,7 +57,7 @@ export function isSshCaField(field: string): boolean {
 
 /** Fields whose plaintext and lifecycle belong exclusively to an in-process rail. */
 export function isPrivateCustodyField(field: string): boolean {
-  return isGroupKeyField(field) || isSshCaField(field);
+  return isGroupKeyField(field) || isSshCaField(field) || isBankDetailsField(field);
 }
 
 export function isGroupKeyField(field: string): boolean {
