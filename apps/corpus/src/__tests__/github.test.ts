@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { randomUUID } from 'node:crypto';
 import { GitHubAdapter, parseGitHubSource, type GraphqlClient } from '../adapters/github';
 import type { ThreadDocument } from '../engine/types';
 
@@ -101,6 +102,18 @@ describe('parseGitHubSource', () => {
 });
 
 // ─── fetch(): issues ─────────────────────────────────────────────────────────
+
+describe('GitHub credential boundary', () => {
+  it('never discovers credentials from the environment', () => {
+    vi.stubEnv('GITHUB_TOKEN', randomUUID());
+    vi.stubEnv('GH_TOKEN', randomUUID());
+    try {
+      expect(() => new GitHubAdapter()).toThrow(/Select an active GitHub connector/);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+});
 
 describe('GitHubAdapter#fetch — issues', () => {
   it('produces a valid ThreadDocument for a closed issue with a linked closing PR', async () => {

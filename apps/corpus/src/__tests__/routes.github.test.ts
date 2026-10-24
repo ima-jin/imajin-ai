@@ -1,4 +1,6 @@
 import { mkdtempSync, rmSync } from 'node:fs';
+import { createHash, randomUUID } from 'node:crypto';
+import Database from 'better-sqlite3';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import request from 'supertest';
@@ -46,6 +48,7 @@ describe('github source routes', () => {
   let engine: CorpusEngine;
   let app: ReturnType<typeof createCorpusApp>;
   let fetchMock: ReturnType<typeof mockGitHubFetch>;
+  let credential: string;
 
   beforeEach(() => {
     process.env.CORPUS_KERNEL_PUBLIC_KEY = KERNEL_KEYPAIR.publicKey;
@@ -54,14 +57,19 @@ describe('github source routes', () => {
     app = createCorpusApp(engine);
     fetchMock = mockGitHubFetch();
     vi.stubGlobal('fetch', fetchMock);
-    process.env.GITHUB_TOKEN = 'test-token';
+    credential = randomUUID();
+    vi.stubEnv('CORPUS_DID', 'did:example:corpus');
+    vi.stubEnv('CORPUS_DID_PRIVATE_KEY', KERNEL_KEYPAIR.privateKey);
+    vi.stubEnv('GITHUB_TOKEN', '');
+    vi.stubEnv('GH_TOKEN', '');
+    engine.recordSourceState(did, 'github:ima-jin/imajin-ai', 'github:primary', undefined, did);
   });
 
   afterEach(() => {
     engine.close();
     rmSync(dataDir, { recursive: true, force: true });
     vi.unstubAllGlobals();
-    delete process.env.GITHUB_TOKEN;
+    vi.unstubAllEnvs();
     if (ORIGINAL_KERNEL_PUBLIC_KEY === undefined) delete process.env.CORPUS_KERNEL_PUBLIC_KEY;
     else process.env.CORPUS_KERNEL_PUBLIC_KEY = ORIGINAL_KERNEL_PUBLIC_KEY;
   });
@@ -70,6 +78,8 @@ describe('github source routes', () => {
     const response = await request(app)
       .post(`/corpus/${did}/sources`)
       .set('Authorization', authFor())
+      .set('X-Corpus-GitHub-Credential', credential)
+      .set('X-Corpus-Credential-Ref', 'github:primary')
       .send({ source: 'github:ima-jin/imajin-ai', type: 'github' });
 
     expect(response.status).toBe(200);
@@ -97,6 +107,8 @@ describe('github source routes', () => {
     const response = await request(app)
       .post(`/corpus/${did}/sync`)
       .set('Authorization', authFor())
+      .set('X-Corpus-GitHub-Credential', credential)
+      .set('X-Corpus-Credential-Ref', 'github:primary')
       .send({ source: 'github:ima-jin/imajin-ai', cursor: null });
 
     expect(response.status).toBe(200);
@@ -108,6 +120,8 @@ describe('github source routes', () => {
     const response = await request(app)
       .post(`/corpus/${did}/crawl`)
       .set('Authorization', authFor())
+      .set('X-Corpus-GitHub-Credential', credential)
+      .set('X-Corpus-Credential-Ref', 'github:primary')
       .send({ source: 'github:ima-jin/imajin-ai' });
 
     expect(response.status).toBe(200);
@@ -119,6 +133,8 @@ describe('github source routes', () => {
     const response = await request(app)
       .post(`/corpus/${did}/ingest`)
       .set('Authorization', authFor())
+      .set('X-Corpus-GitHub-Credential', credential)
+      .set('X-Corpus-Credential-Ref', 'github:primary')
       .send({ source: 'github:ima-jin/imajin-ai' });
 
     expect(response.status).toBe(200);
@@ -131,6 +147,124 @@ describe('github source routes', () => {
 
     expect(response.status).toBe(501);
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('GitHub source credential failures', () => {
+  let dataDir: string;
+  let engine: CorpusEngine;
+  let app: ReturnType<typeof createCorpusApp>;
+  let credential: string;
+
+  beforeEach(() => {
+    vi.stubEnv('CORPUS_KERNEL_PUBLIC_KEY', KERNEL_KEYPAIR.publicKey);
+    vi.stubEnv('CORPUS_DID', 'did:example:corpus');
+    vi.stubEnv('CORPUS_DID_PRIVATE_KEY', KERNEL_KEYPAIR.privateKey);
+    dataDir = mkdtempSync(join(tmpdir(), 'corpus-github-credentials-'));
+    engine = new CorpusEngine({ dataDir });
+    app = createCorpusApp(engine);
+    credential = randomUUID();
+    vi.stubGlobal('fetch', mockGitHubFetch());
+    engine.recordSourceState(did, 'github:ima-jin/imajin-ai', 'github:primary', undefined, did, true);
+  });
+  afterEach(() => {
+    engine.close();
+    rmSync(dataDir, { recursive: true, force: true });
+    vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
+  });
+
+  it('persists a revoked credential error across restart without changing last successful sync', async () => {
+    const before = engine.status(did).sources[0].lastSync;
+    const response = await request(app).post(`/corpus/${did}/sync`)
+      .set('Authorization', authFor()).send({ source: 'github:ima-jin/imajin-ai' });
+    expect(response.status).toBe(400);
+    expect(response.body.error).toMatch(/revoked/);
+    expect(engine.status(did).sources[0]).toMatchObject({ error: response.body.error, lastSync: before, credentialRef: 'github:primary' });
+    expect(fetch).not.toHaveBeenCalled();
+    engine.close();
+    engine = new CorpusEngine({ dataDir });
+    expect(engine.status(did).sources[0].error).toBe(response.body.error);
+  });
+
+  it.each([undefined, '', 'github:INVALID', 'vault:some-field', { token: true }])('rejects invalid or missing refs: %j', async credentialRef => {
+    const response = await request(app).post(`/corpus/${did}/ingest`).set('Authorization', authFor())
+      .send({ source: 'github:ima-jin/new-repo', credentialRef });
+    expect(response.status).toBe(400);
+    expect(response.body.error).toMatch(/Select a GitHub connector/);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it('denies a read claim even when transport credentials are supplied', async () => {
+    const response = await request(app).post(`/corpus/${did}/sync`)
+      .set('Authorization', authFor('corpus:read'))
+      .set('X-Corpus-GitHub-Credential', credential)
+      .send({ source: 'github:ima-jin/imajin-ai' });
+    expect(response.status).toBe(403);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it('rejects pasted credentials, invalid cursors and source-type mismatches without echoing input', async () => {
+    for (const extra of [{ token: credential }, { cursor: {} }, { sourceType: 'local' }]) {
+      const response = await request(app).post(`/corpus/${did}/ingest`).set('Authorization', authFor())
+        .send({ source: 'github:ima-jin/imajin-ai', ...extra });
+      expect(response.status).toBe(400);
+      expect(JSON.stringify(response.body).includes(credential)).toBe(false);
+    }
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it('does not accept a different transport ref or a sync ref override', async () => {
+    const response = await request(app).post(`/corpus/${did}/sync`).set('Authorization', authFor())
+      .set('X-Corpus-GitHub-Credential', credential).set('X-Corpus-Credential-Ref', 'github:other')
+      .send({ source: 'github:ima-jin/imajin-ai', credentialRef: 'github:other' });
+    expect(response.status).toBe(400);
+    expect(engine.status(did).sources[0].credentialRef).toBe('github:primary');
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it('never echoes or persists provider exception details', async () => {
+    vi.mocked(fetch).mockRejectedValue(new Error(credential));
+    const response = await request(app).post(`/corpus/${did}/sync`).set('Authorization', authFor())
+      .set('X-Corpus-GitHub-Credential', credential).set('X-Corpus-Credential-Ref', 'github:primary')
+      .send({ source: 'github:ima-jin/imajin-ai' });
+    expect(response.status).toBe(400);
+    expect(JSON.stringify(response.body).includes(credential)).toBe(false);
+    expect(JSON.stringify(engine.status(did)).includes(credential)).toBe(false);
+  });
+});
+
+describe('source credential attestations', () => {
+  it('retains signed state changes without credential bytes and isolates DIDs', () => {
+    const dataDir = mkdtempSync(join(tmpdir(), 'corpus-source-events-'));
+    const engine = new CorpusEngine({ dataDir });
+    vi.stubEnv('CORPUS_DID', 'did:example:corpus');
+    vi.stubEnv('CORPUS_DID_PRIVATE_KEY', KERNEL_KEYPAIR.privateKey);
+    const credential = randomUUID();
+    try {
+      engine.recordSourceState(did, 'github:ima-jin/imajin-ai', 'github:primary', undefined, did);
+      engine.recordSourceState(did, 'github:ima-jin/imajin-ai', 'github:primary', 'Credential unavailable', did);
+      const file = join(dataDir, createHash('sha256').update(did).digest('hex'), 'index.db');
+      const db = new Database(file, { readonly: true });
+      try {
+        const events = db.prepare('SELECT payload, signature, public_key FROM corpus_source_events ORDER BY id').all() as {
+          payload: string; signature: string; public_key: string;
+        }[];
+        expect(events).toHaveLength(2);
+        for (const event of events) {
+          expect(authCrypto.verifySync(event.signature, event.payload, event.public_key)).toBe(true);
+          expect(event.payload.includes(credential)).toBe(false);
+          expect(JSON.parse(event.payload)).toMatchObject({ did, credentialRef: 'github:primary', type: 'corpus.source.updated' });
+        }
+      } finally {
+        db.close();
+      }
+      expect(engine.status('did:example:bob').sources).toEqual([]);
+    } finally {
+      engine.close();
+      vi.unstubAllEnvs();
+      rmSync(dataDir, { recursive: true, force: true });
+    }
   });
 });
 

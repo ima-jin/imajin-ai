@@ -288,12 +288,16 @@ describe('corpus_load', () => {
 
 describe('corpus_sync', () => {
   it('proxies to POST /corpus/:did/sync', async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse(200, { sources: [], threadCount: 0 }));
     fetchMock.mockResolvedValue(jsonResponse(200, { synced: true }));
 
     await call('corpus_sync', { source: 'github:ima-jin/imajin-ai' }, ctxFor('did:imajin:alice', ['corpus:write']));
-
-    const [url, init] = fetchMock.mock.calls[0];
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls[0][0]).toBe('http://localhost:8003/corpus/did%3Aimajin%3Aalice/status');
+    expect(decodeClaimHeader(fetchMock.mock.calls[0][1].headers.Authorization).scope).toBe('corpus:read');
+    const [url, init] = fetchMock.mock.calls[1];
     expect(url).toBe('http://localhost:8003/corpus/did%3Aimajin%3Aalice/sync');
+    expect(decodeClaimHeader(init.headers.Authorization).scope).toBe('corpus:write');
     expect(init.method).toBe('POST');
     expect(JSON.parse(init.body)).toEqual({ source: 'github:ima-jin/imajin-ai' });
   });
