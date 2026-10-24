@@ -18,7 +18,7 @@ export interface ZoneAuthority {
 }
 
 /** Actual authenticated identity only. Group act-as and acting-for never replace attribution. */
-export async function authenticateCloudflare(request: NextRequest, capability: string): Promise<CloudflareActor> {
+export async function authenticateCloudflare(request: NextRequest, capability?: string): Promise<CloudflareActor> {
   if (request.headers.has('authorization') || request.headers.has('x-app-did')) {
     const app = await requireAppAuth(request, { scope: capability });
     if ('appAuth' in app) {
