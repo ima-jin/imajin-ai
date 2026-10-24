@@ -1,6 +1,7 @@
 # @imajin/corpus
 
 Per-DID corpus indexing and BM25 search service — an internal daemon (port 8003 in production), not a subdomain web app.
+GitHub source credentials belong in the kernel vault; source configuration carries references, never token values.
 
 ## What this is
 
