@@ -41,7 +41,7 @@ import { VaultDelegationError } from './errors';
 import { isInternalSecretField } from './internal-secret';
 import { rotateInternalSecret } from './internal-secret-rotate';
 import { reissueFieldGrants } from './shared-internal-secret';
-import { isCloudflareImportedKeyField, isPrivateCustodyField, isSshCaField } from './field-grammar';
+import { isBankDetailsField, isCloudflareImportedKeyField, isPrivateCustodyField, isSshCaField } from './field-grammar';
 import { isCloudflarePurpose } from '@/src/lib/cloudflare/contract';
 import { forEachSequential, mapWithConcurrency } from '@/src/lib/async/sequential';
 
@@ -1396,7 +1396,7 @@ export async function listRenewableGrants(options: {
   const horizon = new Date(now.getTime() + (options.withinMs ?? 0));
 
   const envelopes = (await db.select().from(vaultOwnerEnvelopes))
-    .filter(envelope => !isSshCaField(envelope.field));
+    .filter(envelope => !isSshCaField(envelope.field) && !isBankDetailsField(envelope.field));
 
   // Each envelope's grant lookups are independent reads: scan a few envelopes at a
   // time, then flatten in envelope order so the worklist order is unchanged.
@@ -1731,7 +1731,7 @@ export async function fetchGrantSecret(params: {
     // someone else would let a caller enumerate grantIds it cannot use.
     return { status: 'not_grantee' };
   }
-  if (isSshCaField(grant.field) || (!params.kernelCredentialUse && (isCloudflarePurpose(grant.purpose) || isCloudflareImportedKeyField(grant.field)))) {
+  if (isSshCaField(grant.field) || (!params.kernelCredentialUse && (isBankDetailsField(grant.field) || isCloudflarePurpose(grant.purpose) || isCloudflareImportedKeyField(grant.field)))) {
     return { status: 'not_grantee' };
   }
   if (grant.status !== 'active') {
