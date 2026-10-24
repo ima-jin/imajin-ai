@@ -245,6 +245,10 @@ async function prepareAssetManifest(input: CreateAssetInput, assetId: string) {
   return { signedManifest, change: null };
 }
 
+function isImmutableAsset(input: CreateAssetInput): boolean {
+  return Boolean(input.controlDocument || input.immutable);
+}
+
 function createMetadata(input: CreateAssetInput): Record<string, unknown> {
   if (input.controlDocument) return { kind: input.controlDocument };
   return input.context ? { context: input.context } : {};
@@ -347,7 +351,7 @@ export async function createAsset(input: CreateAssetInput): Promise<CreateAssetR
         versionCount: 1,
         status: input.status ?? "active",
         metadata: createMetadata(input),
-        immutable: Boolean(input.controlDocument || input.immutable),
+        immutable: isImmutableAsset(input),
       };
     record = await insertAssetRecord(values, change, input.tx);
   } catch (err) {

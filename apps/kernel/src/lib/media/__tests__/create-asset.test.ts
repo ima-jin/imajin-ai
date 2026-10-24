@@ -60,8 +60,6 @@ vi.mock('drizzle-orm', () => ({
 }));
 
 const mockEmitAttestation = vi.hoisted(() => vi.fn().mockResolvedValue({}));
-const mockSignContent = vi.hoisted(() => vi.fn());
-vi.mock('@/src/lib/media/content-signer', () => ({ contentSigner: { sign: mockSignContent } }));
 vi.mock('@imajin/auth', () => ({
   hexToBytes: vi.fn(() => new Uint8Array()),
   emitAttestation: mockEmitAttestation,
@@ -152,7 +150,6 @@ beforeEach(() => {
   legalMocks.prepare.mockResolvedValue({ id: 'att_legal', signature: 'fixture-signature' });
   vi.stubEnv('PLATFORM_DID', 'did:imajin:node');
   mockEmitAttestation.mockReset().mockResolvedValue({});
-  mockSignContent.mockReset().mockImplementation(async manifest => ({ ...manifest, signature: { alg: 'ed25519' } }));
   vi.mocked(writeFile).mockReset().mockResolvedValue(undefined);
   // Restore chained implementations cleared by clearAllMocks.
   mockSelectFromWhere.mockImplementation(() => ({ limit: mockSelectFromWhereLimit }));
@@ -218,13 +215,13 @@ describe('createAsset — JSON MIME allowlist (#2889)', () => {
     await createAsset({ ...staged, tx: tx as never });
     expect(tx.insert).toHaveBeenCalledOnce();
     expect(mockInsertValues).toHaveBeenCalledWith(expect.objectContaining({ status: 'processing', immutable: true }));
-    expect(mockSignContent).toHaveBeenCalledOnce();
+    expect(legalMocks.sign).toHaveBeenCalledOnce();
     expect(mockEmitAttestation).not.toHaveBeenCalled();
     expect(mockDeriveArticleProjection).not.toHaveBeenCalled();
   });
   it.each([
     { tx: undefined }, { immutable: false }, { access: 'public' },
-    { dedup: true }, { classify: true }, { context: { app: 'profile' } },
+    { dedup: true }, { classify: true }, { context: { app: 'profile' } }, { controlDocument: 'legal-entity' as const },
   ])('refuses an unsafe staged configuration before storage', async override => {
     const tx = { insert: vi.fn() };
     await expect(createAsset({ ...staged, tx: tx as never, ...override })).rejects.toThrow('Staged assets require');
@@ -232,7 +229,7 @@ describe('createAsset — JSON MIME allowlist (#2889)', () => {
     expect(mockInsertValues).not.toHaveBeenCalled();
   });
   it('fails closed if staged signing fails, before any file or row write', async () => {
-    mockSignContent.mockRejectedValue(new Error('Synthetic signing failure'));
+    legalMocks.sign.mockRejectedValueOnce(new Error('Synthetic signing failure'));
     await expect(createAsset({ ...staged, tx: {} as never })).rejects.toThrow('Synthetic signing failure');
     expect(writeFile).not.toHaveBeenCalled();
     expect(mockInsertValues).not.toHaveBeenCalled();
