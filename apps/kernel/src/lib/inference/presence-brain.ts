@@ -11,11 +11,11 @@
  * the resolution or the status mapping.
  */
 import { getModel } from '@imajin/llm';
-import type { LanguageModelV1 } from '@imajin/llm';
+import type { LanguageModel } from '@imajin/llm';
 import { resolveBrain, NoBrainSealedError } from './brain';
 
 export type PresenceBrainResult =
-  | { ok: true; model: LanguageModelV1; modelId: string; connector: string }
+  | { ok: true; model: LanguageModel; modelId: string; connector: string }
   | { ok: false; status: number; error: string; cause: string };
 
 /**

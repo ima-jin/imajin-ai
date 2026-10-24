@@ -15,7 +15,7 @@ export function createPayTools(config: {
   return {
     getBalance: tool({
       description: 'Get the balance for a conversation participant',
-      parameters: z.object({
+      inputSchema: z.object({
         did: z.string().describe('DID to check balance for (must be a conversation participant)'),
       }),
       execute: async ({ did }) => {
@@ -31,7 +31,7 @@ export function createPayTools(config: {
 
     getTransactions: tool({
       description: 'Get transaction history for a conversation participant',
-      parameters: z.object({
+      inputSchema: z.object({
         did: z.string().describe('DID to get transactions for (must be a conversation participant)'),
       }),
       execute: async ({ did }) => {

@@ -8,7 +8,7 @@
  * the one calling this passthrough, already knows how to parse.
  */
 import { generateId } from 'ai';
-import type { LanguageModelUsage, ToolCallUnion, ToolSet } from 'ai';
+import type { LanguageModelUsage, TypedToolCall, ToolSet } from 'ai';
 import type {
   OpenAIChatCompletion,
   OpenAIChatCompletionChunk,
@@ -38,15 +38,15 @@ export function mapFinishReason(reason: string): OpenAIFinishReason {
 
 function toOpenAIUsage(usage: LanguageModelUsage): OpenAIChatCompletion['usage'] {
   return {
-    prompt_tokens: usage.promptTokens,
-    completion_tokens: usage.completionTokens,
-    total_tokens: usage.totalTokens,
+    prompt_tokens: usage.inputTokens ?? 0,
+    completion_tokens: usage.outputTokens ?? 0,
+    total_tokens: usage.totalTokens ?? 0,
   };
 }
 
 export interface GenerateTextOutcome {
   text: string;
-  toolCalls: ReadonlyArray<ToolCallUnion<ToolSet>>;
+  toolCalls: ReadonlyArray<TypedToolCall<ToolSet>>;
   finishReason: string;
   usage: LanguageModelUsage;
 }
@@ -56,7 +56,7 @@ export function buildChatCompletion(modelId: string, result: GenerateTextOutcome
   const toolCalls: OpenAIToolCall[] = result.toolCalls.map((tc) => ({
     id: tc.toolCallId,
     type: 'function',
-    function: { name: tc.toolName, arguments: JSON.stringify(tc.args) },
+    function: { name: tc.toolName, arguments: JSON.stringify(tc.input) },
   }));
 
   return {
