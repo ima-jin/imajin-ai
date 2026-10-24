@@ -16,6 +16,7 @@ import { iconForSource, composeSource, SOURCE_TYPE_OPTIONS } from '../lib/source
 
 interface CorpusSourceFreshness {
   source: string;
+  ownerDid?: string;
   lastSync: string;
   threadCount: number;
   warning?: string;
@@ -73,6 +74,7 @@ function SourceRow({
           <p className="text-sm text-white font-medium truncate" title={source.source}>
             {source.source}
           </p>
+          <p className="text-xs text-gray-400 break-all">Owner: {source.ownerDid ?? 'unresolved'}</p>
           <div className="flex flex-wrap items-center gap-3 mt-0.5">
             <span className="text-xs text-gray-500">{source.threadCount} threads</span>
             {source.error && <span className="text-xs text-gray-400">Last success:</span>}

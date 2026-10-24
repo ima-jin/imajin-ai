@@ -13,6 +13,7 @@ import { isWorkspaceSource, resolveWorkspacePath, validateSourcePath, workspaceR
 // checklist) lands here: claim verification (middleware/access-claim.ts)
 // plus the corpus identity + signing/forwarding wired through engine/index.ts.
 import { createAccessClaimMiddleware } from './middleware/access-claim';
+import { resolveCorpusDid } from './lib/source-owner';
 
 export type CorpusRouterOptions = WorkspaceOptions;
 
@@ -22,6 +23,11 @@ export function createCorpusRouter(engine: CorpusEngine, options: CorpusRouterOp
   // Single choke point for every /corpus/:did/* route (#1751). /health and
   // /spec (#2020) stay outside this prefix and remain public.
   router.use('/corpus/:did', createAccessClaimMiddleware());
+  router.use('/corpus/:did', (request, response, next) => {
+    void verifySourceOwner(request).then(() => next()).catch(() => {
+      response.status(403).json({ error: 'Source does not belong to the authorized corpus DID' });
+    });
+  });
 
   router.use('/corpus/:did', (request, response, next) => {
     if (request.method !== 'POST' || !['/ingest', '/sources', '/sync', '/crawl'].includes(request.path)) return next();
@@ -120,6 +126,22 @@ export function createCorpusRouter(engine: CorpusEngine, options: CorpusRouterOp
   return router;
 }
 
+async function verifySourceOwner(request: Request): Promise<void> {
+  const did = String(request.params.did);
+  const principalDid = request.corpusAccessClaim?.onBehalfOf ?? request.corpusAccessClaim?.did ?? did;
+  const documents = Array.isArray(request.body) ? request.body : [request.body];
+  const sources = new Set<string>();
+  for (const document of documents) {
+    if (typeof document?.source === 'string') sources.add(document.source);
+  }
+  await Promise.all([...sources].map(async source => {
+    if (source.startsWith('local:') && principalDid !== did && request.corpusAccessClaim?.scope === 'corpus:write') {
+      throw new Error('Workspace sources belong to the principal corpus');
+    }
+    if (await resolveCorpusDid(source, principalDid) !== did) throw new Error('Corpus owner mismatch');
+  }));
+}
+
 export function createCorpusApp(engine = new CorpusEngine(), options: CorpusRouterOptions = {}): express.Express {
   const app = express();
   app.use(express.json({ limit: '10mb' }));
@@ -206,6 +228,7 @@ async function collectDocuments(iterable: AsyncIterable<ThreadDocument>): Promis
 
 /** Reads the DID the verified CorpusAccessClaim authorized this request for, falling back to the `:did` path param (e.g. for tests that bypass the middleware). */
 function ingesterDidFor(request: Request): string {
+  if (request.corpusAccessClaim?.onBehalfOf) return request.corpusAccessClaim.onBehalfOf;
   if (request.corpusAccessClaim?.did) {
     return request.corpusAccessClaim.did;
   }
@@ -255,21 +278,22 @@ async function githubSourceOperation(engine: CorpusEngine, request: Request) {
     throw new Error('type does not match GitHub source');
   }
   if (body.cursor !== undefined && body.cursor !== null && typeof body.cursor !== 'string') throw new Error('cursor must be a string or null');
-  const did = ingesterDidFor(request);
+  const did = String(request.params.did);
+  const ingesterDid = ingesterDidFor(request);
   const source = body.source;
   const stored = engine.status(did).sources.find(item => item.source === source)?.credentialRef;
   const incremental = request.path.endsWith('/sync');
   const existingOnly = incremental || request.path.endsWith('/crawl');
   const ref = existingOnly ? stored : body.credentialRef ?? stored;
   if (typeof ref !== 'string' || !/^github:[a-z0-9][a-z0-9_-]{0,63}$/.test(ref)) {
-    if (existingOnly) engine.recordSourceState(did, source, undefined, 'Select a GitHub connector for this source.', did);
+    if (existingOnly) engine.recordSourceState(did, source, undefined, 'Select a GitHub connector for this source.', ingesterDid);
     throw new Error('Select a GitHub connector for this source.');
   }
   // Reference-only state is attested before fetching, including empty/failed sources.
-  engine.recordSourceState(did, source, ref, undefined, did);
+  engine.recordSourceState(did, source, ref, undefined, ingesterDid);
   const token = request.get('X-Corpus-GitHub-Credential');
   if (!token || request.get('X-Corpus-Credential-Ref') !== ref) {
-    engine.recordSourceState(did, source, ref, GITHUB_CREDENTIAL_ERROR, did);
+    engine.recordSourceState(did, source, ref, GITHUB_CREDENTIAL_ERROR, ingesterDid);
     throw new Error(GITHUB_CREDENTIAL_ERROR);
   }
   let result;
@@ -280,11 +304,11 @@ async function githubSourceOperation(engine: CorpusEngine, request: Request) {
       : { documents: await collectDocuments(adapter.fetch(source)), cursor: null, hasMore: false };
   } catch {
     // Octokit/provider exceptions can carry request headers. Never store or echo them.
-    engine.recordSourceState(did, source, ref, GITHUB_SYNC_ERROR, did);
+    engine.recordSourceState(did, source, ref, GITHUB_SYNC_ERROR, ingesterDid);
     throw new Error(GITHUB_SYNC_ERROR);
   }
-  const ingested = engine.ingest(did, result.documents, undefined, did).ingested;
-  engine.recordSourceState(did, source, ref, undefined, did, true);
+  const ingested = engine.ingest(did, result.documents, undefined, ingesterDid).ingested;
+  engine.recordSourceState(did, source, ref, undefined, ingesterDid, true);
   triggerEmbedSweep(engine, did);
   return incremental ? { ingested, cursor: result.cursor, hasMore: result.hasMore } : { ingested };
 }

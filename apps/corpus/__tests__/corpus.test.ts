@@ -2,12 +2,13 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import request from 'supertest';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { crypto as authCrypto } from '@imajin/auth';
 import { CorpusEngine } from '../src/engine';
 import type { ThreadDocument } from '../src/engine/types';
 import { createCorpusApp } from '../src/routes';
 import { mintTestClaimHeader } from '../src/__tests__/support/mint-test-claim';
+vi.mock('../src/lib/source-owner', () => ({ resolveCorpusDid: vi.fn(async () => 'did:example:alice') }));
 
 describe('CorpusEngine', () => {
   let dataDir: string;

@@ -22,7 +22,7 @@ describe('CorpusManagerShell — sources list', () => {
       'fetch',
       vi.fn(async () =>
         jsonResponse({
-          sources: [{ source: 'github:ima-jin/imajin-ai', lastSync: recentSync, threadCount: 42 }],
+          sources: [{ source: 'github:ima-jin/imajin-ai', ownerDid: 'did:imajin:ima-jin-org', lastSync: recentSync, threadCount: 42 }],
           threadCount: 42,
         }),
       ),
@@ -32,6 +32,8 @@ describe('CorpusManagerShell — sources list', () => {
 
     expect(await screen.findByText('github:ima-jin/imajin-ai')).toBeDefined();
     expect(screen.getByText('42 threads')).toBeDefined();
+    expect(screen.getByText('Owner: did:imajin:ima-jin-org')).toBeDefined();
+    expect(screen.queryByText(`Owner: ${DID}`)).toBeNull();
     expect(screen.getByText('Synced recently')).toBeDefined();
   });
 

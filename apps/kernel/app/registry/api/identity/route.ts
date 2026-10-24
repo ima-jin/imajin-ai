@@ -1,92 +1,18 @@
 import { NextResponse } from 'next/server';
-import { and, eq, isNotNull, sql } from 'drizzle-orm';
-import { nanoid } from 'nanoid';
+import { and, eq, isNotNull } from 'drizzle-orm';
 import { requireAuth, requireAppAuth, resolveActingDid } from '@imajin/auth';
 import { publish } from '@imajin/bus';
 import { createLogger } from '@imajin/logger';
-import { db, identities, identityAliases, identityMembers } from '@/src/db';
+import { db, identityMembers } from '@/src/db';
 import { PENDING_OWNER_TRANSFER_KEY } from '@/src/lib/auth/ownership-policy';
 import {
   resolveOrMintIdentity,
   isResolveIdentityError,
-  type IdentityAliasRepo,
 } from '@/src/lib/registry/identity-alias';
 
+import { identityRepo, mapType } from '@/src/lib/registry/identity-repo';
+
 const log = createLogger('kernel');
-
-/**
- * Map a partner-supplied entity type onto a canonical identity scope/subtype.
- * Travelers are people (actor); everything else is a business-scoped soft
- * entity. The raw partner type is always preserved in metadata.type.
- */
-function mapType(type: string): { scope: string; subtype: string } {
-  if (type === 'traveler') return { scope: 'actor', subtype: 'human' };
-  return { scope: 'business', subtype: type };
-}
-
-/** Drizzle-backed repository enforcing the unique (namespace, ref) constraint. */
-const identityRepo = (registeredByAppDid: string | null): IdentityAliasRepo => ({
-  async findAlias(namespace, ref) {
-    const [row] = await db
-      .select({ did: identityAliases.did })
-      .from(identityAliases)
-      .where(and(eq(identityAliases.namespace, namespace), eq(identityAliases.ref, ref)))
-      .limit(1);
-    return row?.did ?? null;
-  },
-
-  async claimAlias(namespace, ref, did) {
-    const claimed = await db
-      .insert(identityAliases)
-      .values({ namespace, ref, did })
-      .onConflictDoNothing({ target: [identityAliases.namespace, identityAliases.ref] })
-      .returning({ did: identityAliases.did });
-    return claimed.length > 0;
-  },
-
-  async createIdentity(did, type, metadata) {
-    const { scope, subtype } = mapType(type);
-    const name = typeof metadata.name === 'string' ? metadata.name.slice(0, 100) : null;
-    const [identity] = await db
-      .insert(identities)
-      .values({
-        id: did,
-        scope,
-        subtype,
-        registeredByAppDid,
-        publicKey: `soft_${nanoid(32)}`, // no keypair; placeholder satisfies NOT NULL UNIQUE
-        handle: null,
-        name,
-        metadata,
-      })
-      .returning();
-    return (identity.metadata as Record<string, unknown> | null) ?? metadata;
-  },
-
-  async getIdentityMetadata(did) {
-    const [identity] = await db
-      .select({ metadata: identities.metadata })
-      .from(identities)
-      .where(eq(identities.id, did))
-      .limit(1);
-    if (!identity) return null;
-    return (identity.metadata as Record<string, unknown> | null) ?? {};
-  },
-
-  async mergeMetadata(did, incoming) {
-    // Atomic merge preserves server-owned state even across concurrent transfers.
-    const [updated] = await db
-      .update(identities)
-      .set({ metadata: sql`coalesce(${identities.metadata}, '{}'::jsonb) || ${JSON.stringify(incoming)}::jsonb`, updatedAt: new Date() })
-      .where(eq(identities.id, did))
-      .returning({ metadata: identities.metadata });
-    return (updated?.metadata as Record<string, unknown> | null) ?? incoming;
-  },
-
-  mintDid() {
-    return `did:imajin:${nanoid(44)}`;
-  },
-});
 
 /**
  * Parse and coerce the POST /registry/api/identity request body.
@@ -160,6 +86,9 @@ async function handleIdentityPost(request: Request, actingDid: string, registere
   }
 
   if (!namespace) return NextResponse.json({ error: 'namespace is required' }, { status: 400 });
+  if (namespace.toLowerCase() === 'github') {
+    return NextResponse.json({ error: 'GitHub source identities are managed by the identity service' }, { status: 403 });
+  }
   if (!ref) return NextResponse.json({ error: 'ref is required' }, { status: 400 });
   if (!type) return NextResponse.json({ error: 'type is required' }, { status: 400 });
   if (optInRef !== null && optInRef.length === 0) {

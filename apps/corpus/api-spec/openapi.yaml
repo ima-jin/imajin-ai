@@ -29,7 +29,12 @@ components:
         expiry, nonce replay, and that the claim's DID matches :did, before
         serving any /corpus/:did/* route (apps/corpus/src/middleware/access-claim.ts).
         Rejects with 401 on missing/invalid/expired/wrong-alg/wrong-aud claims,
-        403 on a DID mismatch.
+        403 on a DID/source-owner mismatch or a read claim used for a write.
+        The DID is the resolved source owner, not the caller: GitHub sources
+        use the repository owner's registry group identity; workspace sources
+        use the principal identity. The kernel checks an owner-issued corpus
+        grant before cross-owner access and includes the principal as onBehalfOf.
+        Workspace writes are restricted to the signed principal's own partition.
   schemas:
     Error:
       type: object
@@ -39,7 +44,7 @@ components:
     GitHubCredentialRef:
       type: string
       pattern: '^github:[a-z0-9][a-z0-9_-]{0,63}$'
-      description: Effective DID's GitHub OAuth connector slot, selected on /auth/corpus. Identifier only; never a token or arbitrary vault field.
+      description: Resolved source-owner DID's GitHub OAuth connector slot, selected on /auth/corpus. Identifier only; never a token or arbitrary vault field.
 
 paths:
   /health:
@@ -101,6 +106,7 @@ paths:
                       type: object
                       properties:
                         source: { type: string }
+                        ownerDid: { type: string, description: Resolved source-owner partition DID. }
                         lastSync: { type: string, description: "Last successful sync; empty if never synced." }
                         threadCount: { type: integer }
                         credentialRef: { $ref: "#/components/schemas/GitHubCredentialRef" }
@@ -121,6 +127,9 @@ paths:
       summary: Search a DID's corpus for threads matching a query, returning scored evidence excerpts.
       description: >-
         Requires a CorpusAccessClaim (see ImajinClaim) scoped corpus:read to this :did; minted by the kernel MCP corpus_search tool.
+        This daemon endpoint searches only the authorized DID partition. For an unscoped caller search,
+        the kernel gateway queries the principal and currently granted owner partitions using the status view's
+        same live grant checks, then deduplicates/ranks results within global limit and evidence budgets.
         Set `ref` to pin results to a previously-ingested git sha for a `local:workspace` source (#1921): the response
         is then filtered to that ref's snapshot manifest and includes a `provenance` block (sha, doc ids, content hashes).
         Set `mode` (#1599, #1601) to force a retrieval strategy; defaults to `hybrid` when a PGX embedder is configured
