@@ -65,22 +65,23 @@ function SourceRow({
   const [confirmingRemove, setConfirmingRemove] = useState(false);
 
   return (
-    <div className="flex items-center justify-between p-3 bg-gray-900 rounded-lg border border-gray-800">
+    <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 p-3 bg-gray-900 rounded-lg border border-gray-800">
       <div className="flex items-center gap-3 min-w-0">
         <span className="text-xl flex-shrink-0">{iconForSource(source.source)}</span>
         <div className="min-w-0">
           <p className="text-sm text-white font-medium truncate" title={source.source}>
             {source.source}
           </p>
-          <div className="flex items-center gap-3 mt-0.5">
+          <div className="flex flex-wrap items-center gap-3 mt-0.5">
             <span className="text-xs text-gray-500">{source.threadCount} threads</span>
+            {source.error && <span className="text-xs text-gray-400">Last success:</span>}
             <FreshnessBadge lastSync={source.lastSync} />
           </div>
           {source.credentialRef && <p className="text-xs text-gray-400 mt-1">Connector: {source.credentialRef}</p>}
           {source.error && <p role="alert" className="text-sm text-red-400 mt-1 break-words">{source.error}</p>}
         </div>
       </div>
-      <div className="flex items-center gap-2 flex-shrink-0 ml-3">
+      <div className="flex items-center gap-2 flex-shrink-0 sm:ml-3">
         <button
           type="button"
           onClick={() => onSync(source.source)}
@@ -164,9 +165,10 @@ function LoadSourceForm({
       }}
       className="bg-gray-900 border border-gray-800 rounded-xl p-4 space-y-3"
     >
-      <div className="flex gap-2">
+      <div className="flex flex-col sm:flex-row gap-2">
         <select
           aria-label="Source type"
+          style={{ colorScheme: 'dark' }}
           value={sourceType}
           onChange={(e) => setSourceType(e.target.value)}
           className="px-3 py-2 bg-gray-950 border border-gray-800 rounded-lg text-sm text-white focus:outline-none focus:ring-1 focus:ring-amber-500"
@@ -190,6 +192,7 @@ function LoadSourceForm({
           <label htmlFor="corpus-github-connector" className="block text-sm text-gray-300">GitHub connector</label>
           <select
             id="corpus-github-connector"
+            style={{ colorScheme: 'dark' }}
             value={credentialRef}
             onChange={event => setCredentialRef(event.target.value)}
             className="w-full px-3 py-2 bg-gray-950 border border-gray-800 rounded-lg text-sm text-white"
@@ -369,7 +372,7 @@ export default function CorpusManagerShell({ did }: Readonly<{ did: string }>) {
 
   return (
     <div className="max-w-3xl mx-auto space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-white">Corpus</h1>
           <p className="text-gray-400 text-sm mt-1">
