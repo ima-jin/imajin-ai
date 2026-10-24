@@ -164,6 +164,8 @@ export interface CorpusSourceFreshness {
   lastSync: string;
   threadCount: number;
   warning?: string;
+  credentialRef?: string;
+  error?: string;
 }
 
 /** Provenance of a ref-pinned search result, for reproducibility audits (#1921). */

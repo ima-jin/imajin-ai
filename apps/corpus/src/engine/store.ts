@@ -2,7 +2,7 @@ import Database from 'better-sqlite3';
 import { createHash } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { crypto as authCrypto } from '@imajin/auth';
+import { canonicalize, crypto as authCrypto } from '@imajin/auth';
 import { buildIngestionAttestation } from './attestation';
 import { chunkThread, type ThreadChunk } from './chunker';
 import { AttestationNotFoundError, UnknownRefError } from './errors';
@@ -151,6 +151,25 @@ export class CorpusStore {
     this.rootDir = options.dataDir ?? join(process.cwd(), 'data', 'corpus');
     this.maxRefsPerSource = options.maxRefsPerSource ?? DEFAULT_MAX_REFS_PER_SOURCE;
     this.refRetentionDays = options.refRetentionDays ?? DEFAULT_REF_RETENTION_DAYS;
+  }
+
+  /** Append-only, signed source configuration/outcome history; no credential bytes. */
+  recordSourceState(
+    did: string, source: string, credentialRef: string | undefined, error: string | undefined,
+    identity: CorpusIdentity, ingesterDid: string, synced = false,
+  ): void {
+    const payload = canonicalize({
+      type: 'corpus.source.updated', did, source, credentialRef: credentialRef ?? null,
+      error: error ?? null, synced, issuer: identity.did, ingesterDid, timestamp: new Date().toISOString(),
+    });
+    const db = this.databaseForDid(did);
+    db.prepare(`
+      INSERT INTO corpus_source_events(source, credential_ref, error, payload, signature, public_key)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run(source, credentialRef ?? null, error ?? null, payload,
+      authCrypto.signSync(payload, identity.privateKey), authCrypto.getPublicKey(identity.privateKey));
+    db.prepare('INSERT OR IGNORE INTO corpus_sources(source, last_sync, thread_count) VALUES (?, ?, 0)').run(source, '');
+    if (synced) this.refreshSource(db, source, new Date().toISOString());
   }
 
   close(): void {
@@ -565,13 +584,28 @@ export class CorpusStore {
     const db = this.databaseForDid(did);
     const rows = db.prepare(`SELECT source, last_sync, thread_count FROM corpus_sources
       WHERE source NOT IN (SELECT source FROM corpus_owner_transfers WHERE from_did = ?) ORDER BY source`).all(did) as SourceRow[];
-
-    return rows.map(row => ({
+    const sources: CorpusSourceFreshness[] = rows.map(row => ({
       source: row.source,
       ownerDid: did,
       lastSync: row.last_sync,
       threadCount: row.thread_count,
     }));
+    const states = db.prepare(`
+      SELECT source, credential_ref, error FROM corpus_source_events
+      WHERE id IN (SELECT MAX(id) FROM corpus_source_events GROUP BY source)
+        AND source IN (SELECT source FROM corpus_sources)
+        AND source NOT IN (SELECT source FROM corpus_owner_transfers WHERE from_did = ?)
+    `).all(did) as { source: string; credential_ref: string | null; error: string | null }[];
+    for (const state of states) {
+      let source = sources.find(item => item.source === state.source);
+      if (!source) {
+        source = { source: state.source, ownerDid: did, lastSync: '', threadCount: 0 };
+        sources.push(source);
+      }
+      if (state.credential_ref) source.credentialRef = state.credential_ref;
+      if (state.error) source.error = state.error;
+    }
+    return sources.sort((left, right) => left.source.localeCompare(right.source));
   }
 
   deleteSource(did: string, source: string): number {
@@ -698,6 +732,16 @@ export class CorpusStore {
         source TEXT PRIMARY KEY,
         last_sync TEXT NOT NULL,
         thread_count INTEGER NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS corpus_source_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        source TEXT NOT NULL,
+        credential_ref TEXT,
+        error TEXT,
+        payload TEXT NOT NULL,
+        signature TEXT NOT NULL,
+        public_key TEXT NOT NULL
       );
 
       -- Sha-pinned snapshot queries (#1921): thread_blobs/blob_fts are an

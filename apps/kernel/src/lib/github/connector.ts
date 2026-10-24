@@ -202,6 +202,8 @@ export const storeConfig = gh.storeConfig;
 export const buildAuthorizeUrl = gh.buildAuthorizeUrl;
 export const exchangeCodeAndStore = gh.exchangeCodeAndStore;
 export const resolveActiveGrant = gh.resolveActiveGrant;
+/** Internal corpus bridge: OAuth/vault only, deliberately excludes the deprecated PAT path. */
+export const loadCorpusAccessToken = gh.loadAccessToken;
 
 // ── Device flow (#1391) ──────────────────────────────────────────────────
 
