@@ -5,6 +5,7 @@ import { createAsset } from '@/src/lib/media/create-asset';
 import { prepareMechanicalAttestation } from '@/src/lib/auth/emit-mechanical-attestation';
 import type { DocumentActor } from '@/src/lib/auth/document-authorization';
 import { generateId } from '@/src/lib/kernel/id';
+import { forEachSequential } from '@/src/lib/async/sequential';
 import { sealAndGrantStaticSecret, eraseInactiveGrantKeyMaterial, vaultService } from './index';
 import { isVaultTier1 } from './sealing';
 import { BANK_DETAILS_NAMESPACE } from './field-grammar';
@@ -73,7 +74,7 @@ async function retireRecord(tx: Transaction, asset: Asset, actor: DocumentActor,
  * staged references and inaccessible ciphertext, never a half-replaced live record.
  * Current vault transactions support Tier 0 only; refuse Tier 1 before any write.
  */
-export async function saveBankDetails(actor: DocumentActor, raw: unknown) {
+export function saveBankDetails(actor: DocumentActor, raw: unknown) {
   const input = parseBankDetailsInput(raw);
   if (!process.env.AUTH_PRIVATE_KEY || isVaultTier1()) throw new Error('Bank details sealing unavailable');
   return db.transaction(async tx => {
@@ -85,7 +86,7 @@ export async function saveBankDetails(actor: DocumentActor, raw: unknown) {
     };
     const entries: VaultEntry[] = [];
     // Sequential: persist each field's envelope on the same transaction.
-    for (const [name, value] of bankDetailsSecrets(input)) {
+    await forEachSequential(bankDetailsSecrets(input), async ([name, value]) => {
       const field = `${BANK_DETAILS_NAMESPACE}:${record.recordId}:${name}:${actor.effectiveDid}`;
       const { entry } = await sealAndGrantStaticSecret(field, value, {
         principalDid: actor.effectiveDid, granteeDid: actor.effectiveDid,
@@ -93,7 +94,7 @@ export async function saveBankDetails(actor: DocumentActor, raw: unknown) {
       });
       record.sealed[name] = { field, keyId: entry.keyId, cid: entry.cid };
       entries.push(entry);
-    }
+    });
     const { asset } = await createAsset({
       ownerDid: actor.effectiveDid, uploadedBy: actor.actingHumanDid,
       buffer: Buffer.from(bankDetailsDocument(record)), filename: 'bank-details.md',
@@ -112,12 +113,12 @@ export async function saveBankDetails(actor: DocumentActor, raw: unknown) {
         sealed: record.sealed },
     }));
     // Last: unique immutable field names mean rollback cannot damage an older version.
-    for (const entry of entries) await vaultService.set(entry);
+    await forEachSequential(entries, async entry => { await vaultService.set(entry); });
     return { recordId: record.recordId, assetId: asset.id };
   });
 }
 
-export async function deleteBankDetails(actor: DocumentActor): Promise<boolean> {
+export function deleteBankDetails(actor: DocumentActor): Promise<boolean> {
   return db.transaction(async tx => {
     await lockOwner(tx, actor.effectiveDid);
     const asset = await findRecord(actor.effectiveDid, tx);

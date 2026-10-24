@@ -19,7 +19,7 @@ export function validIban(value: string): boolean {
   if (!/^[A-Z]{2}\d{2}[A-Z0-9]{11,30}$/.test(value)) return false;
   let remainder = 0;
   for (const character of value.slice(4) + value.slice(0, 4)) {
-    const digits = /[A-Z]/.test(character) ? String(character.charCodeAt(0) - 55) : character;
+    const digits = /[A-Z]/.test(character) ? String(character.codePointAt(0)! - 55) : character;
     for (const digit of digits) remainder = (remainder * 10 + Number(digit)) % 97;
   }
   return remainder === 1;

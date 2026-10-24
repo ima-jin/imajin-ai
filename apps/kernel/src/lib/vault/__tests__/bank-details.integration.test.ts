@@ -235,12 +235,12 @@ describe('bank-details: real SQL, vault-core encryption and signed document hist
     expect(deleted.status).toBe(200);
     expect(await readBankDetails(owner)).toBeNull();
     const grants = await database.select().from(vaultDelegationGrants).where(eq(vaultDelegationGrants.subject, owner));
-    expect(grants.length).toBe(grantsBefore.length + 1);
+    expect(grants).toHaveLength(grantsBefore.length + 1);
     for (const grant of grants) {
       expect(grant).toMatchObject({ status: 'superseded', wrappedKey: '', wrappedNonce: '' });
       expect(await fetchGrantSecret({ grantId: grant.id, granteeDid: grant.grantedTo, kernelCredentialUse: true })).toEqual({ status: 'inactive' });
     }
-    expect((await database.select().from(vaultOwnerEnvelopes)).length).toBe(envelopeCount);
+    expect(await database.select().from(vaultOwnerEnvelopes)).toHaveLength(envelopeCount);
     const [retained] = await database.select().from(assets).where(eq(assets.id, second.body.assetId));
     expect(retained.status).toBe('deleted');
     expect(await readFile(retained.storagePath, 'utf8')).toContain(second.body.recordId);
@@ -266,7 +266,7 @@ describe('bank-details: real SQL, vault-core encryption and signed document hist
     h.saveError = true;
     expect((await call(PUT, fixture())).status).toBe(503);
     const after = await database.select().from(vaultOwnerEnvelopes);
-    expect(after.length).toBe(before.length);
+    expect(after).toHaveLength(before.length);
     const projection = await readBankDetails(owner);
     expect(projection?.recordId).toBe(saved.body.recordId);
   });
