@@ -86,6 +86,9 @@ async function handleIdentityPost(request: Request, actingDid: string, registere
   }
 
   if (!namespace) return NextResponse.json({ error: 'namespace is required' }, { status: 400 });
+  if (namespace.toLowerCase() === 'github') {
+    return NextResponse.json({ error: 'GitHub source identities are managed by the identity service' }, { status: 403 });
+  }
   if (!ref) return NextResponse.json({ error: 'ref is required' }, { status: 400 });
   if (!type) return NextResponse.json({ error: 'type is required' }, { status: 400 });
   if (optInRef !== null && optInRef.length === 0) {

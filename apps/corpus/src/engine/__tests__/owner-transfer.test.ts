@@ -83,4 +83,15 @@ describe('attested source-owner migration', () => {
     expect(store.status(from).threadCount).toBe(1);
     expect(store.transferSource(from, from, source, identity)).toEqual({ moved: 0 });
   });
+  it('rolls back copied rows and ownership state when signing fails', () => {
+    const { store, dataDir } = setup();
+    store.ingest(from, [thread()]);
+    expect(() => store.transferSource(from, to, source, { did: identity.did, privateKey: 'invalid' })).toThrow();
+    expect(store.status(from).threadCount).toBe(1);
+    expect(store.status(to).threadCount).toBe(0);
+    const old = open(dataDir, from);
+    try {
+      expect(old.prepare('SELECT COUNT(*) AS n FROM corpus_owner_transfers').get()).toEqual({ n: 0 });
+    } finally { old.close(); }
+  });
 });

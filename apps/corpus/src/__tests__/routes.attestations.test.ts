@@ -2,11 +2,12 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import request from 'supertest';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { crypto as authCrypto } from '@imajin/auth';
 import { CorpusEngine } from '../engine';
 import { createCorpusApp } from '../routes';
 import { mintTestClaimHeader } from './support/mint-test-claim';
+vi.mock('../lib/source-owner', () => ({ resolveCorpusDid: vi.fn(async () => 'did:example:alice') }));
 
 const ORIGINAL_KERNEL_PUBLIC_KEY = process.env.CORPUS_KERNEL_PUBLIC_KEY;
 const ORIGINAL_CORPUS_DID = process.env.CORPUS_DID;

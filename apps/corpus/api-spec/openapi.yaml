@@ -29,7 +29,11 @@ components:
         expiry, nonce replay, and that the claim's DID matches :did, before
         serving any /corpus/:did/* route (apps/corpus/src/middleware/access-claim.ts).
         Rejects with 401 on missing/invalid/expired/wrong-alg/wrong-aud claims,
-        403 on a DID mismatch.
+        403 on a DID/source-owner mismatch or a read claim used for a write.
+        The DID is the resolved source owner, not the caller: GitHub sources
+        use the repository owner's registry group identity; workspace sources
+        use the principal identity. The kernel checks an owner-issued corpus
+        grant before cross-owner access and includes the principal as onBehalfOf.
   schemas:
     Error:
       type: object
@@ -91,7 +95,15 @@ paths:
               schema:
                 type: object
                 properties:
-                  sources: { type: array, items: { type: object } }
+                  sources:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        source: { type: string }
+                        ownerDid: { type: string, description: Resolved source-owner partition DID. }
+                        lastSync: { type: string }
+                        threadCount: { type: integer }
                   threadCount: { type: integer }
                   pendingEmbeddings: { type: integer, description: "Embedding chunks awaiting (or re-awaiting, after a failed PGX attempt) an embed pass (#1599, #1601)." }
                   attestations:

@@ -8,6 +8,7 @@ import { crypto as authCrypto } from '@imajin/auth';
 import { createCorpusApp, createCorpusRouter, listRoutes, toOpenApiPath } from '../routes';
 import { CorpusEngine } from '../engine';
 import { mintTestClaimHeader } from './support/mint-test-claim';
+vi.mock('../lib/source-owner', () => ({ resolveCorpusDid: vi.fn(async (_source: string, did: string) => did) }));
 
 const did = 'did:example:alice';
 const EMPTY_CONNECTION = { nodes: [], pageInfo: { hasNextPage: false, endCursor: null } };

@@ -15,6 +15,10 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { McpContent, McpToolContext } from '../types';
+vi.mock('../../kernel/corpus-owner', () => ({
+  resolveCorpusDid: vi.fn(async (_source: string, did: string) => did),
+  authorizeCorpusOwner: vi.fn(async () => true),
+}));
 
 // Swap the registry for the real corpus tools only, so the scope gate in
 // server.ts runs against them without loading every other (DB-backed) tool

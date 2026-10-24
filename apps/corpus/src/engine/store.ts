@@ -161,10 +161,20 @@ export class CorpusStore {
   }
 
   transferSource(fromDid: string, toDid: string, source: string, identity: CorpusIdentity): { moved: number } {
-    this.databaseForDid(fromDid);
+    if (fromDid === toDid) return { moved: 0 };
+    const legacy = this.databaseForDid(fromDid);
     const target = this.databaseForDid(toDid);
     const hash = createHash('sha256').update(fromDid).digest('hex');
-    return transferSource(target, join(this.rootDir, hash, 'index.db'), source, fromDid, toDid, identity);
+    // Offline transfer: rollback journals give ATTACH transactions cross-file
+    // atomicity even on power loss; WAL mode does not provide that guarantee.
+    legacy.pragma('journal_mode = DELETE');
+    target.pragma('journal_mode = DELETE');
+    try {
+      return transferSource(target, join(this.rootDir, hash, 'index.db'), source, fromDid, toDid, identity);
+    } finally {
+      legacy.pragma('journal_mode = WAL');
+      target.pragma('journal_mode = WAL');
+    }
   }
 
   /**
