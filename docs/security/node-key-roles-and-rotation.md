@@ -80,6 +80,17 @@ CA under the new custody root; old public trust overlaps for the shared
 maximum certificate TTL, then disappears on the next trusted-keys read.
 Never move a CA seed through the node rotation handoff.
 
+Bank details (#3075), `apps/kernel/src/lib/vault/bank-details.ts`, use D2/D3
+custody through the existing static-secret seal helper, S6 signed private media
+and S3 transactional create/revoke receipts. The explicit node-key presence
+check refuses deterministic development custody. Protected `bank-details:*`
+fields never enter generic fetch, renewal or rotation export. Node-root rotation
+does not migrate them: preserve the old custody backup until the owner can
+replace the record through the authenticated bank-details API under the new
+root, using their original banking source. Never export identifiers through a
+shell or handoff, and do not claim existing record secrets survive root rotation
+without that separately authorized replacement.
+
 SSH signing (#3064), `apps/kernel/src/lib/vault/ssh-cert.ts`, uses D2/D3 to
 open the live node-only CA custody grant in-process and S3 for issuance,
 refusal and operation-grant attestations. Operation grants contain no CA key
@@ -671,6 +682,7 @@ file: ``- `path` — role``.
 - `apps/kernel/src/lib/cloudflare/zone-grants.ts` — D2 (public node consumer identifier comparison for metadata-only zone grant discovery; never unseals or signs)
 - `apps/kernel/src/lib/vault/cloudflare-import.ts` — D2 (checks node-only token custody against exact verified zone ownership)
 - `apps/kernel/src/lib/vault/group-key.ts` — D2/D3/S3 (explicit node-key configuration gate; countersigned group-to-node custody, wrapped-key revoke and transactional signed audit)
+- `apps/kernel/src/lib/vault/bank-details.ts` — D2/D3/S3/S6 (explicit node-key presence gate; field sealing via existing custody helpers, signed private documents and retained revocation; no generic export or renewal)
 - `apps/kernel/src/lib/vault/internal-secret.ts` — D2
 - `apps/kernel/src/lib/vault/internal-secret-revoke.ts` — D2
 - `apps/kernel/src/lib/vault/internal-secret-rotate.ts` — D2
