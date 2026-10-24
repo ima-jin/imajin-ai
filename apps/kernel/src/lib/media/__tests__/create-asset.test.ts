@@ -60,6 +60,8 @@ vi.mock('drizzle-orm', () => ({
 }));
 
 const mockEmitAttestation = vi.hoisted(() => vi.fn().mockResolvedValue({}));
+const mockSignContent = vi.hoisted(() => vi.fn());
+vi.mock('@/src/lib/media/content-signer', () => ({ contentSigner: { sign: mockSignContent } }));
 vi.mock('@imajin/auth', () => ({
   hexToBytes: vi.fn(() => new Uint8Array()),
   emitAttestation: mockEmitAttestation,
@@ -150,6 +152,7 @@ beforeEach(() => {
   legalMocks.prepare.mockResolvedValue({ id: 'att_legal', signature: 'fixture-signature' });
   vi.stubEnv('PLATFORM_DID', 'did:imajin:node');
   mockEmitAttestation.mockReset().mockResolvedValue({});
+  mockSignContent.mockReset().mockImplementation(async manifest => ({ ...manifest, signature: { alg: 'ed25519' } }));
   vi.mocked(writeFile).mockReset().mockResolvedValue(undefined);
   // Restore chained implementations cleared by clearAllMocks.
   mockSelectFromWhere.mockImplementation(() => ({ limit: mockSelectFromWhereLimit }));
@@ -205,6 +208,35 @@ describe('createAsset — signed legal control document', () => {
 afterEach(() => vi.unstubAllEnvs());
 
 describe('createAsset — JSON MIME allowlist (#2889)', () => {
+  const staged = {
+    ...MARKDOWN_INPUT, context: null, dedup: false, classify: false,
+    immutable: true, status: 'processing' as const, access: 'private',
+  };
+  it('stages a signed immutable row on its caller transaction without upload side effects', async () => {
+    setupInsert();
+    const tx = { insert: vi.fn(() => ({ values: mockInsertValues })) };
+    await createAsset({ ...staged, tx: tx as never });
+    expect(tx.insert).toHaveBeenCalledOnce();
+    expect(mockInsertValues).toHaveBeenCalledWith(expect.objectContaining({ status: 'processing', immutable: true }));
+    expect(mockSignContent).toHaveBeenCalledOnce();
+    expect(mockEmitAttestation).not.toHaveBeenCalled();
+    expect(mockDeriveArticleProjection).not.toHaveBeenCalled();
+  });
+  it.each([
+    { tx: undefined }, { immutable: false }, { access: 'public' },
+    { dedup: true }, { classify: true }, { context: { app: 'profile' } },
+  ])('refuses an unsafe staged configuration before storage', async override => {
+    const tx = { insert: vi.fn() };
+    await expect(createAsset({ ...staged, tx: tx as never, ...override })).rejects.toThrow('Staged assets require');
+    expect(writeFile).not.toHaveBeenCalled();
+    expect(mockInsertValues).not.toHaveBeenCalled();
+  });
+  it('fails closed if staged signing fails, before any file or row write', async () => {
+    mockSignContent.mockRejectedValue(new Error('Synthetic signing failure'));
+    await expect(createAsset({ ...staged, tx: {} as never })).rejects.toThrow('Synthetic signing failure');
+    expect(writeFile).not.toHaveBeenCalled();
+    expect(mockInsertValues).not.toHaveBeenCalled();
+  });
   it('allows application/json as an exact MIME type', () => {
     expect(isAllowedMime('application/json')).toBe(true);
     expect(isAllowedMime('application/pdf')).toBe(true);

@@ -5,6 +5,7 @@ import { drizzle } from 'drizzle-orm/pglite';
 import { getTableConfig, type PgTable } from 'drizzle-orm/pg-core';
 import { eq } from 'drizzle-orm';
 import { NextRequest } from 'next/server';
+import { verifyManifest, type SignedFairManifest } from '@imajin/fair';
 import type { Identity } from '@imajin/auth';
 import type { VaultFile } from '@imajin/vault-core';
 
@@ -56,7 +57,7 @@ import { readBankDetails } from '../bank-details';
 import { bankDetailsSecrets, parseBankDetailsInput, validAba, validIban } from '../bank-details-schema';
 import { parseReleasePolicy } from '@/src/lib/media/release-policy';
 import { GET, PUT, DELETE, OPTIONS } from '@/app/auth/api/bank-details/route';
-import { fetchGrantSecret, listRenewableGrants, loadAndUnsealByGrantee } from '../index';
+import { canonicalizeGrantPayload, fetchGrantSecret, listRenewableGrants, loadAndUnsealByGrantee } from '../index';
 
 const nodeKeys = generateKeypair();
 const tables = [identities, attestations, assets, vaultOwnerEnvelopes, vaultDelegationGrants, vaultGrantRequests];
@@ -160,10 +161,13 @@ afterAll(async () => {
 describe('bank-details: real SQL, vault-core encryption and signed document history', () => {
   it('stores one owner envelope per field and exposes capabilities without unsealing', async () => {
     const input = fixture();
+    const identityBefore = await database.select().from(identities).where(eq(identities.id, owner));
     const saved = await call(PUT, input);
     expect(saved.status).toBe(201);
     const [asset] = await database.select().from(assets).where(eq(assets.id, saved.body.assetId));
     expect(asset).toMatchObject({ ownerDid: owner, immutable: true, status: 'active', fairManifest: { access: { type: 'private' } } });
+    expect(await database.select().from(identities).where(eq(identities.id, owner))).toEqual(identityBefore);
+    expect(await verifyManifest(asset.fairManifest as unknown as SignedFairManifest, async () => Buffer.from(nodeKeys.publicKey, 'hex'))).toEqual({ ok: true });
     const document = await readFile(asset.storagePath, 'utf8');
     const parsed = parseReleasePolicy(document);
     if ('error' in parsed) throw new Error(parsed.error);
@@ -221,15 +225,20 @@ describe('bank-details: real SQL, vault-core encryption and signed document hist
     expect(projection?.hasRail('swift')).toBe(false);
     const grantsBefore = await database.select().from(vaultDelegationGrants).where(eq(vaultDelegationGrants.subject, owner));
     expect(grantsBefore.filter(grant => grant.status === 'active')).toHaveLength(3);
+    const source = grantsBefore.find(grant => grant.status === 'active')!;
+    const recipientGrant = { ...source, id: `grant_recipient_${sequence}`, grantedTo: 'did:imajin:fakepayer' };
+    await database.insert(vaultDelegationGrants).values({
+      ...recipientGrant, ownerSignature: crypto.signSync(canonicalizeGrantPayload(recipientGrant), nodeKeys.privateKey),
+    });
     const envelopeCount = (await database.select().from(vaultOwnerEnvelopes)).length;
     const deleted = await call(DELETE);
     expect(deleted.status).toBe(200);
     expect(await readBankDetails(owner)).toBeNull();
     const grants = await database.select().from(vaultDelegationGrants).where(eq(vaultDelegationGrants.subject, owner));
-    expect(grants.length).toBe(grantsBefore.length);
+    expect(grants.length).toBe(grantsBefore.length + 1);
     for (const grant of grants) {
       expect(grant).toMatchObject({ status: 'superseded', wrappedKey: '', wrappedNonce: '' });
-      expect(await fetchGrantSecret({ grantId: grant.id, granteeDid: owner, kernelCredentialUse: true })).toEqual({ status: 'inactive' });
+      expect(await fetchGrantSecret({ grantId: grant.id, granteeDid: grant.grantedTo, kernelCredentialUse: true })).toEqual({ status: 'inactive' });
     }
     expect((await database.select().from(vaultOwnerEnvelopes)).length).toBe(envelopeCount);
     const [retained] = await database.select().from(assets).where(eq(assets.id, second.body.assetId));
@@ -239,6 +248,7 @@ describe('bank-details: real SQL, vault-core encryption and signed document hist
     expect(audit.map(row => row.type)).toEqual(['document.created', 'document.revoked', 'document.created', 'document.revoked']);
     expect((await call(DELETE)).status).toBe(404);
     expect((await call(GET)).status).toBe(404);
+    expect(await listRenewableGrants({ nodeDid: h.nodeDid })).toEqual([]);
   });
 
   it('does not expose or mutate another DID record', async () => {
@@ -259,6 +269,15 @@ describe('bank-details: real SQL, vault-core encryption and signed document hist
     expect(after.length).toBe(before.length);
     const projection = await readBankDetails(owner);
     expect(projection?.recordId).toBe(saved.body.recordId);
+  });
+
+  it('rolls back revocation if its attestation cannot be signed', async () => {
+    const saved = await call(PUT, fixture());
+    vi.stubEnv('AUTH_PRIVATE_KEY', '');
+    expect((await call(DELETE)).status).toBe(503);
+    expect((await readBankDetails(owner))?.recordId).toBe(saved.body.recordId);
+    const grants = await database.select().from(vaultDelegationGrants).where(eq(vaultDelegationGrants.subject, owner));
+    expect(grants.every(grant => grant.status === 'active' && grant.wrappedKey.length > 0)).toBe(true);
   });
 
   it('refuses missing signing custody and unsupported Tier 1 before writing', async () => {
@@ -303,10 +322,11 @@ describe('bank-details API permission boundaries', () => {
 
 describe('bank-details validation: field-named 400 and no values echoed', () => {
   const invalid = [
-    ['accountHolderName', ''], ['bankName', ''], ['country', 'can'], ['currency', 'cad'],
+    ['accountHolderName', ''], ['accountHolderName', 'x'.repeat(201)],
+    ['bankName', ''], ['bankName', 'x'.repeat(201)], ['country', 'can'], ['currency', 'cad'],
     ['eft.institutionNumber', '99'], ['eft.institutionNumber', 'aaa'],
     ['eft.transitNumber', '9999'], ['eft.transitNumber', 'abcde'],
-    ['eft.accountNumber', ''], ['eft.accountNumber', 'letters'],
+    ['eft.accountNumber', ''], ['eft.accountNumber', 'letters'], ['eft.accountNumber', '9'.repeat(35)],
     ['ach.routingNumber', '999999991'], ['ach.routingNumber', '0'.repeat(9)], ['ach.routingNumber', '9'.repeat(8)],
     ['ach.accountNumber', '9'.repeat(18)], ['ach.accountType', 'other'],
     ['wire.routingNumber', 'not-a-routing'], ['wire.accountNumber', 'abc'], ['wire.accountType', 'other'],
