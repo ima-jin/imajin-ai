@@ -47,7 +47,7 @@ describe('forwardAnthropic', () => {
       text: 'hi',
       toolCalls: [],
       finishReason: 'stop',
-      usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 },
+      usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
     });
 
     await forwardAnthropic(ANTHROPIC_BRAIN, { messages: [{ role: 'user', content: 'hi' }] }, {});
@@ -61,7 +61,7 @@ describe('forwardAnthropic', () => {
         text: 'hello!',
         toolCalls: [],
         finishReason: 'stop',
-        usage: { promptTokens: 3, completionTokens: 2, totalTokens: 5 },
+        usage: { inputTokens: 3, outputTokens: 2, totalTokens: 5 },
       });
 
       const res = await forwardAnthropic(
@@ -91,7 +91,7 @@ describe('forwardAnthropic', () => {
         text: 'ok',
         toolCalls: [],
         finishReason: 'stop',
-        usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 },
+        usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
       });
 
       await forwardAnthropic(
@@ -101,7 +101,7 @@ describe('forwardAnthropic', () => {
       );
 
       const callArgs = mockGenerateText.mock.calls[0][0];
-      expect(callArgs.maxTokens).toBe(256);
+      expect(callArgs.maxOutputTokens).toBe(256);
       expect(callArgs.temperature).toBe(0.2);
     });
 
@@ -121,20 +121,36 @@ describe('forwardAnthropic', () => {
   });
 
   describe('streaming', () => {
+    it('preserves incremental tool input, avoids duplicate calls, and forwards final usage', async () => {
+      async function* toolStream() {
+        yield { type: 'tool-input-start', id: 'call_1', toolName: 'lookup' };
+        yield { type: 'tool-input-delta', id: 'call_1', delta: '{"query":"hello"}' };
+        yield { type: 'tool-call', toolCallId: 'call_1', toolName: 'lookup', input: { query: 'hello' } };
+        yield { type: 'finish', finishReason: 'tool-calls', totalUsage: { inputTokens: 7, outputTokens: 3, totalTokens: 10 } };
+      }
+      mockStreamText.mockReturnValueOnce({ fullStream: toolStream() });
+      const response = await forwardAnthropic(ANTHROPIC_BRAIN, { messages: [], stream: true }, {});
+      const text = await response.text();
+      expect(text.match(/"name":"lookup"/g)).toHaveLength(1);
+      expect(text).toContain('\\"query\\":\\"hello\\"');
+      expect(text).toContain('"prompt_tokens":7');
+      expect(text).toContain('"completion_tokens":3');
+      expect(text).toContain('"finish_reason":"tool_calls"');
+    });
     async function* fakeFullStream() {
-      yield { type: 'text-delta', textDelta: 'Hel' };
-      yield { type: 'text-delta', textDelta: 'lo' };
-      yield { type: 'finish', finishReason: 'stop', usage: { promptTokens: 4, completionTokens: 6, totalTokens: 10 } };
+      yield { type: 'text-delta', text: 'Hel' };
+      yield { type: 'text-delta', text: 'lo' };
+      yield { type: 'finish', finishReason: 'stop', totalUsage: { inputTokens: 4, outputTokens: 6, totalTokens: 10 } };
     }
 
-    it('calls streamText with toolCallStreaming enabled and returns an SSE Response', async () => {
+    it('calls streamText with default tool-input streaming and returns an SSE Response', async () => {
       mockStreamText.mockReturnValueOnce({ fullStream: fakeFullStream() });
 
       const res = await forwardAnthropic(ANTHROPIC_BRAIN, { messages: [{ role: 'user', content: 'hi' }], stream: true }, {});
 
       expect(mockGenerateText).not.toHaveBeenCalled();
       const callArgs = mockStreamText.mock.calls[0][0];
-      expect(callArgs.toolCallStreaming).toBe(true);
+      expect(callArgs.toolCallStreaming).toBeUndefined();
 
       expect(res.headers.get('Content-Type')).toBe('text/event-stream');
       const text = await res.text();
@@ -146,7 +162,7 @@ describe('forwardAnthropic', () => {
 
     it('emits a graceful error frame and still terminates with [DONE] when the stream throws mid-flight', async () => {
       async function* throwingStream(): AsyncGenerator<unknown> {
-        yield { type: 'text-delta', textDelta: 'partial' };
+        yield { type: 'text-delta', text: 'partial' };
         throw new Error('connection reset');
       }
       mockStreamText.mockReturnValueOnce({ fullStream: throwingStream() });

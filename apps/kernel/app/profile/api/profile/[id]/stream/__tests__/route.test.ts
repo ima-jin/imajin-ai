@@ -37,11 +37,11 @@ function makeReq(body: unknown = { message: 'hello' }): RouteArgs[0] {
 const params = { params: Promise.resolve({ id: OWNER_DID }) } as unknown as RouteArgs[1];
 
 /** Minimal shape the route's `for await (const part of result.fullStream)` loop needs. */
-async function* fakeFullStream(): AsyncGenerator<{ type: string; textDelta?: string }> {
-  yield { type: 'text-delta', textDelta: 'hi' };
+async function* fakeFullStream(): AsyncGenerator<{ type: string; text?: string }> {
+  yield { type: 'text-delta', text: 'hi' };
 }
 
-type OnFinishArg = { usage: { promptTokens: number; completionTokens: number }; steps: unknown[] };
+type OnFinishArg = { totalUsage: { inputTokens: number; outputTokens: number }; steps: unknown[] };
 
 /**
  * Captures the `onFinish` callback the route registers with `streamText`, so
@@ -78,7 +78,7 @@ describe('presence stream — usage.incurred emission (#1956)', () => {
     expect(res.status).toBe(200);
 
     const onFinish = captureOnFinish();
-    await onFinish({ usage: { promptTokens: 20, completionTokens: 8 }, steps: [] });
+    await onFinish({ totalUsage: { inputTokens: 20, outputTokens: 8 }, steps: [] });
 
     expect(mockRecordPresenceQueryUsage).toHaveBeenCalledTimes(1);
     expect(mockRecordPresenceQueryUsage).toHaveBeenCalledWith({
@@ -105,7 +105,7 @@ describe('presence stream — usage.incurred emission (#1956)', () => {
 
     await POST(makeReq(), params);
     const onFinish = captureOnFinish();
-    await onFinish({ usage: { promptTokens: 1, completionTokens: 1 }, steps: [] });
+    await onFinish({ totalUsage: { inputTokens: 1, outputTokens: 1 }, steps: [] });
 
     expect(mockRecordPresenceQueryUsage).toHaveBeenCalledWith(
       expect.objectContaining({ provider: 'gemini', modelId: 'gemini-2.0-flash' }),
@@ -120,7 +120,7 @@ describe('presence stream — usage.incurred emission (#1956)', () => {
 
     await POST(makeReq(), params);
     const onFinish = captureOnFinish();
-    await onFinish({ usage: { promptTokens: 4, completionTokens: 2 }, steps: [] });
+    await onFinish({ totalUsage: { inputTokens: 4, outputTokens: 2 }, steps: [] });
 
     expect(mockRecordPresenceQueryUsage).toHaveBeenCalledWith(
       expect.objectContaining({ settled: true, costUsd: 0.05, requesterDid: 'did:imajin:someone-else' }),
@@ -131,7 +131,7 @@ describe('presence stream — usage.incurred emission (#1956)', () => {
     await POST(makeReq(), params);
     const onFinish = captureOnFinish();
 
-    await onFinish({ usage: { promptTokens: 5, completionTokens: 3 }, steps: [{}, {}, {}] });
+    await onFinish({ totalUsage: { inputTokens: 5, outputTokens: 3 }, steps: [{}, {}, {}] });
 
     expect(mockRecordPresenceQueryUsage).toHaveBeenCalledTimes(1);
   });
@@ -144,7 +144,7 @@ describe('presence stream — usage.incurred emission (#1956)', () => {
 
     const onFinish = captureOnFinish();
     await expect(
-      onFinish({ usage: { promptTokens: 1, completionTokens: 1 }, steps: [] }),
+      onFinish({ totalUsage: { inputTokens: 1, outputTokens: 1 }, steps: [] }),
     ).resolves.toBeUndefined();
 
     const text = await res.text();

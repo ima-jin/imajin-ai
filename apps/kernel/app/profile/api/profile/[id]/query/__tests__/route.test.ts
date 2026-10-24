@@ -43,7 +43,7 @@ beforeEach(() => {
   resetPresenceRouteMocks();
   mockGenerateText.mockResolvedValue({
     text: 'an answer',
-    usage: { promptTokens: 10, completionTokens: 5 },
+    usage: { inputTokens: 10, outputTokens: 5 },
   });
 });
 

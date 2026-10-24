@@ -7,7 +7,7 @@ import {
   sseEncode,
 } from '../response-mapping';
 
-const USAGE = { promptTokens: 10, completionTokens: 5, totalTokens: 15 };
+const USAGE = { inputTokens: 10, outputTokens: 5, totalTokens: 15 };
 
 describe('mapFinishReason', () => {
   it('maps known AI SDK finish reasons to OpenAI codes', () => {
@@ -47,7 +47,7 @@ describe('buildChatCompletion', () => {
   it('builds a chat.completion with tool_calls and null content when text is empty', () => {
     const completion = buildChatCompletion('claude-sonnet-4-20250514', {
       text: '',
-      toolCalls: [{ type: 'tool-call', toolCallId: 'call_1', toolName: 'get_weather', args: { city: 'nyc' } }],
+      toolCalls: [{ type: 'tool-call', toolCallId: 'call_1', toolName: 'get_weather', input: { city: 'nyc' } }],
       finishReason: 'tool-calls',
       usage: USAGE,
     });

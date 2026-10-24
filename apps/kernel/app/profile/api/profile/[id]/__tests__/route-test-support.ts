@@ -78,7 +78,10 @@ vi.mock('@/src/lib/pay/settle-core', () => ({ settlePayment: mockSettlePayment }
 
 // Both `generateText` (/query) and `streamText` (/stream) live here so one
 // factory covers both routes; each test file only exercises the one it needs.
-vi.mock('ai', () => ({ generateText: mockGenerateText, streamText: mockStreamText }));
+vi.mock('ai', async (importOriginal) => ({
+  ...await importOriginal<typeof import('ai')>(),
+  generateText: mockGenerateText, streamText: mockStreamText,
+}));
 
 vi.mock('@imajin/llm', () => ({
   getModel: mockGetModel,
