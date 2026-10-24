@@ -278,6 +278,7 @@ export default function CorpusManagerShell({ did }: Readonly<{ did: string }>) {
       });
       if (res.ok) {
         showMessage('success', `Started loading ${source}.`);
+        setSourceErrors(errors => ({ ...errors, [source]: undefined }));
         setShowForm(false);
         await fetchStatus();
       } else {

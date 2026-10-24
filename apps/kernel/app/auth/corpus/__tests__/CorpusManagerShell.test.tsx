@@ -173,6 +173,7 @@ describe('CorpusManagerShell — sync and remove actions', () => {
     const error = 'GitHub connector revoked. Select an active GitHub connector.';
     let revoked = false;
     vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (url.endsWith('/connectors')) return jsonResponse({ connectors: [{ ref: 'github:work', label: 'GitHub · work' }] });
       if (url.endsWith('/sync')) {
         revoked = true;
         return jsonResponse({ error }, false, 400);
@@ -183,6 +184,17 @@ describe('CorpusManagerShell — sync and remove actions', () => {
       });
     }));
     const first = render(<CorpusManagerShell did={DID} />);
+    await screen.findByText('github:ima-jin/imajin-ai');
+    fireEvent.click(screen.getByText('Sync'));
+    expect(await screen.findByRole('alert')).toHaveProperty('textContent', error);
+    // Re-selecting a restored connector clears both persisted and local errors.
+    revoked = false;
+    fireEvent.click(screen.getByText('Load new source'));
+    fireEvent.change(screen.getByPlaceholderText(/owner\/repo/), { target: { value: 'ima-jin/imajin-ai' } });
+    await screen.findByText('GitHub · work');
+    fireEvent.change(screen.getByLabelText('GitHub connector'), { target: { value: 'github:work' } });
+    fireEvent.click(screen.getByText('Load source'));
+    await waitFor(() => expect(screen.queryByRole('alert')).toBeNull());
     await screen.findByText('github:ima-jin/imajin-ai');
     fireEvent.click(screen.getByText('Sync'));
     expect(await screen.findByRole('alert')).toHaveProperty('textContent', error);
