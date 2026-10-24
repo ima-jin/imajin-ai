@@ -175,7 +175,7 @@ export async function extractReceiptDraft(
           role: 'user',
           content: [
             { type: 'text', text: 'Extract the line items from this receipt.' },
-            { type: 'image', image: imageBuffer, mimeType: asset.mimeType },
+            { type: 'image', image: imageBuffer, mediaType: asset.mimeType },
           ],
         },
       ],

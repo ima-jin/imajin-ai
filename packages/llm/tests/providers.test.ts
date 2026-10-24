@@ -1,7 +1,9 @@
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
+import { generateText } from 'ai';
 import { getModel, MissingApiKeyError } from '../src/providers';
 
 afterEach(() => {
+  vi.unstubAllGlobals();
   // @ts-expect-error -- vitest augments globalThis; unstub via process for clarity
   delete process.env.ANTHROPIC_API_KEY;
   delete process.env.OPENAI_API_KEY;
@@ -58,6 +60,19 @@ describe('getModel — explicit credentials only (#1621)', () => {
 });
 
 describe('getModel — ollama needs no credential', () => {
+  it('preserves the OpenAI-compatible chat endpoint and parses the real SDK response', async () => {
+    const fetch = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      id: 'completion-fixture', object: 'chat.completion', created: 1, model: 'local-model',
+      choices: [{ index: 0, message: { role: 'assistant', content: 'hello' }, finish_reason: 'stop' }],
+      usage: { prompt_tokens: 7, completion_tokens: 3, total_tokens: 10 },
+    }), { headers: { 'Content-Type': 'application/json' } }));
+    vi.stubGlobal('fetch', fetch);
+    const model = getModel('ollama', 'local-model', { baseURL: 'https://example.test/v1' });
+    const result = await generateText({ model, prompt: 'hello', maxOutputTokens: 16 });
+    expect(fetch.mock.calls[0][0]).toBe('https://example.test/v1/chat/completions');
+    expect(result.text).toBe('hello');
+    expect(result.usage).toMatchObject({ inputTokens: 7, outputTokens: 3, totalTokens: 10 });
+  });
   it('builds a model from an explicit baseURL', () => {
     expect(getModel('ollama', 'llama3', { baseURL: 'http://localhost:11434/v1' })).toBeDefined();
   });

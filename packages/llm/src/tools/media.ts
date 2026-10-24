@@ -17,7 +17,7 @@ export function createMediaTools(config: {
   return {
     searchAssets: tool({
       description: 'Search the media library for files by name. Use this to find essays, documents, images, and other uploaded files.',
-      parameters: z.object({
+      inputSchema: z.object({
         query: z.string().describe('Search query — filename or keyword to match'),
         type: z.string().optional().describe('Optional MIME prefix filter, e.g. "text" or "image"'),
       }),
@@ -41,7 +41,7 @@ export function createMediaTools(config: {
 
     readAsset: tool({
       description: 'Read the text content of a file. Use this after searchAssets to retrieve essay content, documents, or configuration files.',
-      parameters: z.object({
+      inputSchema: z.object({
         id: z.string().describe('The asset ID from searchAssets'),
       }),
       execute: async ({ id }) => {

@@ -64,7 +64,7 @@ function toAssistantMessage(msg: OpenAIChatMessage): CoreMessage {
       type: 'tool-call',
       toolCallId: call.id,
       toolName: call.function.name,
-      args: parseJsonArgs(call.function.arguments),
+      input: parseJsonArgs(call.function.arguments),
     });
   }
   return { role: 'assistant', content: parts };
@@ -79,7 +79,7 @@ function toToolMessage(msg: OpenAIChatMessage, toolNameByCallId: Map<string, str
   const toolName = msg.name ?? toolNameByCallId.get(toolCallId) ?? 'unknown_tool';
   return {
     role: 'tool',
-    content: [{ type: 'tool-result', toolCallId, toolName, result: msg.content ?? '' }],
+    content: [{ type: 'tool-result', toolCallId, toolName, output: { type: 'text', value: msg.content ?? '' } }],
   };
 }
 
@@ -101,7 +101,7 @@ export function toToolSet(tools: OpenAIToolDefinition[] | undefined): ToolSet | 
     const schema = (t.function.parameters ?? { type: 'object', properties: {} }) as JsonSchema7;
     toolSet[t.function.name] = aiTool({
       description: t.function.description,
-      parameters: jsonSchema(schema),
+      inputSchema: jsonSchema(schema),
     }) as Tool;
   }
   return Object.keys(toolSet).length > 0 ? toolSet : undefined;
