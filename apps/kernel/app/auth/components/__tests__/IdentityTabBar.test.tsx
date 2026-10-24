@@ -70,6 +70,10 @@ describe('IdentityTabBar — Money tab', () => {
 });
 
 describe('IdentityTabBar — Tax registrations tab (#2420)', () => {
+  it.each([true, false])('offers legal-entity settings for business or human identities (%s)', showTax => {
+    render(<IdentityTabBar {...BASE_PROPS} showTax={showTax} />);
+    expect(screen.getByRole('link', { name: 'Legal entity' }).getAttribute('href')).toBe('/auth/legal-entity');
+  });
   it('renders the Tax tab when showTax is true', () => {
     render(<IdentityTabBar {...BASE_PROPS} showTax />);
     expect(screen.getByText('Tax')).toBeDefined();

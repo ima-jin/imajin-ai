@@ -484,6 +484,40 @@ upstream `usage.cost` or account balance. The existing OpenRouter-specific
 explicit-cost contract is unchanged. `/jin` Spend UI work remains #2725.
 ## Testing
 
+### Legal-entity settings (#3071)
+
+`/auth/legal-entity` sits next to Tax and is available for both human and
+business DIDs. The page and `/auth/api/legal-entity` require a human session
+and the canonical auth-scoped owner/admin act-as check; agents, app tokens,
+ordinary members and disallowed service selections cannot edit or read its
+complete private record.
+
+The conventional source is
+`{MEDIA_ROOT}/{sanitized-DID}/assets/legal-entity.md`, with a
+`legal-entity.fair.json` sidecar. It uses the existing YAML frontmatter and
+release header: UI `public` is header `silent`, plus `on-consent` and `never`.
+The signature binds both values and policy through the document's SHA-256
+integrity hash. It is node-witnessed on behalf of the authenticated owner,
+not proof that the owner signed with a device-held DID key.
+
+Use `getLegalEntity(did, viewerDid)` for consumer reads. Missing, revoked,
+malformed or unverifiable sources return `null`; unreleased fields are absent,
+including `never` for the owner. On-consent fields require a current raw-mode
+broker grant for purpose `legal-entity.disclosure`, scoped to the exact field
+(`legalName`, `operatingName`, or `address.line1`, `address.line2`, `address.city`,
+`address.region`, `address.postalCode`, `address.country`). Attestation-only
+consent cannot reveal raw values. An optional release-header `viewer` further
+restricts the viewer DID. No legal fields are projected anywhere.
+
+Writes reject bad fields with HTTP 400 and cap the request and serialized
+source at the existing tax-document budget (16 KiB). Fields are limited to
+200 characters, country is ISO 3166-1 alpha-2, operating name/address line 2
+are optional, and region/postal code may be empty for countries without them.
+Tax numbers stay in `profile.tax_registrations`; this record rejects them.
+Revocation writes a signed, value-free tombstone through `document.changed`
+(#1208), retains the asset row as deleted and retains change attestations and
+Lore history. Generic media mutation/read permissions cannot open the source.
+
 ### Organization document agreements (#2998)
 
 On `/auth/attestations`, select the organization through the existing identity
