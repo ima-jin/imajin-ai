@@ -93,6 +93,19 @@ describe('CorpusManagerShell — sources list', () => {
 });
 
 describe('CorpusManagerShell — load source form', () => {
+  it('requires an explicit connector choice and offers no token input', async () => {
+    const fetchMock = vi.fn(async (url: string) => url.endsWith('/connectors')
+      ? jsonResponse({ connectors: [] })
+      : jsonResponse({ sources: [], threadCount: 0 }));
+    vi.stubGlobal('fetch', fetchMock);
+    render(<CorpusManagerShell did={DID} />);
+    await screen.findByText('No sources loaded yet.');
+    fireEvent.click(screen.getByText('Load new source'));
+    fireEvent.change(screen.getByPlaceholderText(/owner\/repo/), { target: { value: 'ima-jin/imajin-ai' } });
+    expect((screen.getByText('Load source') as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.queryByLabelText(/token/i)).toBeNull();
+    expect(screen.getByText('Manage profile connectors').getAttribute('href')).toBe('/auth/connectors');
+  });
   it('submits the composed source and sourceType to the load endpoint', async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
@@ -156,6 +169,28 @@ describe('CorpusManagerShell — load source form', () => {
 });
 
 describe('CorpusManagerShell — sync and remove actions', () => {
+  it('renders a revoked connector failure on the source row and from persisted status after remount', async () => {
+    const error = 'GitHub connector revoked. Select an active GitHub connector.';
+    let revoked = false;
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (url.endsWith('/sync')) {
+        revoked = true;
+        return jsonResponse({ error }, false, 400);
+      }
+      return jsonResponse({
+        sources: [{ source: 'github:ima-jin/imajin-ai', credentialRef: 'github:work', lastSync: '', threadCount: 0, ...(revoked ? { error } : {}) }],
+        threadCount: 0,
+      });
+    }));
+    const first = render(<CorpusManagerShell did={DID} />);
+    await screen.findByText('github:ima-jin/imajin-ai');
+    fireEvent.click(screen.getByText('Sync'));
+    expect(await screen.findByRole('alert')).toHaveProperty('textContent', error);
+    first.unmount();
+    render(<CorpusManagerShell did={DID} />);
+    expect(await screen.findByRole('alert')).toHaveProperty('textContent', error);
+    expect(screen.getByText('Connector: github:work')).toBeDefined();
+  });
   it('triggers a sync request for the clicked source', async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);

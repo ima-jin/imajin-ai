@@ -36,6 +36,10 @@ components:
       required: [error]
       properties:
         error: { type: string }
+    GitHubCredentialRef:
+      type: string
+      pattern: '^github:[a-z0-9][a-z0-9_-]{0,63}$'
+      description: Effective DID's GitHub OAuth connector slot, selected on /auth/corpus. Identifier only; never a token or arbitrary vault field.
 
 paths:
   /health:
@@ -91,7 +95,16 @@ paths:
               schema:
                 type: object
                 properties:
-                  sources: { type: array, items: { type: object } }
+                  sources:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        source: { type: string }
+                        lastSync: { type: string, description: "Last successful sync; empty if never synced." }
+                        threadCount: { type: integer }
+                        credentialRef: { $ref: "#/components/schemas/GitHubCredentialRef" }
+                        error: { type: string, description: "Safe persisted sync failure; never provider exception details or credentials." }
                   threadCount: { type: integer }
                   pendingEmbeddings: { type: integer, description: "Embedding chunks awaiting (or re-awaiting, after a failed PGX attempt) an embed pass (#1599, #1601)." }
                   attestations:
@@ -176,7 +189,12 @@ paths:
       tags: [corpus]
       operationId: corpusIngest
       summary: Ingest raw ThreadDocument[] directly, or crawl+ingest a `{ source }` (local:workspace or github:owner/repo).
-      description: Requires a CorpusAccessClaim (see ImajinClaim) scoped corpus:write to this :did; minted by the kernel MCP corpus_load tool.
+      description: >-
+        Requires a CorpusAccessClaim scoped corpus:write to this :did.
+        New GitHub sources require credentialRef. The kernel transport resolves
+        the live connector/vault OAuth credential at operation time and forwards
+        it in private in-memory headers, not this body. No env/CLI/PAT fallback.
+        Source state requires the corpus service's vault-backed signing identity.
       security:
         - ImajinClaim: []
       parameters:
@@ -196,6 +214,7 @@ paths:
                   required: [source]
                   properties:
                     source: { type: string }
+                    credentialRef: { $ref: "#/components/schemas/GitHubCredentialRef" }
       responses:
         "200":
           description: Ingest result
@@ -234,6 +253,7 @@ paths:
               properties:
                 source: { type: string, description: "e.g. \"local:workspace\" or \"github:owner/repo\"" }
                 type: { type: string, description: "Optional; must match the source's own prefix, e.g. \"github\"." }
+                credentialRef: { $ref: "#/components/schemas/GitHubCredentialRef" }
       responses:
         "200":
           description: Registration + initial crawl result
@@ -254,7 +274,12 @@ paths:
       tags: [corpus]
       operationId: corpusSync
       summary: Incrementally sync a previously-registered `{ source, cursor }` (local:workspace or github:owner/repo).
-      description: Requires a CorpusAccessClaim (see ImajinClaim) scoped corpus:write to this :did; minted by the kernel MCP corpus_sync tool.
+      description: >-
+        Requires a CorpusAccessClaim scoped corpus:write to this :did.
+        GitHub sync uses the persisted credentialRef; request-body overrides
+        cannot switch connectors. The kernel rechecks the live grant and vault
+        credential each time. Missing/revoked authorization records a safe
+        source error, returned as 400; the last successful sync is preserved.
       security:
         - ImajinClaim: []
       parameters:
@@ -282,6 +307,11 @@ paths:
                   ingested: { type: integer }
                   cursor: { type: string, nullable: true }
                   hasMore: { type: boolean }
+        "400":
+          description: Validation, missing connector, revoked credential, or safe provider failure
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
         "501":
           description: Source is unset or not a recognized (workspace/github) source
           content:

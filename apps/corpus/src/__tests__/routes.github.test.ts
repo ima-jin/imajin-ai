@@ -1,5 +1,6 @@
 import { mkdtempSync, rmSync } from 'node:fs';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
+import Database from 'better-sqlite3';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import request from 'supertest';
@@ -230,6 +231,40 @@ describe('GitHub source credential failures', () => {
     expect(response.status).toBe(400);
     expect(JSON.stringify(response.body).includes(credential)).toBe(false);
     expect(JSON.stringify(engine.status(did)).includes(credential)).toBe(false);
+  });
+});
+
+describe('source credential attestations', () => {
+  it('retains signed state changes without credential bytes and isolates DIDs', () => {
+    const dataDir = mkdtempSync(join(tmpdir(), 'corpus-source-events-'));
+    const engine = new CorpusEngine({ dataDir });
+    vi.stubEnv('CORPUS_DID', 'did:example:corpus');
+    vi.stubEnv('CORPUS_DID_PRIVATE_KEY', KERNEL_KEYPAIR.privateKey);
+    const credential = randomUUID();
+    try {
+      engine.recordSourceState(did, 'github:ima-jin/imajin-ai', 'github:primary', undefined, did);
+      engine.recordSourceState(did, 'github:ima-jin/imajin-ai', 'github:primary', 'Credential unavailable', did);
+      const file = join(dataDir, createHash('sha256').update(did).digest('hex'), 'index.db');
+      const db = new Database(file, { readonly: true });
+      try {
+        const events = db.prepare('SELECT payload, signature, public_key FROM corpus_source_events ORDER BY id').all() as {
+          payload: string; signature: string; public_key: string;
+        }[];
+        expect(events).toHaveLength(2);
+        for (const event of events) {
+          expect(authCrypto.verifySync(event.signature, event.payload, event.public_key)).toBe(true);
+          expect(event.payload.includes(credential)).toBe(false);
+          expect(JSON.parse(event.payload)).toMatchObject({ did, credentialRef: 'github:primary', type: 'corpus.source.updated' });
+        }
+      } finally {
+        db.close();
+      }
+      expect(engine.status('did:example:bob').sources).toEqual([]);
+    } finally {
+      engine.close();
+      vi.unstubAllEnvs();
+      rmSync(dataDir, { recursive: true, force: true });
+    }
   });
 });
 

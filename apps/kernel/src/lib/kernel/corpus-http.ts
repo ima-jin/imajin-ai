@@ -22,7 +22,7 @@ async function githubCredentialHeaders(did: string, path: string, body: unknown)
   if (path === '/sync' || path === '/crawl' || ref === undefined) {
     const status = await corpusHttpRequest('GET', did, 'corpus:read', '/status');
     const payload = status.payload as { sources?: { source: string; credentialRef?: string }[] } | null;
-    if (!status.ok) return {};
+    if (!status.ok || !Array.isArray(payload?.sources)) return {};
     ref = payload?.sources?.find(source => source.source === input.source)?.credentialRef;
   }
   if (typeof ref !== 'string') return {};
@@ -72,7 +72,7 @@ export async function corpusHttpRequest(
       ...credentialHeaders,
     },
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-  });
+  }).catch(() => { throw new Error('Corpus service transport failed'); });
 
   let payload: unknown = null;
   try {

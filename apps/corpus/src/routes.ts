@@ -262,6 +262,7 @@ async function githubSourceOperation(engine: CorpusEngine, request: Request) {
   const existingOnly = incremental || request.path.endsWith('/crawl');
   const ref = existingOnly ? stored : body.credentialRef ?? stored;
   if (typeof ref !== 'string' || !/^github:[a-z0-9][a-z0-9_-]{0,63}$/.test(ref)) {
+    if (existingOnly) engine.recordSourceState(did, source, undefined, 'Select a GitHub connector for this source.', did);
     throw new Error('Select a GitHub connector for this source.');
   }
   // Reference-only state is attested before fetching, including empty/failed sources.
