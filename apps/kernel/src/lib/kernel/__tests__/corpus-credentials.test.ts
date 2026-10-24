@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { resolveCredential, claim } = vi.hoisted(() => ({
@@ -15,6 +15,10 @@ let token: string;
 let fetchMock: ReturnType<typeof vi.fn>;
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
+}
+/** Assertion diagnostics may show a digest, never credential bytes. */
+function credentialDigest(value: string | undefined): string {
+  return createHash('sha256').update(value ?? '').digest('hex');
 }
 beforeEach(() => {
   vi.clearAllMocks();
@@ -37,7 +41,7 @@ describe('corpus GitHub credential transport', () => {
     await corpusHttpRequest('POST', did, 'corpus:write', '/ingest', { source, credentialRef: 'github:work', ownerDid: 'did:imajin:other' });
     expect(resolveCredential).toHaveBeenCalledWith(did, source, 'github:work');
     const init = fetchMock.mock.calls[0][1] as RequestInit;
-    expect((init.headers as Record<string, string>)['X-Corpus-GitHub-Credential'] === token).toBe(true);
+    expect(credentialDigest((init.headers as Record<string, string>)['X-Corpus-GitHub-Credential'])).toBe(credentialDigest(token));
     expect(String(init.body).includes(token)).toBe(false);
   });
 
@@ -48,7 +52,7 @@ describe('corpus GitHub credential transport', () => {
     expect(resolveCredential).toHaveBeenCalledTimes(2);
     expect(resolveCredential).toHaveBeenNthCalledWith(1, did, source, 'github:work');
     const writes = fetchMock.mock.calls.filter(([url]) => url.endsWith('/sync'));
-    expect((writes[0][1].headers as Record<string, string>)['X-Corpus-GitHub-Credential'] === token).toBe(true);
+    expect(credentialDigest((writes[0][1].headers as Record<string, string>)['X-Corpus-GitHub-Credential'])).toBe(credentialDigest(token));
     expect((writes[1][1].headers as Record<string, string>)['X-Corpus-GitHub-Credential']).toBeUndefined();
   });
 
