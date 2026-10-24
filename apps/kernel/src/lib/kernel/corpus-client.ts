@@ -20,6 +20,8 @@ export interface CorpusSourceFreshness {
   lastSync: string;
   threadCount: number;
   warning?: string;
+  credentialRef?: string;
+  error?: string;
 }
 
 export interface CorpusStatus {

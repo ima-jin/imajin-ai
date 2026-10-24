@@ -23,6 +23,16 @@ export function createCorpusRouter(engine: CorpusEngine, options: CorpusRouterOp
   // /spec (#2020) stay outside this prefix and remain public.
   router.use('/corpus/:did', createAccessClaimMiddleware());
 
+  router.use('/corpus/:did', (request, response, next) => {
+    if (request.method !== 'POST' || !['/ingest', '/sources', '/sync', '/crawl'].includes(request.path)) return next();
+    if (!isSourceRequest(request.body) || !isGitHubSource(request.body.source)) return next();
+    if (request.corpusAccessClaim?.scope !== 'corpus:write') {
+      response.status(403).json({ error: 'corpus:write permission required' });
+      return;
+    }
+    void handle(response, () => githubSourceOperation(engine, request));
+  });
+
   router.post('/corpus/:did/ingest', (request, response) => {
     void handle(response, async () => {
       const body: unknown = request.body;
@@ -234,25 +244,48 @@ async function syncWorkspaceSource(
   return { ingested: documents.length, cursor: result.cursor, hasMore: result.hasMore };
 }
 
-async function crawlGitHubSource(engine: CorpusEngine, did: string, source: string, ingesterDid: string): Promise<{ ingested: number }> {
-  const adapter = new GitHubAdapter();
-  const documents = await collectDocuments(adapter.fetch(source));
+const GITHUB_CREDENTIAL_ERROR = 'GitHub credential unavailable: connector missing, revoked, invalid or outside repository scope. Select an active GitHub connector.';
+const GITHUB_SYNC_ERROR = 'GitHub sync failed. Check the connector authorization and repository access, then retry.';
+const GITHUB_BODY_FIELDS = new Set(['source', 'type', 'sourceType', 'credentialRef', 'cursor']);
 
-  return engine.ingest(did, documents, undefined, ingesterDid);
-}
-
-async function syncGitHubSource(
-  engine: CorpusEngine,
-  did: string,
-  source: string,
-  cursor: string | null,
-  ingesterDid: string,
-): Promise<{ ingested: number; cursor: string | null; hasMore: boolean }> {
-  const adapter = new GitHubAdapter();
-  const result = await adapter.sync(source, cursor);
-  engine.ingest(did, result.documents, undefined, ingesterDid);
-
-  return { ingested: result.documents.length, cursor: result.cursor, hasMore: result.hasMore };
+async function githubSourceOperation(engine: CorpusEngine, request: Request) {
+  const body = request.body as { source: string; type?: unknown; sourceType?: unknown; credentialRef?: unknown; cursor?: unknown };
+  if (Object.keys(body).some(key => !GITHUB_BODY_FIELDS.has(key))) throw new Error('GitHub sources accept a connector reference, not credentials.');
+  if ((body.type !== undefined && body.type !== 'github') || (body.sourceType !== undefined && body.sourceType !== 'github')) {
+    throw new Error('type does not match GitHub source');
+  }
+  if (body.cursor !== undefined && body.cursor !== null && typeof body.cursor !== 'string') throw new Error('cursor must be a string or null');
+  const did = ingesterDidFor(request);
+  const source = body.source;
+  const stored = engine.status(did).sources.find(item => item.source === source)?.credentialRef;
+  const incremental = request.path.endsWith('/sync');
+  const existingOnly = incremental || request.path.endsWith('/crawl');
+  const ref = existingOnly ? stored : body.credentialRef ?? stored;
+  if (typeof ref !== 'string' || !/^github:[a-z0-9][a-z0-9_-]{0,63}$/.test(ref)) {
+    throw new Error('Select a GitHub connector for this source.');
+  }
+  // Reference-only state is attested before fetching, including empty/failed sources.
+  engine.recordSourceState(did, source, ref, undefined, did);
+  const token = request.get('X-Corpus-GitHub-Credential');
+  if (!token || request.get('X-Corpus-Credential-Ref') !== ref) {
+    engine.recordSourceState(did, source, ref, GITHUB_CREDENTIAL_ERROR, did);
+    throw new Error(GITHUB_CREDENTIAL_ERROR);
+  }
+  let result;
+  try {
+    const adapter = new GitHubAdapter(token);
+    result = incremental
+      ? await adapter.sync(source, (body.cursor as string | null | undefined) ?? null)
+      : { documents: await collectDocuments(adapter.fetch(source)), cursor: null, hasMore: false };
+  } catch {
+    // Octokit/provider exceptions can carry request headers. Never store or echo them.
+    engine.recordSourceState(did, source, ref, GITHUB_SYNC_ERROR, did);
+    throw new Error(GITHUB_SYNC_ERROR);
+  }
+  const ingested = engine.ingest(did, result.documents, undefined, did).ingested;
+  engine.recordSourceState(did, source, ref, undefined, did, true);
+  triggerEmbedSweep(engine, did);
+  return incremental ? { ingested, cursor: result.cursor, hasMore: result.hasMore } : { ingested };
 }
 
 /**
@@ -269,7 +302,6 @@ async function crawlSource(
 ): Promise<{ ingested: number }> {
   const kind = sourceKind(source);
   if (kind === WORKSPACE_KIND) return crawlWorkspaceSource(engine, did, source, options, ingesterDid);
-  if (kind === GITHUB_KIND) return crawlGitHubSource(engine, did, source, ingesterDid);
   throw unsupportedSourceError(source);
 }
 
@@ -284,7 +316,6 @@ async function syncSource(
 ): Promise<{ ingested: number; cursor: string | null; hasMore: boolean }> {
   const kind = sourceKind(source);
   if (kind === WORKSPACE_KIND) return syncWorkspaceSource(engine, did, source, cursor, options, ingesterDid);
-  if (kind === GITHUB_KIND) return syncGitHubSource(engine, did, source, cursor, ingesterDid);
   throw unsupportedSourceError(source);
 }
 

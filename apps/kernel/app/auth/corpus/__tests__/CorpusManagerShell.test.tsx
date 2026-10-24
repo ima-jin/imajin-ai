@@ -102,6 +102,7 @@ describe('CorpusManagerShell — load source form', () => {
       if (url === '/auth/corpus/api/load') {
         return jsonResponse({ ingested: 0 }, true, 201);
       }
+      if (url === '/auth/corpus/api/connectors') return jsonResponse({ connectors: [{ ref: 'github:primary', label: 'GitHub · primary' }] });
       throw new Error(`unexpected fetch to ${url}`);
     });
     vi.stubGlobal('fetch', fetchMock);
@@ -112,6 +113,8 @@ describe('CorpusManagerShell — load source form', () => {
     fireEvent.click(screen.getByText('Load new source'));
 
     const identifierInput = screen.getByPlaceholderText(/owner\/repo/);
+    await screen.findByText('GitHub · primary');
+    fireEvent.change(screen.getByLabelText('GitHub connector'), { target: { value: 'github:primary' } });
     fireEvent.change(identifierInput, { target: { value: 'ima-jin/imajin-ai' } });
     fireEvent.click(screen.getByText('Load source'));
 
@@ -122,6 +125,7 @@ describe('CorpusManagerShell — load source form', () => {
       expect(JSON.parse((init as RequestInit).body as string)).toEqual({
         sourceType: 'github',
         source: 'github:ima-jin/imajin-ai',
+        credentialRef: 'github:primary',
       });
     });
 
@@ -133,6 +137,7 @@ describe('CorpusManagerShell — load source form', () => {
       const url = String(input);
       if (url === '/auth/corpus/api/status') return jsonResponse({ sources: [], threadCount: 0 });
       if (url === '/auth/corpus/api/load') return jsonResponse({ error: 'body must be a ThreadDocument[]' }, false, 400);
+      if (url === '/auth/corpus/api/connectors') return jsonResponse({ connectors: [{ ref: 'github:primary', label: 'GitHub · primary' }] });
       throw new Error(`unexpected fetch to ${url}`);
     });
     vi.stubGlobal('fetch', fetchMock);
@@ -142,6 +147,8 @@ describe('CorpusManagerShell — load source form', () => {
     await screen.findByText('No sources loaded yet.');
     fireEvent.click(screen.getByText('Load new source'));
     fireEvent.change(screen.getByPlaceholderText(/owner\/repo/), { target: { value: 'ima-jin/imajin-ai' } });
+    await screen.findByText('GitHub · primary');
+    fireEvent.change(screen.getByLabelText('GitHub connector'), { target: { value: 'github:primary' } });
     fireEvent.click(screen.getByText('Load source'));
 
     expect(await screen.findByText('body must be a ThreadDocument[]')).toBeDefined();
