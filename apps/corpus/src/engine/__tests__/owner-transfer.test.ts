@@ -33,6 +33,32 @@ function open(dataDir: string, did: string) {
 }
 
 describe('attested source-owner migration', () => {
+  it('retains connector refs and signed source-event history without resurrecting the old status entry', () => {
+    const { store, dataDir } = setup();
+    store.ingest(from, [thread()]);
+    store.recordSourceState(from, source, 'github:org', undefined, identity, from, true);
+    const old = open(dataDir, from);
+    const events = old.prepare('SELECT source, credential_ref, error, payload, signature, public_key FROM corpus_source_events').all();
+    old.close();
+    store.transferSource(from, to, source, identity);
+    expect(store.status(from).sources).toEqual([]);
+    expect(store.status(to).sources[0]).toMatchObject({ ownerDid: to, credentialRef: 'github:org' });
+    const current = open(dataDir, to);
+    try {
+      expect(current.prepare('SELECT source, credential_ref, error, payload, signature, public_key FROM corpus_source_events').all()).toEqual(events);
+    } finally { current.close(); }
+  });
+  it('moves empty configured sources and refuses a configured target collision', () => {
+    const { store } = setup();
+    store.recordSourceState(from, source, 'github:org', undefined, identity, from);
+    expect(store.transferSource(from, to, source, identity)).toEqual({ moved: 0 });
+    expect(store.status(from).sources).toEqual([]);
+    expect(store.status(to).sources[0]).toMatchObject({ credentialRef: 'github:org', threadCount: 0 });
+    expect(store.transferSource(from, to, source, identity)).toEqual({ moved: 0 });
+    const other = 'did:imajin:other';
+    store.ingest(other, [thread()]);
+    expect(() => store.transferSource(other, to, source, identity)).toThrow('not empty');
+  });
   it('preserves search, refs, embeddings and signed ingestion history; twice is a no-op; never removes rows', () => {
     const { store, dataDir } = setup();
     const document = thread({ title: 'Corpus owner ruling', body: 'Corpus owner decision is organization' });

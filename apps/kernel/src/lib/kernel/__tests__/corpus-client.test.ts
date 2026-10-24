@@ -55,6 +55,45 @@ afterEach(() => {
 });
 
 describe('corpus-client CorpusAccessClaim attachment', () => {
+  it('includes granted group documents in unscoped search, never requesting ungranted partitions', async () => {
+    vi.mocked(grantedCorpusOwners).mockResolvedValue(['did:imajin:org']);
+    const hit = (source: string, id: string, score: number) => ({
+      source, id, score, evidence: ['ruling'], title: id, type: 'issue', state: 'open', updated: '2026-10-24',
+    });
+    fetchMock.mockImplementation(async (url: string) => jsonResponse(200, {
+      results: url.includes(encodeURIComponent('did:imajin:org'))
+        ? [hit('github:ima-jin/imajin-ai', '3089', 1)]
+        : [hit('local:workspace', 'notes', 0.5)],
+      totalHits: 1, tokensUsed: 2,
+    }));
+    const result = await searchCorpus('did:imajin:jin', { query: 'ruling' });
+    expect(result.results.map(row => row.id)).toEqual(['3089', 'notes']);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls.some(([url]) => url.includes(encodeURIComponent('did:imajin:ungranted')))).toBe(false);
+    expect(authorizeCorpusOwner).toHaveBeenCalledWith('did:imajin:jin', 'did:imajin:org', 'corpus:read');
+    expect(decodeClaimHeader(fetchMock.mock.calls[1][1].headers.Authorization)).toMatchObject({
+      did: 'did:imajin:org', scope: 'corpus:read', onBehalfOf: 'did:imajin:jin',
+    });
+  });
+  it('rechecks each discovered owner and returns no partial results after revocation', async () => {
+    vi.mocked(grantedCorpusOwners).mockResolvedValue(['did:imajin:org']);
+    vi.mocked(authorizeCorpusOwner).mockImplementation(async (_principal, owner) => owner !== 'did:imajin:org');
+    fetchMock.mockResolvedValue(jsonResponse(200, { results: [], totalHits: 0, tokensUsed: 0 }));
+    await expect(searchCorpus('did:imajin:jin', { query: 'ruling' })).rejects.toMatchObject({ status: 403 });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+  it('deduplicates, ranks, and applies global result/evidence limits across partitions', async () => {
+    vi.mocked(grantedCorpusOwners).mockResolvedValue(['did:imajin:org']);
+    fetchMock.mockResolvedValue(jsonResponse(200, {
+      results: [{ source: 'github:ima-jin/imajin-ai', id: '1', score: 1, evidence: ['long ruling evidence'] }],
+      totalHits: 1, tokensUsed: 5,
+    }));
+    const result = await searchCorpus('did:imajin:jin', { query: 'ruling', limit: 1, budget: 1 });
+    expect(result.results).toHaveLength(1);
+    expect(result.totalHits).toBe(1);
+    expect(result.results[0].evidence).toEqual(['long']);
+    expect(result.tokensUsed).toBe(1);
+  });
   it.each(['did:imajin:jin', 'did:imajin:ryan'])('requires an org-issued read grant for %s, and scopes search to the org', async did => {
     fetchMock.mockResolvedValue(jsonResponse(200, { results: [] }));
     vi.mocked(authorizeCorpusOwner).mockResolvedValue(false);

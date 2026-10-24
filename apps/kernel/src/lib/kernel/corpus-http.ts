@@ -14,14 +14,14 @@ import { authorizeCorpusOwner, resolveCorpusDid } from './corpus-owner';
 
 const GITHUB_OPERATIONS = new Set(['/ingest', '/sources', '/sync', '/crawl']);
 
-async function githubCredentialHeaders(did: string, path: string, body: unknown): Promise<Record<string, string>> {
+async function githubCredentialHeaders(principalDid: string, ownerDid: string, path: string, body: unknown): Promise<Record<string, string>> {
   if (!GITHUB_OPERATIONS.has(path) || !body || typeof body !== 'object') return {};
   const input = body as { source?: unknown; credentialRef?: unknown };
   if (typeof input.source !== 'string' || !input.source.startsWith('github:')) return {};
   let ref = input.credentialRef;
   // Sync/crawl always use the persisted connector, never a caller's override.
   if (path === '/sync' || path === '/crawl' || ref === undefined) {
-    const status = await corpusHttpRequest('GET', did, 'corpus:read', '/status');
+    const status = await corpusHttpRequest('GET', principalDid, 'corpus:read', '/status', undefined, ownerDid);
     const payload = status.payload as { sources?: { source: string; credentialRef?: string }[] } | null;
     if (!status.ok || !Array.isArray(payload?.sources)) return {};
     ref = payload?.sources?.find(source => source.source === input.source)?.credentialRef;
@@ -29,7 +29,7 @@ async function githubCredentialHeaders(did: string, path: string, body: unknown)
   if (typeof ref !== 'string') return {};
   try {
     const { resolveCorpusGitHubCredential } = await import('../github/corpus-credential');
-    const token = await resolveCorpusGitHubCredential(did, input.source, ref);
+    const token = await resolveCorpusGitHubCredential(ownerDid, input.source, ref);
     return { 'X-Corpus-GitHub-Credential': token, 'X-Corpus-Credential-Ref': ref };
   } catch {
     // Corpus records a safe source error. Never forward vault/provider errors.
@@ -70,7 +70,11 @@ export async function corpusHttpRequest(
 ): Promise<CorpusHttpResult> {
   const sources = corpusRequestSources(body);
   const owners = await Promise.all(sources.map(source => resolveCorpusDid(source, did)));
-  const ownerDid = owners[0] ?? targetDid ?? did;
+  const ownerDid = targetDid ?? owners[0] ?? did;
+  if (scope === 'corpus:write' && ownerDid !== did && owners.every(owner => owner === did)
+    && sources.some(source => source.startsWith('local:'))) {
+    return { ok: false, status: 403, statusText: 'Forbidden', payload: { error: 'Workspace sources belong to the principal corpus' } };
+  }
   if (owners.some(owner => owner !== ownerDid)) {
     return { ok: false, status: 400, statusText: 'Mixed corpus owners', payload: { error: 'A batch must have one corpus owner' } };
   }
@@ -79,7 +83,7 @@ export async function corpusHttpRequest(
   }
   const url = `${corpusServiceUrl()}/corpus/${encodeURIComponent(ownerDid)}${path}`;
   const credentialHeaders = method === 'POST' && scope === 'corpus:write'
-    ? await githubCredentialHeaders(ownerDid, path, body)
+    ? await githubCredentialHeaders(did, ownerDid, path, body)
     : {};
   const response = await fetch(url, {
     method,

@@ -8,11 +8,12 @@ const mocks = vi.hoisted(() => {
   const rows = vi.fn(async () => [{ scope: 'business', suspendedAt: null }]);
   const grantRows = vi.fn(async () => [{ did: 'did:imajin:org' }]);
   const values = vi.fn();
+  const findAlias = vi.fn<() => Promise<string | null>>(async () => null);
   const tx = {
     execute: vi.fn(), insert: vi.fn(() => ({ values })),
     select: vi.fn(() => ({ from: () => ({ where: () => ({ limit: rows }) }) })),
   };
-  return { tx, rows, values, grantRows };
+  return { tx, rows, values, grantRows, findAlias };
 });
 vi.mock('@/src/db', () => ({
   db: {
@@ -23,7 +24,7 @@ vi.mock('@/src/db', () => ({
   delegationGrants: { delegatorDid: 'delegator', agentDid: 'agent', status: 'status', expiresAt: 'expires' },
 }));
 vi.mock('../../registry/identity-alias', () => ({ resolveOrMintIdentity: vi.fn() }));
-vi.mock('../../registry/identity-repo', () => ({ identityRepo: vi.fn(() => ({ fixture: true })) }));
+vi.mock('../../registry/identity-repo', () => ({ identityRepo: vi.fn(() => ({ fixture: true, findAlias: mocks.findAlias })) }));
 vi.mock('../../auth/emit-mechanical-attestation', () => ({ prepareMechanicalAttestation: vi.fn(async () => ({ id: 'att_fixture' })) }));
 vi.mock('../../auth/grants', () => ({ introspectGrant: vi.fn() }));
 beforeEach(() => {
@@ -32,10 +33,24 @@ beforeEach(() => {
   mocks.rows.mockResolvedValue([{ scope: 'business', suspendedAt: null }]);
 });
 describe('source group identity flow', () => {
+  it('resolves an existing alias without minting or writing provenance in read-only migration mode', async () => {
+    mocks.findAlias.mockResolvedValue('did:imajin:existing-org');
+    expect(await resolveCorpusDid('github:ima-jin/imajin-ai', 'did:imajin:jin', { createIfMissing: false })).toBe('did:imajin:existing-org');
+    expect(mocks.findAlias).toHaveBeenCalledWith('github', 'org:ima-jin');
+    expect(resolveOrMintIdentity).not.toHaveBeenCalled();
+    expect(prepareMechanicalAttestation).not.toHaveBeenCalled();
+    expect(mocks.tx.insert).not.toHaveBeenCalled();
+  });
+  it('refuses a missing migration owner without ever creating an identity', async () => {
+    mocks.findAlias.mockResolvedValue(null);
+    await expect(resolveCorpusDid('github:ima-jin/imajin-ai', 'did:imajin:jin', { createIfMissing: false })).rejects.toThrow('does not exist');
+    expect(resolveOrMintIdentity).not.toHaveBeenCalled();
+    expect(mocks.tx.insert).not.toHaveBeenCalled();
+  });
   it('reuses the registry resolver under a transaction lock, with signed creation and no controller or grant creation', async () => {
     expect(await resolveCorpusDid('github:IMA-JIN/imajin-ai', 'did:imajin:jin')).toBe('did:imajin:org');
     expect(identityRepo).toHaveBeenCalledWith(null, mocks.tx);
-    expect(resolveOrMintIdentity).toHaveBeenCalledWith({ fixture: true }, {
+    expect(resolveOrMintIdentity).toHaveBeenCalledWith(expect.objectContaining({ fixture: true }), {
       namespace: 'github', ref: 'org:ima-jin', type: 'organization', metadata: {},
     });
     expect(mocks.tx.execute).toHaveBeenCalledOnce();

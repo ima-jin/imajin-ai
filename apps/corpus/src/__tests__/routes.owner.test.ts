@@ -26,6 +26,15 @@ afterEach(() => {
   vi.unstubAllEnvs();
 });
 describe('source-owner route boundary', () => {
+  it.each(['local:workspace', 'local:workspace/repo', 'local:/tmp/notes'])('refuses delegated workspace writes for %s and writes no rows', async source => {
+    const response = await request(createCorpusApp(engine)).post('/corpus/did:imajin:org/ingest')
+      .set('Authorization', mintTestClaimHeader(key.privateKey, {
+        did: 'did:imajin:org', onBehalfOf: 'did:imajin:jin', scope: 'corpus:write',
+      })).send([thread({ source, sourceType: 'local' })]);
+    expect(response.status).toBe(403);
+    expect(engine.status('did:imajin:org').threadCount).toBe(0);
+    expect(engine.status('did:imajin:jin').threadCount).toBe(0);
+  });
   it('does not ingest GitHub documents in a caller partition, even with a valid signed claim', async () => {
     const response = await request(createCorpusApp(engine)).post('/corpus/did:imajin:jin/ingest')
       .set('Authorization', mintTestClaimHeader(key.privateKey, { did: 'did:imajin:jin', scope: 'corpus:write' })).send([thread()]);

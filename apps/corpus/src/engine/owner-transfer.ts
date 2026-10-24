@@ -26,11 +26,11 @@ export function transferSource(
       if (target.prepare('SELECT id FROM legacy.corpus_owner_transfers WHERE source = ? AND from_did = ?').get(source, fromDid)) {
         throw new Error('Legacy source already transferred to another partition');
       }
-      if (target.prepare('SELECT pk FROM threads WHERE source = ? LIMIT 1').get(source)) {
+      if (target.prepare('SELECT source FROM corpus_sources WHERE source = ? LIMIT 1').get(source)) {
         throw new Error('Target source is not empty; reconcile before migration');
       }
       const threads = target.prepare('SELECT * FROM legacy.threads WHERE source = ? ORDER BY pk').all(source) as Row[];
-      if (threads.length === 0) return { moved: 0 };
+      if (threads.length === 0 && !target.prepare('SELECT source FROM legacy.corpus_sources WHERE source = ?').get(source)) return { moved: 0 };
       for (const thread of threads) copyThread(target, thread, toDid);
       copySourceRows(target, 'thread_blobs', source);
       target.prepare(`INSERT INTO blob_fts(rowid, title, body, comments)
@@ -39,6 +39,8 @@ export function transferSource(
       copySourceRows(target, 'thread_versions', source);
       copySourceRows(target, 'ingestion_attestations', source);
       copySourceRows(target, 'corpus_sources', source);
+      const events = target.prepare('SELECT source, credential_ref, error, payload, signature, public_key FROM legacy.corpus_source_events WHERE source = ? ORDER BY id').all(source) as Row[];
+      for (const event of events) insertRow(target, 'corpus_source_events', event);
 
       const payload = canonicalize({
         type: 'corpus.owner.transferred', source, fromDid, toDid, threadCount: threads.length,

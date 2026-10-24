@@ -3,7 +3,7 @@ import type { CorpusAccessScope } from './corpus-access-claim';
 import { forEachSequential } from '../async/sequential';
 
 /** Resolve identity, not authority. A source reference never grants access. */
-export function resolveCorpusDid(source: string, principalDid: string): Promise<string> {
+export function resolveCorpusDid(source: string, principalDid: string, options: { createIfMissing?: boolean } = {}): Promise<string> {
   return resolveSourceDid(source, principalDid, async owner => {
     const { db, attestations, identities } = await import('@/src/db');
     const { sql, eq } = await import('drizzle-orm');
@@ -14,9 +14,12 @@ export function resolveCorpusDid(source: string, principalDid: string): Promise<
       // Also serializes alias publication with identity creation: no half-created stub.
       const lockKey = `corpus:github:${owner}`;
       await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${lockKey}))`);
-      const result = await resolveOrMintIdentity(identityRepo(null, tx), {
-        namespace: 'github', ref: `org:${owner}`, type: 'organization',
-        metadata: {},
+      const repo = identityRepo(null, tx);
+      const ref = `org:${owner}`;
+      const existingDid = options.createIfMissing === false ? await repo.findAlias('github', ref) : null;
+      if (options.createIfMissing === false && !existingDid) throw new Error('Corpus source owner does not exist');
+      const result = existingDid ? { did: existingDid, minted: false } : await resolveOrMintIdentity(repo, {
+        namespace: 'github', ref, type: 'organization', metadata: {},
       });
       if ('error' in result) throw new Error(result.error);
       const [group] = await tx.select({ scope: identities.scope, suspendedAt: identities.suspendedAt })

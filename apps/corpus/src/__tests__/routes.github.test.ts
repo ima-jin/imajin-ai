@@ -10,6 +10,7 @@ import { crypto as authCrypto } from '@imajin/auth';
 import { createCorpusApp, createCorpusRouter, listRoutes, toOpenApiPath } from '../routes';
 import { CorpusEngine } from '../engine';
 import { mintTestClaimHeader } from './support/mint-test-claim';
+import { resolveCorpusDid } from '../lib/source-owner';
 vi.mock('../lib/source-owner', () => ({ resolveCorpusDid: vi.fn(async (_source: string, did: string) => did) }));
 
 const did = 'did:example:alice';
@@ -86,6 +87,21 @@ describe('github source routes', () => {
     expect(response.status).toBe(200);
     expect(response.body).toEqual({ ingested: 0 });
     expect(fetchMock).toHaveBeenCalled();
+  });
+
+  it('keeps delegated GitHub sync in the owner partition and records the real principal', async () => {
+    const principal = 'did:imajin:grantee';
+    vi.mocked(resolveCorpusDid).mockResolvedValueOnce(did);
+    const ingest = vi.spyOn(engine, 'ingest');
+    const state = vi.spyOn(engine, 'recordSourceState');
+    const response = await request(app).post(`/corpus/${did}/sync`)
+      .set('Authorization', mintTestClaimHeader(KERNEL_KEYPAIR.privateKey, { did, onBehalfOf: principal, scope: 'corpus:write' }))
+      .set('X-Corpus-GitHub-Credential', credential).set('X-Corpus-Credential-Ref', 'github:primary')
+      .send({ source: 'github:ima-jin/imajin-ai' });
+    expect(response.status).toBe(200);
+    expect(ingest).toHaveBeenCalledWith(did, [], undefined, principal);
+    expect(state).toHaveBeenLastCalledWith(did, 'github:ima-jin/imajin-ai', 'github:primary', undefined, principal, true);
+    expect(engine.status(principal).sources).toEqual([]);
   });
 
   it('rejects a "type" that does not match the source prefix', async () => {
@@ -294,6 +310,19 @@ describe('GET /spec', () => {
     const spec = parseYaml(response.text) as { openapi?: string; paths?: Record<string, unknown> };
     expect(spec.openapi).toBeDefined();
     expect(spec.paths).toBeDefined();
+  });
+
+  it('retains both owner and connector/error fields in the served status contract', async () => {
+    const response = await request(app).get('/spec');
+    const spec = parseYaml(response.text);
+    const properties = spec.paths['/corpus/{did}/status'].get.responses['200'].content['application/json'].schema.properties.sources.items.properties;
+    expect(properties).toMatchObject({
+      ownerDid: { type: 'string' }, credentialRef: { $ref: '#/components/schemas/GitHubCredentialRef' },
+      error: { type: 'string' }, lastSync: { type: 'string' }, threadCount: { type: 'integer' },
+    });
+    expect(spec.components.schemas.GitHubCredentialRef.pattern).toBeDefined();
+    expect(spec.paths['/corpus/{did}/ingest'].post.requestBody.content['application/json'].schema.oneOf[1].properties.credentialRef)
+      .toEqual({ $ref: '#/components/schemas/GitHubCredentialRef' });
   });
 
   it('lists every route the corpus router actually mounts — spec and router cannot drift', async () => {

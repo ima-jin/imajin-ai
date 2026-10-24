@@ -34,6 +34,7 @@ components:
         use the repository owner's registry group identity; workspace sources
         use the principal identity. The kernel checks an owner-issued corpus
         grant before cross-owner access and includes the principal as onBehalfOf.
+        Workspace writes are restricted to the signed principal's own partition.
   schemas:
     Error:
       type: object
@@ -43,7 +44,7 @@ components:
     GitHubCredentialRef:
       type: string
       pattern: '^github:[a-z0-9][a-z0-9_-]{0,63}$'
-      description: Effective DID's GitHub OAuth connector slot, selected on /auth/corpus. Identifier only; never a token or arbitrary vault field.
+      description: Resolved source-owner DID's GitHub OAuth connector slot, selected on /auth/corpus. Identifier only; never a token or arbitrary vault field.
 
 paths:
   /health:
@@ -126,6 +127,9 @@ paths:
       summary: Search a DID's corpus for threads matching a query, returning scored evidence excerpts.
       description: >-
         Requires a CorpusAccessClaim (see ImajinClaim) scoped corpus:read to this :did; minted by the kernel MCP corpus_search tool.
+        This daemon endpoint searches only the authorized DID partition. For an unscoped caller search,
+        the kernel gateway queries the principal and currently granted owner partitions using the status view's
+        same live grant checks, then deduplicates/ranks results within global limit and evidence budgets.
         Set `ref` to pin results to a previously-ingested git sha for a `local:workspace` source (#1921): the response
         is then filtered to that ref's snapshot manifest and includes a `provenance` block (sha, doc ids, content hashes).
         Set `mode` (#1599, #1601) to force a retrieval strategy; defaults to `hybrid` when a PGX embedder is configured

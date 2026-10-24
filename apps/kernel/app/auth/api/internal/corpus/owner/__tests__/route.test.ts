@@ -14,6 +14,17 @@ beforeEach(() => {
   vi.mocked(resolveCorpusDid).mockResolvedValue('did:imajin:org');
 });
 describe('internal corpus identity resolver', () => {
+  it('passes explicit read-only lookup through to identity resolution', async () => {
+    const response = await POST(request('{"source":"github:ima-jin/imajin-ai","principalDid":"did:imajin:jin","createIfMissing":false}'));
+    expect(response.status).toBe(200);
+    expect(resolveCorpusDid).toHaveBeenCalledWith('github:ima-jin/imajin-ai', 'did:imajin:jin', { createIfMissing: false });
+  });
+  it.each(['no', null, 1])('rejects an invalid lookup mode %j', async createIfMissing => {
+    expect((await POST(request(JSON.stringify({
+      source: 'github:ima-jin/imajin-ai', principalDid: 'did:imajin:jin', createIfMissing,
+    })))).status).toBe(400);
+    expect(resolveCorpusDid).not.toHaveBeenCalled();
+  });
   it('requires the existing vault-backed service credential', async () => {
     vi.mocked(requireInternalApiKey).mockResolvedValue(NextResponse.json({ error: 'Unauthorized' }, { status: 401 }));
     expect((await POST(request('{}'))).status).toBe(401);

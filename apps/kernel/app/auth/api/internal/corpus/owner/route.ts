@@ -8,7 +8,7 @@ export const dynamic = 'force-dynamic';
 export async function POST(request: NextRequest) {
   const denied = await requireInternalApiKey(request);
   if (denied) return denied;
-  let body: { source?: unknown; principalDid?: unknown };
+  let body: { source?: unknown; principalDid?: unknown; createIfMissing?: unknown };
   try {
     body = await request.json();
   } catch {
@@ -17,8 +17,14 @@ export async function POST(request: NextRequest) {
   if (typeof body?.source !== 'string' || typeof body.principalDid !== 'string' || !body.principalDid) {
     return NextResponse.json({ error: 'source and principalDid are required' }, { status: 400 });
   }
+  if (body.createIfMissing !== undefined && typeof body.createIfMissing !== 'boolean') {
+    return NextResponse.json({ error: 'createIfMissing must be a boolean' }, { status: 400 });
+  }
   try {
-    return NextResponse.json({ did: await resolveCorpusDid(body.source, body.principalDid) });
+    const did = body.createIfMissing === false
+      ? await resolveCorpusDid(body.source, body.principalDid, { createIfMissing: false })
+      : await resolveCorpusDid(body.source, body.principalDid);
+    return NextResponse.json({ did });
   } catch {
     return NextResponse.json({ error: 'Corpus owner resolution unavailable' }, { status: 503 });
   }

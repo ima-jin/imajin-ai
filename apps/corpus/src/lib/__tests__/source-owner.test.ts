@@ -13,6 +13,13 @@ beforeEach(() => {
 });
 afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); vi.clearAllMocks(); });
 describe('corpus identity service lookup', () => {
+  it('transmits read-only resolution for migration instead of allowing a missing alias to be minted', async () => {
+    fetchMock.mockResolvedValue({ ok: true, json: async () => ({ did: 'did:imajin:existing-org' }) });
+    await resolveCorpusDid('github:ima-jin/imajin-ai', 'did:imajin:jin', { createIfMissing: false });
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({
+      source: 'github:ima-jin/imajin-ai', principalDid: 'did:imajin:jin', createIfMissing: false,
+    });
+  });
   it('uses the identity service rather than the calling DID or a hardcoded org DID', async () => {
     fetchMock.mockResolvedValue({ ok: true, json: async () => ({ did: 'did:imajin:resolved-group' }) });
     expect(await resolveCorpusDid('github:ima-jin/imajin-ai', 'did:imajin:jin')).toBe('did:imajin:resolved-group');

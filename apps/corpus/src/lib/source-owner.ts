@@ -1,7 +1,7 @@
 import { resolveCorpusDid as resolveSourceDid } from '@imajin/auth';
 import { getAttestationInternalApiKey, markAttestationKeyUsedForForwarding } from './attestation-key';
 
-export function resolveCorpusDid(source: string, principalDid: string): Promise<string> {
+export function resolveCorpusDid(source: string, principalDid: string, options: { createIfMissing?: boolean } = {}): Promise<string> {
   return resolveSourceDid(source, principalDid, async () => {
     const key = getAttestationInternalApiKey();
     const authUrl = process.env.AUTH_SERVICE_URL;
@@ -9,7 +9,7 @@ export function resolveCorpusDid(source: string, principalDid: string): Promise<
     const response = await fetch(`${authUrl}/api/internal/corpus/owner`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
-      body: JSON.stringify({ source, principalDid }),
+      body: JSON.stringify({ source, principalDid, ...(options.createIfMissing === false ? { createIfMissing: false } : {}) }),
       signal: AbortSignal.timeout(10_000),
       redirect: 'error',
     });
