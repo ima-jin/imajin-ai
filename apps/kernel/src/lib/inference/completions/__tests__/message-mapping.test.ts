@@ -34,7 +34,7 @@ describe('toCoreMessages', () => {
       role: 'assistant',
       content: [
         { type: 'text', text: 'let me check' },
-        { type: 'tool-call', toolCallId: 'call_1', toolName: 'get_weather', args: { city: 'nyc' } },
+        { type: 'tool-call', toolCallId: 'call_1', toolName: 'get_weather', input: { city: 'nyc' } },
       ],
     });
   });
@@ -50,7 +50,7 @@ describe('toCoreMessages', () => {
     const [result] = toCoreMessages(messages);
     expect(result).toEqual({
       role: 'assistant',
-      content: [{ type: 'tool-call', toolCallId: 'call_1', toolName: 'noop', args: {} }],
+      content: [{ type: 'tool-call', toolCallId: 'call_1', toolName: 'noop', input: {} }],
     });
   });
 
@@ -63,8 +63,8 @@ describe('toCoreMessages', () => {
       },
     ];
     const [result] = toCoreMessages(messages);
-    const content = (result as { content: Array<{ args: unknown }> }).content;
-    expect(content[0].args).toEqual({});
+    const content = (result as { content: Array<{ input: unknown }> }).content;
+    expect(content[0].input).toEqual({});
   });
 
   it('maps a tool-result message, recovering the tool name from the preceding assistant tool_calls', () => {
@@ -79,7 +79,7 @@ describe('toCoreMessages', () => {
     const [, toolMessage] = toCoreMessages(messages);
     expect(toolMessage).toEqual({
       role: 'tool',
-      content: [{ type: 'tool-result', toolCallId: 'call_1', toolName: 'get_weather', result: '{"temp":72}' }],
+      content: [{ type: 'tool-result', toolCallId: 'call_1', toolName: 'get_weather', output: { type: 'text', value: '{"temp":72}' } }],
     });
   });
 

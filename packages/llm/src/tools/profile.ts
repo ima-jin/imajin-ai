@@ -15,7 +15,7 @@ export function createProfileTools(config: {
   return {
     getProfile: tool({
       description: 'Get a profile by DID or handle',
-      parameters: z.object({
+      inputSchema: z.object({
         didOrHandle: z.string().describe('DID or handle to look up'),
       }),
       execute: async ({ didOrHandle }) => {
@@ -28,7 +28,7 @@ export function createProfileTools(config: {
 
     searchProfiles: tool({
       description: 'Search profiles by query string',
-      parameters: z.object({
+      inputSchema: z.object({
         query: z.string().describe('Search query'),
       }),
       execute: async ({ query }) => {

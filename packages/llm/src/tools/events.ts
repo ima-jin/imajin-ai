@@ -15,7 +15,7 @@ export function createEventTools(config: {
   return {
     getEvents: tool({
       description: 'List events created by or relevant to the conversation participants',
-      parameters: z.object({
+      inputSchema: z.object({
         creatorDid: z.string().optional().describe('Filter by event creator DID (must be a conversation participant)'),
       }),
       execute: async ({ creatorDid }) => {
@@ -31,7 +31,7 @@ export function createEventTools(config: {
 
     getEventDetails: tool({
       description: 'Get details for a single event by ID',
-      parameters: z.object({
+      inputSchema: z.object({
         eventId: z.string().describe('The event ID'),
       }),
       execute: async ({ eventId }) => {
@@ -44,7 +44,7 @@ export function createEventTools(config: {
 
     getRequesterTickets: tool({
       description: 'Get the asking person\'s tickets (what events they\'re attending)',
-      parameters: z.object({}),
+      inputSchema: z.object({}),
       execute: async () => {
         const url = new URL('/api/events/mine', config.eventsUrl);
         url.searchParams.set('did', config.requesterDid);
