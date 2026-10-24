@@ -17,6 +17,7 @@ import { corpusErrorMessage, corpusHttpRequest } from './corpus-http';
 
 export interface CorpusSourceFreshness {
   source: string;
+  ownerDid: string;
   lastSync: string;
   threadCount: number;
   warning?: string;
@@ -89,8 +90,9 @@ async function corpusRequest(
   scope: CorpusAccessScope,
   path: string,
   body?: unknown,
+  targetDid?: string,
 ): Promise<unknown> {
-  const result = await corpusHttpRequest(method, did, scope, path, body);
+  const result = await corpusHttpRequest(method, did, scope, path, body, targetDid);
   if (!result.ok) {
     throw new CorpusServiceError(result.status, corpusErrorMessage(result));
   }
@@ -98,8 +100,18 @@ async function corpusRequest(
 }
 
 /** `GET /corpus/:did/status` — sources, per-source thread counts, freshness. */
-export function fetchCorpusStatus(did: string): Promise<CorpusStatus> {
-  return corpusRequest('GET', did, 'corpus:read', '/status') as Promise<CorpusStatus>;
+export async function fetchCorpusStatus(did: string): Promise<CorpusStatus> {
+  const { grantedCorpusOwners, authorizeCorpusOwner } = await import('./corpus-owner');
+  const owners = [did, ...await grantedCorpusOwners(did)];
+  const statuses: CorpusStatus[] = [];
+  for (const ownerDid of owners) {
+    if (!await authorizeCorpusOwner(did, ownerDid, 'corpus:read')) throw new CorpusServiceError(403, 'Corpus grant is no longer active');
+    statuses.push(await corpusRequest('GET', did, 'corpus:read', '/status', undefined, ownerDid) as CorpusStatus);
+  }
+  return {
+    sources: statuses.flatMap((status, index) => status.sources.map(source => ({ ...source, ownerDid: owners[index] }))),
+    threadCount: statuses.reduce((total, status) => total + status.threadCount, 0),
+  };
 }
 
 /**

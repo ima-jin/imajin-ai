@@ -10,10 +10,17 @@
  * `CorpusServiceError` for the dashboard route-handler convention).
  */
 import { corpusAccessClaimHeader, type CorpusAccessScope } from './corpus-access-claim';
+import { authorizeCorpusOwner, resolveCorpusDid } from './corpus-owner';
 
 /** Base URL of the corpus service (internal network only). */
 export function corpusServiceUrl(): string {
   return process.env.CORPUS_SERVICE_URL || 'http://localhost:8003';
+}
+
+function corpusRequestSources(body: unknown): string[] {
+  const records = Array.isArray(body) ? body : [body];
+  return [...new Set(records.flatMap(value =>
+    value !== null && typeof value === 'object' && typeof value.source === 'string' ? [value.source] : []))];
 }
 
 export interface CorpusHttpResult {
@@ -34,13 +41,23 @@ export async function corpusHttpRequest(
   scope: CorpusAccessScope,
   path: string,
   body?: unknown,
+  targetDid?: string,
 ): Promise<CorpusHttpResult> {
-  const url = `${corpusServiceUrl()}/corpus/${encodeURIComponent(did)}${path}`;
+  const sources = corpusRequestSources(body);
+  const owners = await Promise.all(sources.map(source => resolveCorpusDid(source, did)));
+  const ownerDid = owners[0] ?? targetDid ?? did;
+  if (owners.some(owner => owner !== ownerDid)) {
+    return { ok: false, status: 400, statusText: 'Mixed corpus owners', payload: { error: 'A batch must have one corpus owner' } };
+  }
+  if (!await authorizeCorpusOwner(did, ownerDid, scope)) {
+    return { ok: false, status: 403, statusText: 'Forbidden', payload: { error: `An owner-issued ${scope} grant is required` } };
+  }
+  const url = `${corpusServiceUrl()}/corpus/${encodeURIComponent(ownerDid)}${path}`;
   const response = await fetch(url, {
     method,
     headers: {
       'Content-Type': 'application/json',
-      Authorization: await corpusAccessClaimHeader(did, scope),
+      Authorization: await corpusAccessClaimHeader(ownerDid, scope, did),
     },
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   });

@@ -13,6 +13,7 @@ import { isWorkspaceSource, resolveWorkspacePath, validateSourcePath, workspaceR
 // checklist) lands here: claim verification (middleware/access-claim.ts)
 // plus the corpus identity + signing/forwarding wired through engine/index.ts.
 import { createAccessClaimMiddleware } from './middleware/access-claim';
+import { resolveCorpusDid } from './lib/source-owner';
 
 export type CorpusRouterOptions = WorkspaceOptions;
 
@@ -22,6 +23,11 @@ export function createCorpusRouter(engine: CorpusEngine, options: CorpusRouterOp
   // Single choke point for every /corpus/:did/* route (#1751). /health and
   // /spec (#2020) stay outside this prefix and remain public.
   router.use('/corpus/:did', createAccessClaimMiddleware());
+  router.use('/corpus/:did', (request, response, next) => {
+    void verifySourceOwner(request).then(() => next()).catch(() => {
+      response.status(403).json({ error: 'Source does not belong to the authorized corpus DID' });
+    });
+  });
 
   router.post('/corpus/:did/ingest', (request, response) => {
     void handle(response, async () => {
@@ -110,6 +116,18 @@ export function createCorpusRouter(engine: CorpusEngine, options: CorpusRouterOp
   return router;
 }
 
+async function verifySourceOwner(request: Request): Promise<void> {
+  const did = String(request.params.did);
+  const documents = Array.isArray(request.body) ? request.body : [request.body];
+  const sources = new Set<string>();
+  for (const document of documents) {
+    if (typeof document?.source === 'string') sources.add(document.source);
+  }
+  for (const source of sources) {
+    if (await resolveCorpusDid(source, did) !== did) throw new Error('Corpus owner mismatch');
+  }
+}
+
 export function createCorpusApp(engine = new CorpusEngine(), options: CorpusRouterOptions = {}): express.Express {
   const app = express();
   app.use(express.json({ limit: '10mb' }));
@@ -196,6 +214,7 @@ async function collectDocuments(iterable: AsyncIterable<ThreadDocument>): Promis
 
 /** Reads the DID the verified CorpusAccessClaim authorized this request for, falling back to the `:did` path param (e.g. for tests that bypass the middleware). */
 function ingesterDidFor(request: Request): string {
+  if (request.corpusAccessClaim?.onBehalfOf) return request.corpusAccessClaim.onBehalfOf;
   if (request.corpusAccessClaim?.did) {
     return request.corpusAccessClaim.did;
   }

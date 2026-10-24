@@ -7,6 +7,7 @@ import { buildIngestionAttestation } from './attestation';
 import { chunkThread, type ThreadChunk } from './chunker';
 import { AttestationNotFoundError, UnknownRefError } from './errors';
 import type { CorpusIdentity } from '../lib/corpus-identity';
+import { migrateOwnerSchema, transferSource } from './owner-transfer';
 import type {
   CorpusAttestationStats,
   CorpusSearchRequest,
@@ -159,6 +160,13 @@ export class CorpusStore {
     this.handles.clear();
   }
 
+  transferSource(fromDid: string, toDid: string, source: string, identity: CorpusIdentity): { moved: number } {
+    this.databaseForDid(fromDid);
+    const target = this.databaseForDid(toDid);
+    const hash = createHash('sha256').update(fromDid).digest('hex');
+    return transferSource(target, join(this.rootDir, hash, 'index.db'), source, fromDid, toDid, identity);
+  }
+
   /**
    * Ingests `documents`, then — when `identity` is provided — builds, signs,
    * and persists one `IngestionAttestation` per distinct `source` in the
@@ -177,6 +185,9 @@ export class CorpusStore {
     ingesterDid: string = did,
   ): IngestionAttestation[] {
     const db = this.databaseForDid(did);
+    for (const source of new Set(documents.map(document => document.source))) {
+      this.assertSourceActive(db, source, did);
+    }
     const upsertThread = db.prepare(`
       INSERT INTO threads (
         source, doc_id, source_type, thread_type, state, labels_json, author, author_did,
@@ -336,8 +347,8 @@ export class CorpusStore {
       return [];
     }
 
-    const where: string[] = ['thread_fts MATCH @matchQuery'];
-    const params: Record<string, unknown> = { matchQuery, limit: request.limit };
+    const where: string[] = ['thread_fts MATCH @matchQuery', 't.source NOT IN (SELECT source FROM corpus_owner_transfers WHERE from_did = @ownerDid)'];
+    const params: Record<string, unknown> = { matchQuery, limit: request.limit, ownerDid: did };
 
     if (request.sourceType) {
       where.push('t.source_type = @sourceType');
@@ -421,6 +432,7 @@ export class CorpusStore {
     request: Required<Pick<CorpusSearchRequest, 'limit'>> & CorpusSearchRequest,
   ): StoredSearchRow[] {
     const db = this.databaseForDid(did);
+    this.assertSourceActive(db, source, did);
     this.assertRefIndexed(db, source, ref);
 
     const matchQuery = toFtsQuery(request.query);
@@ -467,7 +479,7 @@ export class CorpusStore {
 
   status(did: string): CorpusStatus {
     const db = this.databaseForDid(did);
-    const threadCount = (db.prepare('SELECT COUNT(*) AS count FROM threads').get() as { count: number }).count;
+    const threadCount = this.freshness(did).reduce((total, source) => total + source.threadCount, 0);
 
     return {
       sources: this.freshness(did),
@@ -541,10 +553,12 @@ export class CorpusStore {
 
   freshness(did: string): CorpusSourceFreshness[] {
     const db = this.databaseForDid(did);
-    const rows = db.prepare('SELECT source, last_sync, thread_count FROM corpus_sources ORDER BY source').all() as SourceRow[];
+    const rows = db.prepare(`SELECT source, last_sync, thread_count FROM corpus_sources
+      WHERE source NOT IN (SELECT source FROM corpus_owner_transfers WHERE from_did = ?) ORDER BY source`).all(did) as SourceRow[];
 
     return rows.map(row => ({
       source: row.source,
+      ownerDid: did,
       lastSync: row.last_sync,
       threadCount: row.thread_count,
     }));
@@ -552,6 +566,7 @@ export class CorpusStore {
 
   deleteSource(did: string, source: string): number {
     const db = this.databaseForDid(did);
+    this.assertSourceActive(db, source, did);
     const selectRows = db.prepare('SELECT pk FROM threads WHERE source = ?');
     const deleteFts = db.prepare('DELETE FROM thread_fts WHERE rowid = ?');
     const deleteThreads = db.prepare('DELETE FROM threads WHERE source = ?');
@@ -602,9 +617,9 @@ export class CorpusStore {
       .prepare(`
         SELECT pk, source, doc_id, source_type, thread_type, state, labels_json, author, title, body, comments_json, resolution_json, url, updated
         FROM threads
-        WHERE pk IN (${placeholders})
+        WHERE pk IN (${placeholders}) AND source NOT IN (SELECT source FROM corpus_owner_transfers WHERE from_did = ?)
       `)
-      .all(...threadPks) as ThreadByPkRow[];
+      .all(...threadPks, did) as ThreadByPkRow[];
 
     return rows.map(row => threadRowToStoredSearchRow(row));
   }
@@ -624,8 +639,15 @@ export class CorpusStore {
     loadVectorExtension(db);
     this.migrate(db);
     migrateVectorSchema(db);
+    migrateOwnerSchema(db);
     this.handles.set(didHash, db);
     return db;
+  }
+
+  private assertSourceActive(db: Database.Database, source: string, did: string): void {
+    if (db.prepare('SELECT id FROM corpus_owner_transfers WHERE source = ? AND from_did = ?').get(source, did)) {
+      throw new Error('Source ownership transferred; use the resolved corpus owner');
+    }
   }
 
   private migrate(db: Database.Database): void {
