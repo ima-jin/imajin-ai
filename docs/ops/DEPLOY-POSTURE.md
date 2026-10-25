@@ -84,11 +84,11 @@ from its own DB connection only (`@imajin/db`'s `getMigrationStatus`, see
 `degraded` when any service reports `pendingCount > 0` — so "is the live DB caught up" is now a `GET`
 away, not an `ssh + psql` session.
 
-**Migrations applied — asserted only.** `scripts/migrate.mjs` runs unconditionally in both deploy
-workflows (`deploy-dev.yml:62`, `deploy-prod.yml:69`) and fails the job (non-zero exit,
-`scripts/migrate.mjs:177-184`) if a migration errors — so "did migrate.mjs report success on the last
-deploy run" is machine-checkable **from the Actions run log**, but "is the live DB caught up right
-now" is not exposed anywhere a caller can query.
+**Migrations applied — deploy log plus current health.** `scripts/migrate.mjs`
+runs in both deploy workflows and fails the job if a migration errors. The
+Actions log records that deployment's execution; the per-app `migrations` health
+block introduced in #2384 reports current head/pending state as described above.
+Neither proves compatibility with code being rolled back; inspect the actual schema contract.
 
 **Services restarted — asserted, and now enforced (#2382, fixed).** `build.sh` restarts each
 succeeded app individually and collects `RESTART_FAILED` (`scripts/build.sh:294-354`), logged to

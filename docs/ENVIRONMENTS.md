@@ -150,8 +150,10 @@ they do not establish a cross-host sign-in requirement.
 
 ### pm2 Naming
 
-- **Bare names** = production (e.g., `kernel`, `events`)
-- **`dev-*` prefix** = development (e.g., `dev-kernel`, `dev-events`)
+- **`prod-*` prefix** = production in the recorded ecosystem (kernel: `prod-jin`).
+- **`dev-*` prefix** = development (kernel: `dev-jin`, corpus: `dev-corpus`).
+- Extracted app processes are owned by their repo/runbook. Do not assume a bare
+  name or add them back to the kernel ecosystem; see [deploy posture](ops/DEPLOY-POSTURE.md).
 
 ## Shared Packages
 

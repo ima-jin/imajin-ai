@@ -55,4 +55,5 @@
 
 ---
 
-*Imajin is open source. The reference implementation runs at [jin.imajin.ai](https://jin.imajin.ai).*
+*Imajin is source-available under [INL v1.0](../../LICENSE.md).
+The reference kernel is at [jin.imajin.ai](https://jin.imajin.ai).*
