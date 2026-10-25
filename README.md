@@ -1,5 +1,5 @@
 # Imajin
-<!-- Docs delta replay: 2026-10-25, source c2bb64db, since d8047d11c (#2028). -->
+<!-- Docs delta replay: 2026-10-25, source f125a35ce, since d8047d11c (#2028). -->
 
 **You compose. Imajin orchestrates. Signed. Legible.**
 
@@ -24,6 +24,7 @@ Revocation is the option to leave: withdraw → soft tombstone → hard destruct
 - Inspect Registered apps, Clear an active or dormant registration with a consent-count confirmation, and inspect your personal or authorized organization Record on `/jin`. Revoked apps now sit in collapsed history, like expired apps; Inbox and Operator approvals retain **Show history**. See the [kernel README](apps/kernel/README.md#pre-cut-delta-for-v0827) for the merged-source delta and access limits.
 - Use the inference proxy with principal-based minting and the full usable model catalog, without pinning a grant ID. Re-grant on `/jin` → Grants after consent expires or is revoked; the release updater now requires exact-SHA production deployment evidence and mint-backed health before switching. See the [passthrough runbook](packages/openclaw-infer-passthrough/README.md).
 - Maintain a field-released legal-entity record, store sealed bank-details records through the API, or issue bounded SSH user certificates under an operator-granted scope. These have distinct custody and authorization limits; bank settings UI and host deployment are not claimed shipped. See the [kernel README](apps/kernel/README.md#pre-cut-delta-for-v0827).
+- Reuse the GitHub Actions SSH deploy step with a per-job throwaway key and a vault-signed certificate, authorized by verified GitHub OIDC and an explicit repository/environment grant. Follow the [consumer and runner contract](docs/deploy/vault-ssh-deploy.md); shipped automation is not evidence of a live host rollout ([#3095](https://github.com/ima-jin/imajin-ai/pull/3095)).
 - Index GitHub sources under their registry-resolved owner's corpus, selecting that owner's vault-backed OAuth connector instead of a node-wide token. Explicit grants and a one-shot migration are required; no production migration is asserted. See the [corpus-owned runbook](apps/corpus/README.md).
 
 The [v0.8.26 source tag](https://github.com/ima-jin/imajin-ai/tree/v0.8.26) and npm SDK artifacts are available. The [kernel production workflow](https://github.com/ima-jin/imajin-ai/actions/runs/39777022949) succeeded on 2026-10-22 for `c75e4fd195ef125f82c986ba1313bb8365f408f3`; that does not certify later main commits or every app flow. This replay is **pre-cut upkeep for v0.8.27**, not an assertion that v0.8.27 is released.
@@ -69,7 +70,7 @@ External consumers install **`@ima-jin/*` from npmjs.org anonymously**; workspac
 
 ## Packages (SDK)
 
-Generated from every `packages/*/package.json` at [`c2bb64db`](https://github.com/ima-jin/imajin-ai/tree/c2bb64db493982f22a6fba1d4b8afc7d082af027). Descriptions use manifest text, or current exports where a manifest has none. Anonymous public npm `latest` checks on **2026-10-25 UTC** found **12 published, 18 workspace-only**. Versions are a checked snapshot; registry links show live metadata. SDK tracking: [#1982](https://github.com/ima-jin/imajin-ai/issues/1982), [#1581](https://github.com/ima-jin/imajin-ai/issues/1581), [#1011](https://github.com/ima-jin/imajin-ai/issues/1011), [#1992](https://github.com/ima-jin/imajin-ai/issues/1992).
+Generated from every `packages/*/package.json` at [`f125a35ce`](https://github.com/ima-jin/imajin-ai/tree/f125a35ce57302fab5d0ace44159db3ea32ae61e). Descriptions use manifest text, or current exports where a manifest has none. Anonymous public npm `latest` checks on **2026-10-25 UTC** found **12 published, 18 workspace-only**. Versions are a checked snapshot; registry links show live metadata. SDK tracking: [#1982](https://github.com/ima-jin/imajin-ai/issues/1982), [#1581](https://github.com/ima-jin/imajin-ai/issues/1581), [#1011](https://github.com/ima-jin/imajin-ai/issues/1011), [#1992](https://github.com/ima-jin/imajin-ai/issues/1992).
 
 ### Core SDK and workspace libraries
 
@@ -131,11 +132,11 @@ Details: [local development](docs/DEVELOPER.md) · [deployment](deploy/README.md
 ## Project status
 
 <!-- stats:start -->
-Generated 2026-10-25 UTC from source commit [`c2bb64db`](https://github.com/ima-jin/imajin-ai/commit/c2bb64db493982f22a6fba1d4b8afc7d082af027); full-history repository snapshot, not live deployment metrics.
+Generated 2026-10-25 UTC from source commit [`f125a35ce`](https://github.com/ima-jin/imajin-ai/commit/f125a35ce57302fab5d0ace44159db3ea32ae61e); full-history repository snapshot, not live deployment metrics.
 
 | Repository metric | Computed value |
 |---|---|
-| Reachable commits (`git rev-list --count c2bb64db`, full history) | 6034 |
+| Reachable commits (`git rev-list --count f125a35ce`, full history) | 6043 |
 | `apps/*/package.json` | 3 (includes kernel and internal services) |
 | `packages/*/package.json` | 30 |
 <!-- stats:end -->
