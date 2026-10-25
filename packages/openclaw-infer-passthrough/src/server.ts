@@ -19,6 +19,7 @@ import { Readable } from 'node:stream';
 import { loadConfig, resolveDirectApiKey } from './config.js';
 import { CatalogRouter } from './catalog-router.js';
 import { HealthTracker } from './health.js';
+import { checkRouteMints } from './readiness.js';
 import { handleCompletions } from './handle-completions.js';
 import { errorToProxyResponse } from './dispatch.js';
 import { handleModels } from './handle-models.js';
@@ -142,8 +143,8 @@ async function writeErrorResponse(res: ServerResponse, health: HealthTracker, er
 }
 
 export function createProxyServer(config: ProxyConfig) {
-  if (config.routes.some((route) => Object.hasOwn(route, 'attestationId'))) {
-    log.warn({}, 'attestationId is deprecated and ignored; minting by principalDid');
+  if (config.legacyGrantIdConfigured || config.routes.some((route) => Object.hasOwn(route, 'attestationId'))) {
+    log.warn({}, 'attestationId is deprecated and ignored; legacy grant-ID environment variables are also ignored; minting by principalDid');
   }
   const health = new HealthTracker();
   const tokenProviders = new Map<string, RouteTokenProvider>();
@@ -169,6 +170,7 @@ export function createProxyServer(config: ProxyConfig) {
         undefined,
         isMcpRoute ? null : undefined,
         isMcpRoute ? mcpAud : undefined,
+        config.kernelTimeoutMs,
       );
       tokenProviders.set(routeId, provider);
     }
@@ -213,9 +215,10 @@ async function routeRequest(
 ): Promise<void> {
   const url = new URL(req.url ?? '/', 'http://localhost');
 
-  if (req.method === 'GET' && url.pathname === '/healthz') {
-    const body = JSON.stringify(health.snapshot());
-    res.writeHead(200, { 'Content-Type': 'application/json' });
+  if (req.method === 'GET' && (url.pathname === '/health' || url.pathname === '/healthz')) {
+    const readiness = await checkRouteMints(deps.routes, deps.getTokenProvider);
+    const body = JSON.stringify({ ...health.snapshot(), ...readiness });
+    res.writeHead(readiness.ok ? 200 : 503, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
     res.end(body);
     return;
   }

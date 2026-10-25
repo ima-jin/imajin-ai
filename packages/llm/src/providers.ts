@@ -16,7 +16,7 @@
 
 import { createAnthropic } from '@ai-sdk/anthropic';
 import { createOpenAI } from '@ai-sdk/openai';
-import type { LanguageModelV1 } from 'ai';
+import type { LanguageModel } from 'ai';
 
 export type ProviderName = 'anthropic' | 'openai' | 'ollama';
 
@@ -61,7 +61,7 @@ export function getModel(
   provider: ProviderName,
   model: string,
   config?: Partial<ProviderConfig>
-): LanguageModelV1 {
+): LanguageModel {
   switch (provider) {
     case 'anthropic': {
       const anthropic = createAnthropic({
@@ -75,7 +75,7 @@ export function getModel(
         apiKey: requireApiKey(provider, config?.apiKey),
         ...(config?.baseURL && { baseURL: config.baseURL }),
       });
-      return openai(model);
+      return openai.chat(model);
     }
     case 'ollama': {
       const baseURL = config?.baseURL ?? process.env.OLLAMA_BASE_URL;
@@ -87,7 +87,7 @@ export function getModel(
         apiKey: 'ollama', // Ollama doesn't need a real key
         baseURL,
       });
-      return ollama(model);
+      return ollama.chat(model);
     }
     default:
       throw new Error(`Unknown provider: ${provider}`);

@@ -160,9 +160,12 @@ export interface CorpusSearchHit {
 
 export interface CorpusSourceFreshness {
   source: string;
+  ownerDid: string;
   lastSync: string;
   threadCount: number;
   warning?: string;
+  credentialRef?: string;
+  error?: string;
 }
 
 /** Provenance of a ref-pinned search result, for reproducibility audits (#1921). */
@@ -217,9 +220,7 @@ export interface IngestionAttestation {
   /** e.g. "github:ima-jin/imajin-ai" */
   source: string;
   /**
-   * The corpus DID this ingestion targets. Today this is the `:did` route
-   * param (the existing partition key — see `CorpusStore.databaseForDid`),
-   * pending #1749's `resolveCorpusDid(source)` landing separately.
+   * Resolved source-owner DID; also the authorized `:did` partition key.
    */
   corpusDid: string;
   /** DID from the CorpusAccessClaim that authorized this ingest. */

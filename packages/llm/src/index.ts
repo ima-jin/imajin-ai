@@ -24,7 +24,7 @@ export type { ModelRates } from './costs';
 
 // Re-export commonly used Vercel AI SDK functions for convenience
 export { generateText, streamText } from 'ai';
-export type { LanguageModelV1 } from 'ai';
+export type { LanguageModel } from 'ai';
 
 // Presence tools
 export { createPresenceTools, createEventTools, createConnectionTools, createAttestationTools, createProfileTools, createPayTools, createLearnTools, createMediaTools } from './tools/index';

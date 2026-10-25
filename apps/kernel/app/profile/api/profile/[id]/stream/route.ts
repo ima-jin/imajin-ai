@@ -8,7 +8,7 @@
 import { NextRequest } from 'next/server';
 import { db, queryLogs } from '@/src/db';
 import { requireAuth } from '@imajin/auth';
-import { streamText } from 'ai';
+import { stepCountIs, streamText } from 'ai';
 import { calculateCost, createPresenceTools } from '@imajin/llm';
 import { resolvePresenceBrain } from '@/src/lib/inference/presence-brain';
 import { recordPresenceQueryUsage } from '@/src/lib/inference/presence-query-usage';
@@ -147,9 +147,9 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     system: systemPrompt,
     messages,
     tools,
-    maxSteps: 5,
-    onStepFinish: ({ stepType, toolCalls, toolResults, text }) => {
-      log.info({ stepType, toolCallCount: toolCalls?.length ?? 0, resultLen: JSON.stringify(toolResults ?? []).length, textLen: text?.length ?? 0 }, '[stream] step');
+    stopWhen: stepCountIs(5),
+    onStepFinish: ({ finishReason, toolCalls, toolResults, text }) => {
+      log.info({ finishReason, toolCallCount: toolCalls?.length ?? 0, resultLen: JSON.stringify(toolResults ?? []).length, textLen: text?.length ?? 0 }, '[stream] step');
       if (toolCalls?.length) {
         log.info({ toolCalls: JSON.stringify(toolCalls).slice(0, 300) }, '[stream] toolCalls');
       }
@@ -157,11 +157,11 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         log.info({ toolResults: JSON.stringify(toolResults).slice(0, 500) }, '[stream] toolResults');
       }
     },
-    onFinish: async ({ usage, steps }) => {
+    onFinish: async ({ totalUsage: usage, steps }) => {
       log.info({ stepCount: steps?.length ?? 0 }, '[stream] finished');
 
-      const promptTokens = usage?.promptTokens ?? 0;
-      const completionTokens = usage?.completionTokens ?? 0;
+      const promptTokens = usage?.inputTokens ?? 0;
+      const completionTokens = usage?.outputTokens ?? 0;
       const cost = calculateCost(modelId, promptTokens, completionTokens);
 
       // Settle (non-fatal, silent on failure)
@@ -204,17 +204,17 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     async start(controller) {
       try {
         for await (const part of result.fullStream) {
-          if (part.type === 'text-delta' && part.textDelta) {
+          if (part.type === 'text-delta' && part.text) {
             controller.enqueue(encoder.encode(
-              JSON.stringify({ type: 'text', text: part.textDelta }) + '\n'
+              JSON.stringify({ type: 'text', text: part.text }) + '\n'
             ));
           } else if (part.type === 'tool-call') {
             controller.enqueue(encoder.encode(
-              JSON.stringify({ type: 'tool_call', name: part.toolName, args: part.args }) + '\n'
+              JSON.stringify({ type: 'tool_call', name: part.toolName, args: part.input }) + '\n'
             ));
           } else if (part.type === 'tool-result') {
             controller.enqueue(encoder.encode(
-              JSON.stringify({ type: 'tool_result', name: part.toolName, result: part.result }) + '\n'
+              JSON.stringify({ type: 'tool_result', name: part.toolName, result: part.output }) + '\n'
             ));
           }
         }

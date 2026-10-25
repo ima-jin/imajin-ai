@@ -84,12 +84,31 @@ function filterProfileForApp(profile: Record<string, any>): Record<string, any> 
   return { did, displayName, handle, avatar, bio, visibility, scope, subtype };
 }
 
-/** Try to get viewer DID from session cookie (non-blocking) */
+/** Resolve a session viewer's act-as scope only after checking active membership. */
 async function getViewerDid(request: NextRequest): Promise<string | null> {
+  let sessionDid: string | null = null;
   try {
     const session = await getSessionFromCookies(request.headers.get('cookie'));
-    return session?.did ?? null;
-  } catch { return null; }
+    sessionDid = session?.did ?? null;
+    if (!sessionDid) return null;
+
+    const actingAs = request.headers.get('x-acting-as') || request.cookies.get('x-acting-as')?.value;
+    if (!actingAs || actingAs === sessionDid) return sessionDid;
+
+    const [membership] = await db
+      .select({ role: identityMembers.role, allowedServices: identityMembers.allowedServices })
+      .from(identityMembers)
+      .where(and(
+        eq(identityMembers.identityDid, actingAs),
+        eq(identityMembers.memberDid, sessionDid),
+        isNull(identityMembers.removedAt)
+      ))
+      .limit(1);
+    const isOwner = membership?.role === 'owner' || membership?.role === 'admin';
+    const services = membership?.allowedServices;
+    const canReadProfile = services == null || (Array.isArray(services) && services.includes('profile'));
+    return isOwner && canReadProfile ? actingAs : sessionDid;
+  } catch { return sessionDid; }
 }
 
 // ---------------------------------------------------------------------------

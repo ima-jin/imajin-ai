@@ -4,6 +4,7 @@ import { drizzle } from 'drizzle-orm/pglite';
 import { getTableConfig, type PgTable } from 'drizzle-orm/pg-core';
 import { eq } from 'drizzle-orm';
 import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import type { VaultFile } from '@imajin/vault-core';
 
 vi.setConfig({ testTimeout: 30_000, hookTimeout: 30_000 });
@@ -19,6 +20,7 @@ vi.mock('@/src/db', async () => {
   const { forwardingDb } = await import('@/src/lib/notify/__tests__/pglite-connector-inbox-harness');
   return { ...auth, ...vault, db: forwardingDb(() => h.db) };
 });
+
 vi.mock('@imajin/auth', async original => {
   const actual = await original<typeof import('@imajin/auth')>();
   return {
@@ -60,6 +62,13 @@ import { POST as rotateRoute } from '@/app/api/vault/ssh-ca/rotate/route';
 import { POST as revokeRoute } from '@/app/api/vault/ssh-ca/revoke/route';
 import { GET as trustedRoute } from '@/app/api/vault/ssh-ca/trusted-keys/route';
 import { GET as listRoute } from '@/app/api/vault/list/route';
+import { POST as signRoute } from '@/app/api/vault/ssh-ca/sign/route';
+import { POST as grantRoute } from '@/app/api/vault/ssh-ca/grants/route';
+import { POST as withdrawRoute } from '@/app/api/vault/ssh-ca/grants/revoke/route';
+import { canonicalizeGrantPayload } from '../index';
+import { inspectCertificate, acceptsCertificate, openSshAccepts, openSshPublicKeyFingerprint } from './ssh-cert-inspect';
+import * as mechanicalAudit from '@/src/lib/auth/emit-mechanical-attestation';
+import { SSH_CERT_ISSUANCE_LIMIT, SSH_CERT_ISSUANCE_WINDOW_SECONDS } from '../ssh-ca-policy';
 
 const nodeKeys = generateKeypair();
 const tables = [attestations, vaultMintedKeys, vaultDelegationGrants, vaultOwnerEnvelopes, vaultGrantRequests];
@@ -87,6 +96,9 @@ beforeAll(async () => {
   await client.waitReady;
   await client.exec('CREATE SCHEMA auth; CREATE SCHEMA kernel;');
   for (const table of tables) await client.exec(createTable(table));
+  const migration = readFileSync('migrations/0221_vault_ssh_scope.sql', 'utf8');
+  await client.exec(migration);
+  await client.exec(migration); // Idempotent on an already-upgraded schema.
   await client.exec(`
     CREATE UNIQUE INDEX uniq_minted_did ON kernel.vault_minted_keys(did);
     CREATE UNIQUE INDEX uniq_owner_envelope ON kernel.vault_owner_envelopes(field,key_id);
@@ -154,8 +166,7 @@ describe('SSH CA custody and lifecycle (#3063)', () => {
     h.auth = { error: 'Not authenticated', status: 401 }; // public trust does not need a credential
     const text = await trusted();
     expect(text).toBe(`${body.publicKey}\n`);
-    // Independently parse RFC 8709; CI's minimal image has no ssh-keygen.
-    // The same returned line was also checked with ssh-keygen locally.
+    // Independently parse RFC 8709; certificate tests also use CI's installed OpenSSH tools.
     const wire = Buffer.from(text.split(' ')[1], 'base64');
     expect(wire.readUInt32BE(0)).toBe(11);
     expect(wire.subarray(4, 15).toString()).toBe('ssh-ed25519');
@@ -182,6 +193,9 @@ describe('SSH CA custody and lifecycle (#3063)', () => {
     // Fresh reads consult persistent state, not a timer or cached trust list.
     expect(await trusted()).toBe(`${second.publicKey}\n`);
     expect(await trusted()).toBe(`${second.publicKey}\n`);
+    expect((await rows()).find(row => row.id === first.caId)?.status).toBe('retiring');
+    expect((await audits()).filter(row => row.type === 'vault.ssh-ca.retired')).toHaveLength(0);
+    await revokeSshCa(purpose, second.caId, authority()); // mutations reconcile retirement
     expect((await rows()).find(row => row.id === first.caId)?.status).toBe('retired');
     expect(await rows()).toHaveLength(2);
     expect((await audits()).filter(row => row.type === 'vault.ssh-ca.retired')).toHaveLength(1);
@@ -225,6 +239,7 @@ describe('SSH CA custody and lifecycle (#3063)', () => {
     vi.useFakeTimers({ toFake: ['Date'] });
     vi.setSystemTime(old.revokedAt!.getTime() + SSH_CA_MAX_CERT_TTL_SECONDS * 1000);
     expect(await trusted()).toBe('');
+    await revokeSshCa(purpose, second.caId, authority());
     const events = await audits();
     expect(new Set(events.map(row => row.type))).toEqual(new Set([
       'vault.ssh-ca.minted', 'vault.ssh-ca.rotated', 'vault.ssh-ca.revoked', 'vault.ssh-ca.retired',
@@ -285,7 +300,7 @@ describe('SSH CA custody and lifecycle (#3063)', () => {
     expect(h.seeds).toHaveLength(1);
   });
 
-  it('does not serve expired public trust if retirement audit signing fails', async () => {
+  it('serves lock-free public trust without signing credentials or retirement writes', async () => {
     const first = await mint();
     await mint(true);
     const [old] = (await rows()).filter(row => row.id === first.caId);
@@ -294,10 +309,22 @@ describe('SSH CA custody and lifecycle (#3063)', () => {
     vi.stubEnv('AUTH_PRIVATE_KEY', '');
     const response = await trustedRoute(new Request(`https://kernel.test/trusted-keys?purpose=${purpose}`));
     responses.push(await response.text());
-    expect(response.status).toBe(503);
+    expect(response.status).toBe(200);
+    expect(responses.at(-1)).not.toContain(first.publicKey);
     expect((await rows()).find(row => row.id === first.caId)?.status).toBe('retiring');
     vi.stubEnv('AUTH_PRIVATE_KEY', nodeKeys.privateKey);
     expect(await trusted()).not.toContain(first.publicKey);
+  });
+
+  it('public trust reads do not enter a transaction or execute an advisory lock', async () => {
+    await mint();
+    const transaction = vi.spyOn(database, 'transaction');
+    const execute = vi.spyOn(database, 'execute');
+    try {
+      expect(await trusted()).toContain('ssh-ed25519');
+      expect(transaction).not.toHaveBeenCalled();
+      expect(execute).not.toHaveBeenCalled();
+    } finally { transaction.mockRestore(); execute.mockRestore(); }
   });
 
   it('rolls back replacement, grants and audit together on sealed-storage failure, without disclosure', async () => {
@@ -340,5 +367,231 @@ describe('SSH CA custody and lifecycle (#3063)', () => {
     for (const invalid of ['', 'ab', 'z'.repeat(64), 'a'.repeat(66)]) {
       expect(() => sshCaPublicKey(invalid, purpose, 'vmk_test')).toThrow('Invalid CA public key');
     }
+  });
+});
+
+describe('restricted SSH certificates (#3064)', () => {
+  const grantee = 'did:imajin:runner';
+  const clientKeys = generateKeypair();
+  let input: Record<string, unknown>;
+  let ca: Awaited<ReturnType<typeof mint>>;
+  let grantId: string;
+  async function invoke(body: unknown = input, raw?: string) {
+    const response = await signRoute(raw === undefined ? request(body)
+      : new Request('https://kernel.test/api/vault/ssh-ca/sign', { method: 'POST', body: raw }));
+    const result = await response.json();
+    responses.push(result);
+    return { response, result };
+  }
+  beforeEach(async () => {
+    ca = await mint();
+    const response = await grantRoute(request({
+      purpose, caId: ca.caId, grantee, principals: ['deploy'], forceCommand: '/usr/local/bin/deploy',
+      allowedHosts: ['host.example.com'], expiresAt: new Date(Date.now() + 3600_000).toISOString(),
+    }));
+    const body = await response.json();
+    responses.push(body);
+    expect(response.status).toBe(201);
+    grantId = body.grantId;
+    input = { purpose, caId: ca.caId, grantId, publicKey: sshCaPublicKey(clientKeys.publicKey, purpose, 'job').publicKey,
+      principal: 'deploy', host: 'host.example.com', job: 'gha:repo/run/42' };
+    h.auth = { identity: { id: grantee } };
+  });
+
+  it('returns an OpenSSH-parsed user cert, verifies the CA signature and binds restricted policy and signed audit', async () => {
+    const { response, result } = await invoke();
+    expect(response.status).toBe(201);
+    expect(response.headers.get('cache-control')).toBe('no-store');
+    expect(result.ttl).toBe(600);
+    const inspected = inspectCertificate(result.certificate);
+    expect(inspected).toMatchObject({ principal: 'deploy', forceCommand: '/usr/local/bin/deploy',
+      extensions: '', serial: result.serial, keyId: result.keyId, userType: 1 });
+    expect(inspected.validBefore - inspected.validAfter).toBe(600);
+    expect(acceptsCertificate(inspected, ca.publicKey, 'deploy', inspected.validAfter)).toBe(true);
+    expect(acceptsCertificate(inspected, ca.publicKey, 'root', inspected.validAfter)).toBe(false);
+    expect(acceptsCertificate(inspected, ca.publicKey, 'deploy', inspected.validBefore)).toBe(false);
+    expect(acceptsCertificate(inspected, input.publicKey as string, 'deploy', inspected.validAfter)).toBe(false);
+    expect(openSshAccepts(result.certificate, ca.publicKey, clientKeys.privateKey, 'deploy', inspected.validAfter)).toBe(true);
+    expect(openSshAccepts(result.certificate, ca.publicKey, clientKeys.privateKey, 'root', inspected.validAfter)).toBe(false);
+    expect(openSshAccepts(result.certificate, ca.publicKey, clientKeys.privateKey, 'deploy', inspected.validBefore)).toBe(false);
+    expect(openSshAccepts(result.certificate, input.publicKey as string, clientKeys.privateKey, 'deploy', inspected.validAfter)).toBe(false);
+    const issued = (await audits()).find(row => row.type === 'vault.ssh-cert.issued')!;
+    expect(issued.payload).toMatchObject({
+      job: input.job, grantee, principal: 'deploy', host: input.host, ttl: 600, serial: result.serial, keyId: result.keyId,
+      publicKeyFingerprint: openSshPublicKeyFingerprint(input.publicKey as string),
+    });
+    expect(issued.payload).not.toHaveProperty('publicKey');
+    expect(issued.payload).not.toHaveProperty('certificate');
+    expect(JSON.stringify(issued.payload).includes(clientKeys.publicKey), 'Caller key material stored in audit').toBe(false);
+    expect(crypto.verifySync(issued.signature, canonicalize({
+      subject_did: issued.subjectDid, type: issued.type, context_id: issued.contextId,
+      context_type: issued.contextType, payload: issued.payload, issued_at: issued.issuedAt.getTime(),
+    }), nodeKeys.publicKey)).toBe(true);
+    expect((await invoke({ ...input, ttl: 900 })).result.ttl).toBe(900);
+    expect((await invoke()).result.serial).not.toBe(result.serial);
+    expect(JSON.stringify(responses).includes(clientKeys.privateKey), 'Caller private material exposed').toBe(false);
+  });
+
+  it.each([
+    { principal: '*' }, { principal: 'root' }, { host: 'other.example.com' }, { host: '*.example.com' },
+    { ttl: 901 }, { ttl: 0 }, { ttl: -1 }, { ttl: 1.5 }, { ttl: '600' }, { ttl: null },
+    { purpose: 'BAD' }, { caId: 'wrong' }, { grantId: 'wrong' }, { job: '' }, { job: 'a\nb' },
+    { publicKey: 'ssh-rsa invalid' }, { publicKey: 'not a key' },
+    { criticalOptions: { 'force-command': 'anything' } }, { extensions: ['permit-pty'] },
+    { forceCommand: 'anything' }, { principals: ['root'] }, { privateKey: 'not-accepted' },
+  ])('refuses invalid or widened signing request %j and audits refusal', async override => {
+    const { response } = await invoke({ ...input, ...override });
+    expect([400, 403]).toContain(response.status);
+    expect((await audits()).filter(row => row.type === 'vault.ssh-cert.issued')).toHaveLength(0);
+    const refusal = (await database.select().from(attestations)).filter(row => row.type === 'vault.ssh-cert.refused').at(-1)!;
+    expect(refusal.payload).toEqual({ grantee, status: response.status });
+  });
+
+  it.each([null, [], 'bad'])('refuses non-object JSON %j', async body => {
+    expect((await invoke(body)).response.status).toBe(400);
+  });
+  it('refuses malformed JSON', async () => { expect((await invoke(input, '{')).response.status).toBe(400); });
+  it.each([401, 403])('refuses unauthenticated/unauthorised caller (%s)', async status => {
+    h.auth = status === 401 ? { error: 'Not authenticated', status: 401 } : { identity: { id: 'did:imajin:outsider', actingDid: grantee } };
+    expect((await invoke()).response.status).toBe(status);
+  });
+  it.each(['revoked', 'retiring', 'retired'])('refuses %s signer even with a live operation grant', async status => {
+    await database.update(vaultMintedKeys).set({ status, revokedAt: new Date() }).where(eq(vaultMintedKeys.id, ca.caId));
+    expect((await invoke()).response.status).toBe(403);
+  });
+  it('refuses anonymous callers without signing or writing any audit row', async () => {
+    const before = await database.select().from(attestations);
+    h.auth = { error: 'Not authenticated', status: 401 };
+    vi.stubEnv('AUTH_PRIVATE_KEY', '');
+    const prepare = vi.spyOn(mechanicalAudit, 'prepareMechanicalAttestation');
+    const insert = vi.spyOn(database, 'insert');
+    try {
+      expect((await invoke()).response.status).toBe(401);
+      expect(prepare).not.toHaveBeenCalled();
+      expect(insert).not.toHaveBeenCalled();
+      expect(await database.select().from(attestations)).toEqual(before);
+    } finally { prepare.mockRestore(); insert.mockRestore(); }
+  });
+  it('bounds concurrent issuance per grant, audits 429, and allows issuance after the window', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    const start = Date.now();
+    vi.setSystemTime(start);
+    const attempts = await Promise.all(Array.from({ length: SSH_CERT_ISSUANCE_LIMIT + 1 }, () => invoke()));
+    expect(attempts.filter(attempt => attempt.response.status === 201)).toHaveLength(SSH_CERT_ISSUANCE_LIMIT);
+    const refused = attempts.find(attempt => attempt.response.status === 429)!;
+    expect(refused.result).not.toHaveProperty('certificate');
+    expect((await audits()).filter(row => row.type === 'vault.ssh-cert.issued')).toHaveLength(SSH_CERT_ISSUANCE_LIMIT);
+    const refusals = (await database.select().from(attestations)).filter(row => row.type === 'vault.ssh-cert.refused');
+    expect(refusals.at(-1)?.payload).toEqual({ grantee, status: 429 });
+    vi.setSystemTime(start + SSH_CERT_ISSUANCE_WINDOW_SECONDS * 1000 - 1);
+    expect((await invoke()).response.status).toBe(429);
+    vi.setSystemTime(start + SSH_CERT_ISSUANCE_WINDOW_SECONDS * 1000);
+    expect((await invoke()).response.status).toBe(201);
+  });
+  it('does not spend a grant issuance budget on authenticated refusals or other grants', async () => {
+    for (let attempt = 0; attempt < SSH_CERT_ISSUANCE_LIMIT; attempt++) {
+      expect((await invoke({ ...input, principal: 'root' })).response.status).toBe(403);
+    }
+    expect((await invoke()).response.status).toBe(201);
+    h.auth = { identity: { id: h.nodeDid } };
+    const otherCa = await mintSshCa(`${purpose}-other`, authority());
+    const response = await grantRoute(request({
+      purpose: `${purpose}-other`, caId: otherCa.caId, grantee, principals: ['deploy'],
+      forceCommand: '/usr/local/bin/deploy', allowedHosts: ['host.example.com'],
+      expiresAt: new Date(Date.now() + 3600_000).toISOString(),
+    }));
+    const otherGrant = await response.json();
+    expect(response.status).toBe(201);
+    h.auth = { identity: { id: grantee } };
+    for (let attempt = 0; attempt < SSH_CERT_ISSUANCE_LIMIT; attempt++) {
+      expect((await invoke({ ...input, purpose: `${purpose}-other`, caId: otherCa.caId, grantId: otherGrant.grantId }))
+        .response.status).toBe(201);
+    }
+    expect((await invoke()).response.status).toBe(201);
+  });
+  it('does not reuse the old signer after rotation', async () => {
+    await mint(true);
+    expect((await invoke()).response.status).toBe(403);
+  });
+  it.each(['operation', 'custody'])('refuses expired or withdrawn %s grant', async kind => {
+    const [row] = await rows();
+    const id = kind === 'operation' ? grantId : row.grantId!;
+    await database.update(vaultDelegationGrants).set({ expiresAt: new Date(Date.now() - 1) }).where(eq(vaultDelegationGrants.id, id));
+    expect((await invoke()).response.status).toBe(403);
+    await database.update(vaultDelegationGrants).set({ expiresAt: null, status: 'revoked' }).where(eq(vaultDelegationGrants.id, id));
+    expect((await invoke()).response.status).toBe(403);
+  });
+  it('bounds certificate validity to the remaining signed grant lease', async () => {
+    const [grant] = await database.select().from(vaultDelegationGrants).where(eq(vaultDelegationGrants.id, grantId));
+    grant.expiresAt = new Date(Date.now() + 30_000);
+    grant.ownerSignature = crypto.signSync(canonicalizeGrantPayload(grant), nodeKeys.privateKey);
+    await database.update(vaultDelegationGrants).set({ expiresAt: grant.expiresAt, ownerSignature: grant.ownerSignature })
+      .where(eq(vaultDelegationGrants.id, grantId));
+    const { result, response } = await invoke();
+    expect(response.status).toBe(201);
+    expect(result.ttl).toBeLessThanOrEqual(30);
+  });
+  it('rejects tampered grant scope instead of trusting database JSON', async () => {
+    await database.update(vaultDelegationGrants).set({ sshScope: {
+      caId: ca.caId, principals: ['deploy', 'root'], forceCommand: 'sh', allowedHosts: ['host.example.com'],
+    } }).where(eq(vaultDelegationGrants.id, grantId));
+    expect((await invoke({ ...input, principal: 'root' })).response.status).toBe(403);
+  });
+  it('revokes via the same vault surface, retaining history and attestation', async () => {
+    expect((await withdrawRoute(request({ purpose, grantId }))).status).toBe(403);
+    h.auth = { identity: { id: h.nodeDid } };
+    expect((await withdrawRoute(request({ purpose, grantId }))).status).toBe(200);
+    expect((await withdrawRoute(request({ purpose, grantId }))).status).toBe(200);
+    h.auth = { identity: { id: grantee } };
+    expect((await invoke()).response.status).toBe(403);
+    expect((await audits()).filter(row => row.type === 'vault.ssh-cert.grant-revoked')).toHaveLength(1);
+    const [grant] = await database.select().from(vaultDelegationGrants).where(eq(vaultDelegationGrants.id, grantId));
+    expect(grant.status).toBe('revoked');
+    expect(grant.wrappedKey).toBe('');
+    expect(await fetchGrantSecret({ grantId, granteeDid: grantee, kernelCredentialUse: true })).toEqual({ status: 'not_grantee' });
+  });
+  it.each([
+    { principals: [] }, { principals: ['*'] }, { principals: ['root,deploy'] },
+    { principals: Array(17).fill('deploy') }, { allowedHosts: [] }, { allowedHosts: ['*.example.com'] },
+    { allowedHosts: Array(65).fill('host.example.com') }, { forceCommand: '' }, { forceCommand: ' ' },
+    { forceCommand: 'a\nb' }, { forceCommand: '\0' }, { forceCommand: 'a'.repeat(2049) },
+    { expiresAt: 'invalid' }, { expiresAt: '2000-01-01T00:00:00Z' }, { grantee: 'not-a-did' },
+    { caId: 'wrong' }, { purpose: '*' }, { extensions: ['permit-pty'] },
+  ])('refuses invalid grant policy %j without adding authority', async override => {
+    h.auth = { identity: { id: h.nodeDid } };
+    const response = await grantRoute(request({
+      purpose, caId: ca.caId, grantee: 'did:imajin:another', principals: ['deploy'], forceCommand: '/bin/deploy',
+      allowedHosts: ['host.example.com'], expiresAt: new Date(Date.now() + 60_000).toISOString(), ...override,
+    }));
+    expect(response.status).toBe(400);
+    expect((await audits()).filter(row => row.type === 'vault.ssh-cert.grant-issued')).toHaveLength(1);
+  });
+  it('refuses grant creation by a non-operator or for the custody identity', async () => {
+    const body = { purpose, caId: ca.caId, grantee: h.nodeDid, principals: ['deploy'], forceCommand: '/bin/deploy',
+      allowedHosts: ['host.example.com'], expiresAt: new Date(Date.now() + 60_000).toISOString() };
+    expect((await grantRoute(request(body))).status).toBe(403);
+    h.auth = { identity: { id: h.nodeDid } };
+    expect((await grantRoute(request(body))).status).toBe(400);
+  });
+  it('refuses missing grants, foreign purposes, and malformed revocation inputs', async () => {
+    expect((await invoke({ ...input, grantId: 'vdg_missing' })).response.status).toBe(403);
+    expect((await invoke({ ...input, purpose: `${purpose}-other` })).response.status).toBe(403);
+    h.auth = { identity: { id: h.nodeDid } };
+    expect((await withdrawRoute(request({ purpose, grantId: 'bad' }))).status).toBe(400);
+    expect((await withdrawRoute(request({ purpose: `${purpose}-other`, grantId }))).status).toBe(404);
+    expect((await grantRoute(request(null))).status).toBe(400);
+  });
+  it('enforces serial uniqueness in persistent storage', async () => {
+    const { result } = await invoke();
+    const [event] = (await audits()).filter(row => row.type === 'vault.ssh-cert.issued');
+    await expect(database.insert(attestations).values({ ...event, id: `${event.id}_duplicate` })).rejects.toThrow();
+    expect((await audits()).filter(row => row.payload?.serial === result.serial)).toHaveLength(1);
+  });
+  it('returns no certificate if audit signing fails, with generic error only', async () => {
+    vi.stubEnv('AUTH_PRIVATE_KEY', '');
+    const { response, result } = await invoke();
+    expect(response.status).toBe(503);
+    expect(result).toEqual({ error: 'SSH CA unavailable' });
+    expect((await audits()).filter(row => row.type === 'vault.ssh-cert.issued')).toHaveLength(0);
   });
 });

@@ -75,6 +75,8 @@ vi.mock('@imajin/db', () => {
 import { readFile } from 'node:fs/promises';
 import { projectReactor } from '../projection-reactor';
 import type { BusEvent } from '@imajin/bus';
+import { composeLegalEntity, composeLegalEntityRevocation } from '../../profile/legal-entity-document';
+import { legalEntityFixture, ownerDid } from '../../profile/__tests__/legal-entity-fixture';
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
 
@@ -133,6 +135,19 @@ beforeEach(() => {
 // ─── Tests ───────────────────────────────────────────────────────────────────
 
 describe('projectReactor — release-gated projection (#1207)', () => {
+  it('never projects legal-entity fields even when all are public (#3071 ruling)', async () => {
+    const input = legalEntityFixture();
+    for (const key of Object.keys(input.visibility)) Reflect.set(input.visibility, key, 'public');
+    vi.mocked(readFile).mockResolvedValueOnce(composeLegalEntity(ownerDid, input));
+    await projectReactor(makeEvent(), {});
+    expect(mockSet).not.toHaveBeenCalled();
+    expect(hoisted.auditInserts).toHaveLength(0);
+  });
+  it('does not copy a legal-entity tombstone into projections', async () => {
+    vi.mocked(readFile).mockResolvedValueOnce(composeLegalEntityRevocation(ownerDid));
+    await projectReactor(makeEvent(), {});
+    expect(mockSet).not.toHaveBeenCalled();
+  });
   it('materializes a released (consented) field into metadata.article', async () => {
     await projectReactor(makeEvent(), {});
     expect(projectedArticle()).toHaveProperty('tagline', 'Hello from the owner');

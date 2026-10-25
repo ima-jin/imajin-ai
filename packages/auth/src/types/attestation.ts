@@ -5,6 +5,10 @@
  */
 
 export const ATTESTATION_TYPES = [
+  'vault.ssh-cert.issued',
+  'vault.ssh-cert.refused',
+  'vault.ssh-cert.grant-issued',
+  'vault.ssh-cert.grant-revoked',
   'vault.ssh-ca.minted',
   'vault.ssh-ca.rotated',
   'vault.ssh-ca.revoked',
@@ -62,6 +66,8 @@ export const ATTESTATION_TYPES = [
   'app.authorized',
   'app.revoked',
   'document.created',
+  // Userspace control-plane withdrawal; the signed tombstone retains history.
+  'document.revoked',
   'agreement',
   'agreement.revoked',
   'document.signed',
@@ -313,6 +319,11 @@ export type AttestationType = typeof ATTESTATION_TYPES[number];
  * excluded from any "pending your countersignature" view or query.
  */
 export const MECHANICAL_ATTESTATION_TYPES = [
+  'document.revoked',
+  'vault.ssh-cert.issued',
+  'vault.ssh-cert.refused',
+  'vault.ssh-cert.grant-issued',
+  'vault.ssh-cert.grant-revoked',
   'vault.ssh-ca.minted',
   'vault.ssh-ca.rotated',
   'vault.ssh-ca.revoked',

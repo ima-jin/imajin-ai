@@ -15,7 +15,7 @@ export function createConnectionTools(config: {
   return {
     getMutualConnections: tool({
       description: 'Find connections shared between you and the person you\'re talking to',
-      parameters: z.object({}),
+      inputSchema: z.object({}),
       execute: async () => {
         const [targetData, requesterData] = await Promise.all([
           safeFetch(`${config.connectionsUrl}/api/connections?did=${encodeURIComponent(config.targetDid)}`, authHeaders),
@@ -47,7 +47,7 @@ export function createConnectionTools(config: {
 
     getTrustDistance: tool({
       description: 'Check the trust distance between two DIDs in the trust graph',
-      parameters: z.object({
+      inputSchema: z.object({
         from: z.string().describe('Source DID'),
         to: z.string().describe('Target DID'),
       }),

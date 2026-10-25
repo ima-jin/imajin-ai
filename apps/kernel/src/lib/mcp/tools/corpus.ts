@@ -23,6 +23,7 @@ import type { McpTool } from '../types';
 import { str, num, json } from './utils';
 import type { CorpusAccessScope } from '../../kernel/corpus-access-claim';
 import { corpusErrorMessage, corpusHttpRequest } from '../../kernel/corpus-http';
+import { searchCorpus, CorpusServiceError, type CorpusSearchParams } from '../../kernel/corpus-client';
 
 // ── HTTP proxy ─────────────────────────────────────────────────────────────
 
@@ -42,6 +43,14 @@ async function corpusRequest(
   path: string,
   body?: unknown,
 ): Promise<unknown> {
+  if (path === '/search') {
+    try {
+      return await searchCorpus(did, body as CorpusSearchParams);
+    } catch (error) {
+      if (error instanceof CorpusServiceError) throw new Error(`corpus_service_error: ${error.status} ${error.message}`);
+      throw error;
+    }
+  }
   const result = await corpusHttpRequest(method, did, scope, path, body);
   if (!result.ok) {
     throw new Error(`corpus_service_error: ${result.status} ${corpusErrorMessage(result)}`);

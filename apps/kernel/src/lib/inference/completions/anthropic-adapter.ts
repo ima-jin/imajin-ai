@@ -14,7 +14,7 @@
 import { generateText, streamText } from 'ai';
 import type { CoreMessage, TextStreamPart, ToolChoice, ToolSet } from 'ai';
 import { getModel } from '@imajin/llm';
-import type { LanguageModelV1 } from '@imajin/llm';
+import type { LanguageModel } from '@imajin/llm';
 import { createLogger } from '@imajin/logger';
 import type { ResolvedBrain } from '../brain';
 import { translateRequest } from './message-mapping';
@@ -62,7 +62,7 @@ export async function forwardAnthropic(
     : generateAnthropic(brain, model, messages, tools, toolChoice, body, meta);
 }
 
-type Model = LanguageModelV1;
+type Model = LanguageModel;
 type CoreMessages = CoreMessage[];
 type Tools = ToolSet | undefined;
 type ToolChoiceArg = ToolChoice<ToolSet> | undefined;
@@ -94,7 +94,7 @@ async function generateAnthropic(
       // reasoning: more just amplifies a genuine rate limit (#1764).
       maxRetries: 1,
       abortSignal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
-      ...(body.max_tokens !== undefined ? { maxTokens: body.max_tokens } : {}),
+      ...(body.max_tokens !== undefined ? { maxOutputTokens: body.max_tokens } : {}),
       ...(body.temperature !== undefined ? { temperature: body.temperature } : {}),
     });
 
@@ -105,8 +105,8 @@ async function generateAnthropic(
         sessionId: meta.sessionId ?? null,
         turnId: meta.turnId ?? null,
         finishReason: result.finishReason,
-        promptTokens: result.usage.promptTokens,
-        completionTokens: result.usage.completionTokens,
+        promptTokens: result.usage.inputTokens,
+        completionTokens: result.usage.outputTokens,
       },
       'completions passthrough: anthropic completion finished',
     );
@@ -119,8 +119,8 @@ async function generateAnthropic(
       agentDid: meta.agentDid,
       provider: brain.connector,
       model: brain.modelId,
-      tokensIn: result.usage.promptTokens,
-      tokensOut: result.usage.completionTokens,
+      tokensIn: result.usage.inputTokens,
+      tokensOut: result.usage.outputTokens,
       // #2204: the AI SDK surfaces the provider's own response id here.
       externalId: result.response?.id,
     });
@@ -149,10 +149,9 @@ function streamAnthropic(
     messages,
     tools,
     toolChoice,
-    toolCallStreaming: true,
     maxRetries: 1,
     abortSignal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
-    ...(body.max_tokens !== undefined ? { maxTokens: body.max_tokens } : {}),
+    ...(body.max_tokens !== undefined ? { maxOutputTokens: body.max_tokens } : {}),
     ...(body.temperature !== undefined ? { temperature: body.temperature } : {}),
     onFinish: ({ finishReason, usage, response }) => {
       log.info(
@@ -162,8 +161,8 @@ function streamAnthropic(
           sessionId: meta.sessionId ?? null,
           turnId: meta.turnId ?? null,
           finishReason,
-          promptTokens: usage.promptTokens,
-          completionTokens: usage.completionTokens,
+          promptTokens: usage.inputTokens,
+          completionTokens: usage.outputTokens,
         },
         'completions passthrough: anthropic stream finished',
       );
@@ -176,8 +175,8 @@ function streamAnthropic(
         agentDid: meta.agentDid,
         provider: brain.connector,
         model: brain.modelId,
-        tokensIn: usage.promptTokens,
-        tokensOut: usage.completionTokens,
+        tokensIn: usage.inputTokens,
+        tokensOut: usage.outputTokens,
         // #2204: same provider response id the non-streaming path reads off `result.response.id`.
         externalId: response?.id,
       }).catch((err: unknown) => {
@@ -216,17 +215,17 @@ function streamAnthropic(
 function encodePart(builder: OpenAIStreamChunkBuilder, part: TextStreamPart<ToolSet>): Uint8Array | undefined {
   switch (part.type) {
     case 'text-delta':
-      return sseEncode(builder.textDelta(part.textDelta));
-    case 'tool-call-streaming-start':
-      return sseEncode(builder.toolCallStart(part.toolCallId, part.toolName));
-    case 'tool-call-delta':
-      return sseEncode(builder.toolCallArgsDelta(part.toolCallId, part.argsTextDelta));
+      return sseEncode(builder.textDelta(part.text));
+    case 'tool-input-start':
+      return sseEncode(builder.toolCallStart(part.id, part.toolName));
+    case 'tool-input-delta':
+      return sseEncode(builder.toolCallArgsDelta(part.id, part.delta));
     case 'tool-call': {
-      const chunk = builder.toolCallComplete(part.toolCallId, part.toolName, part.args);
+      const chunk = builder.toolCallComplete(part.toolCallId, part.toolName, part.input);
       return chunk ? sseEncode(chunk) : undefined;
     }
     case 'finish':
-      return sseEncode(builder.finish(part.finishReason, part.usage));
+      return sseEncode(builder.finish(part.finishReason, part.totalUsage));
     case 'error':
       return sseEncode({ error: { message: describeError(part.error), type: 'upstream_error' } });
     default:

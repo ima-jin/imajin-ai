@@ -22,12 +22,27 @@ it('serves the real contract at the endpoint advertised by the catalogue', async
   expect(parse(await response.text())).toEqual(spec);
 });
 
+it.each(['issued', 'refused', 'grant-issued', 'grant-revoked'] as const)('registers SSH cert %s as a signed mechanical event', action => {
+  expect(ATTESTATION_TYPES).toContain(`vault.ssh-cert.${action}`);
+  expect(MECHANICAL_ATTESTATION_TYPES).toContain(`vault.ssh-cert.${action}`);
+});
+
+it('advertises the fixed certificate policy and rejects caller options in the contract', () => {
+  const sign = spec.paths['/api/vault/ssh-ca/sign'].post;
+  const schema = sign.requestBody.content['application/json'].schema;
+  expect(schema.additionalProperties).toBe(false);
+  expect(schema.properties.ttl).toEqual({ type: 'integer', minimum: 1, maximum: 900, default: 600 });
+  expect(schema.properties.extensions).toBeUndefined();
+  expect(schema.properties.criticalOptions).toBeUndefined();
+  expect(sign.description).toContain('force-command');
+});
+
 it('fails closed when the vault spec is not available', () => {
   vi.spyOn(specReader, 'readApiSpec').mockReturnValue(null);
   expect(serveVaultSpec().status).toBe(503);
 });
 
-it.each(['', '/rotate', '/revoke', '/trusted-keys'])('discovers the live SSH CA route %s in the spec catalogue', suffix => {
+it.each(['', '/rotate', '/revoke', '/trusted-keys', '/sign', '/grants', '/grants/revoke'])('discovers the live SSH CA route %s in the spec catalogue', suffix => {
   vi.spyOn(process, 'cwd').mockReturnValue(root);
   const path = `/api/vault/ssh-ca${suffix}`;
   expect(listApiSpecs().find(item => item.service === 'vault')?.paths).toContain(path);

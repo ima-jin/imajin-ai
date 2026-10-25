@@ -41,7 +41,7 @@ import { VaultDelegationError } from './errors';
 import { isInternalSecretField } from './internal-secret';
 import { rotateInternalSecret } from './internal-secret-rotate';
 import { reissueFieldGrants } from './shared-internal-secret';
-import { isCloudflareImportedKeyField, isPrivateCustodyField, isSshCaField } from './field-grammar';
+import { isBankDetailsField, isCloudflareImportedKeyField, isPrivateCustodyField, isSshCaField } from './field-grammar';
 import { isCloudflarePurpose } from '@/src/lib/cloudflare/contract';
 import { forEachSequential, mapWithConcurrency } from '@/src/lib/async/sequential';
 
@@ -1396,7 +1396,7 @@ export async function listRenewableGrants(options: {
   const horizon = new Date(now.getTime() + (options.withinMs ?? 0));
 
   const envelopes = (await db.select().from(vaultOwnerEnvelopes))
-    .filter(envelope => !isSshCaField(envelope.field));
+    .filter(envelope => !isSshCaField(envelope.field) && !isBankDetailsField(envelope.field));
 
   // Each envelope's grant lookups are independent reads: scan a few envelopes at a
   // time, then flatten in envelope order so the worklist order is unchanged.
@@ -1582,6 +1582,7 @@ export function canonicalizeGrantPayload(grant: {
   wrappedNonce: string;
   keyId: string;
   expiresAt: Date | null;
+  sshScope?: VaultDelegationGrant['sshScope'];
 }): string {
   return JSON.stringify({
     expiresAt: grant.expiresAt?.toISOString() ?? null,
@@ -1590,6 +1591,10 @@ export function canonicalizeGrantPayload(grant: {
     keyId: grant.keyId,
     ownerXPub: grant.ownerXPub,
     subject: grant.subject,
+    ...(grant.sshScope ? { sshScope: {
+      caId: grant.sshScope.caId, principals: grant.sshScope.principals,
+      forceCommand: grant.sshScope.forceCommand, allowedHosts: grant.sshScope.allowedHosts,
+    } } : {}),
     wrappedKey: grant.wrappedKey,
     wrappedNonce: grant.wrappedNonce,
   });
@@ -1622,7 +1627,7 @@ export async function _applyDelegationGrant(
   grant: Pick<VaultDelegationGrant,
     'subject' | 'grantedTo' | 'field' | 'ownerXPub' |
     'wrappedKey' | 'wrappedNonce' | 'keyId' | 'ownerSignature' | 'expiresAt'
-  >,
+  > & { sshScope?: VaultDelegationGrant['sshScope'] },
   nodeXPriv: string,
   ownerEdPub: string,
 ): Promise<string> {
@@ -1726,7 +1731,7 @@ export async function fetchGrantSecret(params: {
     // someone else would let a caller enumerate grantIds it cannot use.
     return { status: 'not_grantee' };
   }
-  if (isSshCaField(grant.field) || (!params.kernelCredentialUse && (isCloudflarePurpose(grant.purpose) || isCloudflareImportedKeyField(grant.field)))) {
+  if (isSshCaField(grant.field) || (!params.kernelCredentialUse && (isBankDetailsField(grant.field) || isCloudflarePurpose(grant.purpose) || isCloudflareImportedKeyField(grant.field)))) {
     return { status: 'not_grantee' };
   }
   if (grant.status !== 'active') {

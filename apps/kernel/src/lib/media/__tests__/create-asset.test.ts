@@ -13,6 +13,11 @@ const mockInsertValues = vi.fn(() => ({
   returning: mockInsertValuesReturning,
   onConflictDoNothing: vi.fn(() => ({ returning: vi.fn().mockResolvedValue([]) })),
 }));
+const legalMocks = vi.hoisted(() => ({ sign: vi.fn(), prepare: vi.fn() }));
+vi.mock('@/src/lib/media/content-signer', () => ({ contentSigner: { sign: legalMocks.sign } }));
+vi.mock('@/src/lib/auth/emit-mechanical-attestation', () => ({ prepareMechanicalAttestation: legalMocks.prepare }));
+import { composeLegalEntity } from '../../profile/legal-entity-document';
+import { legalEntityFixture } from '../../profile/__tests__/legal-entity-fixture';
 const mockSelectFromWhereLimit = vi.fn().mockResolvedValue([]);
 const mockSelectFromWhere = vi.fn(() => ({ limit: mockSelectFromWhereLimit }));
 const mockSelectFrom = vi.fn(() => ({ where: mockSelectFromWhere }));
@@ -21,11 +26,15 @@ const mockUpdateSet = vi.fn(() => ({ where: mockUpdateSetWhere }));
 
 vi.mock('@/src/db', () => ({
   db: {
+    transaction: vi.fn(async fn => fn({
+      insert: () => ({ values: mockInsertValues }),
+    })),
     select: vi.fn(() => ({ from: mockSelectFrom })),
     insert: vi.fn(() => ({ values: mockInsertValues })),
     update: vi.fn(() => ({ set: mockUpdateSet })),
   },
   assets: {},
+  attestations: {},
   folders: {},
   assetFolders: {},
 }));
@@ -64,7 +73,8 @@ vi.mock('@imajin/logger', () => ({
   createLogger: vi.fn(() => ({ warn: vi.fn(), error: vi.fn(), info: vi.fn() })),
 }));
 
-vi.mock('@imajin/fair', () => ({
+vi.mock('@imajin/fair', async importOriginal => ({
+  ...await importOriginal<typeof import('@imajin/fair')>(),
   getDefaultManifest: vi.fn(() => ({ id: '', created: '', access: {} })),
   signManifest: vi.fn(async (m: unknown) => m),
   canonicalize: vi.fn(() => '{}'),
@@ -136,6 +146,8 @@ function setupInsert(metadataOverride: unknown = { context: { app: 'article' } }
 
 beforeEach(() => {
   vi.clearAllMocks();
+  legalMocks.sign.mockImplementation(async manifest => ({ ...manifest, signature: { value: 'fixture-signature' } }));
+  legalMocks.prepare.mockResolvedValue({ id: 'att_legal', signature: 'fixture-signature' });
   vi.stubEnv('PLATFORM_DID', 'did:imajin:node');
   mockEmitAttestation.mockReset().mockResolvedValue({});
   vi.mocked(writeFile).mockReset().mockResolvedValue(undefined);
@@ -151,9 +163,77 @@ beforeEach(() => {
   mockUpdateSetWhere.mockResolvedValue(undefined);
 });
 
+describe('createAsset — signed legal control document', () => {
+  function legalInput() {
+    return {
+      ...MARKDOWN_INPUT, controlDocument: 'legal-entity' as const,
+      buffer: Buffer.from(composeLegalEntity(MARKDOWN_INPUT.ownerDid, legalEntityFixture())),
+      context: null, filename: 'legal-entity.md',
+    };
+  }
+  it('writes the conventional private signed doc, immutable to generic tools, with no field copies', async () => {
+    setupInsert({ kind: 'legal-entity' });
+    await createAsset(legalInput());
+    expect(writeFile).toHaveBeenCalledWith(expect.stringMatching(/\/assets\/legal-entity\.md$/), expect.any(Buffer));
+    expect(writeFile).toHaveBeenCalledWith(expect.stringMatching(/\/assets\/legal-entity\.fair\.json$/), expect.stringContaining('fixture-signature'));
+    expect(legalMocks.sign).toHaveBeenCalledWith(expect.objectContaining({
+      access: { type: 'private' }, integrity: { hash: 'deadbeef', size: legalInput().buffer.byteLength },
+    }));
+    expect(mockInsertValues).toHaveBeenCalledWith(expect.objectContaining({
+      metadata: { kind: 'legal-entity' }, immutable: true,
+    }));
+    expect(legalMocks.prepare).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'document.created', subjectDid: MARKDOWN_INPUT.ownerDid,
+      payload: expect.objectContaining({ schema: 'legal-entity:v1', operation: 'save' }),
+    }));
+    expect(mockDeriveArticleProjection).not.toHaveBeenCalled();
+  });
+  it('does not write any bytes when signing or attestation preparation fails', async () => {
+    legalMocks.sign.mockRejectedValueOnce(new Error('unavailable'));
+    await expect(createAsset(legalInput())).rejects.toThrow('unavailable');
+    legalMocks.prepare.mockRejectedValueOnce(new Error('attestation unavailable'));
+    await expect(createAsset(legalInput())).rejects.toThrow('attestation unavailable');
+    expect(writeFile).not.toHaveBeenCalled();
+    expect(mockInsertValues).not.toHaveBeenCalled();
+  });
+  it('rejects invalid legal schema before file/DB writes', async () => {
+    await expect(createAsset({ ...legalInput(), buffer: Buffer.from('no header') })).rejects.toThrow('kind');
+    expect(writeFile).not.toHaveBeenCalled();
+  });
+});
+
 afterEach(() => vi.unstubAllEnvs());
 
 describe('createAsset — JSON MIME allowlist (#2889)', () => {
+  const staged = {
+    ...MARKDOWN_INPUT, context: null, dedup: false, classify: false,
+    immutable: true, status: 'processing' as const, access: 'private',
+  };
+  it('stages a signed immutable row on its caller transaction without upload side effects', async () => {
+    setupInsert();
+    const tx = { insert: vi.fn(() => ({ values: mockInsertValues })) };
+    await createAsset({ ...staged, tx: tx as never });
+    expect(tx.insert).toHaveBeenCalledOnce();
+    expect(mockInsertValues).toHaveBeenCalledWith(expect.objectContaining({ status: 'processing', immutable: true }));
+    expect(legalMocks.sign).toHaveBeenCalledOnce();
+    expect(mockEmitAttestation).not.toHaveBeenCalled();
+    expect(mockDeriveArticleProjection).not.toHaveBeenCalled();
+  });
+  it.each([
+    { tx: undefined }, { immutable: false }, { access: 'public' },
+    { dedup: true }, { classify: true }, { context: { app: 'profile' } }, { controlDocument: 'legal-entity' as const },
+  ])('refuses an unsafe staged configuration before storage', async override => {
+    const tx = { insert: vi.fn() };
+    await expect(createAsset({ ...staged, tx: tx as never, ...override })).rejects.toThrow('Staged assets require');
+    expect(writeFile).not.toHaveBeenCalled();
+    expect(mockInsertValues).not.toHaveBeenCalled();
+  });
+  it('fails closed if staged signing fails, before any file or row write', async () => {
+    legalMocks.sign.mockRejectedValueOnce(new Error('Synthetic signing failure'));
+    await expect(createAsset({ ...staged, tx: {} as never })).rejects.toThrow('Synthetic signing failure');
+    expect(writeFile).not.toHaveBeenCalled();
+    expect(mockInsertValues).not.toHaveBeenCalled();
+  });
   it('allows application/json as an exact MIME type', () => {
     expect(isAllowedMime('application/json')).toBe(true);
     expect(isAllowedMime('application/pdf')).toBe(true);

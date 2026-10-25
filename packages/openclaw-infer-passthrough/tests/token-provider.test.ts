@@ -11,6 +11,7 @@ function jsonResponse(body: unknown, status = 200): Response {
 }
 
 describe('revocation classification boundaries', () => {
+  afterEach(() => vi.unstubAllGlobals());
   it.each([null, 'revoked', {}, { error: 1 }, { error: 'insufficient_scope' }])('does not treat %j as consent loss', async (body) => {
     expect(isRevokedGrant(body)).toBe(false);
     const source = { getToken: vi.fn(), invalidate: vi.fn() };
@@ -18,6 +19,27 @@ describe('revocation classification boundaries', () => {
     await rejectRevokedGrant(response, source);
     expect(source.invalidate).not.toHaveBeenCalled();
     expect(await response.json()).toEqual(body);
+  });
+
+  it.each([
+    null, {}, { token: '', expiresIn: 600, scopes: [] },
+    { token: 'test-token', expiresIn: 0, scopes: [] },
+    { token: 'test-token', expiresIn: -1, scopes: [] },
+    { token: 'test-token', expiresIn: '600', scopes: [] },
+    { token: 'test-token', expiresIn: 600, scopes: [1] },
+    { token: 'test-token', expiresIn: 600 },
+  ])('rejects malformed or already-expired mint responses: %j', async (body) => {
+    vi.stubGlobal('fetch', vi.fn(async () => jsonResponse(body)));
+    await expect(mintAppToken('https://kernel.test', APP_DID, generateKeypair().privateKey, PRINCIPAL_DID))
+      .rejects.toThrow('Invalid token response');
+  });
+
+  it('bounds a hung mint with an abort signal', async () => {
+    vi.stubGlobal('fetch', vi.fn((_url: string, init?: RequestInit) => new Promise((_resolve, reject) => {
+      init!.signal!.addEventListener('abort', () => reject(new Error('timeout')));
+    })));
+    await expect(mintAppToken('https://kernel.test', APP_DID, generateKeypair().privateKey, PRINCIPAL_DID, undefined, undefined, 10))
+      .rejects.toBeInstanceOf(UpstreamUnavailableError);
   });
 
   it('leaves a non-JSON 403 unchanged', async () => {

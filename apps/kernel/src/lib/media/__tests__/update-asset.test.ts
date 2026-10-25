@@ -14,14 +14,25 @@ const mockSelectWhere = vi.fn(() => ({ limit: mockLimit }));
 const mockFrom = vi.fn(() => ({ where: mockSelectWhere }));
 const mockUpdateWhere = vi.fn().mockResolvedValue(undefined);
 const mockSet = vi.fn(() => ({ where: mockUpdateWhere }));
+const mockAttestationValues = vi.fn();
 
 vi.mock('@/src/db', () => ({
   db: {
+    transaction: vi.fn(async fn => fn({
+      update: () => ({ set: mockSet }),
+      insert: () => ({ values: mockAttestationValues }),
+    })),
     select: vi.fn(() => ({ from: mockFrom })),
     update: vi.fn(() => ({ set: mockSet })),
   },
   assets: {},
+  attestations: {},
 }));
+const legalMocks = vi.hoisted(() => ({ prepare: vi.fn() }));
+vi.mock('@/src/lib/auth/emit-mechanical-attestation', () => ({ prepareMechanicalAttestation: legalMocks.prepare }));
+import { composeLegalEntity, composeLegalEntityRevocation } from '../../profile/legal-entity-document';
+import { legalEntityFixture, ownerDid } from '../../profile/__tests__/legal-entity-fixture';
+import { canWriteAssetContent } from '../write-access';
 
 vi.mock('drizzle-orm', () => ({
   eq: vi.fn(),
@@ -37,7 +48,8 @@ vi.mock('@imajin/cid', () => ({
 }));
 
 // v1.1 guard returns false so the .fair re-sign path is skipped in tests.
-vi.mock('@imajin/fair', () => ({
+vi.mock('@imajin/fair', async importOriginal => ({
+  ...await importOriginal<typeof import('@imajin/fair')>(),
   isFairManifestV11: vi.fn(() => false),
 }));
 
@@ -102,6 +114,61 @@ function setupAsset(overrides: Record<string, unknown> = {}) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  legalMocks.prepare.mockResolvedValue({ id: 'att_legal', signature: 'fixture-signature' });
+});
+
+describe('updateAssetContent — legal control document', () => {
+  function input(content = composeLegalEntity(ownerDid, legalEntityFixture())) {
+    return { assetId: 'asset_test', requesterDid: ownerDid, composedBy: 'actual-human', content, controlDocument: 'legal-entity' as const };
+  }
+  function asset() {
+    return setupAsset({ ownerDid, immutable: true, metadata: { kind: 'legal-entity' }, hash: 'old-hash' });
+  }
+  it('blocks generic media writes even for the owner', async () => {
+    asset();
+    expect(await updateAssetContent({ ...input(), controlDocument: undefined })).toMatchObject({ ok: false, code: 'forbidden' });
+    expect(writeFile).not.toHaveBeenCalled();
+  });
+  it('preserves the canonical owner boundary even on the internal settings rail', async () => {
+    asset();
+    vi.mocked(canWriteAssetContent).mockReturnValueOnce({ allowed: false, code: 'forbidden', reason: 'Not owner' });
+    expect(await updateAssetContent({ ...input(), requesterDid: 'unrelated' })).toMatchObject({ ok: false, code: 'forbidden' });
+    expect(writeFile).not.toHaveBeenCalled();
+  });
+  it('rejects malformed or oversized source documents without modifying storage', async () => {
+    asset();
+    for (const content of ['invalid', 'a'.repeat(16385)]) {
+      expect(await updateAssetContent(input(content))).toMatchObject({ ok: false, code: 'invalid_document' });
+    }
+    expect(writeFile).not.toHaveBeenCalled();
+  });
+  it('refuses unsigned saves before writing any bytes', async () => {
+    asset();
+    vi.mocked(contentSigner.sign).mockRejectedValueOnce(new Error('unavailable'));
+    expect(await updateAssetContent(input())).toMatchObject({ ok: false, code: 'signing_failed' });
+    expect(writeFile).not.toHaveBeenCalled();
+  });
+  it('requires a durable change attestation before writing any bytes', async () => {
+    asset();
+    vi.mocked(contentSigner.sign).mockImplementationOnce(async manifest => manifest);
+    legalMocks.prepare.mockRejectedValueOnce(new Error('attestation unavailable'));
+    expect(await updateAssetContent(input())).toMatchObject({ ok: false, code: 'signing_failed' });
+    expect(writeFile).not.toHaveBeenCalled();
+  });
+  it('writes a signed tombstone, retained deleted row, and attestation before document.changed', async () => {
+    asset();
+    vi.mocked(contentSigner.sign).mockImplementationOnce(async manifest => manifest);
+    const result = await updateAssetContent(input(composeLegalEntityRevocation(ownerDid)));
+    expect(result.ok).toBe(true);
+    expect(mockSet).toHaveBeenCalledWith(expect.objectContaining({ status: 'deleted' }));
+    expect(legalMocks.prepare).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'document.amended', payload: expect.objectContaining({ operation: 'revoke', previousHash: 'old-hash', composedBy: 'actual-human' }),
+    }));
+    expect(mockAttestationValues).toHaveBeenCalledWith(expect.objectContaining({ id: 'att_legal' }));
+    expect(publish).toHaveBeenCalledWith('document.changed', expect.objectContaining({
+      issuer: ownerDid, subject: 'asset_test', payload: expect.objectContaining({ prevCid: 'bafy-old-cid' }),
+    }));
+  });
 });
 
 // ─── Tests ─────────────────────────────────────────────────────────────────

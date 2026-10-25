@@ -2,7 +2,7 @@ import { ed25519 } from '@noble/curves/ed25519';
 import { randomBytes } from 'node:crypto';
 const rotationPublicKey = Buffer.from(ed25519.getPublicKey(randomBytes(32))).toString('hex');
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { GROUP_KEY_NAMESPACE, SSH_CA_NAMESPACE, isPrivateCustodyField } from '@/src/lib/vault/field-grammar';
+import { BANK_DETAILS_NAMESPACE, GROUP_KEY_NAMESPACE, SSH_CA_NAMESPACE, isPrivateCustodyField } from '@/src/lib/vault/field-grammar';
 
 const mocks = vi.hoisted(() => ({
   requireAdmin: vi.fn(),
@@ -75,7 +75,7 @@ vi.mock('@/src/lib/vault/errors', () => ({
     new Response(JSON.stringify({ error }), { status }),
 }));
 
-describe.each([GROUP_KEY_NAMESPACE, SSH_CA_NAMESPACE])('%s private custody', namespace => {
+describe.each([GROUP_KEY_NAMESPACE, SSH_CA_NAMESPACE, BANK_DETAILS_NAMESPACE])('%s private custody', namespace => {
   const FIELD = `${namespace}:did:imajin:group-test`;
   // Generated test-only seed; neither snapshots nor assertion diagnostics print it.
   const seed = randomBytes(32).toString('hex');

@@ -119,8 +119,8 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     return NextResponse.json({ error: 'Inference failed' }, { status: 500 });
   }
 
-  const promptTokens = result.usage?.promptTokens ?? 0;
-  const completionTokens = result.usage?.completionTokens ?? 0;
+  const promptTokens = result.usage?.inputTokens ?? 0;
+  const completionTokens = result.usage?.outputTokens ?? 0;
 
   // 10. Calculate cost
   const cost = calculateCost(modelId, promptTokens, completionTokens);

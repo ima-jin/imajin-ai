@@ -45,7 +45,7 @@ export async function lockSshCaPurpose(tx: Transaction, purpose: string) {
   await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))`);
 }
 
-async function records(tx: Transaction, purpose: string) {
+export async function sshCaRecords(tx: Pick<Transaction, 'select'>, purpose: string) {
   const rows = await tx.select().from(vaultMintedKeys).where(eq(vaultMintedKeys.purpose, `ssh-ca:${purpose}`));
   return rows.filter(row => isSshCaField(row.field));
 }
@@ -67,7 +67,7 @@ async function attest(tx: Transaction, action: Action, row: Pick<VaultMintedKey,
  * trust ends. A retiring key remains trusted for precisely MAX_CERT_TTL after it.
  * All records and attestations survive; no rows or sealed history are deleted.
  */
-function retire(tx: Transaction, rows: VaultMintedKey[], purpose: string, now: Date) {
+export function retireSshCas(tx: Transaction, rows: VaultMintedKey[], purpose: string, now: Date) {
   return forEachSequential(rows, async row => {
     if (row.status !== 'retiring') return;
     if (!row.revokedAt) throw new Error('Invalid CA retirement state');
@@ -85,7 +85,7 @@ export function mintSshCa(purpose: string, authority: MintAuthority, rotate = fa
   if (isVaultTier1()) throw new SshCaError(409, 'SSH CA requires kernel custody');
   return db.transaction(async tx => {
     await lockSshCaPurpose(tx, purpose);
-    const rows = await records(tx, purpose);
+    const rows = await sshCaRecords(tx, purpose);
     const active = rows.filter(row => row.status === 'active');
     if (active.length > 1) throw new Error('Ambiguous CA signer');
     if (!rotate && active.length) throw new SshCaError(409, 'SSH CA already exists; rotate it');
@@ -111,7 +111,7 @@ export function mintSshCa(purpose: string, authority: MintAuthority, rotate = fa
         previousTrustedUntil: new Date(now.getTime() + SSH_CA_MAX_CERT_TTL_SECONDS * 1000).toISOString(),
       });
     }
-    await retire(tx, rows, purpose, now);
+    await retireSshCas(tx, rows, purpose, now);
     return publicRecord(next, purpose);
   });
 }
@@ -119,7 +119,9 @@ export function mintSshCa(purpose: string, authority: MintAuthority, rotate = fa
 export function revokeSshCa(purpose: string, caId: string, authority: MintAuthority) {
   return db.transaction(async tx => {
     await lockSshCaPurpose(tx, purpose);
-    const row = (await records(tx, purpose)).find(record => record.id === caId);
+    const rows = await sshCaRecords(tx, purpose);
+    await retireSshCas(tx, rows, purpose, new Date());
+    const row = rows.find(record => record.id === caId);
     if (!row) throw new SshCaError(404, 'SSH CA not found');
     if (row.status === 'revoked') return { caId, alreadyRevoked: true };
     await revokeStaticSecretGrant(row.field, row.requestedBy, tx);
@@ -131,15 +133,14 @@ export function revokeSshCa(purpose: string, caId: string, authority: MintAuthor
   });
 }
 
-/** Public trust projection: retirement is reconciled on every read, even after restart. */
-export function trustedSshCaKeys(purpose: string): Promise<string> {
-  return db.transaction(async tx => {
-    await lockSshCaPurpose(tx, purpose);
-    const rows = await records(tx, purpose);
-    await retire(tx, rows, purpose, new Date());
-    const keys = rows.filter(row => row.status === 'active' || row.status === 'retiring')
-      .sort((a, b) => a.id.localeCompare(b.id))
-      .map(row => publicRecord(row, purpose).publicKey);
-    return keys.length ? `${keys.join('\n')}\n` : '';
-  });
+/** Anonymous reads never take the signing lock or write retirement attestations. */
+export async function trustedSshCaKeys(purpose: string): Promise<string> {
+  if (!isSshCaPurpose(purpose)) throw new SshCaError(400, 'Invalid SSH CA purpose');
+  const rows = await sshCaRecords(db, purpose);
+  const now = Date.now();
+  const keys = rows.filter(row => row.status === 'active' || (row.status === 'retiring'
+    && row.revokedAt && row.revokedAt.getTime() + SSH_CA_MAX_CERT_TTL_SECONDS * 1000 > now))
+    .sort((a, b) => a.id.localeCompare(b.id))
+    .map(row => publicRecord(row, purpose).publicKey);
+  return keys.length ? `${keys.join('\n')}\n` : '';
 }
