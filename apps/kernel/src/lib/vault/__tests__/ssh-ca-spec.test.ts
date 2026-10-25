@@ -22,6 +22,16 @@ it('serves the real contract at the endpoint advertised by the catalogue', async
   expect(parse(await response.text())).toEqual(spec);
 });
 
+it('documents verified GitHub job auth and mutually exclusive repo/environment grants', () => {
+  const sign = spec.paths['/api/vault/ssh-ca/sign'].post;
+  expect(spec.components.securitySchemes.githubOidc.name).toBe('x-github-oidc-token');
+  expect(sign.description).toContain('urn:imajin:vault:ssh-cert');
+  expect(sign.requestBody.content['application/json'].schema.required).not.toContain('job');
+  const grant = spec.paths['/api/vault/ssh-ca/grants'].post.requestBody.content['application/json'].schema;
+  expect(grant.oneOf[1].required).toEqual(['repository', 'environment']);
+  expect(grant.oneOf[1].not.required).toEqual(['grantee']);
+});
+
 it.each(['issued', 'refused', 'grant-issued', 'grant-revoked'] as const)('registers SSH cert %s as a signed mechanical event', action => {
   expect(ATTESTATION_TYPES).toContain(`vault.ssh-cert.${action}`);
   expect(MECHANICAL_ATTESTATION_TYPES).toContain(`vault.ssh-cert.${action}`);
@@ -50,7 +60,9 @@ it.each(['', '/rotate', '/revoke', '/trusted-keys', '/sign', '/grants', '/grants
   expect(existsSync(resolve(root, `app${path}/route.ts`))).toBe(true);
   const method = suffix === '/trusted-keys' ? 'get' : 'post';
   expect(spec.paths[path][method].operationId).toBeTruthy();
-  expect(spec.paths[path][method].security).toEqual(method === 'get' ? [] : [{ cookieAuth: [] }, { bearerAuth: [] }]);
+  const security: Record<string, never[]>[] = [{ cookieAuth: [] }, { bearerAuth: [] }];
+  if (suffix === '/sign') security.push({ githubOidc: [] });
+  expect(spec.paths[path][method].security).toEqual(method === 'get' ? [] : security);
 });
 
 it('documents only public responses, no caller-supplied key or consumer', () => {

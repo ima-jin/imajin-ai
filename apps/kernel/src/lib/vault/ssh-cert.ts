@@ -10,6 +10,7 @@ import { encodeSshUserCert, parseSshPublicKey } from './ssh-cert-wire';
 import { parseSignInput, validSshScope, type SshSignInput } from './ssh-cert-policy';
 import type { MintAuthority } from './mint-authority';
 import { SSH_CERT_ISSUANCE_LIMIT, SSH_CERT_ISSUANCE_WINDOW_SECONDS } from './ssh-ca-policy';
+import { githubGrantee, type GithubJob } from './github-oidc';
 
 type Transaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
 export type SshScope = NonNullable<VaultDelegationGrant['sshScope']>;
@@ -42,7 +43,8 @@ export function recordSshRefusal(grantee: string, status: number) {
 }
 
 export function issueSshGrant(purpose: string, grantee: string, scope: SshScope, expiresAt: Date,
-  authority: MintAuthority) {
+  authority: MintAuthority, github?: Pick<GithubJob, 'repository' | 'environment'>) {
+  if (github && githubGrantee(github.repository, github.environment) !== grantee) throw denied();
   if (!validSshScope(scope) || !/^did:[a-z0-9]+:[a-zA-Z0-9._:-]{1,200}$/.test(grantee)
     || !Number.isFinite(expiresAt.getTime()) || expiresAt.getTime() <= Date.now()) {
     throw new SshCaError(400, 'Invalid SSH grant policy');
@@ -65,10 +67,10 @@ export function issueSshGrant(purpose: string, grantee: string, scope: SshScope,
       ownerEdPub: node.senderPubkey, purpose: `ssh-cert:${purpose}`, status: 'active',
     });
     await audit(tx, 'grant-issued', grantee, {
-      grantId, purpose, grantee, ...scope, expiresAt: expiresAt.toISOString(), actor: authority.actingDid,
+      grantId, purpose, grantee, ...(github ? { github } : {}), ...scope, expiresAt: expiresAt.toISOString(), actor: authority.actingDid,
       composedBy: authority.composedBy,
     });
-    return { grantId, purpose, grantee, ...scope, expiresAt: expiresAt.toISOString() };
+    return { grantId, purpose, grantee, ...(github ? { github } : {}), ...scope, expiresAt: expiresAt.toISOString() };
   });
 }
 
@@ -90,8 +92,10 @@ export function revokeSshGrant(purpose: string, grantId: string, authority: Mint
 }
 
 /** A row lock also serializes generic vault revocation; no cached signer or policy. */
-export function signSshCert(input: SshSignInput, grantee: string) {
+export function signSshCert(input: SshSignInput, grantee: string, githubJob?: GithubJob) {
   input = parseSignInput(input);
+  if (grantee.startsWith('did:github:')
+    && (!githubJob || githubGrantee(githubJob.repository, githubJob.environment) !== grantee)) throw denied();
   return db.transaction(async tx => {
     await lockSshCaPurpose(tx, input.purpose);
     const rows = await sshCaRecords(tx, input.purpose);
@@ -133,7 +137,7 @@ export function signSshCert(input: SshSignInput, grantee: string) {
     if (grant.oneTime) await tx.update(vaultDelegationGrants).set({ consumedAt: new Date() })
       .where(eq(vaultDelegationGrants.id, grant.id));
     const payload = {
-      job: input.job, grantee, principal, host: input.host, ttl: validBefore - now,
+      job: input.job, ...(githubJob ? { githubJob } : {}), grantee, principal, host: input.host, ttl: validBefore - now,
       serial, keyId, caId: ca.id, grantId: grant.id, purpose: input.purpose, validAfter: now, validBefore,
       publicKeyFingerprint: `SHA256:${createHash('sha256').update(Buffer.from(input.publicKey.split(' ')[1], 'base64'))
         .digest('base64').replaceAll('=', '')}`,
