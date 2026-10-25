@@ -46,9 +46,11 @@ import { APPS_SOURCE, APPS_PROVISION_KIND } from '@/src/lib/apps/approvals-execu
 import { getAppProvisionStatus, getProvisionSignInAudience } from '@/src/lib/apps/provision';
 import { listSucceededAppProvisions } from '@/src/lib/apps/provision-list';
 import { previewManifestDeclarations } from '@/src/lib/apps/manifest-preview';
-import { APP_VISIBILITY_ERROR, isAppVisibility } from '@/src/lib/apps/visibility';
+import { isAppVisibility } from '@/src/lib/apps/visibility';
 import { isRepositoryName } from '@/src/lib/apps/template-lineage';
-import { APP_SIGN_IN_AUDIENCE_ERROR, isAppSignInAudience } from '@/src/lib/apps/sign-in-audience';
+import { isAppSignInAudience } from '@/src/lib/apps/sign-in-audience';
+
+import { validateDomainChoice } from '@/src/lib/apps/domain-choice';
 
 const log = createLogger('kernel:apps-provision-route');
 
@@ -137,34 +139,6 @@ function validateBody(body: ProvisionRequestBody): { ok: true; value: ValidatedB
       reissueClaim: body.reissueClaim === true,
     },
   };
-}
-
-function validateAudienceChoice(body: ProvisionRequestBody): string | null {
-  if (body.signInAudience !== undefined && !isAppSignInAudience(body.signInAudience)) return APP_SIGN_IN_AUDIENCE_ERROR;
-  if (body.reissueClaim === true && Object.hasOwn(body, 'signInAudience')) return 'Reissuing a claim cannot change signInAudience';
-  return null;
-}
-
-function validateDomainChoice(body: ProvisionRequestBody): string | null {
-  const audienceError = validateAudienceChoice(body);
-  if (audienceError) return audienceError;
-  if (body.visibility !== undefined && !isAppVisibility(body.visibility)) return APP_VISIBILITY_ERROR;
-  if (body.reissueClaim === true && Object.hasOwn(body, 'sourceRepo')) {
-    return 'Reissuing a claim cannot change sourceRepo';
-  }
-  if (body.sourceRepo !== undefined && !isRepositoryName(body.sourceRepo)) {
-    return 'sourceRepo must be an owner/name repository identifier';
-  }
-  if (body.siteOwnerDid !== undefined && (
-    typeof body.siteOwnerDid !== 'string' || !/^did:[a-z0-9]+:[A-Za-z0-9:._-]{1,200}$/.test(body.siteOwnerDid)
-  )) return 'siteOwnerDid must be a DID';
-  if (body.domain !== undefined && (
-    typeof body.domain !== 'string' || !/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.imajin\.ai$/.test(body.domain)
-  )) return 'domain must be a direct imajin.ai subdomain; custom domains require TXT verification';
-  if (body.reissueClaim === true && (body.siteOwnerDid !== undefined || body.domain !== undefined || body.visibility !== undefined)) {
-    return 'Reissuing a claim cannot change ownership, domain or visibility';
-  }
-  return null;
 }
 
 function provisionDetail(
