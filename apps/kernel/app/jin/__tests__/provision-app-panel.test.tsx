@@ -22,6 +22,7 @@ interface Reply {
 }
 
 interface FetchOptions {
+  groups?: Reply;
   isOperator?: boolean;
   approvalsOk?: boolean;
   approvals?: Array<{
@@ -46,12 +47,14 @@ function installFetch(initial: FetchOptions = {}) {
     isOperator: true,
     approvalsOk: true,
     approvals: [],
+    groups: { body: [] },
     post: { status: 201, body: { status: 'pending', proposalId: 'appprov_1' } },
     ledger: { ok: false, status: 404, body: { error: 'none' } },
     provisions: { body: { isOperator: true, provisions: [] } },
     ...initial,
   };
   const spy = vi.fn(async (url: string, init?: RequestInit) => {
+    if (url === '/auth/api/groups') return reply(state.groups ?? {});
     if (url === '/api/apps/provision' && init?.method === 'POST') {
       return reply(state.post ?? {});
     }
@@ -107,12 +110,89 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+describe('ProvisionAppPanel domain and site owner', () => {
+  const gbsDid = 'did:imajin:4HAssJChzMLewFpeNrH3pJGPp71nxpefLEihoid8uB2Q';
+  const gbsGroup = { groupDid: gbsDid, role: 'owner', scope: 'business', handle: 'gbs', name: 'GBS' };
+
+  it('submits the private dev GBS provision using its controlled organization DID', async () => {
+    const { spy } = installFetch({ groups: { body: [gbsGroup] } });
+    await renderVisible();
+    const option = await screen.findByRole('option', { name: /@gbs.*GBS.*did:imajin:/ });
+    expect(option.getAttribute('value')).toBe(gbsDid);
+    fill('Slug', 'gbs');
+    fill('Display name', 'GBS');
+    fill('Source repository', 'gbscontracting/website');
+    fill('Visibility', 'private');
+    fill('Domain', 'dev-gbs.imajin.ai');
+    fill('Site owner', gbsDid);
+    await submit();
+    expect(JSON.parse(postCalls(spy)[0][1]?.body as string)).toEqual({
+      slug: 'gbs', displayName: 'GBS', sourceRepo: 'gbscontracting/website',
+      template: 'ima-jin/imajin-app-template', attestationTypes: [],
+      visibility: 'private', domain: 'dev-gbs.imajin.ai', siteOwnerDid: gbsDid, signInAudience: 'members',
+    });
+    expect(spy).toHaveBeenCalledWith('/auth/api/groups', { credentials: 'include', cache: 'no-store' });
+  });
+
+  it('offers only valid groups the operator owns or administers, not members or actors', async () => {
+    installFetch({ groups: { body: [
+      gbsGroup,
+      { ...gbsGroup, groupDid: 'did:imajin:admin', role: 'admin', handle: 'admin' },
+      { ...gbsGroup, groupDid: 'did:imajin:member', role: 'member', handle: 'member' },
+      { ...gbsGroup, groupDid: 'did:imajin:actor', scope: 'actor', handle: 'actor' },
+      { ...gbsGroup, groupDid: 'bad-did', handle: 'invalid' },
+    ] } });
+    await renderVisible();
+    await screen.findByRole('option', { name: /@gbs/ });
+    expect(screen.getByRole('option', { name: /@admin/ })).toBeDefined();
+    expect(screen.queryByRole('option', { name: /@member|@actor|@invalid/ })).toBeNull();
+    expect(screen.queryByRole('textbox', { name: 'Site owner' })).toBeNull();
+  });
+
+  it.each([403, 500])('fails closed on a %s groups response and keeps default ownership available', async status => {
+    const { spy } = installFetch({ groups: { ok: false, status } });
+    await renderVisible();
+    await screen.findByText(/Unable to load groups you control/);
+    expect((screen.getByLabelText('Site owner') as HTMLSelectElement).options).toHaveLength(1);
+    await proposeCoffee();
+    const payload = JSON.parse(postCalls(spy)[0][1]?.body as string);
+    expect(payload.visibility).toBe('public');
+    expect(payload).not.toHaveProperty('siteOwnerDid');
+    expect(payload).not.toHaveProperty('domain');
+  });
+
+  it('refuses a selected DID outside the controlled group list even if an option is injected', async () => {
+    const { spy } = installFetch();
+    await renderVisible();
+    const select = screen.getByLabelText('Site owner') as HTMLSelectElement;
+    const option = document.createElement('option');
+    option.value = 'did:imajin:outsider';
+    option.textContent = 'Outsider';
+    select.append(option);
+    fill('Site owner', option.value);
+    await proposeCoffee();
+    expect(screen.getByRole('alert').textContent).toBe('Choose a group you own or administer');
+    expect(postCalls(spy)).toHaveLength(0);
+  });
+
+  it.each(['customer.example', 'nested.dev-gbs.imajin.ai', 'https://dev-gbs.imajin.ai'])('refuses domain %s before POST', async domain => {
+    const { spy } = installFetch();
+    await renderVisible();
+    fill('Domain', domain);
+    await proposeCoffee();
+    expect(screen.getByLabelText('Domain').getAttribute('aria-invalid')).toBe('true');
+    expect(screen.getByRole('alert').textContent).toBe('domain must be a direct imajin.ai subdomain; custom domains require TXT verification');
+    expect(postCalls(spy)).toHaveLength(0);
+  });
+});
+
 describe('ProvisionAppPanel visibility', () => {
   it('renders nothing for a non-operator', async () => {
     const { spy } = installFetch({ isOperator: false });
     render(<ProvisionAppPanel />);
     await waitFor(() => expect(spy).toHaveBeenCalled());
     expect(screen.queryByTestId('provision-app-panel')).toBeNull();
+    expect(spy.mock.calls.some(([url]) => url === '/auth/api/groups')).toBe(false);
   });
 
   it('renders nothing when the approvals route is unavailable', async () => {
@@ -216,6 +296,7 @@ describe('ProvisionAppPanel submit', () => {
     expect(init.credentials).toBe('include');
     expect(JSON.parse(init.body as string)).toEqual({
       slug: 'coffee',
+      visibility: 'public',
       signInAudience: 'members',
       displayName: 'Coffee',
       template: 'ima-jin/imajin-app-template',

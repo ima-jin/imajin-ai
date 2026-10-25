@@ -666,6 +666,9 @@ function renderAppsProvisionDetail(approval: OperatorApprovalCard): ReactNode {
       <p>Provision <span className="font-medium text-gray-100">{displayName}</span> as a third-party app.</p>
       <p className="text-xs text-gray-400">{approval.summary}</p>
       <div className="text-xs text-gray-500"><span className="uppercase tracking-wide mr-2">Slug</span><span className="font-mono">{slug}</span></div>
+      <div className="text-xs text-gray-500"><span className="uppercase tracking-wide mr-2">Visibility</span><span className="font-mono">{detailString(detail, 'visibility', 'public')}</span></div>
+      <div className="text-xs text-gray-500"><span className="uppercase tracking-wide mr-2">Domain</span><span className="font-mono">{detailString(detail, 'domain', `${slug}.imajin.ai`)}</span></div>
+      <div className="text-xs text-gray-500"><span className="uppercase tracking-wide mr-2">Site owner</span><span className="font-mono">{detailString(detail, 'siteOwnerDid', 'Node operator (default)')}</span></div>
       {sourceRepo ? (
         <>
           <div className="text-xs text-gray-500"><span className="uppercase tracking-wide mr-2">Source repository</span><span className="font-mono">{sourceRepo}</span></div>
