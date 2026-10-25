@@ -76,11 +76,30 @@ close them as the work lands. As of this writing:
 - **`.fair` manifests are machine-readable commercial instructions, not legal instruments.** They
   do not by themselves establish copyright ownership, resolve disputes, or carry tax/jurisdiction
   semantics.
-- **Vault-sealed secrets are node-sealed (v1), not zero-custody.** Connector credentials (GitHub PATs,
-  Discord bot tokens, etc.) are encrypted with a key derived from the node's `AUTH_PRIVATE_KEY`.
-  The node operator *can technically decrypt* secrets stored on behalf of users. The system is
-  encrypted at rest and access-controlled, but this is NOT zero-custody. Owner-sealed
-  (zero-custody) storage is a tracked hardening milestone.
+- **Vault custody is not universally zero-custody.** V1 node-sealed entries and
+  v2 delegation-grant entries coexist. Tier 0 self-grants remain node-controlled;
+  optional Tier 1 uses an external owner agent, but an active grant still permits
+  node access. Implementation is not evidence of completed production migration.
+  The sealed `bank-details:v1` API is explicitly Tier 0: fields are individually
+  sealed, saves create immutable replacements, and revocation retains signed
+  history. Tier 1 saves fail closed; generic media/vault access cannot disclose
+  the protected fields. See the [custody runbook](docs/vault-custody-migration-runbook.md).
+- **SSH certificates depend on host enforcement.** The independent in-vault CA
+  never exports its private key. Operation grants bind principal, forced command,
+  allowed hosts and expiry; issuance is capped at 900 seconds and grant expiry.
+  Grant/CA revocation stops new issuance, not certificates already accepted by a
+  host. Hosts must distribute current public trust and restrict principals.
+  The GitHub deploy action binds verified OIDC to repository + environment, not
+  a workflow-name allowlist. Its private job key requires non-swappable tmpfs and
+  ephemeral runner teardown; pinned host keys are mandatory. See the
+  [deploy contract](docs/deploy/vault-ssh-deploy.md).
+- **Corpus ownership is not authority.** Registry-resolved GitHub owner groups
+  require live owner-issued corpus grants. Creating an unclaimed stub or having
+  membership alone grants no access. The source owner's granted OAuth connector
+  is resolved server-side per operation; no node-wide token, CLI credential or
+  personal-connector fallback exists. The private kernel-to-corpus credential
+  transport must remain on a trusted network or TLS. See the
+  [owner migration and credential runbook](apps/corpus/README.md).
 - **The node key is a server secret.** `AUTH_PRIVATE_KEY` sits in the kernel's process
   environment and plays every node role at once: signing identity, vault sealing and
   delegation keys, session-token key. A kernel compromise can forge anything the node

@@ -1,93 +1,783 @@
-# Imajin — The Light Web
+# Imajin — You compose. Imajin orchestrates. Signed. Legible.
 
-> For 2,000 years the money was in the lie. Information asymmetry — I know what you don't, I hide it, I profit from the gap — is the business model under advertising, finance, platforms, and supply chains.
-> Imajin is the light web: a sovereign, auditable layer where the signed record IS the value, so honesty becomes the profitable move. Be honest. Make money.
-> Services are commodity. Chains are permanent. Identity, attribution, trust, and settlement are structural.
+Generated 2026-10-25 UTC from source 4d7b2dc1aa3a1dc721a35c863b47d283ae5c67bf, release comparison v0.8.26..4d7b2dc1a.
+This is a source inventory, not deployment evidence or a permission grant.
 
-## Full specification
+Imajin is Agentic Relation Management. The kernel serves six primitives:
+Attestation · Communication · Attribution · Settlement · Discovery · Revocation.
+Identity is their subject, not a seventh primitive. Proof of history records who
+asserted what; a signature does not establish the truth of the assertion.
+User signatures, node-witnessed records and unsigned logs have different strength.
 
-For the complete protocol spec, architecture, and API reference:
-https://imajin.ai/llms-full.txt
+Kernel: apps/kernel, canonical origin https://jin.imajin.ai, dev localhost:3000.
+Internal services: broker-agent and corpus; corpus production is assigned to gx10
+in the recorded deployment posture, not the kernel host. Apps built on Imajin
+(events, coffee, dykil, learn, links, market) have independently owned repositories.
+Use their scoped-token contract and published @ima-jin/* SDKs, not kernel imports.
+Workspace imports use @imajin/*. private:true is not evidence of publication;
+the generated package table in README.md links checked public registry metadata.
+License: Imajin Network License (INL) v1.0, source-available, not MIT.
 
-## The Problem
+## Integration and safety
 
-Every platform you use holds your identity, reputation, and audience hostage. Not because they're evil — because the architecture requires it, and because the architecture pays to keep you in the dark. Imajin fixes this structurally: users hold the keys, the record is signed and portable, and the incentive flips — a system that can't profit by lying to you has to serve you. Identity is self-certifying, reputation is portable, data lives on hardware you own.
+- Five standing tiers: soft, preliminary, established, steward, operator.
+  Soft identities have no actor signing key; route authorization still applies.
+- Key-based registration derives did:imajin:<base58(public-key bytes)>.
+  DFOS linking is separate and optional. Do not substitute a SHA-256 DID derivation.
+- Session JWTs use EdDSA. Host-only cookies are the default; domain scope is an
+  explicit rollback. /auth/api/session/soft resolves an identity without setting
+  a cookie. Use the auth spec for verified login/onboarding contracts.
+- Registered apps use user-delegated or session-less app-service tokens with
+  explicit scopes. Owner/admin membership alone never substitutes for a required
+  delegation grant. Never fall back to the personal DID after act-as refusal.
+- Vault supports v1 node-sealed and v2 delegation-grant entries. Tier 0 remains
+  node-controlled, not zero-custody; optional Tier 1 is not universal deployment.
+  Secrets are sealed through kernel tools, never pasted into code, logs or docs.
+- Bank-details:v1 uses GET/PUT/DELETE /auth/api/bank-details with human-session,
+  auth-scoped owner/admin authorization. Financial fields are individually sealed;
+  public metadata carries references and visibility only. Saves replace immutable
+  records; revocation retains history. Tier 1 saves fail closed. No settings UI,
+  invoice disclosure or generic secret-fetch access is implied.
+- Legal-entity:v1 uses /auth/legal-entity and /auth/api/legal-entity; each legal
+  name/address field has independent public/on-consent/never release. Consumers use
+  getLegalEntity, not generic media access or metadata copies.
+- /cloudflare/api/grants lists the authenticated grantee's live exact-zone
+  metadata, never credentials; an acting identity cannot widen that list.
+- SSH CA lifecycle and signing are purpose-scoped. /api/vault/ssh-ca/sign uses
+  live operation grants, signed principal/forced-command/host restrictions, TTL
+  bounded by grant expiry and a 900-second maximum. Revoking authority stops new
+  signing, not already-issued certificates. Hosts must enforce public trust and
+  principals; allowedHosts is issuance policy, not an OpenSSH host restriction.
+- .github/actions/vault-ssh-deploy verifies GitHub OIDC for an exact repository
+  and environment. id-token:write and a protected environment are required.
+  The per-job private key stays in non-swappable tmpfs; pinned known-hosts is
+  mandatory. See docs/deploy/vault-ssh-deploy.md, not a stored deploy-key recipe.
+- Corpus GitHub partitions belong to the registry-resolved source-owner group DID;
+  workspace sources remain principal-owned. Live owner-issued corpus grants are
+  checked before claims or credential lookup. Membership/stub creation grants no
+  access. OAuth connector refs belong to that owner; no personal-connector,
+  GITHUB_TOKEN, GH_TOKEN or gh CLI credential fallback. Follow apps/corpus/README.md
+  for explicit connector selection and the signed, row-preserving owner migration.
+- Inference passthrough uses /infer/v1/*, principal-based token minting and the
+  usable model catalog. The release updater requires successful exact-SHA
+  production deployment and mint-backed health before promotion/rollback.
+  See deploy/infer-passthrough/README.md; source is not live-host rollout evidence.
+- MJN is receipt-backed/withdrawable in the receipt's currency; activity emissions
+  are non-withdrawable MJNx. No fixed CHF peg, automatic conversion or token date
+  is asserted. Remaining model questions are annotated in the whitepaper/RFC-12.
+- .fair builder defaults include protocol/platform/node/buyer components; do not
+  infer universal 2% fees or mandatory manifest verification on every settlement
+  path. Consult current settlement implementation and the whitepaper's caveats.
+- Chat uses the kernel HTTP server's WebSocket, not a separate ws process.
+  Simplified key-epoch encryption is not a ratcheting/forward-secret guarantee.
 
-## The Inversion
+## How to read the inventory
 
-The whole edifice runs on monetized opacity: value extracted from what you can't see. Imajin inverts the *incentive*, not just the tech. Proof-of-history means the record of what really happened is itself the value — so hiding stops paying and disclosure starts. The human is centered not as a slogan but as a consequence. You do a human thing (send a voice note, take a photo, drop a file); an agent infers what you meant, acts on your behalf, asks before anything crosses a boundary, and signs a record of what it did. The machinery recedes; the proof remains.
+Every tracked App Router route handler is listed below, including internal,
+development-only, discovery and non-API handlers. Presence is not public access:
+read its implementation and service spec for auth, schemas, errors and rollout.
+Templates use {id}; {path...} denotes catch-all (optional catch-all is documented
+by its source). OPTIONS is explicit when exported; framework implicit HEAD/OPTIONS
+are not separately enumerated. Page components are not API route handlers.
+Corpus is Express, not App Router: its separate /spec operation definitions follow.
+Specs are contracts, not deployment inventories. Unmapped spec-only operations
+are omitted from the implemented reference and reported in the #2028 run-log.
 
-## What is Imajin?
+## Service spec catalogue
 
-Imajin (今人 — "now-person") is sovereign infrastructure: one cryptographic kernel plus disposable userspace apps. The kernel provides signed identity chains (DFOS), .fair attribution manifests, and bilateral attestations. Live since February 2026: one kernel, two platform apps, five Imajin apps, three client apps — all real, all self-hostable, open source (MIT).
+- /api/spec — imajin www — apps/kernel/app/api/spec/route.ts
+- /auth/api/spec — imajin auth — apps/kernel/api-spec/auth.yaml
+- /calendar/api/spec — imajin calendar — apps/kernel/api-spec/calendar.yaml
+- /chat/api/spec — imajin chat — apps/kernel/api-spec/chat.yaml
+- /cloudflare/api/spec — imajin cloudflare — apps/kernel/api-spec/cloudflare.yaml
+- /connections/api/spec — imajin connections — apps/kernel/api-spec/connections.yaml
+- /github/api/spec — imajin github — apps/kernel/api-spec/github.yaml
+- /infer/api/spec — imajin inference — apps/kernel/api-spec/infer.yaml
+- /jin/api/spec — imajin jin — apps/kernel/api-spec/jin.yaml
+- /media/api/spec — imajin media — apps/kernel/api-spec/media.yaml
+- /notify/api/spec — imajin notify — apps/kernel/api-spec/notify.yaml
+- /pay/api/spec — imajin pay — apps/kernel/api-spec/pay.yaml
+- /profile/api/spec — imajin profile — apps/kernel/api-spec/profile.yaml
+- /quickbooks/api/spec — imajin quickbooks — apps/kernel/api-spec/quickbooks.yaml
+- /registry/api/spec — imajin registry — apps/kernel/api-spec/registry.yaml
+- /usage/api/spec — imajin usage — apps/kernel/api-spec/usage.yaml
+- /vault/api/spec — imajin vault — apps/kernel/api-spec/vault.yaml
+- corpus:/spec — imajin corpus — apps/corpus/api-spec/openapi.yaml
 
-The kernel enforces identity and settlement. Userspace apps (events, chat, market, learn, etc.) are disposable — swap, rewrite, or add more without touching the chain layer.
+## Complete App Router inventory (667 handlers)
 
-## Architecture
+- GET /.well-known/agent.json — apps/kernel/app/.well-known/agent.json/route.ts
+- GET, OPTIONS /.well-known/agent/{id} — apps/kernel/app/.well-known/agent/[id]/route.ts
+- GET /.well-known/apple-app-site-association — apps/kernel/app/.well-known/apple-app-site-association/route.ts
+- GET /.well-known/assetlinks.json — apps/kernel/app/.well-known/assetlinks.json/route.ts
+- GET, OPTIONS /.well-known/did-imajin/{id} — apps/kernel/app/.well-known/did-imajin/[id]/route.ts
+- GET /.well-known/fair-policy.json — apps/kernel/app/.well-known/fair-policy.json/route.ts
+- GET /.well-known/imajin-onboarding.json — apps/kernel/app/.well-known/imajin-onboarding.json/route.ts
+- GET /.well-known/imajin.json — apps/kernel/app/.well-known/imajin.json/route.ts
+- GET /.well-known/oauth-authorization-server — apps/kernel/app/.well-known/oauth-authorization-server/route.ts
+- GET /.well-known/oauth-protected-resource — apps/kernel/app/.well-known/oauth-protected-resource/route.ts
+- GET /.well-known/oauth-protected-resource/reach/{handle}/mcp — apps/kernel/app/.well-known/oauth-protected-resource/reach/[handle]/mcp/route.ts
+- GET /.well-known/security.txt — apps/kernel/app/.well-known/security.txt/route.ts
+- GET, OPTIONS, POST /anthropic/api/billing-key — apps/kernel/app/anthropic/api/billing-key/route.ts
+- OPTIONS, POST /anthropic/api/disconnect — apps/kernel/app/anthropic/api/disconnect/route.ts
+- GET, OPTIONS, PUT /anthropic/api/models — apps/kernel/app/anthropic/api/models/route.ts
+- GET, OPTIONS, POST /anthropic/api/scope-manifest — apps/kernel/app/anthropic/api/scope-manifest/route.ts
+- DELETE, GET, OPTIONS, PUT /anthropic/api/spend-cap — apps/kernel/app/anthropic/api/spend-cap/route.ts
+- GET, OPTIONS, POST /anthropic/api/token — apps/kernel/app/anthropic/api/token/route.ts
+- GET, PUT /api/admin/config — apps/kernel/app/api/admin/config/route.ts
+- GET /api/admin/cron-status — apps/kernel/app/api/admin/cron-status/route.ts
+- GET, POST /api/admin/deposits — apps/kernel/app/api/admin/deposits/route.ts
+- GET /api/admin/deposits/resolve — apps/kernel/app/api/admin/deposits/resolve/route.ts
+- GET /api/admin/events — apps/kernel/app/api/admin/events/route.ts
+- GET /api/admin/events/stats — apps/kernel/app/api/admin/events/stats/route.ts
+- GET /api/admin/events/trace/{correlationId} — apps/kernel/app/api/admin/events/trace/[correlationId]/route.ts
+- DELETE, GET, PATCH, POST /api/admin/federation/peers — apps/kernel/app/api/admin/federation/peers/route.ts
+- GET, POST /api/admin/keys/rotation — apps/kernel/app/api/admin/keys/rotation/route.ts
+- GET /api/admin/logs — apps/kernel/app/api/admin/logs/route.ts
+- POST /api/admin/logs/cleanup — apps/kernel/app/api/admin/logs/cleanup/route.ts
+- GET /api/admin/logs/raw — apps/kernel/app/api/admin/logs/raw/route.ts
+- GET, POST /api/admin/moderation/flags — apps/kernel/app/api/admin/moderation/flags/route.ts
+- PUT /api/admin/moderation/flags/{id} — apps/kernel/app/api/admin/moderation/flags/[id]/route.ts
+- GET /api/admin/moderation/log — apps/kernel/app/api/admin/moderation/log/route.ts
+- GET /api/admin/newsletter/audiences — apps/kernel/app/api/admin/newsletter/audiences/route.ts
+- GET /api/admin/newsletter/history — apps/kernel/app/api/admin/newsletter/history/route.ts
+- POST /api/admin/newsletter/send — apps/kernel/app/api/admin/newsletter/send/route.ts
+- GET, POST /api/admin/registry/apps — apps/kernel/app/api/admin/registry/apps/route.ts
+- PATCH /api/admin/registry/apps/{appId} — apps/kernel/app/api/admin/registry/apps/[appId]/route.ts
+- POST /api/admin/registry/apps/{appId}/act-as — apps/kernel/app/api/admin/registry/apps/[appId]/act-as/route.ts
+- POST /api/admin/registry/apps/{appId}/revoke — apps/kernel/app/api/admin/registry/apps/[appId]/revoke/route.ts
+- POST /api/admin/registry/apps/{appId}/rotate — apps/kernel/app/api/admin/registry/apps/[appId]/rotate/route.ts
+- GET /api/admin/services/health — apps/kernel/app/api/admin/services/health/route.ts
+- GET /api/admin/subscribers — apps/kernel/app/api/admin/subscribers/route.ts
+- DELETE /api/admin/subscribers/{id} — apps/kernel/app/api/admin/subscribers/[id]/route.ts
+- POST /api/admin/subscribers/{id}/resend-verify — apps/kernel/app/api/admin/subscribers/[id]/resend-verify/route.ts
+- GET /api/admin/subscribers/export — apps/kernel/app/api/admin/subscribers/export/route.ts
+- GET, POST /api/admin/subscribers/lists — apps/kernel/app/api/admin/subscribers/lists/route.ts
+- GET /api/admin/telemetry — apps/kernel/app/api/admin/telemetry/route.ts
+- GET /api/admin/telemetry/errors — apps/kernel/app/api/admin/telemetry/errors/route.ts
+- GET /api/admin/telemetry/slow — apps/kernel/app/api/admin/telemetry/slow/route.ts
+- GET /api/admin/telemetry/trace/{correlationId} — apps/kernel/app/api/admin/telemetry/trace/[correlationId]/route.ts
+- POST /api/admin/users/{did}/suspend — apps/kernel/app/api/admin/users/[did]/suspend/route.ts
+- POST /api/admin/users/{did}/upgrade-tier — apps/kernel/app/api/admin/users/[did]/upgrade-tier/route.ts
+- GET /api/admin/verify — apps/kernel/app/api/admin/verify/route.ts
+- GET /api/admin/withdrawals — apps/kernel/app/api/admin/withdrawals/route.ts
+- POST /api/admin/withdrawals/{id}/complete — apps/kernel/app/api/admin/withdrawals/[id]/complete/route.ts
+- POST /api/admin/withdrawals/gating — apps/kernel/app/api/admin/withdrawals/gating/route.ts
+- OPTIONS, POST /api/apps/claim — apps/kernel/app/api/apps/claim/route.ts
+- OPTIONS, POST /api/apps/featured — apps/kernel/app/api/apps/featured/route.ts
+- GET, OPTIONS, POST /api/apps/provision — apps/kernel/app/api/apps/provision/route.ts
+- OPTIONS, POST /api/apps/secrets/fetch — apps/kernel/app/api/apps/secrets/fetch/route.ts
+- GET, OPTIONS, POST /api/apps/service-scopes — apps/kernel/app/api/apps/service-scopes/route.ts
+- OPTIONS, POST /api/apps/signing-key/fetch — apps/kernel/app/api/apps/signing-key/fetch/route.ts
+- GET /api/auth/apps — apps/kernel/app/api/auth/apps/route.ts
+- POST /api/auth/authorize — apps/kernel/app/api/auth/authorize/route.ts
+- POST /api/auth/revoke — apps/kernel/app/api/auth/revoke/route.ts
+- GET /api/broker/audit — apps/kernel/app/api/broker/audit/route.ts
+- GET, POST /api/broker/consent — apps/kernel/app/api/broker/consent/route.ts
+- DELETE /api/broker/consent/{id} — apps/kernel/app/api/broker/consent/[id]/route.ts
+- POST /api/broker/consent/revoke-all — apps/kernel/app/api/broker/consent/revoke-all/route.ts
+- GET /api/broker/contacts — apps/kernel/app/api/broker/contacts/route.ts
+- GET /api/broker/contacts/{did}/disclosures — apps/kernel/app/api/broker/contacts/[did]/disclosures/route.ts
+- PUT /api/broker/contacts/{did}/metadata — apps/kernel/app/api/broker/contacts/[did]/metadata/route.ts
+- GET /api/broker/grants — apps/kernel/app/api/broker/grants/route.ts
+- GET /api/broker/preview — apps/kernel/app/api/broker/preview/route.ts
+- POST /api/broker/request — apps/kernel/app/api/broker/request/route.ts
+- GET, POST /api/bugs — apps/kernel/app/api/bugs/route.ts
+- PATCH /api/bugs/{id} — apps/kernel/app/api/bugs/[id]/route.ts
+- POST /api/bugs/{id}/import — apps/kernel/app/api/bugs/[id]/import/route.ts
+- GET /api/bugs/admin — apps/kernel/app/api/bugs/admin/route.ts
+- POST /api/client-errors — apps/kernel/app/api/client-errors/route.ts
+- GET /api/cron/attestation-cleanup — apps/kernel/app/api/cron/attestation-cleanup/route.ts
+- GET /api/cron/claim-stub-expiry — apps/kernel/app/api/cron/claim-stub-expiry/route.ts
+- GET /api/cron/domain-recheck — apps/kernel/app/api/cron/domain-recheck/route.ts
+- GET /api/cron/event-subscription-cleanup — apps/kernel/app/api/cron/event-subscription-cleanup/route.ts
+- GET /api/cron/google-gmail-watch-renew — apps/kernel/app/api/cron/google-gmail-watch-renew/route.ts
+- GET /api/cron/grant-audit-retry — apps/kernel/app/api/cron/grant-audit-retry/route.ts
+- GET /api/cron/grant-expiry — apps/kernel/app/api/cron/grant-expiry/route.ts
+- GET /api/cron/operator-approval-expiry — apps/kernel/app/api/cron/operator-approval-expiry/route.ts
+- GET /api/cron/quickbooks-reconcile — apps/kernel/app/api/cron/quickbooks-reconcile/route.ts
+- GET /api/cron/registry-app-expiry — apps/kernel/app/api/cron/registry-app-expiry/route.ts
+- GET /api/cron/usage-billed-ingest — apps/kernel/app/api/cron/usage-billed-ingest/route.ts
+- GET /api/cron/usage-rollup — apps/kernel/app/api/cron/usage-rollup/route.ts
+- GET /api/cron/vault-grant-expiry — apps/kernel/app/api/cron/vault-grant-expiry/route.ts
+- GET /api/cron/warp-run-watch — apps/kernel/app/api/cron/warp-run-watch/route.ts
+- GET /api/cron/withdrawal-reconcile — apps/kernel/app/api/cron/withdrawal-reconcile/route.ts
+- GET /api/domain-check — apps/kernel/app/api/domain-check/route.ts
+- OPTIONS, POST /api/events — apps/kernel/app/api/events/route.ts
+- GET /api/health — apps/kernel/app/api/health/route.ts
+- OPTIONS, POST /api/inference/capture — apps/kernel/app/api/inference/capture/route.ts
+- OPTIONS, POST /api/inference/confirm/{sessionId} — apps/kernel/app/api/inference/confirm/[sessionId]/route.ts
+- GET, OPTIONS /api/inference/sessions — apps/kernel/app/api/inference/sessions/route.ts
+- GET, OPTIONS, POST /api/loops — apps/kernel/app/api/loops/route.ts
+- GET, OPTIONS /api/loops/{loopId} — apps/kernel/app/api/loops/[loopId]/route.ts
+- GET, OPTIONS /api/loops/{loopId}/artifacts/{artifactId} — apps/kernel/app/api/loops/[loopId]/artifacts/[artifactId]/route.ts
+- OPTIONS, POST /api/loops/receipts — apps/kernel/app/api/loops/receipts/route.ts
+- GET, OPTIONS /api/loops/spend — apps/kernel/app/api/loops/spend/route.ts
+- GET, OPTIONS /api/loops/surfaces — apps/kernel/app/api/loops/surfaces/route.ts
+- GET, POST /api/registry/apps — apps/kernel/app/api/registry/apps/route.ts
+- DELETE, GET, PATCH /api/registry/apps/{appId} — apps/kernel/app/api/registry/apps/[appId]/route.ts
+- PATCH /api/registry/apps/{appId}/template — apps/kernel/app/api/registry/apps/[appId]/template/route.ts
+- GET /api/registry/apps/by-template — apps/kernel/app/api/registry/apps/by-template/route.ts
+- GET /api/spec — apps/kernel/app/api/spec/route.ts
+- POST /api/subscribe — apps/kernel/app/api/subscribe/route.ts
+- GET, PATCH /api/subscribe/status — apps/kernel/app/api/subscribe/status/route.ts
+- GET, POST /api/subscribe/unsubscribe — apps/kernel/app/api/subscribe/unsubscribe/route.ts
+- GET /api/subscribe/verify — apps/kernel/app/api/subscribe/verify/route.ts
+- POST /api/vault/delegation/grant — apps/kernel/app/api/vault/delegation/grant/route.ts
+- GET /api/vault/delegation/grants — apps/kernel/app/api/vault/delegation/grants/route.ts
+- POST /api/vault/delegation/grants/{grantId}/ack — apps/kernel/app/api/vault/delegation/grants/[grantId]/ack/route.ts
+- POST /api/vault/delegation/grants/{grantId}/fetch — apps/kernel/app/api/vault/delegation/grants/[grantId]/fetch/route.ts
+- POST /api/vault/delegation/revoke — apps/kernel/app/api/vault/delegation/revoke/route.ts
+- DELETE /api/vault/delete — apps/kernel/app/api/vault/delete/route.ts
+- GET /api/vault/grantees/{field} — apps/kernel/app/api/vault/grantees/[field]/route.ts
+- GET /api/vault/grants/pending — apps/kernel/app/api/vault/grants/pending/route.ts
+- GET /api/vault/grants/renewable — apps/kernel/app/api/vault/grants/renewable/route.ts
+- GET /api/vault/history/{field} — apps/kernel/app/api/vault/history/[field]/route.ts
+- GET, OPTIONS, POST /api/vault/import — apps/kernel/app/api/vault/import/route.ts
+- GET /api/vault/known-fields — apps/kernel/app/api/vault/known-fields/route.ts
+- GET /api/vault/list — apps/kernel/app/api/vault/list/route.ts
+- POST /api/vault/migrate-custody — apps/kernel/app/api/vault/migrate-custody/route.ts
+- POST /api/vault/mint — apps/kernel/app/api/vault/mint/route.ts
+- GET /api/vault/mint/cards — apps/kernel/app/api/vault/mint/cards/route.ts
+- POST /api/vault/mint/revoke — apps/kernel/app/api/vault/mint/revoke/route.ts
+- POST /api/vault/rotate — apps/kernel/app/api/vault/rotate/route.ts
+- GET, POST /api/vault/rotation-sweep — apps/kernel/app/api/vault/rotation-sweep/route.ts
+- POST /api/vault/set — apps/kernel/app/api/vault/set/route.ts
+- POST /api/vault/ssh-ca — apps/kernel/app/api/vault/ssh-ca/route.ts
+- POST /api/vault/ssh-ca/grants — apps/kernel/app/api/vault/ssh-ca/grants/route.ts
+- POST /api/vault/ssh-ca/grants/revoke — apps/kernel/app/api/vault/ssh-ca/grants/revoke/route.ts
+- POST /api/vault/ssh-ca/revoke — apps/kernel/app/api/vault/ssh-ca/revoke/route.ts
+- POST /api/vault/ssh-ca/rotate — apps/kernel/app/api/vault/ssh-ca/rotate/route.ts
+- POST /api/vault/ssh-ca/sign — apps/kernel/app/api/vault/ssh-ca/sign/route.ts
+- GET /api/vault/ssh-ca/trusted-keys — apps/kernel/app/api/vault/ssh-ca/trusted-keys/route.ts
+- POST /api/vault/upgrade-custody — apps/kernel/app/api/vault/upgrade-custody/route.ts
+- GET /auth/.well-known/kernel-signing-key — apps/kernel/app/auth/.well-known/kernel-signing-key/route.ts
+- GET, OPTIONS /auth/api/access/{did} — apps/kernel/app/auth/api/access/[did]/route.ts
+- GET, OPTIONS /auth/api/access/bearers — apps/kernel/app/auth/api/access/bearers/route.ts
+- OPTIONS, POST /auth/api/access/bearers/{id}/revoke — apps/kernel/app/auth/api/access/bearers/[id]/revoke/route.ts
+- OPTIONS, POST /auth/api/access/knock — apps/kernel/app/auth/api/access/knock/route.ts
+- GET, OPTIONS /auth/api/account/methods — apps/kernel/app/auth/api/account/methods/route.ts
+- GET, POST /auth/api/agents — apps/kernel/app/auth/api/agents/route.ts
+- DELETE /auth/api/agents/{did} — apps/kernel/app/auth/api/agents/[did]/route.ts
+- POST /auth/api/agents/{did}/reach — apps/kernel/app/auth/api/agents/[did]/reach/route.ts
+- POST /auth/api/agents/{did}/reach/{reachId}/status — apps/kernel/app/auth/api/agents/[did]/reach/[reachId]/status/route.ts
+- GET, POST /auth/api/agents/provision — apps/kernel/app/auth/api/agents/provision/route.ts
+- DELETE, GET /auth/api/agents/provision/{id} — apps/kernel/app/auth/api/agents/provision/[id]/route.ts
+- GET /auth/api/agents/provision/{id}/bundle — apps/kernel/app/auth/api/agents/provision/[id]/bundle/route.ts
+- POST /auth/api/agents/provision/{id}/callback — apps/kernel/app/auth/api/agents/provision/[id]/callback/route.ts
+- GET, OPTIONS /auth/api/apps — apps/kernel/app/auth/api/apps/route.ts
+- DELETE, GET, PUT /auth/api/apps/{slug} — apps/kernel/app/auth/api/apps/[slug]/route.ts
+- GET /auth/api/apps/directory — apps/kernel/app/auth/api/apps/directory/route.ts
+- OPTIONS, POST /auth/api/apps/token — apps/kernel/app/auth/api/apps/token/route.ts
+- OPTIONS, POST /auth/api/apps/token/service — apps/kernel/app/auth/api/apps/token/service/route.ts
+- OPTIONS, POST /auth/api/apps/token/verify — apps/kernel/app/auth/api/apps/token/verify/route.ts
+- POST /auth/api/apps/validate — apps/kernel/app/auth/api/apps/validate/route.ts
+- GET, OPTIONS, POST /auth/api/attestations — apps/kernel/app/auth/api/attestations/route.ts
+- GET, OPTIONS /auth/api/attestations/{did} — apps/kernel/app/auth/api/attestations/[did]/route.ts
+- OPTIONS, POST /auth/api/attestations/{did}/revoke — apps/kernel/app/auth/api/attestations/[did]/revoke/route.ts
+- POST /auth/api/attestations/chain-emit — apps/kernel/app/auth/api/attestations/chain-emit/route.ts
+- OPTIONS, POST /auth/api/attestations/countersign — apps/kernel/app/auth/api/attestations/countersign/route.ts
+- OPTIONS, POST /auth/api/attestations/decline — apps/kernel/app/auth/api/attestations/decline/route.ts
+- POST /auth/api/attestations/internal — apps/kernel/app/auth/api/attestations/internal/route.ts
+- GET, OPTIONS /auth/api/attestations/nostr/{npub} — apps/kernel/app/auth/api/attestations/nostr/[npub]/route.ts
+- OPTIONS, POST /auth/api/attestations/turn-evidence — apps/kernel/app/auth/api/attestations/turn-evidence/route.ts
+- GET, OPTIONS, POST /auth/api/attestations/types — apps/kernel/app/auth/api/attestations/types/route.ts
+- GET, OPTIONS /auth/api/attestations/usage — apps/kernel/app/auth/api/attestations/usage/route.ts
+- POST /auth/api/authenticate — apps/kernel/app/auth/api/authenticate/route.ts
+- DELETE, GET, OPTIONS, PUT /auth/api/bank-details — apps/kernel/app/auth/api/bank-details/route.ts
+- POST /auth/api/challenge — apps/kernel/app/auth/api/challenge/route.ts
+- GET, POST /auth/api/channel-link — apps/kernel/app/auth/api/channel-link/route.ts
+- DELETE /auth/api/channel-link/{id} — apps/kernel/app/auth/api/channel-link/[id]/route.ts
+- POST /auth/api/channel-link/approve — apps/kernel/app/auth/api/channel-link/approve/route.ts
+- POST /auth/api/channel-link/approve-redirect — apps/kernel/app/auth/api/channel-link/approve-redirect/route.ts
+- GET /auth/api/channel-link/resolve — apps/kernel/app/auth/api/channel-link/resolve/route.ts
+- POST /auth/api/credentials/resolve — apps/kernel/app/auth/api/credentials/resolve/route.ts
+- GET, OPTIONS /auth/api/devices — apps/kernel/app/auth/api/devices/route.ts
+- DELETE, OPTIONS /auth/api/devices/{id} — apps/kernel/app/auth/api/devices/[id]/route.ts
+- OPTIONS, POST /auth/api/devices/{id}/trust — apps/kernel/app/auth/api/devices/[id]/trust/route.ts
+- GET, OPTIONS, POST /auth/api/documents — apps/kernel/app/auth/api/documents/route.ts
+- GET, OPTIONS /auth/api/documents/{id} — apps/kernel/app/auth/api/documents/[id]/route.ts
+- OPTIONS, POST /auth/api/documents/{id}/amend — apps/kernel/app/auth/api/documents/[id]/amend/route.ts
+- GET, OPTIONS /auth/api/documents/{id}/content — apps/kernel/app/auth/api/documents/[id]/content/route.ts
+- OPTIONS, POST /auth/api/documents/{id}/decline — apps/kernel/app/auth/api/documents/[id]/decline/route.ts
+- OPTIONS, POST /auth/api/documents/{id}/sign — apps/kernel/app/auth/api/documents/[id]/sign/route.ts
+- OPTIONS, POST /auth/api/documents/{id}/verify — apps/kernel/app/auth/api/documents/[id]/verify/route.ts
+- POST /auth/api/eligibility/evaluate — apps/kernel/app/auth/api/eligibility/evaluate/route.ts
+- GET /auth/api/events/subscriptions/catchup — apps/kernel/app/auth/api/events/subscriptions/catchup/route.ts
+- GET, POST /auth/api/grants — apps/kernel/app/auth/api/grants/route.ts
+- DELETE /auth/api/grants/{grantId} — apps/kernel/app/auth/api/grants/[grantId]/route.ts
+- DELETE, PUT /auth/api/grants/{grantId}/capabilities/{capability} — apps/kernel/app/auth/api/grants/[grantId]/capabilities/[capability]/route.ts
+- POST /auth/api/grants/{grantId}/renew — apps/kernel/app/auth/api/grants/[grantId]/renew/route.ts
+- GET, POST /auth/api/groups — apps/kernel/app/auth/api/groups/route.ts
+- GET, PATCH /auth/api/groups/{groupDid} — apps/kernel/app/auth/api/groups/[groupDid]/route.ts
+- POST /auth/api/groups/{groupDid}/controllers — apps/kernel/app/auth/api/groups/[groupDid]/controllers/route.ts
+- DELETE, GET, PATCH /auth/api/groups/{groupDid}/controllers/{controllerDid} — apps/kernel/app/auth/api/groups/[groupDid]/controllers/[controllerDid]/route.ts
+- DELETE, GET, OPTIONS, POST /auth/api/groups/{groupDid}/transfer-owner — apps/kernel/app/auth/api/groups/[groupDid]/transfer-owner/route.ts
+- OPTIONS, POST /auth/api/groups/{groupDid}/transfer-owner/accept — apps/kernel/app/auth/api/groups/[groupDid]/transfer-owner/accept/route.ts
+- GET /auth/api/health — apps/kernel/app/auth/api/health/route.ts
+- GET, POST /auth/api/identities/{did}/domains — apps/kernel/app/auth/api/identities/[did]/domains/route.ts
+- DELETE /auth/api/identities/{did}/domains/{domain} — apps/kernel/app/auth/api/identities/[did]/domains/[domain]/route.ts
+- POST /auth/api/identities/{did}/domains/{domain}/verify — apps/kernel/app/auth/api/identities/[did]/domains/[domain]/verify/route.ts
+- GET /auth/api/identities/{did}/domains/public — apps/kernel/app/auth/api/identities/[did]/domains/public/route.ts
+- GET, OPTIONS /auth/api/identity/{did} — apps/kernel/app/auth/api/identity/[did]/route.ts
+- GET, OPTIONS /auth/api/identity/{did}/agents — apps/kernel/app/auth/api/identity/[did]/agents/route.ts
+- GET, OPTIONS /auth/api/identity/{did}/chain — apps/kernel/app/auth/api/identity/[did]/chain/route.ts
+- GET, OPTIONS, POST /auth/api/identity/{did}/contact — apps/kernel/app/auth/api/identity/[did]/contact/route.ts
+- GET, OPTIONS /auth/api/identity/{did}/credential-status — apps/kernel/app/auth/api/identity/[did]/credential-status/route.ts
+- GET, OPTIONS /auth/api/identity/{did}/did.json — apps/kernel/app/auth/api/identity/[did]/did.json/route.ts
+- GET, OPTIONS, POST /auth/api/identity/{did}/keys — apps/kernel/app/auth/api/identity/[did]/keys/route.ts
+- OPTIONS, POST /auth/api/identity/{did}/rotate — apps/kernel/app/auth/api/identity/[did]/rotate/route.ts
+- POST /auth/api/identity/{did}/sign — apps/kernel/app/auth/api/identity/[did]/sign/route.ts
+- GET, OPTIONS /auth/api/identity/{did}/verify — apps/kernel/app/auth/api/identity/[did]/verify/route.ts
+- POST /auth/api/identity/present-chain — apps/kernel/app/auth/api/identity/present-chain/route.ts
+- POST /auth/api/identity/verify-chain — apps/kernel/app/auth/api/identity/verify-chain/route.ts
+- POST /auth/api/internal/corpus/owner — apps/kernel/app/auth/api/internal/corpus/owner/route.ts
+- POST /auth/api/internal/grants/introspect — apps/kernel/app/auth/api/internal/grants/introspect/route.ts
+- POST /auth/api/internal/verify-delegation — apps/kernel/app/auth/api/internal/verify-delegation/route.ts
+- OPTIONS, POST /auth/api/keys/retrieve — apps/kernel/app/auth/api/keys/retrieve/route.ts
+- OPTIONS, POST /auth/api/keys/store — apps/kernel/app/auth/api/keys/store/route.ts
+- DELETE, OPTIONS /auth/api/keys/stored — apps/kernel/app/auth/api/keys/stored/route.ts
+- POST /auth/api/knock — apps/kernel/app/auth/api/knock/route.ts
+- POST /auth/api/knock/{knockId}/accept — apps/kernel/app/auth/api/knock/[knockId]/accept/route.ts
+- POST /auth/api/knock/{knockId}/decline — apps/kernel/app/auth/api/knock/[knockId]/decline/route.ts
+- GET /auth/api/knock/pending — apps/kernel/app/auth/api/knock/pending/route.ts
+- DELETE, GET, PUT /auth/api/legal-entity — apps/kernel/app/auth/api/legal-entity/route.ts
+- POST /auth/api/login/challenge — apps/kernel/app/auth/api/login/challenge/route.ts
+- OPTIONS, POST /auth/api/login/mfa — apps/kernel/app/auth/api/login/mfa/route.ts
+- POST /auth/api/login/verify — apps/kernel/app/auth/api/login/verify/route.ts
+- OPTIONS, POST /auth/api/logout — apps/kernel/app/auth/api/logout/route.ts
+- GET, OPTIONS /auth/api/lookup/{id} — apps/kernel/app/auth/api/lookup/[id]/route.ts
+- OPTIONS, POST /auth/api/mfa/email/disable — apps/kernel/app/auth/api/mfa/email/disable/route.ts
+- OPTIONS, POST /auth/api/mfa/email/send — apps/kernel/app/auth/api/mfa/email/send/route.ts
+- OPTIONS, POST /auth/api/mfa/email/setup — apps/kernel/app/auth/api/mfa/email/setup/route.ts
+- OPTIONS, POST /auth/api/mfa/email/verify-setup — apps/kernel/app/auth/api/mfa/email/verify-setup/route.ts
+- OPTIONS, POST /auth/api/mfa/totp/challenge — apps/kernel/app/auth/api/mfa/totp/challenge/route.ts
+- OPTIONS, POST /auth/api/mfa/totp/disable — apps/kernel/app/auth/api/mfa/totp/disable/route.ts
+- OPTIONS, POST /auth/api/mfa/totp/setup — apps/kernel/app/auth/api/mfa/totp/setup/route.ts
+- OPTIONS, POST /auth/api/mfa/totp/verify — apps/kernel/app/auth/api/mfa/totp/verify/route.ts
+- OPTIONS, POST /auth/api/onboard — apps/kernel/app/auth/api/onboard/route.ts
+- OPTIONS, POST /auth/api/onboard/claim — apps/kernel/app/auth/api/onboard/claim/route.ts
+- OPTIONS, POST /auth/api/onboard/generate — apps/kernel/app/auth/api/onboard/generate/route.ts
+- POST /auth/api/onboard/join — apps/kernel/app/auth/api/onboard/join/route.ts
+- GET, OPTIONS /auth/api/onboard/poll — apps/kernel/app/auth/api/onboard/poll/route.ts
+- OPTIONS, POST /auth/api/onboard/send — apps/kernel/app/auth/api/onboard/send/route.ts
+- GET /auth/api/onboard/verify — apps/kernel/app/auth/api/onboard/verify/route.ts
+- GET, OPTIONS /auth/api/recovery-codes/challenge — apps/kernel/app/auth/api/recovery-codes/challenge/route.ts
+- OPTIONS, POST /auth/api/recovery-codes/generate — apps/kernel/app/auth/api/recovery-codes/generate/route.ts
+- GET, OPTIONS /auth/api/recovery-codes/status — apps/kernel/app/auth/api/recovery-codes/status/route.ts
+- OPTIONS, POST /auth/api/recovery-codes/verify — apps/kernel/app/auth/api/recovery-codes/verify/route.ts
+- POST /auth/api/register — apps/kernel/app/auth/api/register/route.ts
+- GET, OPTIONS /auth/api/resolve/dfos/{dfosDid} — apps/kernel/app/auth/api/resolve/dfos/[dfosDid]/route.ts
+- GET /auth/api/retrace — apps/kernel/app/auth/api/retrace/route.ts
+- GET, OPTIONS /auth/api/search — apps/kernel/app/auth/api/search/route.ts
+- GET /auth/api/services/health — apps/kernel/app/auth/api/services/health/route.ts
+- GET, OPTIONS /auth/api/session — apps/kernel/app/auth/api/session/route.ts
+- OPTIONS, POST /auth/api/session/act-as — apps/kernel/app/auth/api/session/act-as/route.ts
+- OPTIONS, POST /auth/api/session/soft — apps/kernel/app/auth/api/session/soft/route.ts
+- GET /auth/api/spec — apps/kernel/app/auth/api/spec/route.ts
+- OPTIONS, POST /auth/api/stored-keys — apps/kernel/app/auth/api/stored-keys/route.ts
+- OPTIONS, POST /auth/api/tokens — apps/kernel/app/auth/api/tokens/app/route.ts
+- OPTIONS, POST /auth/api/tokens — apps/kernel/app/auth/api/tokens/app/verify/route.ts
+- POST /auth/api/validate — apps/kernel/app/auth/api/validate/route.ts
+- GET /auth/api/vault/delegation/grants — apps/kernel/app/auth/api/vault/delegation/grants/route.ts
+- POST /auth/api/vault/delegation/grants/{grantId}/ack — apps/kernel/app/auth/api/vault/delegation/grants/[grantId]/ack/route.ts
+- POST /auth/api/vault/delegation/grants/{grantId}/fetch — apps/kernel/app/auth/api/vault/delegation/grants/[grantId]/fetch/route.ts
+- POST /auth/api/verify — apps/kernel/app/auth/api/verify/route.ts
+- GET, OPTIONS /auth/api/verify/turn/{hash} — apps/kernel/app/auth/api/verify/turn/[hash]/route.ts
+- GET /auth/corpus/api/connectors — apps/kernel/app/auth/corpus/api/connectors/route.ts
+- POST /auth/corpus/api/load — apps/kernel/app/auth/corpus/api/load/route.ts
+- DELETE /auth/corpus/api/source — apps/kernel/app/auth/corpus/api/source/route.ts
+- GET /auth/corpus/api/status — apps/kernel/app/auth/corpus/api/status/route.ts
+- POST /auth/corpus/api/sync — apps/kernel/app/auth/corpus/api/sync/route.ts
+- GET, POST /calendar/api/availability — apps/kernel/app/calendar/api/availability/route.ts
+- DELETE /calendar/api/availability/{id} — apps/kernel/app/calendar/api/availability/[id]/route.ts
+- GET, PATCH /calendar/api/availability/matches — apps/kernel/app/calendar/api/availability/matches/route.ts
+- GET /calendar/api/d/{did}/availability — apps/kernel/app/calendar/api/d/[did]/availability/route.ts
+- GET /calendar/api/d/{did}/entries — apps/kernel/app/calendar/api/d/[did]/entries/route.ts
+- GET, POST /calendar/api/entries — apps/kernel/app/calendar/api/entries/route.ts
+- DELETE, PATCH /calendar/api/entries/{id} — apps/kernel/app/calendar/api/entries/[id]/route.ts
+- GET /calendar/api/spec — apps/kernel/app/calendar/api/spec/route.ts
+- GET /chat/api/access/{did} — apps/kernel/app/chat/api/access/[did]/route.ts
+- GET /chat/api/capabilities — apps/kernel/app/chat/api/capabilities/route.ts
+- GET, POST /chat/api/conversations — apps/kernel/app/chat/api/conversations/route.ts
+- GET, PATCH /chat/api/conversations-v2 — apps/kernel/app/chat/api/conversations-v2/route.ts
+- DELETE, GET, PATCH /chat/api/conversations/{id} — apps/kernel/app/chat/api/conversations/[id]/route.ts
+- GET, POST /chat/api/conversations/{id}/messages — apps/kernel/app/chat/api/conversations/[id]/messages/route.ts
+- DELETE, PUT /chat/api/conversations/{id}/messages/{msgId} — apps/kernel/app/chat/api/conversations/[id]/messages/[msgId]/route.ts
+- GET, POST /chat/api/conversations/{id}/participants — apps/kernel/app/chat/api/conversations/[id]/participants/route.ts
+- POST /chat/api/conversations/{id}/read — apps/kernel/app/chat/api/conversations/[id]/read/route.ts
+- POST /chat/api/conversations/{id}/upload — apps/kernel/app/chat/api/conversations/[id]/upload/route.ts
+- GET, OPTIONS /chat/api/conversations/unread — apps/kernel/app/chat/api/conversations/unread/route.ts
+- OPTIONS, PUT /chat/api/d/{did} — apps/kernel/app/chat/api/d/[did]/route.ts
+- OPTIONS, PATCH /chat/api/d/{did}/context — apps/kernel/app/chat/api/d/[did]/context/route.ts
+- GET, OPTIONS, POST /chat/api/d/{did}/members — apps/kernel/app/chat/api/d/[did]/members/route.ts
+- DELETE, OPTIONS /chat/api/d/{did}/members/{memberDid} — apps/kernel/app/chat/api/d/[did]/members/[memberDid]/route.ts
+- OPTIONS, POST /chat/api/d/{did}/members/leave — apps/kernel/app/chat/api/d/[did]/members/leave/route.ts
+- GET, OPTIONS, POST /chat/api/d/{did}/messages — apps/kernel/app/chat/api/d/[did]/messages/route.ts
+- DELETE, OPTIONS, PATCH /chat/api/d/{did}/messages/{msgId} — apps/kernel/app/chat/api/d/[did]/messages/[msgId]/route.ts
+- DELETE, OPTIONS, POST /chat/api/d/{did}/messages/{msgId}/reactions — apps/kernel/app/chat/api/d/[did]/messages/[msgId]/reactions/route.ts
+- OPTIONS, POST /chat/api/d/{did}/read — apps/kernel/app/chat/api/d/[did]/read/route.ts
+- OPTIONS, POST /chat/api/d/{did}/replay — apps/kernel/app/chat/api/d/[did]/replay/route.ts
+- GET /chat/api/health — apps/kernel/app/chat/api/health/route.ts
+- GET, POST /chat/api/invites — apps/kernel/app/chat/api/invites/route.ts
+- DELETE, GET, POST /chat/api/invites/{id} — apps/kernel/app/chat/api/invites/[id]/route.ts
+- GET, POST /chat/api/keys — apps/kernel/app/chat/api/keys/route.ts
+- GET /chat/api/keys/{did} — apps/kernel/app/chat/api/keys/[did]/route.ts
+- GET /chat/api/lookup/{did} — apps/kernel/app/chat/api/lookup/[did]/route.ts
+- DELETE, GET, POST /chat/api/messages/{msgId}/reactions — apps/kernel/app/chat/api/messages/[msgId]/reactions/route.ts
+- GET /chat/api/participants/{did}/conversations — apps/kernel/app/chat/api/participants/[did]/conversations/route.ts
+- POST /chat/api/participants/migrate — apps/kernel/app/chat/api/participants/migrate/route.ts
+- GET /chat/api/profile — apps/kernel/app/chat/api/profile/route.ts
+- GET /chat/api/session — apps/kernel/app/chat/api/session/route.ts
+- GET /chat/api/spec — apps/kernel/app/chat/api/spec/route.ts
+- GET, OPTIONS /chat/api/ws-token — apps/kernel/app/chat/api/ws-token/route.ts
+- POST /chat/api/ws-token/validate — apps/kernel/app/chat/api/ws-token/validate/route.ts
+- GET /chat/start — apps/kernel/app/chat/start/route.ts
+- GET, OPTIONS /cloudflare/api/grants — apps/kernel/app/cloudflare/api/grants/route.ts
+- GET /cloudflare/api/spec — apps/kernel/app/cloudflare/api/spec/route.ts
+- OPTIONS, POST /cloudflare/api/zones/{zoneId}/bulk — apps/kernel/app/cloudflare/api/zones/[zoneId]/bulk/route.ts
+- GET, OPTIONS, PUT /cloudflare/api/zones/{zoneId}/cache-rules — apps/kernel/app/cloudflare/api/zones/[zoneId]/cache-rules/route.ts
+- GET, OPTIONS /cloudflare/api/zones/{zoneId}/classification — apps/kernel/app/cloudflare/api/zones/[zoneId]/classification/route.ts
+- GET, OPTIONS, POST /cloudflare/api/zones/{zoneId}/custom-hostnames — apps/kernel/app/cloudflare/api/zones/[zoneId]/custom-hostnames/route.ts
+- DELETE, GET, OPTIONS /cloudflare/api/zones/{zoneId}/custom-hostnames/{hostnameId} — apps/kernel/app/cloudflare/api/zones/[zoneId]/custom-hostnames/[hostnameId]/route.ts
+- GET, OPTIONS, POST /cloudflare/api/zones/{zoneId}/dns — apps/kernel/app/cloudflare/api/zones/[zoneId]/dns/route.ts
+- DELETE, OPTIONS, PATCH /cloudflare/api/zones/{zoneId}/dns/{recordId} — apps/kernel/app/cloudflare/api/zones/[zoneId]/dns/[recordId]/route.ts
+- GET, OPTIONS /cloudflare/api/zones/{zoneId}/history — apps/kernel/app/cloudflare/api/zones/[zoneId]/history/route.ts
+- GET, OPTIONS /cloudflare/api/zones/{zoneId}/settings — apps/kernel/app/cloudflare/api/zones/[zoneId]/settings/route.ts
+- GET, OPTIONS /cloudflare/api/zones/{zoneId}/ssl — apps/kernel/app/cloudflare/api/zones/[zoneId]/ssl/route.ts
+- GET, OPTIONS /connections/api/apps/pods — apps/kernel/app/connections/api/apps/pods/route.ts
+- GET, OPTIONS /connections/api/apps/pods/{id}/members — apps/kernel/app/connections/api/apps/pods/[id]/members/route.ts
+- POST /connections/api/auth/logout — apps/kernel/app/connections/api/auth/logout/route.ts
+- GET /connections/api/auth/session — apps/kernel/app/connections/api/auth/session/route.ts
+- GET, OPTIONS /connections/api/connections — apps/kernel/app/connections/api/connections/route.ts
+- DELETE, OPTIONS, PATCH /connections/api/connections/{did} — apps/kernel/app/connections/api/connections/[did]/route.ts
+- DELETE, GET, PATCH /connections/api/connections/{did}/nickname — apps/kernel/app/connections/api/connections/[did]/nickname/route.ts
+- GET, OPTIONS /connections/api/connections/status/{did} — apps/kernel/app/connections/api/connections/status/[did]/route.ts
+- GET, OPTIONS, PATCH, POST /connections/api/connectors/{id}/connections — apps/kernel/app/connections/api/connectors/[id]/connections/route.ts
+- GET, OPTIONS /connections/api/connectors/{id}/spend — apps/kernel/app/connections/api/connectors/[id]/spend/route.ts
+- GET, OPTIONS /connections/api/connectors/{id}/telemetry — apps/kernel/app/connections/api/connectors/[id]/telemetry/route.ts
+- GET, OPTIONS /connections/api/connectors/status — apps/kernel/app/connections/api/connectors/status/route.ts
+- GET, OPTIONS, POST /connections/api/groups — apps/kernel/app/connections/api/groups/route.ts
+- DELETE, GET, PATCH /connections/api/groups/{id} — apps/kernel/app/connections/api/groups/[id]/route.ts
+- DELETE, PATCH, POST /connections/api/groups/{id}/members — apps/kernel/app/connections/api/groups/[id]/members/route.ts
+- GET /connections/api/health — apps/kernel/app/connections/api/health/route.ts
+- GET, OPTIONS, POST /connections/api/invites — apps/kernel/app/connections/api/invites/route.ts
+- DELETE, GET, OPTIONS, PATCH /connections/api/invites/{code} — apps/kernel/app/connections/api/invites/[code]/route.ts
+- OPTIONS, POST /connections/api/invites/{code}/accept — apps/kernel/app/connections/api/invites/[code]/accept/route.ts
+- GET /connections/api/invites/invited-by — apps/kernel/app/connections/api/invites/invited-by/route.ts
+- OPTIONS, POST /connections/api/nicknames/resolve — apps/kernel/app/connections/api/nicknames/resolve/route.ts
+- GET, POST /connections/api/pods — apps/kernel/app/connections/api/pods/route.ts
+- DELETE, GET, PATCH /connections/api/pods/{id} — apps/kernel/app/connections/api/pods/[id]/route.ts
+- DELETE, POST /connections/api/pods/{id}/links — apps/kernel/app/connections/api/pods/[id]/links/route.ts
+- DELETE, PATCH, POST /connections/api/pods/{id}/members — apps/kernel/app/connections/api/pods/[id]/members/route.ts
+- GET /connections/api/pods/{id}/resolve — apps/kernel/app/connections/api/pods/[id]/resolve/route.ts
+- GET /connections/api/spec — apps/kernel/app/connections/api/spec/route.ts
+- GET, OPTIONS, POST /connections/api/telemetry — apps/kernel/app/connections/api/telemetry/route.ts
+- GET /connections/api/trust/distance — apps/kernel/app/connections/api/trust/distance/route.ts
+- GET, OPTIONS, POST /consent/api/requests — apps/kernel/app/consent/api/requests/route.ts
+- GET, OPTIONS /consent/api/requests/{requestId} — apps/kernel/app/consent/api/requests/[requestId]/route.ts
+- OPTIONS, POST /consent/api/requests/{requestId}/decision — apps/kernel/app/consent/api/requests/[requestId]/decision/route.ts
+- GET /dev/agreement-preview/document — apps/kernel/app/dev/agreement-preview/document/route.ts
+- POST /discord/api/disconnect — apps/kernel/app/discord/api/disconnect/route.ts
+- GET, OPTIONS, POST /discord/api/scope-manifest — apps/kernel/app/discord/api/scope-manifest/route.ts
+- GET, OPTIONS, POST /discord/api/token — apps/kernel/app/discord/api/token/route.ts
+- OPTIONS, POST /gcp/api/disconnect — apps/kernel/app/gcp/api/disconnect/route.ts
+- GET, OPTIONS, POST /gcp/api/scope-manifest — apps/kernel/app/gcp/api/scope-manifest/route.ts
+- GET, OPTIONS, POST /gcp/api/token — apps/kernel/app/gcp/api/token/route.ts
+- OPTIONS, POST /gemini/api/disconnect — apps/kernel/app/gemini/api/disconnect/route.ts
+- GET, OPTIONS, PUT /gemini/api/models — apps/kernel/app/gemini/api/models/route.ts
+- GET, OPTIONS, POST /gemini/api/scope-manifest — apps/kernel/app/gemini/api/scope-manifest/route.ts
+- DELETE, GET, OPTIONS, PUT /gemini/api/spend-cap — apps/kernel/app/gemini/api/spend-cap/route.ts
+- GET, OPTIONS, POST /gemini/api/token — apps/kernel/app/gemini/api/token/route.ts
+- GET /github/api/callback — apps/kernel/app/github/api/callback/route.ts
+- OPTIONS, POST /github/api/configure — apps/kernel/app/github/api/configure/route.ts
+- GET /github/api/connect — apps/kernel/app/github/api/connect/route.ts
+- POST /github/api/device/poll — apps/kernel/app/github/api/device/poll/route.ts
+- POST /github/api/device/start — apps/kernel/app/github/api/device/start/route.ts
+- POST /github/api/disconnect — apps/kernel/app/github/api/disconnect/route.ts
+- GET, OPTIONS, POST /github/api/scope-manifest — apps/kernel/app/github/api/scope-manifest/route.ts
+- GET /github/api/spec — apps/kernel/app/github/api/spec/route.ts
+- GET /google/api/callback — apps/kernel/app/google/api/callback/route.ts
+- OPTIONS, POST /google/api/configure — apps/kernel/app/google/api/configure/route.ts
+- GET /google/api/connect — apps/kernel/app/google/api/connect/route.ts
+- POST /google/api/disconnect — apps/kernel/app/google/api/disconnect/route.ts
+- GET, OPTIONS, POST /google/api/scope-manifest — apps/kernel/app/google/api/scope-manifest/route.ts
+- GET, OPTIONS, PATCH, POST /google/api/setup — apps/kernel/app/google/api/setup/route.ts
+- POST /google/api/webhook/gmail — apps/kernel/app/google/api/webhook/gmail/route.ts
+- GET /infer/api/spec — apps/kernel/app/infer/api/spec/route.ts
+- OPTIONS, POST /infer/v1/chat/completions — apps/kernel/app/infer/v1/chat/completions/route.ts
+- OPTIONS, POST /infer/v1/messages — apps/kernel/app/infer/v1/messages/route.ts
+- OPTIONS, POST /infer/v1/messages/count_tokens — apps/kernel/app/infer/v1/messages/count_tokens/route.ts
+- GET, OPTIONS /infer/v1/models — apps/kernel/app/infer/v1/models/route.ts
+- GET, OPTIONS /infer/v1/models/usable — apps/kernel/app/infer/v1/models/usable/route.ts
+- GET, OPTIONS, POST /jin/api/app-secrets — apps/kernel/app/jin/api/app-secrets/route.ts
+- GET, OPTIONS, POST /jin/api/cloudflare-grants — apps/kernel/app/jin/api/cloudflare-grants/route.ts
+- GET, OPTIONS /jin/api/events — apps/kernel/app/jin/api/events/route.ts
+- GET, OPTIONS, PUT /jin/api/front-door — apps/kernel/app/jin/api/front-door/route.ts
+- GET, OPTIONS /jin/api/grants — apps/kernel/app/jin/api/grants/route.ts
+- POST /jin/api/internal/session-events — apps/kernel/app/jin/api/internal/session-events/route.ts
+- GET, OPTIONS /jin/api/operator-approvals — apps/kernel/app/jin/api/operator-approvals/route.ts
+- OPTIONS, POST /jin/api/operator-approvals/{proposalId}/archive — apps/kernel/app/jin/api/operator-approvals/[proposalId]/archive/route.ts
+- OPTIONS, POST /jin/api/operator-approvals/{proposalId}/decision — apps/kernel/app/jin/api/operator-approvals/[proposalId]/decision/route.ts
+- GET, PUT /jin/api/orgs/{ownerDid}/mail-senders — apps/kernel/app/jin/api/orgs/[ownerDid]/mail-senders/route.ts
+- DELETE, GET, OPTIONS, POST /jin/api/push-subscriptions — apps/kernel/app/jin/api/push-subscriptions/route.ts
+- GET, OPTIONS /jin/api/reach — apps/kernel/app/jin/api/reach/route.ts
+- OPTIONS, POST /jin/api/reach/{reachId}/block — apps/kernel/app/jin/api/reach/[reachId]/block/route.ts
+- OPTIONS, POST /jin/api/reach/{reachId}/reply — apps/kernel/app/jin/api/reach/[reachId]/reply/route.ts
+- OPTIONS, POST /jin/api/reach/knocks/{requestId}/block — apps/kernel/app/jin/api/reach/knocks/[requestId]/block/route.ts
+- GET /jin/api/registered-apps — apps/kernel/app/jin/api/registered-apps/route.ts
+- GET, OPTIONS /jin/api/runs — apps/kernel/app/jin/api/runs/route.ts
+- GET, OPTIONS /jin/api/runs/{loopId} — apps/kernel/app/jin/api/runs/[loopId]/route.ts
+- OPTIONS, POST /jin/api/runs/{loopId}/commands — apps/kernel/app/jin/api/runs/[loopId]/commands/route.ts
+- GET, OPTIONS /jin/api/runs/horizon-status — apps/kernel/app/jin/api/runs/horizon-status/route.ts
+- GET /jin/api/spec — apps/kernel/app/jin/api/spec/route.ts
+- GET, OPTIONS /jin/api/spend — apps/kernel/app/jin/api/spend/route.ts
+- GET, OPTIONS /jin/api/spend/runs — apps/kernel/app/jin/api/spend/runs/route.ts
+- OPTIONS, POST /jin/api/vault-proposals — apps/kernel/app/jin/api/vault-proposals/route.ts
+- OPTIONS, POST /local/api/disconnect — apps/kernel/app/local/api/disconnect/route.ts
+- GET, OPTIONS, PUT /local/api/models — apps/kernel/app/local/api/models/route.ts
+- GET, OPTIONS, POST /local/api/scope-manifest — apps/kernel/app/local/api/scope-manifest/route.ts
+- DELETE, GET, OPTIONS, PUT /local/api/settings — apps/kernel/app/local/api/settings/route.ts
+- GET, OPTIONS, POST /local/api/token — apps/kernel/app/local/api/token/route.ts
+- DELETE, GET, OPTIONS, POST /mcp — apps/kernel/app/mcp/route.ts
+- OPTIONS, POST /mcp/api/disconnect — apps/kernel/app/mcp/api/disconnect/route.ts
+- GET, OPTIONS, POST /mcp/api/scope-manifest — apps/kernel/app/mcp/api/scope-manifest/route.ts
+- GET, OPTIONS, POST /media/api/assets — apps/kernel/app/media/api/assets/route.ts
+- DELETE, GET, PATCH /media/api/assets/{id} — apps/kernel/app/media/api/assets/[id]/route.ts
+- OPTIONS, PATCH /media/api/assets/{id}/access — apps/kernel/app/media/api/assets/[id]/access/route.ts
+- OPTIONS, PATCH /media/api/assets/{id}/article — apps/kernel/app/media/api/assets/[id]/article/route.ts
+- POST /media/api/assets/{id}/classify — apps/kernel/app/media/api/assets/[id]/classify/route.ts
+- GET, PUT /media/api/assets/{id}/content — apps/kernel/app/media/api/assets/[id]/content/route.ts
+- GET, PUT /media/api/assets/{id}/fair — apps/kernel/app/media/api/assets/[id]/fair/route.ts
+- PUT /media/api/assets/{id}/folders — apps/kernel/app/media/api/assets/[id]/folders/route.ts
+- OPTIONS, PATCH /media/api/assets/{id}/grants — apps/kernel/app/media/api/assets/[id]/grants/route.ts
+- GET /media/api/assets/{id}/history — apps/kernel/app/media/api/assets/[id]/history/route.ts
+- GET /media/api/assets/{id}/og — apps/kernel/app/media/api/assets/[id]/og/route.ts
+- GET /media/api/assets/{id}/receipts — apps/kernel/app/media/api/assets/[id]/receipts/route.ts
+- POST /media/api/assets/{id}/references — apps/kernel/app/media/api/assets/[id]/references/route.ts
+- POST /media/api/assets/{id}/settle — apps/kernel/app/media/api/assets/[id]/settle/route.ts
+- POST /media/api/assets/{id}/settle/confirm — apps/kernel/app/media/api/assets/[id]/settle/confirm/route.ts
+- GET, OPTIONS /media/api/assets/{id}/transcribe — apps/kernel/app/media/api/assets/[id]/transcribe/route.ts
+- POST /media/api/assets/{id}/transfer — apps/kernel/app/media/api/assets/[id]/transfer/route.ts
+- POST /media/api/assets/{id}/upgrade-fair — apps/kernel/app/media/api/assets/[id]/upgrade-fair/route.ts
+- GET /media/api/assets/{id}/verify — apps/kernel/app/media/api/assets/[id]/verify/route.ts
+- OPTIONS, POST /media/api/assets/bundle — apps/kernel/app/media/api/assets/bundle/route.ts
+- GET, POST /media/api/folders — apps/kernel/app/media/api/folders/route.ts
+- DELETE, PATCH /media/api/folders/{id} — apps/kernel/app/media/api/folders/[id]/route.ts
+- POST /media/api/folders/init — apps/kernel/app/media/api/folders/init/route.ts
+- GET /media/api/health — apps/kernel/app/media/api/health/route.ts
+- GET /media/api/lots/{correlationId}/fair — apps/kernel/app/media/api/lots/[correlationId]/fair/route.ts
+- GET /media/api/presence/{did} — apps/kernel/app/media/api/presence/[did]/route.ts
+- POST /media/api/seed/presence — apps/kernel/app/media/api/seed/presence/route.ts
+- GET /media/api/spec — apps/kernel/app/media/api/spec/route.ts
+- OPTIONS, POST /media/api/transcribe — apps/kernel/app/media/api/transcribe/route.ts
+- GET, POST /media/api/workspace/branch — apps/kernel/app/media/api/workspace/branch/route.ts
+- DELETE, GET, POST /media/api/workspace/history-grant — apps/kernel/app/media/api/workspace/history-grant/route.ts
+- POST /media/api/workspace/rollback — apps/kernel/app/media/api/workspace/rollback/route.ts
+- POST /media/api/workspace/snapshot — apps/kernel/app/media/api/workspace/snapshot/route.ts
+- OPTIONS, POST /moonshot/api/disconnect — apps/kernel/app/moonshot/api/disconnect/route.ts
+- GET, OPTIONS, PUT /moonshot/api/models — apps/kernel/app/moonshot/api/models/route.ts
+- GET, OPTIONS, POST /moonshot/api/scope-manifest — apps/kernel/app/moonshot/api/scope-manifest/route.ts
+- DELETE, GET, OPTIONS, PUT /moonshot/api/spend-cap — apps/kernel/app/moonshot/api/spend-cap/route.ts
+- GET, OPTIONS, POST /moonshot/api/token — apps/kernel/app/moonshot/api/token/route.ts
+- OPTIONS, POST /notify/api/broadcast — apps/kernel/app/notify/api/broadcast/route.ts
+- GET, OPTIONS /notify/api/health — apps/kernel/app/notify/api/health/route.ts
+- OPTIONS, POST /notify/api/interest — apps/kernel/app/notify/api/interest/route.ts
+- POST /notify/api/internal/ack — apps/kernel/app/notify/api/internal/ack/route.ts
+- POST /notify/api/internal/backlog — apps/kernel/app/notify/api/internal/backlog/route.ts
+- OPTIONS, POST /notify/api/internal/operator-approvals/applied — apps/kernel/app/notify/api/internal/operator-approvals/applied/route.ts
+- OPTIONS, POST /notify/api/internal/operator-approvals/outcome — apps/kernel/app/notify/api/internal/operator-approvals/outcome/route.ts
+- POST /notify/api/internal/operator-approvals/state — apps/kernel/app/notify/api/internal/operator-approvals/state/route.ts
+- POST /notify/api/internal/release — apps/kernel/app/notify/api/internal/release/route.ts
+- GET, OPTIONS /notify/api/notifications — apps/kernel/app/notify/api/notifications/route.ts
+- OPTIONS, POST /notify/api/notifications/{id}/read — apps/kernel/app/notify/api/notifications/[id]/read/route.ts
+- OPTIONS, POST /notify/api/notifications/read-all — apps/kernel/app/notify/api/notifications/read-all/route.ts
+- GET, OPTIONS /notify/api/notifications/unread — apps/kernel/app/notify/api/notifications/unread/route.ts
+- GET, OPTIONS /notify/api/preferences — apps/kernel/app/notify/api/preferences/route.ts
+- OPTIONS, PUT /notify/api/preferences/{scope} — apps/kernel/app/notify/api/preferences/[scope]/route.ts
+- OPTIONS, POST /notify/api/send — apps/kernel/app/notify/api/send/route.ts
+- GET /notify/api/spec — apps/kernel/app/notify/api/spec/route.ts
+- GET, POST /notify/api/unsubscribe — apps/kernel/app/notify/api/unsubscribe/route.ts
+- GET, POST /oauth/authorize — apps/kernel/app/oauth/authorize/route.ts
+- POST /oauth/register — apps/kernel/app/oauth/register/route.ts
+- POST /oauth/token — apps/kernel/app/oauth/token/route.ts
+- GET, OPTIONS, POST /openai/api/billing-key — apps/kernel/app/openai/api/billing-key/route.ts
+- OPTIONS, POST /openai/api/disconnect — apps/kernel/app/openai/api/disconnect/route.ts
+- GET, OPTIONS, PUT /openai/api/models — apps/kernel/app/openai/api/models/route.ts
+- GET, OPTIONS, POST /openai/api/scope-manifest — apps/kernel/app/openai/api/scope-manifest/route.ts
+- DELETE, GET, OPTIONS, PUT /openai/api/spend-cap — apps/kernel/app/openai/api/spend-cap/route.ts
+- GET, OPTIONS, POST /openai/api/token — apps/kernel/app/openai/api/token/route.ts
+- OPTIONS, POST /openrouter/api/disconnect — apps/kernel/app/openrouter/api/disconnect/route.ts
+- GET, OPTIONS, PUT /openrouter/api/models — apps/kernel/app/openrouter/api/models/route.ts
+- GET, OPTIONS, POST /openrouter/api/scope-manifest — apps/kernel/app/openrouter/api/scope-manifest/route.ts
+- DELETE, GET, OPTIONS, PUT /openrouter/api/spend-cap — apps/kernel/app/openrouter/api/spend-cap/route.ts
+- GET, OPTIONS, POST /openrouter/api/token — apps/kernel/app/openrouter/api/token/route.ts
+- POST /pay/api/admin/payment-requests/{id}/retry-settlement — apps/kernel/app/pay/api/admin/payment-requests/[id]/retry-settlement/route.ts
+- GET /pay/api/admin/reconciliation — apps/kernel/app/pay/api/admin/reconciliation/route.ts
+- OPTIONS, POST /pay/api/agent-cost-estimate — apps/kernel/app/pay/api/agent-cost-estimate/route.ts
+- GET, OPTIONS /pay/api/balance/{did} — apps/kernel/app/pay/api/balance/[did]/route.ts
+- OPTIONS, POST /pay/api/balance/event-topup — apps/kernel/app/pay/api/balance/event-topup/route.ts
+- OPTIONS, POST /pay/api/balance/gift — apps/kernel/app/pay/api/balance/gift/route.ts
+- OPTIONS, POST /pay/api/balance/topup — apps/kernel/app/pay/api/balance/topup/route.ts
+- OPTIONS, POST /pay/api/balance/transfer — apps/kernel/app/pay/api/balance/transfer/route.ts
+- OPTIONS, POST /pay/api/balance/withdraw/request — apps/kernel/app/pay/api/balance/withdraw/request/route.ts
+- GET, OPTIONS /pay/api/card-rail/check — apps/kernel/app/pay/api/card-rail/check/route.ts
+- OPTIONS, POST /pay/api/charge — apps/kernel/app/pay/api/charge/route.ts
+- OPTIONS, POST /pay/api/charge-pledges — apps/kernel/app/pay/api/charge-pledges/route.ts
+- OPTIONS, POST /pay/api/checkout — apps/kernel/app/pay/api/checkout/route.ts
+- OPTIONS, POST /pay/api/emission — apps/kernel/app/pay/api/emission/route.ts
+- OPTIONS, POST, PUT /pay/api/escrow — apps/kernel/app/pay/api/escrow/route.ts
+- GET /pay/api/health — apps/kernel/app/pay/api/health/route.ts
+- GET, OPTIONS, POST /pay/api/payment-requests — apps/kernel/app/pay/api/payment-requests/route.ts
+- GET, OPTIONS /pay/api/payment-requests/{id} — apps/kernel/app/pay/api/payment-requests/[id]/route.ts
+- OPTIONS, POST /pay/api/payment-requests/{id}/checkout — apps/kernel/app/pay/api/payment-requests/[id]/checkout/route.ts
+- GET, OPTIONS /pay/api/payment-requests/{id}/payer-dids — apps/kernel/app/pay/api/payment-requests/[id]/payer-dids/route.ts
+- OPTIONS, POST /pay/api/payment-requests/{id}/settle — apps/kernel/app/pay/api/payment-requests/[id]/settle/route.ts
+- OPTIONS, POST /pay/api/payment-requests/{id}/void — apps/kernel/app/pay/api/payment-requests/[id]/void/route.ts
+- GET, OPTIONS /pay/api/payment-requests/by-handle/{handle} — apps/kernel/app/pay/api/payment-requests/by-handle/[handle]/route.ts
+- DELETE, OPTIONS, POST /pay/api/payment-requests/by-handle/{handle}/emt — apps/kernel/app/pay/api/payment-requests/by-handle/[handle]/emt/route.ts
+- GET, OPTIONS /pay/api/payment-requests/rails — apps/kernel/app/pay/api/payment-requests/rails/route.ts
+- OPTIONS, POST /pay/api/refund — apps/kernel/app/pay/api/refund/route.ts
+- OPTIONS, POST /pay/api/settle — apps/kernel/app/pay/api/settle/route.ts
+- OPTIONS, POST /pay/api/setup-intent — apps/kernel/app/pay/api/setup-intent/route.ts
+- OPTIONS, POST /pay/api/setup-intent/verify — apps/kernel/app/pay/api/setup-intent/verify/route.ts
+- GET /pay/api/spec — apps/kernel/app/pay/api/spec/route.ts
+- GET, OPTIONS /pay/api/tax/remittance-owed — apps/kernel/app/pay/api/tax/remittance-owed/route.ts
+- OPTIONS, POST /pay/api/topup/emt — apps/kernel/app/pay/api/topup/emt/route.ts
+- OPTIONS, POST /pay/api/topup/stripe — apps/kernel/app/pay/api/topup/stripe/route.ts
+- GET, OPTIONS /pay/api/transactions/{did} — apps/kernel/app/pay/api/transactions/[did]/route.ts
+- GET, OPTIONS /pay/api/transactions/{did}/summary — apps/kernel/app/pay/api/transactions/[did]/summary/route.ts
+- OPTIONS, POST /pay/api/transactions/lookup — apps/kernel/app/pay/api/transactions/lookup/route.ts
+- POST /pay/api/webhook — apps/kernel/app/pay/api/webhook/route.ts
+- POST /pay/api/webhook/{provider} — apps/kernel/app/pay/api/webhook/[provider]/route.ts
+- POST /pay/api/webhook/did/{routingId} — apps/kernel/app/pay/api/webhook/did/[routingId]/route.ts
+- POST /profile/api/auth/logout — apps/kernel/app/profile/api/auth/logout/route.ts
+- POST /profile/api/auth/register — apps/kernel/app/profile/api/auth/register/route.ts
+- GET /profile/api/auth/session — apps/kernel/app/profile/api/auth/session/route.ts
+- OPTIONS, POST /profile/api/contact/verify-email — apps/kernel/app/profile/api/contact/verify-email/route.ts
+- GET /profile/api/contact/verify-email/confirm — apps/kernel/app/profile/api/contact/verify-email/confirm/route.ts
+- DELETE, POST /profile/api/follow — apps/kernel/app/profile/api/follow/route.ts
+- GET /profile/api/follow/status — apps/kernel/app/profile/api/follow/status/route.ts
+- GET, PATCH /profile/api/forest/{groupDid}/config — apps/kernel/app/profile/api/forest/[groupDid]/config/route.ts
+- GET /profile/api/forest/{groupDid}/config/public — apps/kernel/app/profile/api/forest/[groupDid]/config/public/route.ts
+- GET /profile/api/handle-check — apps/kernel/app/profile/api/handle-check/route.ts
+- GET /profile/api/health — apps/kernel/app/profile/api/health/route.ts
+- GET /profile/api/media/{path...} — apps/kernel/app/profile/api/media/[...path]/route.ts
+- GET, OPTIONS /profile/api/presence/{did} — apps/kernel/app/profile/api/presence/[did]/route.ts
+- POST /profile/api/presence/update — apps/kernel/app/profile/api/presence/update/route.ts
+- POST /profile/api/profile — apps/kernel/app/profile/api/profile/route.ts
+- DELETE, GET, OPTIONS, PUT /profile/api/profile/{id} — apps/kernel/app/profile/api/profile/[id]/route.ts
+- OPTIONS, PUT /profile/api/profile/{id}/contact-visibility — apps/kernel/app/profile/api/profile/[id]/contact-visibility/route.ts
+- GET /profile/api/profile/{id}/counts — apps/kernel/app/profile/api/profile/[id]/counts/route.ts
+- GET, OPTIONS /profile/api/profile/{id}/etransfer-email — apps/kernel/app/profile/api/profile/[id]/etransfer-email/route.ts
+- GET /profile/api/profile/{id}/pricing — apps/kernel/app/profile/api/profile/[id]/pricing/route.ts
+- POST /profile/api/profile/{id}/query — apps/kernel/app/profile/api/profile/[id]/query/route.ts
+- POST /profile/api/profile/{id}/stream — apps/kernel/app/profile/api/profile/[id]/stream/route.ts
+- POST /profile/api/profile/claim-handle — apps/kernel/app/profile/api/profile/claim-handle/route.ts
+- POST /profile/api/profile/inference — apps/kernel/app/profile/api/profile/inference/route.ts
+- GET /profile/api/profile/search — apps/kernel/app/profile/api/profile/search/route.ts
+- POST /profile/api/register — apps/kernel/app/profile/api/register/route.ts
+- OPTIONS, POST /profile/api/resolve — apps/kernel/app/profile/api/resolve/route.ts
+- GET /profile/api/spec — apps/kernel/app/profile/api/spec/route.ts
+- POST /profile/api/stubs — apps/kernel/app/profile/api/stubs/route.ts
+- PATCH /profile/api/stubs/{did} — apps/kernel/app/profile/api/stubs/[did]/route.ts
+- GET, POST /profile/api/stubs/{did}/images — apps/kernel/app/profile/api/stubs/[did]/images/route.ts
+- DELETE /profile/api/stubs/{did}/images/{id} — apps/kernel/app/profile/api/stubs/[did]/images/[id]/route.ts
+- POST /profile/api/stubs/{did}/join — apps/kernel/app/profile/api/stubs/[did]/join/route.ts
+- GET /profile/api/stubs/mine — apps/kernel/app/profile/api/stubs/mine/route.ts
+- POST /profile/api/upload — apps/kernel/app/profile/api/upload/route.ts
+- GET /quickbooks/api/callback — apps/kernel/app/quickbooks/api/callback/route.ts
+- OPTIONS, POST /quickbooks/api/configure — apps/kernel/app/quickbooks/api/configure/route.ts
+- GET /quickbooks/api/connect — apps/kernel/app/quickbooks/api/connect/route.ts
+- POST /quickbooks/api/disconnect — apps/kernel/app/quickbooks/api/disconnect/route.ts
+- OPTIONS, POST /quickbooks/api/invoice — apps/kernel/app/quickbooks/api/invoice/route.ts
+- OPTIONS, POST /quickbooks/api/reconcile — apps/kernel/app/quickbooks/api/reconcile/route.ts
+- GET, OPTIONS, POST /quickbooks/api/scope-manifest — apps/kernel/app/quickbooks/api/scope-manifest/route.ts
+- GET /quickbooks/api/spec — apps/kernel/app/quickbooks/api/spec/route.ts
+- POST /quickbooks/api/webhook — apps/kernel/app/quickbooks/api/webhook/route.ts
+- POST /reach/{handle} — apps/kernel/app/reach/[handle]/route.ts
+- POST /reach/{handle}/knock — apps/kernel/app/reach/[handle]/knock/route.ts
+- DELETE, GET, OPTIONS, POST /reach/{handle}/mcp — apps/kernel/app/reach/[handle]/mcp/route.ts
+- GET, OPTIONS /reach/{handle}/onboarding.json — apps/kernel/app/reach/[handle]/onboarding.json/route.ts
+- GET, OPTIONS /reach/{handle}/openapi.json — apps/kernel/app/reach/[handle]/openapi.json/route.ts
+- GET /registry/api/audience/{scope} — apps/kernel/app/registry/api/audience/[scope]/route.ts
+- GET, POST /registry/api/builds/verify — apps/kernel/app/registry/api/builds/verify/route.ts
+- OPTIONS, POST /registry/api/bump/activate — apps/kernel/app/registry/api/bump/activate/route.ts
+- OPTIONS, POST /registry/api/bump/confirm — apps/kernel/app/registry/api/bump/confirm/route.ts
+- OPTIONS, POST /registry/api/bump/deactivate — apps/kernel/app/registry/api/bump/deactivate/route.ts
+- OPTIONS, POST /registry/api/bump/event — apps/kernel/app/registry/api/bump/event/route.ts
+- GET, OPTIONS /registry/api/bump/nodes — apps/kernel/app/registry/api/bump/nodes/route.ts
+- GET /registry/api/health — apps/kernel/app/registry/api/health/route.ts
+- POST /registry/api/identity — apps/kernel/app/registry/api/identity/route.ts
+- GET, OPTIONS /registry/api/identity/{did} — apps/kernel/app/registry/api/identity/[did]/route.ts
+- GET, OPTIONS /registry/api/interests — apps/kernel/app/registry/api/interests/route.ts
+- GET, OPTIONS /registry/api/interests/{scope} — apps/kernel/app/registry/api/interests/[scope]/route.ts
+- GET, OPTIONS /registry/api/launcher — apps/kernel/app/registry/api/launcher/route.ts
+- POST /registry/api/node/heartbeat — apps/kernel/app/registry/api/node/heartbeat/route.ts
+- GET, HEAD /registry/api/node/list — apps/kernel/app/registry/api/node/list/route.ts
+- GET /registry/api/node/lookup/{id} — apps/kernel/app/registry/api/node/lookup/[id]/route.ts
+- POST /registry/api/node/register — apps/kernel/app/registry/api/node/register/route.ts
+- GET /registry/api/node/resolve/{did} — apps/kernel/app/registry/api/node/resolve/[did]/route.ts
+- GET /registry/api/node/self — apps/kernel/app/registry/api/node/self/route.ts
+- GET, OPTIONS, PUT /registry/api/preferences/{did} — apps/kernel/app/registry/api/preferences/[did]/route.ts
+- OPTIONS, POST, PUT /registry/api/preferences/{did}/interests/{scope} — apps/kernel/app/registry/api/preferences/[did]/interests/[scope]/route.ts
+- GET /registry/api/spec — apps/kernel/app/registry/api/spec/route.ts
+- GET, OPTIONS /registry/api/specs — apps/kernel/app/registry/api/specs/route.ts
+- GET, OPTIONS /registry/api/specs/{service} — apps/kernel/app/registry/api/specs/[service]/route.ts
+- DELETE, GET, PATCH, POST, PUT /registry/relay/{path...} — apps/kernel/app/registry/relay/[[...path]]/route.ts
+- OPTIONS, POST /stripe/api/disconnect — apps/kernel/app/stripe/api/disconnect/route.ts
+- GET, OPTIONS, POST /stripe/api/scope-manifest — apps/kernel/app/stripe/api/scope-manifest/route.ts
+- GET, OPTIONS, POST /stripe/api/token — apps/kernel/app/stripe/api/token/route.ts
+- POST /stripe/api/webhook/{routingId} — apps/kernel/app/stripe/api/webhook/[routingId]/route.ts
+- OPTIONS, POST /supply/api/collected — apps/kernel/app/supply/api/collected/route.ts
+- OPTIONS, POST /supply/api/declared — apps/kernel/app/supply/api/declared/route.ts
+- OPTIONS, POST /supply/api/listed — apps/kernel/app/supply/api/listed/route.ts
+- GET, OPTIONS /supply/api/lot/{correlationId} — apps/kernel/app/supply/api/lot/[correlationId]/route.ts
+- GET, OPTIONS /supply/api/lots — apps/kernel/app/supply/api/lots/route.ts
+- OPTIONS, POST /supply/api/processed — apps/kernel/app/supply/api/processed/route.ts
+- OPTIONS, POST /supply/api/received — apps/kernel/app/supply/api/received/route.ts
+- GET, OPTIONS, POST /typesafe/api/connect — apps/kernel/app/typesafe/api/connect/route.ts
+- OPTIONS, POST /typesafe/api/decide — apps/kernel/app/typesafe/api/decide/route.ts
+- OPTIONS, POST /typesafe/api/disconnect — apps/kernel/app/typesafe/api/disconnect/route.ts
+- GET, OPTIONS /typesafe/api/models — apps/kernel/app/typesafe/api/models/route.ts
+- GET, OPTIONS, POST /typesafe/api/scope-manifest — apps/kernel/app/typesafe/api/scope-manifest/route.ts
+- GET, OPTIONS /usage/api/audit/sessions/{sessionId} — apps/kernel/app/usage/api/audit/sessions/[sessionId]/route.ts
+- OPTIONS, POST /usage/api/billed — apps/kernel/app/usage/api/billed/route.ts
+- GET, OPTIONS, PUT /usage/api/emitters — apps/kernel/app/usage/api/emitters/route.ts
+- OPTIONS, POST /usage/api/incurred — apps/kernel/app/usage/api/incurred/route.ts
+- OPTIONS, POST /usage/api/receipts — apps/kernel/app/usage/api/receipts/route.ts
+- OPTIONS, POST /usage/api/receipts/extract — apps/kernel/app/usage/api/receipts/extract/route.ts
+- GET, OPTIONS /usage/api/reconciliation — apps/kernel/app/usage/api/reconciliation/route.ts
+- GET, OPTIONS /usage/api/rollup/{did}/latest — apps/kernel/app/usage/api/rollup/[did]/latest/route.ts
+- GET, OPTIONS /usage/api/rollups — apps/kernel/app/usage/api/rollups/route.ts
+- GET /usage/api/spec — apps/kernel/app/usage/api/spec/route.ts
+- GET, OPTIONS /usage/api/summary — apps/kernel/app/usage/api/summary/route.ts
+- GET /vault/api/spec — apps/kernel/app/vault/api/spec/route.ts
+- OPTIONS, POST /warp/api/dispatch — apps/kernel/app/warp/api/dispatch/route.ts
+- DELETE, GET, OPTIONS, PUT /warp/api/environment — apps/kernel/app/warp/api/environment/route.ts
+- GET, OPTIONS /warp/api/runs — apps/kernel/app/warp/api/runs/route.ts
+- GET, OPTIONS /warp/api/runs/{runId} — apps/kernel/app/warp/api/runs/[runId]/route.ts
+- OPTIONS, POST /warp/api/runs/{runId}/cancel — apps/kernel/app/warp/api/runs/[runId]/cancel/route.ts
+- GET, OPTIONS /warp/api/runs/{runId}/conversation — apps/kernel/app/warp/api/runs/[runId]/conversation/route.ts
+- OPTIONS, POST /warp/api/runs/{runId}/followups — apps/kernel/app/warp/api/runs/[runId]/followups/route.ts
+- GET, OPTIONS /warp/api/runs/{runId}/transcript — apps/kernel/app/warp/api/runs/[runId]/transcript/route.ts
+- GET, OPTIONS, POST /warp/api/scope-manifest — apps/kernel/app/warp/api/scope-manifest/route.ts
+- DELETE, GET, OPTIONS, POST /warp/api/seal — apps/kernel/app/warp/api/seal/route.ts
+- OPTIONS, POST /xai/api/disconnect — apps/kernel/app/xai/api/disconnect/route.ts
+- GET, OPTIONS, PUT /xai/api/models — apps/kernel/app/xai/api/models/route.ts
+- GET, OPTIONS, POST /xai/api/scope-manifest — apps/kernel/app/xai/api/scope-manifest/route.ts
+- DELETE, GET, OPTIONS, PUT /xai/api/spend-cap — apps/kernel/app/xai/api/spend-cap/route.ts
+- GET, OPTIONS, POST /xai/api/token — apps/kernel/app/xai/api/token/route.ts
+- OPTIONS, POST /zai/api/disconnect — apps/kernel/app/zai/api/disconnect/route.ts
+- GET, OPTIONS, PUT /zai/api/models — apps/kernel/app/zai/api/models/route.ts
+- GET, OPTIONS, POST /zai/api/scope-manifest — apps/kernel/app/zai/api/scope-manifest/route.ts
+- DELETE, GET, OPTIONS, PUT /zai/api/spend-cap — apps/kernel/app/zai/api/spend-cap/route.ts
+- GET, OPTIONS, POST /zai/api/token — apps/kernel/app/zai/api/token/route.ts
 
-```
-MJN (L6)     ← identity + attribution + trust + settlement
-DFOS (L0–L5) ← proof chains, key rotation, countersignatures
-HTTPS        ← transport
-```
+## Further reading
 
-## The kernel (one app, all core routes)
-
-The kernel (canonical host `jin.imajin.ai`) serves every core capability as route-groups of a single app — not separate deployments:
-
-| Capability | Path | Role |
-|------------|------|------|
-| auth | jin.imajin.ai/auth | DIDs, sessions, attestations, DFOS bridge |
-| pay | jin.imajin.ai/pay | Stripe, settlement, .fair verification |
-| connections | jin.imajin.ai/connections | Trust — pods, invites, groups, vouches |
-| profile | jin.imajin.ai/profile | Discovery — public profiles, handles |
-| registry | jin.imajin.ai/registry | Federation — node discovery, DFOS relay |
-| chat | jin.imajin.ai/chat | DID messaging, WebSocket |
-| media | jin.imajin.ai/media | Assets, .fair sidecars |
-| calendar | jin.imajin.ai/calendar | Scheduling, consent-gated availability |
-| mcp | jin.imajin.ai/mcp | Sovereign connector door (OAuth, per-DID scopes) |
-| oauth | jin.imajin.ai/oauth | Authorization surface for connectors |
-
-## Userspace apps
-
-Disposable apps on top of the kernel — swap, rewrite, or add more without touching the chain layer:
-events, learn, market, coffee, links, dykil.
-
-## Identity
-
-Ed25519 keypairs → `did:imajin:xxx`. Three standing tiers: soft (email), preliminary (keypair), established (earned). Chain-backed via DFOS.
-
-## Key Concepts
-
-- **JBOS** — Just a Bunch Of Services. No orchestration. Services verify chains, not each other.
-- **.fair** — JSON manifests: who made it, who gets paid. Kernel primitive — settlement rejects unsigned manifests.
-- **Bilateral attestations** — both parties sign via DFOS countersignatures. Trust is mutual, not unilateral.
-- **Selective disclosure** — release only what's needed, only with consent, only for that interaction. Every release is logged and auditable.
-- **Exit credentials** — leave with your reputation. Signed, portable, encrypted under your key.
-- **Trust-gated commerce** — three seller tiers: direct (off-platform settlement), protected (on-platform with .fair), trust-gated (visible only to verified members with preliminary DID+).
-
-## Currency & settlement (there is no token to trade)
-
-The protocol is currency-agnostic. A node can settle in CAD via Stripe, in USD, in community credits, or in MJNx — whatever makes sense for that community. **MJNx is to Imajin as USD is to SWIFT: SWIFT moves money, it doesn't BE money.** The protocol doesn't require the token; the token requires the protocol.
-
-There is no public asset to trade. **MJN is an internal accounting unit (1 MJN = 0.01 CHF), not a tradable token.** Hardware first, token later — Year 3. Roadmap: Year 1 software, Year 2 devices, Year 3 chip.
-
-## Links
-
-- Full spec: https://imajin.ai/llms-full.txt
-- Source: https://github.com/ima-jin/imajin-ai
-- .fair spec: https://github.com/ima-jin/.fair
-- MJN protocol: https://github.com/ima-jin/mjn-protocol
-- DFOS: https://protocol.dfos.com
-- DFOS relay: https://jin.imajin.ai/registry/relay/
-- OpenAPI specs: https://jin.imajin.ai/<capability>/api/spec
-- Developer guide: https://imajin.ai/developer-guide
-
-## Build Stats (July 2026)
-
-Live since February 2026 · 2,700+ commits · one kernel, two platform apps, five Imajin apps, three client apps · 1 human + AI agents · single server, no Kubernetes/Docker/service-mesh. The constraint is intentional — if the architecture can't be maintained by a small team, it's the wrong architecture.
-
-## Contact
-
-Ryan Veteze — ryan@imajin.ai
-This is exit infrastructure from platform dependency, not a competing platform.
+https://github.com/ima-jin/imajin-ai/blob/main/README.md
+https://github.com/ima-jin/imajin-ai/blob/main/docs/guide/canonical-patterns.md
+https://github.com/ima-jin/imajin-ai/blob/main/docs/ENVIRONMENTS.md
+https://github.com/ima-jin/imajin-ai/blob/main/SECURITY.md
+https://jin.imajin.ai/llms-full.txt

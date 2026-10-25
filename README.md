@@ -1,76 +1,119 @@
 # Imajin
-<!-- Docs delta replay: 2026-10-25, source f125a35ce, since d8047d11c (#2028). -->
+<!-- Wide documentation replay: 2026-10-25, source 4d7b2dc1aa3a1dc721a35c863b47d283ae5c67bf, v0.8.26..main (#2028). -->
 
 **You compose. Imajin orchestrates. Signed. Legible.**
 
-You choose your tools, bring your identity, and compose work with people and agents. Connect a service, authorize an app, or inspect a signed record without making yourself the object being managed — *the speed of thought, signed.*
+You choose your tools, bring your identity, and compose work with people and agents.
+Connect a service, authorize an app, or inspect a signed record without becoming
+the object being managed — *the speed of thought, signed.*
 
 ## What it is
 
-Imajin is **Agentic Relation Management**: the relation is at the center, with agents on both sides. Its kernel is **Attestation · Communication · Attribution · Settlement · Discovery · Revocation**, plus identity/auth, the bus, connectors, inference passthrough and media. Identity is the subject the six act on, not a seventh primitive.
+Imajin is **Agentic Relation Management**: the relation is at the center, with
+agents on both sides. Its kernel serves **Attestation · Communication · Attribution ·
+Settlement · Discovery · Revocation**, plus identity/auth, the bus, connectors,
+inference passthrough and media. Identity is their subject, not a seventh primitive.
 
-**Proof of history, not proof of work:** signatures and linked records establish who asserted what, under whose authority.
-They do not establish that every claim is true; see the [proof model](docs/guide/proof-model.md) and [whitepaper](docs/mjn-whitepaper.md).
+**Proof of history, not proof of work:** signatures and linked records establish
+who asserted what, under whose authority, not that every assertion is true.
+See the [proof model](docs/guide/proof-model.md) and [whitepaper](docs/mjn-whitepaper.md).
 
-Revocation is the option to leave: withdraw → soft tombstone → hard destruction of hash/key, retaining the tombstone. The record remembers **that**, not **what**. Propagation is part of the [primitive's canonical shape](https://github.com/ima-jin/imajin-ai/issues/2027), not a guarantee that every use case is implemented.
+Revocation is the option to leave: withdraw → soft tombstone → hard destruction of
+hash/key, keeping the tombstone. The record remembers **that**, not **what**.
+[Propagation is part of its canonical shape](https://github.com/ima-jin/imajin-ai/issues/2027),
+not a guarantee that every concrete use case is implemented.
 
 ## What you can do today
 
-**Delta evidence checked 2026-10-25 UTC, since [#3054](https://github.com/ima-jin/imajin-ai/pull/3054). Earlier dated app acceptance below is retained, not re-swept.**
+**Source checked 2026-10-25 UTC against v0.8.26..`4d7b2dc1a`; v0.8.27 is pre-cut, not released.**
 
-- Run a local kernel, register an identity, and use its auth, profile, messaging and media surfaces. Start with the [developer guide index](docs/guide/README.md); configuration, permissions and deployment determine availability.
-- Connect an agent through the [OpenClaw plugin](https://github.com/ima-jin/openclaw-imajin-plugin/blob/main/README.md), or compose a registered app with the published SDK. See [Build an app](#build-an-app).
-- Choose apps built on Imajin from their owned repositories below. App deployment and acceptance are separate from a kernel release.
-- Inspect Registered apps, Clear an active or dormant registration with a consent-count confirmation, and inspect your personal or authorized organization Record on `/jin`. Revoked apps now sit in collapsed history, like expired apps; Inbox and Operator approvals retain **Show history**. See the [kernel README](apps/kernel/README.md#pre-cut-delta-for-v0827) for the merged-source delta and access limits.
-- Use the inference proxy with principal-based minting and the full usable model catalog, without pinning a grant ID. Re-grant on `/jin` → Grants after consent expires or is revoked; the release updater now requires exact-SHA production deployment evidence and mint-backed health before switching. See the [passthrough runbook](packages/openclaw-infer-passthrough/README.md).
-- Maintain a field-released legal-entity record, store sealed bank-details records through the API, or issue bounded SSH user certificates under an operator-granted scope. These have distinct custody and authorization limits; bank settings UI and host deployment are not claimed shipped. See the [kernel README](apps/kernel/README.md#pre-cut-delta-for-v0827).
-- Reuse the GitHub Actions SSH deploy step with a per-job throwaway key and a vault-signed certificate, authorized by verified GitHub OIDC and an explicit repository/environment grant. Follow the [consumer and runner contract](docs/deploy/vault-ssh-deploy.md); shipped automation is not evidence of a live host rollout ([#3095](https://github.com/ima-jin/imajin-ai/pull/3095)).
-- Index GitHub sources under their registry-resolved owner's corpus, selecting that owner's vault-backed OAuth connector instead of a node-wide token. Explicit grants and a one-shot migration are required; no production migration is asserted. See the [corpus-owned runbook](apps/corpus/README.md).
+- Run a kernel, register an identity and compose auth, profile, messaging and media
+  surfaces. The [guide index](docs/guide/README.md) explains permissions and setup.
+- Connect your agent through the [OpenClaw plugin](https://github.com/ima-jin/openclaw-imajin-plugin/blob/main/README.md),
+  or build a registered app with the published SDK below.
+- Inspect Registered apps, Clear consent with confirmation and retain revoked/expired
+  history. Use personal or authorized organization Record and actionable-only
+  Inbox/Operator views. [Kernel-owned details and citations](apps/kernel/README.md).
+- Use principal-based inference minting and the usable model catalog. Re-grant after
+  revoked/expired consent; the [release updater](deploy/infer-passthrough/README.md)
+  requires exact-SHA production evidence and mint-backed health before promotion.
+- Maintain per-field legal-entity release or sealed bank-details records through
+  the API. Human-session/auth-scoped ownership and Tier 0 custody limits apply;
+  bank settings UI and invoice disclosure are not claimed. [Developer contracts](docs/DEVELOPER.md#sealed-bank-details-api-3075).
+- Issue purpose-scoped SSH user certificates and reuse the
+  [GitHub OIDC deploy action](docs/deploy/vault-ssh-deploy.md). Live grants, TTL,
+  pinned host keys, host trust/principals and non-swappable tmpfs are explicit
+  requirements, not proof that a host rollout happened.
+- Index GitHub sources under their registry-resolved owner DID with that owner's
+  OAuth connector. Live corpus grants and explicit connector selection are
+  required, with no node-token fallback. [Corpus runbook](apps/corpus/README.md).
+- Discover your own live exact-zone Cloudflare grants as metadata, never credential
+  values. Acting identities cannot widen the list. [Domain guide](docs/guide/domain-ownership.md#domain-scoped-credentials).
 
-The [v0.8.26 source tag](https://github.com/ima-jin/imajin-ai/tree/v0.8.26) and npm SDK artifacts are available. The [kernel production workflow](https://github.com/ima-jin/imajin-ai/actions/runs/39777022949) succeeded on 2026-10-22 for `c75e4fd195ef125f82c986ba1313bb8365f408f3`; that does not certify later main commits or every app flow. This replay is **pre-cut upkeep for v0.8.27**, not an assertion that v0.8.27 is released.
+The [v0.8.26 source tag](https://github.com/ima-jin/imajin-ai/tree/v0.8.26)
+and public SDK artifacts are available. The [production workflow](https://github.com/ima-jin/imajin-ai/actions/runs/39777022949)
+succeeded on 2026-10-22 for `c75e4fd195ef125f82c986ba1313bb8365f408f3`;
+that is not evidence of deployment of later main or acceptance of every app flow.
 
 ## Kernel vs. apps
 
-A node operator runs the kernel, not a calendar. Third-party services are **apps built on Imajin**: registered identities using scoped tokens, published SDKs and public APIs under the [registered-app contract](https://github.com/ima-jin/imajin-ai/issues/1981), never shared kernel internals.
+A node operator runs the kernel, not a calendar. Third-party services are **apps
+built on Imajin**: identities using scoped tokens, published SDKs and public APIs
+under the [registered-app contract](https://github.com/ima-jin/imajin-ai/issues/1981),
+not kernel internals or another service's database.
 
-Generated `apps/*` inventory at the source snapshot below; the kernel and internal services are explicitly distinguished from third-party apps:
+Generated from every `apps/*/package.json` at the source snapshot:
 
 | Directory | What it provides | Boundary | Owned README |
 |---|---|---|---|
-| `apps/broker-agent` | Telegram broker agent — conversational surface for broker-mediated social coordination | In-repo agent surface; rail/app classification undecided in #1981; no production-readiness claim | [README](apps/broker-agent/README.md) |
-| `apps/corpus` | Per-DID corpus indexing and BM25 search service | Internal daemon; rail/app classification undecided in #1981 | [README](apps/corpus/README.md) |
+| `apps/broker-agent` | Telegram broker agent — conversational surface for broker-mediated social coordination | Internal agent surface; rail/app classification remains undecided in #1981 | [README](apps/broker-agent/README.md) |
+| `apps/corpus` | Per-DID corpus indexing and BM25 search service | Internal owner-DID retrieval daemon; rail/app classification remains undecided in #1981 | [README](apps/corpus/README.md) |
 | `apps/kernel` | Six primitives and their supporting rails | The kernel, not a third-party app | [README](apps/kernel/README.md) |
 
-The extracted verticals live in their own repositories; none is an `apps/*` workspace target here. Status is dated 2026-10-21, not inferred from missing source:
+The extracted verticals have owned repositories; none is a workspace target here.
+Earlier cutover records are dated, not inferred from source removal:
 
 | App | What you compose | Recorded status | Owned README |
 |---|---|---|---|
-| coffee | Tips and support | Standalone prod + dev; cutover recorded in [#2497](https://github.com/ima-jin/imajin-ai/issues/2497) | [coffee](https://github.com/ima-jin/coffee/blob/main/README.md) |
-| dykil | Surveys and responses | Standalone services serving; signed legacy import incomplete in [#2522](https://github.com/ima-jin/imajin-ai/issues/2522) | [dykil](https://github.com/ima-jin/dykil/blob/main/README.md) |
-| events | Event pages, ticketing and check-in | Cutover accepted 2026-10-20 in [#2516](https://github.com/ima-jin/imajin-ai/issues/2516); buy/QR smoke deferred to [#2989](https://github.com/ima-jin/imajin-ai/issues/2989) | [events](https://github.com/ima-jin/events/blob/main/README.md) |
-| learn | Courses and learning | Standalone prod + dev; cutover recorded in [#2502](https://github.com/ima-jin/imajin-ai/issues/2502) | [learn](https://github.com/ima-jin/learn/blob/main/README.md) |
-| links | Link-in-bio pages | Own repository; monorepo copy pruned 2026-09-28 | [links](https://github.com/ima-jin/links/blob/main/README.md) |
-| market | Listings and purchases | Standalone prod + dev; cutover recorded in [#2510](https://github.com/ima-jin/imajin-ai/issues/2510) | [market](https://github.com/ima-jin/market/blob/main/README.md) |
+| coffee | Tips and support | Prod/dev cutover recorded 2026-10-16 in [#2497](https://github.com/ima-jin/imajin-ai/issues/2497) | [coffee](https://github.com/ima-jin/coffee/blob/main/README.md) |
+| dykil | Surveys and responses | Standalone services serving; 2026-10-20 dev import failed signature checks and no prod import ran ([#2522](https://github.com/ima-jin/imajin-ai/issues/2522)) | [dykil](https://github.com/ima-jin/dykil/blob/main/README.md) |
+| events | Event pages, ticketing, check-in | [#2516](https://github.com/ima-jin/imajin-ai/issues/2516) closed 2026-10-20; future buy/QR smoke is [#2989](https://github.com/ima-jin/imajin-ai/issues/2989), registry controls [#2988](https://github.com/ima-jin/imajin-ai/issues/2988) | [events](https://github.com/ima-jin/events/blob/main/README.md) |
+| learn | Courses and learning | Prod/dev cutover recorded 2026-10-16 in [#2502](https://github.com/ima-jin/imajin-ai/issues/2502) | [learn](https://github.com/ima-jin/learn/blob/main/README.md) |
+| links | Link-in-bio pages | Own repository; kernel copy pruned 2026-09-28 | [links](https://github.com/ima-jin/links/blob/main/README.md) |
+| market | Listings and purchases | Prod/dev cutover recorded 2026-10-16 in [#2510](https://github.com/ima-jin/imajin-ai/issues/2510) | [market](https://github.com/ima-jin/market/blob/main/README.md) |
 
-Events' cutover closed under the [2026-10-20 ruling](https://github.com/ima-jin/imajin-ai/issues/2516#issuecomment-6294184437): buy/QR smoke waits for a future event in #2989, and registry controls are tracked in [#2988](https://github.com/ima-jin/imajin-ai/issues/2988). The old kernel-copy rollback is retired; app rollback uses its own prior deployment ref. Dykil's [2026-10-20 import report](https://github.com/ima-jin/imajin-ai/issues/2522#issuecomment-6293818392) records a failed dev signature check and no prod import; serving standalone is not import acceptance.
-
-The [prune-on-dev ruling](https://github.com/ima-jin/imajin-ai/issues/1981#issuecomment-6083425361) separates source removal from prod acceptance. Pruning does not drop app schema or data.
+The [prune-on-dev ruling](https://github.com/ima-jin/imajin-ai/issues/1981#issuecomment-6083425361)
+separates source removal from prod acceptance; pruning never drops app schema/data.
+Events' [2026-10-20 ruling](https://github.com/ima-jin/imajin-ai/issues/2516#issuecomment-6294184437)
+retired the kernel-copy rollback. Use its owned prior deployment ref.
 
 ## Build an app
 
-Start with the [app template's owned README](https://github.com/ima-jin/imajin-app-template/blob/main/README.md), preserving its history. Follow its registration, schema-ownership and claim instructions; [kernel provisioning](docs/REGISTRATION.md) documents the operator-managed path.
-
-Use [`auth-client`](packages/auth-client/README.md) for sign-in and session handlers. Add published [`auth`](packages/auth/package.json), [`config`](packages/config/package.json), [`logger`](packages/logger/package.json), [`ui`](packages/ui/package.json) or [`fair`](packages/fair/package.json) only as needed.
+Start from the [app template's owned README](https://github.com/ima-jin/imajin-app-template/blob/main/README.md),
+preserving its history; follow the [registration contract](docs/REGISTRATION.md).
+Use [auth-client](packages/auth-client/README.md) for sign-in/session handlers;
+add published auth/config/logger/ui/fair only as needed.
 
 ```bash
 npm install @ima-jin/auth-client@0.8.26
 ```
 
-External consumers install **`@ima-jin/*` from npmjs.org anonymously**; workspace imports use **`@imajin/*`**. The [publish pipeline](docs/npm-publishing.md) rewrites the scope and removes `private: true` only in the publish copy. That flag is not publication evidence. Apps must not install workspace-only internals or access another service's database.
+External consumers install **`@ima-jin/*`** anonymously from npmjs.org; workspace
+imports use **`@imajin/*`**. The [publish pipeline](docs/npm-publishing.md) rewrites
+scope and removes `private: true` in the publish copy. That flag is not publication
+evidence. Do not install workspace-only internals.
 
 ## Packages (SDK)
 
-Generated from every `packages/*/package.json` at [`f125a35ce`](https://github.com/ima-jin/imajin-ai/tree/f125a35ce57302fab5d0ace44159db3ea32ae61e). Descriptions use manifest text, or current exports where a manifest has none. Anonymous public npm `latest` checks on **2026-10-25 UTC** found **12 published, 18 workspace-only**. Versions are a checked snapshot; registry links show live metadata. SDK tracking: [#1982](https://github.com/ima-jin/imajin-ai/issues/1982), [#1581](https://github.com/ima-jin/imajin-ai/issues/1581), [#1011](https://github.com/ima-jin/imajin-ai/issues/1011), [#1992](https://github.com/ima-jin/imajin-ai/issues/1992).
+Generated from every `packages/*/package.json` at
+[`4d7b2dc1a`](https://github.com/ima-jin/imajin-ai/tree/4d7b2dc1aa3a1dc721a35c863b47d283ae5c67bf).
+Descriptions use manifests, or checked current exports when absent. Anonymous
+registry `latest` checks on 2026-10-25 UTC: **12 published, 18
+workspace-only**. Registry links show live metadata; versions are a checked snapshot.
+Tracking: [#1982](https://github.com/ima-jin/imajin-ai/issues/1982),
+[#1581](https://github.com/ima-jin/imajin-ai/issues/1581),
+[#1011](https://github.com/ima-jin/imajin-ai/issues/1011),
+[#1992](https://github.com/ima-jin/imajin-ai/issues/1992).
 
 ### Core SDK and workspace libraries
 
@@ -89,7 +132,7 @@ Generated from every `packages/*/package.json` at [`f125a35ce`](https://github.c
 | [`eslint-config-imajin`](packages/eslint-config-imajin/package.json) | Shared ESLint flat config for imajin-ai monorepo | Workspace-only; npm 404 |
 | [`@imajin/fair`](packages/fair/package.json) | Shared .fair attribution types, validator, builder, and React components | [`@ima-jin/fair@0.8.26`](https://registry.npmjs.org/@ima-jin/fair/latest) |
 | [`@imajin/input`](packages/input/package.json) | Composable text, voice, location and attachment inputs | Workspace-only; npm 404 |
-| [`@imajin/llm`](packages/llm/package.json) | Vercel AI SDK provider factory and usage-cost calculation | Workspace-only; npm 404 |
+| [`@imajin/llm`](packages/llm/package.json) | AI SDK 5 provider factory, Zod 4 tool contracts and usage-cost calculation | Workspace-only; npm 404 |
 | [`@imajin/logger`](packages/logger/package.json) | Structured logging and request middleware | [`@ima-jin/logger@0.8.26`](https://registry.npmjs.org/@ima-jin/logger/latest) |
 | [`@imajin/media`](packages/media/package.json) | Media browser, asset display components, and resolveMediaRef/resolveAssetUrl helpers for Imajin apps | [`@ima-jin/media@0.8.26`](https://registry.npmjs.org/@ima-jin/media/latest) |
 | [`@imajin/money`](packages/money/package.json) | Currency-safe Money primitive, signed FX snapshots, and ECB rate cache-through (#1950) | Workspace-only; npm 404 |
@@ -103,7 +146,9 @@ Generated from every `packages/*/package.json` at [`f125a35ce`](https://github.c
 
 ### Plugin and harness surface
 
-The [OpenClaw Imajin plugin](https://github.com/ima-jin/openclaw-imajin-plugin/blob/main/README.md) is owned outside this workspace. Its related channel, inference passthrough, reflex guard, envelope, provisioner and usage-emitter packages form a separate group below. No npm installation is claimed for these workspace-only packages.
+The external OpenClaw plugin and workspace channel, inference passthrough, reflex
+guard, envelope, provisioner and usage-emitter packages are a distinct group.
+No npm installation is claimed for workspace-only packages.
 
 | Workspace package | What it provides | Publish status |
 |---|---|---|
@@ -116,7 +161,9 @@ The [OpenClaw Imajin plugin](https://github.com/ima-jin/openclaw-imajin-plugin/b
 
 ## Run a node
 
-For a local kernel, install **Node.js 22+, pnpm 9 and PostgreSQL 14+** with client tools. The [setup helper](scripts/setup-local.sh) prepares local kernel dependencies, environment, migrations and service bootstrap identities; it does not set up extracted apps.
+For the kernel only: Node.js 22+, pnpm 9, PostgreSQL 14+ and client tools.
+The [setup helper](scripts/setup-local.sh) installs dependencies, prepares local
+environment/migrations and provisions bootstrap identities, not extracted apps.
 
 ```bash
 git clone https://github.com/ima-jin/imajin-ai.git
@@ -125,48 +172,75 @@ bash scripts/setup-local.sh
 pnpm --filter @imajin/kernel dev
 ```
 
-Open `http://localhost:3000/register` and save your key file. The helper disables the invite gate **for local development only**; production registration remains policy-gated. The command starts only the kernel, unlike workspace-wide `pnpm dev`.
-
-Details: [local development](docs/DEVELOPER.md) · [deployment](deploy/README.md) · [environment reference](docs/ENVIRONMENTS.md). Production uses reviewed, approval-gated release/deploy workflows, not a manual `git pull`. Extracted apps follow their own runbooks.
+Open `http://localhost:3000/register` and save your key file. The helper disables
+the invite gate for local dev only; production remains policy-gated.
+[Development](docs/DEVELOPER.md) · [deployment](deploy/README.md) ·
+[environments](docs/ENVIRONMENTS.md). Production uses reviewed approval-gated
+workflows, not a manual `git pull`; apps follow their own runbooks.
 
 ## Project status
 
 <!-- stats:start -->
-Generated 2026-10-25 UTC from source commit [`f125a35ce`](https://github.com/ima-jin/imajin-ai/commit/f125a35ce57302fab5d0ace44159db3ea32ae61e); full-history repository snapshot, not live deployment metrics.
+Generated 2026-10-25 UTC from source commit
+[`4d7b2dc1a`](https://github.com/ima-jin/imajin-ai/commit/4d7b2dc1aa3a1dc721a35c863b47d283ae5c67bf);
+full-history snapshot, not live deployment metrics.
 
 | Repository metric | Computed value |
 |---|---|
-| Reachable commits (`git rev-list --count f125a35ce`, full history) | 6043 |
-| `apps/*/package.json` | 3 (includes kernel and internal services) |
+| Reachable commits (`git rev-list --count 4d7b2dc1a`) | 6048 |
+| `apps/*/package.json` | 3 (includes kernel/internal services) |
 | `packages/*/package.json` | 30 |
 <!-- stats:end -->
 
-No live identity count or unsigned inference-cost estimate is asserted. See the [signed usage-rollup read model](apps/kernel/app/usage/api/rollup/[did]/latest/route.ts) for the per-DID record, not a guessed network total.
+No live identity count or unsigned inference-cost estimate is asserted. See the
+[signed per-DID usage rollup](apps/kernel/app/usage/api/rollup/[did]/latest/route.ts),
+not a guessed network total.
 
 ## Docs / RFCs / spec
 
-- [Developer guide index](docs/guide/README.md) · [proof model](docs/guide/proof-model.md) · [migrations](docs/MIGRATIONS.md).
-- [Whitepaper](docs/mjn-whitepaper.md) · [RFC index](docs/rfcs/INDEX.md) · [operator API spec source](apps/kernel/app/jin/api/spec/route.ts).
-- [Conformance #1287](https://github.com/ima-jin/imajin-ai/issues/1287) tracks the assembled node suite. This README does not assert certification.
-- The Canadian reference-build company / proposed Swiss protocol-steward split remains a [memo and conformance dependency](https://github.com/ima-jin/imajin-ai/issues/1287), not a claim that the proposed entity exists.
-- [Build log](apps/kernel/content/build-log.md) · [process log](apps/kernel/content/process-log.md). Historical entries retain their dates.
-
-Linked documents can lag implementation. [#2028](https://github.com/ima-jin/imajin-ai/issues/2028) holds the standing replay brief and run-logs; this pre-cut replay regenerates READMEs only, not the whitepaper or log files.
+- [Guide index](docs/guide/README.md) · [proof model](docs/guide/proof-model.md) ·
+  [migrations](docs/MIGRATIONS.md) · [whitepaper](docs/mjn-whitepaper.md).
+- [RFC index](docs/rfcs/INDEX.md) · [operator spec source](apps/kernel/app/jin/api/spec/route.ts) ·
+  [complete route index](apps/kernel/public/llms.txt) ·
+  [service contract reference](apps/kernel/public/llms-full.txt).
+- [Conformance #1287](https://github.com/ima-jin/imajin-ai/issues/1287) tracks the
+  assembled suite. This is not certification. The Canadian reference-build /
+  proposed Swiss protocol-steward split remains a memo/dependency, not a claim
+  that the proposed entity exists.
+- [Build log](apps/kernel/content/build-log.md) and [process log](apps/kernel/content/process-log.md)
+  retain dated history. [#2028](https://github.com/ima-jin/imajin-ai/issues/2028)
+  holds the replay brief/run-logs; this wide pass checks all tracked text against
+  the release diff and builds on #3108.
 
 ## Contributing
 
-Read [AGENTS.md](AGENTS.md), [canonical patterns](docs/guide/canonical-patterns.md) and the [PR checklist](docs/PR-CHECKLIST.md). Work in an isolated worktree and submit a PR. Checks: `pnpm lint`, `pnpm typecheck`, `pnpm test:coverage`, `pnpm build`. Release workflows alone bump manifest versions.
+Read [AGENTS.md](AGENTS.md), [canonical patterns](docs/guide/canonical-patterns.md)
+and the [PR checklist](docs/PR-CHECKLIST.md). Work in an isolated worktree.
+Use `pnpm lint:agent`, `pnpm typecheck:agent`, `pnpm test:agent`, `pnpm build:agent`;
+while iterating, run affected tests only. Release workflows alone bump versions.
 
 ## Security
 
-See [SECURITY.md](SECURITY.md) for disclosure and known limitations. User signatures, node assertions and operational logs are different guarantees; use the [proof model](docs/guide/proof-model.md), not the hero, to decide what a verifier can establish.
+Read [SECURITY.md](SECURITY.md) for disclosure and limitations. User signatures,
+node assertions and operational logs have distinct guarantees. Consult the
+proof model, not the hero, for what a verifier can establish.
 
 ## A note on use
 
-A general-purpose tool can be used well or badly. The commitment is legibility, not a promise to make misuse impossible: authority, disclosure and signed actions should leave an inspectable record, including our own. A signature establishes who asserted a claim, not that it is true. Soft-DID activity and unsigned operational logs are not user signatures.
+A general-purpose tool can be used well or badly. The commitment is legibility,
+not a promise to make misuse impossible: authority, disclosure and signed actions
+should leave an inspectable record, including our own. A signature establishes who
+asserted a claim, not its truth. Soft-DID activity and unsigned logs are not user signatures.
 
-The [honest-record accountability issue #1427](https://github.com/ima-jin/imajin-ai/issues/1427) closed on 2026-09-23 after the [resolver](https://github.com/ima-jin/imajin-ai/pull/1454) and [durable audit-log](https://github.com/ima-jin/imajin-ai/pull/1500) gaps shipped. That closes those tracked gaps, not every security or revocation-propagation use case. Consult the implementation, known limitations and license.
+The [honest-record accountability issue #1427](https://github.com/ima-jin/imajin-ai/issues/1427)
+closed 2026-09-23 after the resolver and durable-audit gaps shipped
+([#1454](https://github.com/ima-jin/imajin-ai/pull/1454),
+[#1500](https://github.com/ima-jin/imajin-ai/pull/1500)). Those closures do not
+establish every security or revocation-propagation use case.
 
 ## License
 
-[Imajin Network License (INL) v1.0](LICENSE.md), **not MIT**. Source-available, with notice requirements for everyone and network-participation conditions for covered commercial organizations above the CAD $1 million annual-revenue threshold. The license defines the conditions and exemptions; this summary does not replace it.
+[Imajin Network License (INL) v1.0](LICENSE.md), **not MIT**. Source-available, with
+notice requirements and network-participation conditions for covered commercial
+organizations above CAD $1 million annual revenue. The license defines conditions
+and exemptions; this summary does not replace it.

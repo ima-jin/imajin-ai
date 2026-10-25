@@ -17,13 +17,12 @@ Read these before doing anything:
 - **Never set `NODE_ENV` in the shell.** Scripts set it internally.
 - **After pulling main, rebuild everything.** Stale `.next` builds cause phantom errors.
 - **Shared packages must not depend upward.** Infrastructure packages have zero app dependencies.
-=======
-# CLAUDE.md — AI Assistant Guide for imajin-ai
-
 ## What this is
 
-Reference implementation of the MJN Protocol — a sovereign identity and payments platform.
-Monorepo: 1 kernel (9 domains) + 6 federated apps, all self-hosted.
+Reference implementation of the MJN Protocol: the six primitives and their rails.
+The current workspace contains the kernel, broker-agent and corpus. Events,
+coffee, dykil, learn, links and market are independently owned apps built on Imajin,
+not workspace targets. Inventory and owned README links are generated in README.md.
 
 ## Documentation — load as needed
 
@@ -41,10 +40,10 @@ Monorepo: 1 kernel (9 domains) + 6 federated apps, all self-hosted.
 ```
 apps/
   kernel/     — Core platform (auth, identity, pay, profile, chat, media, notify, registry, connections)
-  events/     — Event creation and ticketing
-  links/      — Curated link collections
+  broker-agent/ — Internal Telegram agent surface
+  corpus/     — Internal owner-DID retrieval daemon
 
-packages/     — Shared libraries (@imajin/auth, @imajin/db, @imajin/ui, etc.)
+packages/     — Workspace libraries (@imajin/*); published SDKs use @ima-jin/*
 ```
 
 ## Dev setup (quick version)
@@ -54,7 +53,7 @@ Full instructions in [docs/DEVELOPER.md](docs/DEVELOPER.md). The short version:
 ```bash
 pnpm install
 cp apps/kernel/.env.example apps/kernel/.env.local  # edit DATABASE_URL
-pnpm dev                                             # starts all apps
+pnpm --filter @imajin/kernel dev                      # starts only the kernel
 ```
 
 ## Key conventions
@@ -63,7 +62,24 @@ pnpm dev                                             # starts all apps
 - **Env vars:** Kernel uses `node --env-file=.env.local`. Next.js apps use built-in `.env` loading. Root-level scripts (db:migrate, db:reset) do NOT load .env files — you must `export DATABASE_URL` in your shell.
 - **basePath:** Apps served behind a reverse proxy use Next.js `basePath`. Events uses `/events` (so locally: `localhost:3006/events`). Check each app's `next.config.js`.
 - **Ports:** Dev `3xxx`, prod `7xxx`. Core: `x000–x099`, imajin apps: `x100–x199`, client apps: `x400–x499`.
-- **Migrations:** Always use `drizzle-kit generate`, never `drizzle-kit push`. Never hand-write SQL. See [docs/DEVELOPER.md](docs/DEVELOPER.md#migration-discipline).
+- **Migrations:** Never use `drizzle-kit push`. Put idempotent, owner-declared
+  kernel SQL in root `migrations/` above the fixed baseline cut; move/adapt
+  generated Drizzle scaffolding there. App SQL belongs in its owned repo.
+  See [docs/MIGRATIONS.md](docs/MIGRATIONS.md).
 - **IDs:** Prefix + timestamp + random pattern (e.g. `crs_m1abc123`).
 - **Auth pattern:** Every service calls kernel's auth service. See `src/lib/auth.ts` in any app.
 - **Dependencies:** Dynamic imports must be declared in `package.json`. Don't rely on pnpm hoisting.
+## Release seams (v0.8.27 source)
+
+- Legal entity: `getLegalEntity` enforces per-field release; bank details use
+  `/auth/api/bank-details`, individual vault seals and retained immutable history.
+  Generic media scopes and generic vault fetch do not disclose these records.
+- SSH CA/signing: use the canonical vault primitives and `/vault/api/spec`.
+  The reusable GitHub OIDC deploy action is documented in
+  `docs/deploy/vault-ssh-deploy.md`; it does not authorize a live host rollout.
+- Corpus sources resolve to the registry owner DID, not a source hash or caller.
+  Check live owner grants before minting claims or selecting that owner's OAuth
+  connector. No node-token or personal-connector fallback. Read `apps/corpus/README.md`.
+- `@imajin/llm` uses AI SDK 5/provider SDK 2 and Zod 4. Tool contracts use
+  `inputSchema`, and streamed tool arguments use `input`; do not copy SDK 4
+  `parameters`/`args` examples into current consumers.

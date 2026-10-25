@@ -1,6 +1,6 @@
 # MJN Protocol
 ## A Cryptographic Operating System for Sovereign Commerce
-### v0.7 · October 2026
+### v0.8 · October 2026
 
 *Ryan Veteze · ryan@imajin.ai · [github.com/ima-jin/imajin-ai](https://github.com/ima-jin/imajin-ai)*
 
@@ -47,7 +47,8 @@ The userspace row below is a conceptual layer, not a monorepo file inventory.
 Events is owned by [ima-jin/events](https://github.com/ima-jin/events). Its kernel copy
 was pruned under [#2517](https://github.com/ima-jin/imajin-ai/issues/2517)
 (closed 2026-10-17); production acceptance
-[#2516](https://github.com/ima-jin/imajin-ai/issues/2516) remains open at this review.
+[#2516](https://github.com/ima-jin/imajin-ai/issues/2516) closed under the
+2026-10-20 ruling, with future-event buy/QR smoke deferred to #2989.
 Pruning is not proof of completed production acceptance. External apps
 compose through scoped tokens, published `@ima-jin/*` SDKs and public kernel
 APIs, not kernel-internal workspace imports. See [the registration contract](https://github.com/ima-jin/imajin-ai/blob/main/docs/REGISTRATION.md).
@@ -351,6 +352,21 @@ Tier 1 can require an external owner agent, while an active grant still enables 
 Both entry versions remain supported; this review does not certify a completed production
 migration. See the [custody migration runbook](https://github.com/ima-jin/imajin-ai/blob/main/docs/vault-custody-migration-runbook.md).
 
+The release adds purpose-scoped SSH CA lifecycle and bounded user-certificate
+issuance, with no private CA export. Live grants bind principals, forced command,
+hosts and expiry; revocation stops new signing, not already-issued certificates.
+GitHub jobs authenticate with verified OIDC for the granted repository/environment.
+Hosts must separately deploy public trust and enforce principal policy.
+The [deploy contract](https://github.com/ima-jin/imajin-ai/blob/main/docs/deploy/vault-ssh-deploy.md)
+requires per-job keys on non-swappable tmpfs and pinned host keys.
+
+Sealed `bank-details:v1` records are individually sealed fields with immutable
+private documents and retained signed replacement/revocation history, not plaintext
+profile metadata. The API requires human-session auth-scoped owner/admin access;
+Tier 0 remains node-controlled and Tier 1 saves fail closed. The separate legal-entity
+document releases name/address fields independently. Neither implementation claims
+a complete invoice/PDF flow or a bank settings UI.
+
 ### Federated App Authentication
 
 The legacy `requireAppAuth()` attestation-validation path remains, alongside short-lived
@@ -405,6 +421,9 @@ Implementation evidence checked against source `6f16236e` on 2026-10-17. Here �
 merged implementation with a backing PR, not verified deployment or production acceptance.
 Unbacked prior ✅ rows are removed rather than carried forward as assumptions.
 
+Release-diff additions checked at `4d7b2dc1` on 2026-10-25 follow below.
+They are source evidence, not claims of host deployment or production data migration.
+
 | Status | Item |
 |--------|------|
 | ✅ | MJN/MJNx dual-unit ledger — receipt-backed withdrawable MJN vs. emitted non-withdrawable MJNx ([#2159](https://github.com/ima-jin/imajin-ai/pull/2159)) |
@@ -414,6 +433,11 @@ Unbacked prior ✅ rows are removed rather than carried forward as assumptions.
 | ✅ | Operator approvals via /jin — kernel-witnessed confirm decisions; operator countersignature is conditional ([#2078](https://github.com/ima-jin/imajin-ai/pull/2078)) |
 | ✅ | Public signed usage-rollup read API and manual/backfill `usage.billed` ([#2031](https://github.com/ima-jin/imajin-ai/pull/2031)); receipt upload binding ([#2041](https://github.com/ima-jin/imajin-ai/pull/2041)) |
 | ✅ | `@imajin/money` — currency-safe Money primitive with signed FX snapshots ([#2036](https://github.com/ima-jin/imajin-ai/pull/2036)) |
+| ✅ | Purpose-scoped SSH CA lifecycle ([#3066](https://github.com/ima-jin/imajin-ai/pull/3066)), bounded certificate signing ([#3083](https://github.com/ima-jin/imajin-ai/pull/3083)) and reusable GitHub OIDC deploy action ([#3095](https://github.com/ima-jin/imajin-ai/pull/3095)); host trust rollout is separate |
+| ✅ | Sealed bank-details API ([#3107](https://github.com/ima-jin/imajin-ai/pull/3107)) and per-field legal-entity release ([#3096](https://github.com/ima-jin/imajin-ai/pull/3096)); custody/disclosure limits above apply |
+| ✅ | Registry-owner-DID corpus partitions ([#3103](https://github.com/ima-jin/imajin-ai/pull/3103)) and source-owner GitHub OAuth credentials ([#3102](https://github.com/ima-jin/imajin-ai/pull/3102)); live explicit grants required, no node-token fallback, signed migration is a separate operation |
+| ✅ | Grantee-only Cloudflare zone-grant metadata ([#3094](https://github.com/ima-jin/imajin-ai/pull/3094)), without credential release |
+| ✅ | Inference release updater gated by exact-SHA successful production deployment and mint-backed health ([#3060](https://github.com/ima-jin/imajin-ai/pull/3060)); installation is operator-managed |
 | ⏳ | Generalized weighted/decaying and portable standing (local eligibility checks exist) |
 | ⏳ | Portable exit credentials |
 | ⏳ | MJN token settlement (dual-currency) |
@@ -443,6 +467,12 @@ including implemented broker modes, without inferring deployment. Economic/model
 are explicitly flagged, not ruled here. This pass also records the previously unversioned
 2026-10-17 events-boundary edit (`6d6c06c2`, referencing issue #2517); production acceptance
 is tracked separately by #2516 and is not established by pruning.
+
+v0.8 (2026-10): v0.8.26..`4d7b2dc1` release-diff sweep (#2028): document SSH
+CA/signing/OIDC deploy boundaries, sealed bank-details/legal-entity records,
+owner-DID corpus and OAuth requirements, Cloudflare metadata grants and the
+production-evidence-gated inference updater; record #2516's 2026-10-20 ruling.
+Economic/model annotations are unchanged.
 
 *[Developer Guide](https://github.com/ima-jin/imajin-ai/blob/main/docs/developer-guide.md) · [llms-full.txt](https://imajin.ai/llms-full.txt) · [.fair spec](https://github.com/ima-jin/.fair) · [DFOS](https://protocol.dfos.com) · [Source](https://github.com/ima-jin/imajin-ai)*
 
