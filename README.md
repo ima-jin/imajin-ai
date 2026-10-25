@@ -98,8 +98,8 @@ add published auth/config/logger/ui/fair only as needed.
 npm install @ima-jin/auth-client@0.8.26
 ```
 
-External consumers install **@ima-jin/*** anonymously from npmjs.org; workspace
-imports use **@imajin/***. The [publish pipeline](docs/npm-publishing.md) rewrites
+External consumers install **`@ima-jin/*`** anonymously from npmjs.org; workspace
+imports use **`@imajin/*`**. The [publish pipeline](docs/npm-publishing.md) rewrites
 scope and removes `private: true` in the publish copy. That flag is not publication
 evidence. Do not install workspace-only internals.
 

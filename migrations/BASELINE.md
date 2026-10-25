@@ -22,7 +22,8 @@ The same rule applies to **every** later root migration, including 0217, 0218
 and `0221_vault_ssh_scope.sql` (v0.8.27's signed SSH operation-grant scope):
 replay pending files in filename order and skip recorded ones. The SSH CA
 lifecycle/certificate records reuse the existing vault rails; 0221 adds
-`ssh_scope` to `vault.delegation_grants`, not another baseline cut.
+`ssh_scope` to `kernel.vault_delegation_grants` and a unique signed-issuance
+serial index to `auth.attestations`, not another baseline cut.
 Missing history through 0215 is never tolerated. Choose the next free number
 above the last root migration on main; do not move the cut for this check fix.
 

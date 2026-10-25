@@ -45,9 +45,10 @@
 - **Protocol RFCs:** [docs/rfcs/](../rfcs/) (the "why" behind decisions)
 - **Source code:** [github.com/ima-jin/imajin-ai](https://github.com/ima-jin/imajin-ai)
 - **.fair spec:** [github.com/ima-jin/.fair](https://github.com/ima-jin/.fair)
-- **OpenAPI specs:** discover the catalogue through `/registry/api/specs` and
-  fetch the listed `/{service}/api/spec` endpoint, including `/vault/api/spec`.
-  Not every route group has a spec; the catalogue is not a live deployment list.
+- **OpenAPI specs:** `/registry/api/specs` lists configured service candidates,
+  not a complete on-disk or live deployment inventory. The generated references
+  below enumerate actual spec handlers, including `/vault/api/spec`; fetch a
+  served spec for its full schemas. Not every route group has a spec.
 - **Complete source-derived route references:** [llms.txt](../../apps/kernel/public/llms.txt)
   and [llms-full.txt](../../apps/kernel/public/llms-full.txt), including internal
   and dev-only handlers (presence does not grant access).

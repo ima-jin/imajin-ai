@@ -62,7 +62,10 @@ pnpm --filter @imajin/kernel dev                      # starts only the kernel
 - **Env vars:** Kernel uses `node --env-file=.env.local`. Next.js apps use built-in `.env` loading. Root-level scripts (db:migrate, db:reset) do NOT load .env files — you must `export DATABASE_URL` in your shell.
 - **basePath:** Apps served behind a reverse proxy use Next.js `basePath`. Events uses `/events` (so locally: `localhost:3006/events`). Check each app's `next.config.js`.
 - **Ports:** Dev `3xxx`, prod `7xxx`. Core: `x000–x099`, imajin apps: `x100–x199`, client apps: `x400–x499`.
-- **Migrations:** Always use `drizzle-kit generate`, never `drizzle-kit push`. Never hand-write SQL. See [docs/DEVELOPER.md](docs/DEVELOPER.md#migration-discipline).
+- **Migrations:** Never use `drizzle-kit push`. Put idempotent, owner-declared
+  kernel SQL in root `migrations/` above the fixed baseline cut; move/adapt
+  generated Drizzle scaffolding there. App SQL belongs in its owned repo.
+  See [docs/MIGRATIONS.md](docs/MIGRATIONS.md).
 - **IDs:** Prefix + timestamp + random pattern (e.g. `crs_m1abc123`).
 - **Auth pattern:** Every service calls kernel's auth service. See `src/lib/auth.ts` in any app.
 - **Dependencies:** Dynamic imports must be declared in `package.json`. Don't rely on pnpm hoisting.

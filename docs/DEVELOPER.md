@@ -323,44 +323,26 @@ Each service owns a Postgres schema within the shared database. They don't share
 
 ### Migration Discipline
 
-**Every PR that modifies a `schema.ts` file MUST include the generated migration file.**
+Kernel migrations are root `migrations/NNNN_description.sql`, not app-local
+Drizzle journal entries. Fresh init uses the generated kernel baseline and then
+all post-cut files; existing DBs verify/adopt the baseline without reinitializing.
+See [MIGRATIONS.md](MIGRATIONS.md) and the [baseline runbook](../migrations/BASELINE.md).
 
-The migration runner (`./scripts/migrate.sh`) applies SQL files from each service's `drizzle/` folder. If you change the schema without generating a migration, other developers' databases will be out of sync.
+1. Never use `drizzle-kit push` or edit an applied/archived SQL file.
+2. A schema change needs matching idempotent, schema-qualified root SQL with
+   `-- owner: kernel`, numbered above the fixed cut and latest active migration.
+   Drizzle can scaffold SQL; move/rename its output into root `migrations/`
+   and add the idempotent guards. A local journal is not the runner's authority.
+3. Run `bash scripts/check-schema-migration-sync.sh origin/main`,
+   `bash scripts/check-migrations.sh` and
+   `node scripts/check-migration-ownership.mjs`.
+4. Test the real runner twice against an isolated scratch database; the second
+   run must preserve every ledger row. Production is re-baselined, never reset.
+   Never delete rows to repair history. App-owned schema/migrations belong in
+   each independently owned app repo.
 
-**The rules:**
-
-1. **Never use `drizzle-kit push`.** It applies changes directly to the database with no migration record. The next person who runs `migrate.sh` gets errors because their tracker doesn't know the change was already applied. Push is banned.
-
-2. **Always use `drizzle-kit generate`.** Never hand-write SQL migration files. Every schema change, no matter how small:
-
-```bash
-# 1. Make your schema changes in src/db/schema.ts
-# 2. Generate the migration (from the app directory!)
-cd apps/kernel   # or apps/<userspace-app>
-npx drizzle-kit generate
-
-# 3. Verify THREE files were created/updated:
-#    - drizzle/000N_<name>.sql        (the migration SQL)
-#    - drizzle/meta/_journal.json     (migration registry)
-#    - drizzle/meta/000N_snapshot.json (schema snapshot)
-#
-# 4. Commit ALL THREE with your schema.ts change
-```
-
-**⚠️ If you drop a .sql file into drizzle/ without running `drizzle-kit generate`, the journal won't know it exists and `migrate.sh` will silently skip it.** CI will catch this — the `check-migrations` job verifies that sql/journal/snapshot counts match.
-
-3. **Make initial migrations idempotent.** Use `CREATE SCHEMA IF NOT EXISTS`, `CREATE TABLE IF NOT EXISTS`, and `CREATE INDEX IF NOT EXISTS` in `0000_*.sql` files.
-
-4. **Test your migration.** Run `./scripts/migrate.sh <service>` locally before pushing.
-
-If `drizzle-kit generate` prompts about column renames, choose **"create column"** unless you are intentionally renaming (rename loses existing data by default).
-
-To inspect the schema interactively:
-
-```bash
-cd apps/SERVICE
-npx drizzle-kit studio
-```
+v0.8.27 adds `0221_vault_ssh_scope.sql` above the unchanged baseline; it is not
+permission to move the cut or hand-normalize the migration ledger.
 
 ## Adding a New Service
 
