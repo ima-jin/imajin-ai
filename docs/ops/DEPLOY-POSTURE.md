@@ -3,6 +3,27 @@
 Repo-only investigation. No server access was used or attempted — every claim below is either a
 citation to a file in this repo or explicitly marked as unverifiable from the repo alone.
 
+## Release delta — v0.8.27 source, 2026-10-25
+
+The historical investigations/decisions below retain their dates. New reusable
+automation is not a replacement of the kernel deploy pipeline:
+
+- [Vault SSH deploy](../deploy/vault-ssh-deploy.md), `.github/actions/vault-ssh-deploy`,
+  uses a per-job throwaway key and `/api/vault/ssh-ca/sign`. Verified GitHub OIDC
+  binds an exact repository/environment; host CA/principal policy, pinned host
+  keys, protected environments and non-swappable tmpfs remain prerequisites.
+  The credential-free `vault-ssh-dry-run.yml` is not production rollout evidence.
+- [Inference updater](../../deploy/infer-passthrough/README.md) is pull-based
+  systemd deployment. Release reachability alone is insufficient: exact-SHA
+  successful production evidence and mint-backed candidate/live health gate
+  promotion, with rollback. Installation remains an explicit operator step.
+- [Corpus owner migration](../../apps/corpus/README.md) is separately authorized:
+  registry owner-DID resolution, live owner-issued grants and owner OAuth refs
+  replace caller/source-hash indexing and node GitHub token fallbacks. Deploy
+  the resolver before the daemon; stop writers/back up before the signed migration.
+- `0221_vault_ssh_scope.sql` stays above the fixed baseline cut; historical
+  migration/ledger rows are not rewritten.
+
 ## 1. How code reaches dev and prod today
 
 Both pipelines share one shape — `pull latest → sync pm2 config → install → build changed → migrate →
@@ -134,8 +155,9 @@ as separate pm2 processes but are actually compiled into the single `prod-jin` p
 `prod-scorecard` runs in prod with no corresponding entry reconciled elsewhere. This is exactly the
 "asserted, not observed" failure mode the issue is about, admitted in-repo rather than hidden.
 
-**A dead cross-reference.** `docs/ENVIRONMENTS.md:248` still points to `../DEPLOYMENT.md` ("See
-DEPLOYMENT.md for the full deployment pipeline") — that file was deliberately deleted
+**A dead cross-reference (corrected by the 2026-10-25 sweep).** `docs/ENVIRONMENTS.md`
+now links `deploy/README.md` and this posture document instead of `../DEPLOYMENT.md`;
+that file was deliberately deleted
 (`3a79c11a chore: remove stale DEPLOYMENT.md and PATTERNS.md — covered by DEVELOPER.md and
 ENVIRONMENTS.md`). Low-stakes, but it's a doc telling a reader (or an agent) to go read a file that no
 longer exists.
@@ -387,16 +409,15 @@ not claim #2516 step 8 buy/refund acceptance is complete.
   All migration files, ownership metadata, existing tables and data are unchanged;
   #1991/#2844 ownership work and the #2525 squash remain separate.
 
-## 11. events prune production guard and rollback
+## 11. events cutover ruling and rollback
 
-**Deploy guard: this pruned kernel reaches prod only in a release cut after
-#2516 step 8 (events buy/refund) passes. Until then
-`~/prod/imajin-ai/apps/events` stays on disk as the rollback path;
-Ryan's tap 2 gates the prod deploy.**
-
-Merging #2517 does not authorize a deploy, release dispatch or removal of the
-prod disk copy. The #2784 split-window cutover instructions are historical;
-future events deployments follow the standalone repo's runbook.
+On 2026-10-20, #2516 closed under the
+[operator ruling](https://github.com/ima-jin/imajin-ai/issues/2516#issuecomment-6294184437).
+Future-event buy/QR smoke is #2989. The former source-prune guard requiring
+step 8 before a release is superseded; the kernel-copy rollback is retired.
+The #2784 split-window instructions remain historical. Future events deploys
+and rollback use its owned repo and prior deployment ref, not the pruned copy.
+The ordinary release PR and production approval gates remain unchanged.
 
 **Rollback:** an operator uses reviewed code and a matching build/dependency set
 through the standard approved workflow, verifies cwd/listener/prefixed health

@@ -106,17 +106,39 @@ or sets up events; app deployment follows that repo's runbook. Ports
 are unchanged. Existing migrations, ownership metadata, schema and data are
 untouched by this source prune.
 
-**Deploy guard:** this pruned kernel reaches prod only in a release cut after
-**#2516 step 8 (events buy/refund) passes**. Until then
-**`~/prod/imajin-ai/apps/events` stays on disk as the rollback path**;
-**Ryan's tap 2 gates the prod deploy**. Do not deploy or remove that rollback
-copy as part of merging #2517. Any rollback uses reviewed code and matching
-build/dependencies through the standard approved workflow; no SQL/data rollback.
+**Cutover update (2026-10-20):** #2516 closed under the
+[operator ruling](https://github.com/ima-jin/imajin-ai/issues/2516#issuecomment-6294184437);
+future-event buy/QR smoke remains #2989. The former kernel-copy rollback is
+retired; events rollback uses its owned prior deployment ref with matching
+build/dependencies. The existing production reviewer gate remains; no SQL/data rollback.
 See [deploy/README.md](../deploy/README.md#events-is-external-now-2517).
 
 The kernel reaches corpus over HTTP via `CORPUS_SERVICE_URL`
 (`apps/kernel/.env.example`) — its `localhost` default is only correct when
 kernel and corpus are colocated on the same host; point it at gx10 in prod.
+
+**Corpus release configuration (#3089/#3090):** no new owner-DID environment
+variable exists. GitHub owners resolve through the registry alias
+`(github, org:<lowercase owner>)`; explicit owner-issued corpus grants are
+required. `GITHUB_TOKEN`/`GH_TOKEN` and the `gh` CLI credential fallback are
+removed from the daemon. Select the resolved owner's vault-backed GitHub OAuth
+connector on `/auth/corpus`; existing sources need an explicit connector ref.
+Keep the credential-bearing internal HTTP transport private or use TLS.
+Deploy the kernel resolver before the daemon and run the separately authorized,
+signed owner migration only after backups and stopping writers. See the
+[corpus runbook](../apps/corpus/README.md); source changes do not prove a prod migration.
+
+**SSH deploy and inference updater:** the reusable
+[vault SSH action](deploy/vault-ssh-deploy.md) uses public policy variables
+`KERNEL_URL`, `VAULT_SSH_CA_ID`, `VAULT_SSH_GRANT_ID`, `DEPLOY_KNOWN_HOSTS`,
+GitHub's ephemeral OIDC and an in-memory job key, not a new long-lived deploy
+secret. Host trust/principal policy must be installed separately for each target.
+The [passthrough systemd updater](../deploy/infer-passthrough/README.md) documents
+`INFER_UPDATE_REPO`, `INFER_UPDATE_USER`, live/candidate ports and the optional
+GitHub credential file. Its runtime `/etc/imajin/infer-passthrough.env` is
+separate from the updater configuration and kernel `.env.local`. Promotion needs
+exact-SHA production evidence and mint-backed health. Neither runbook is a claim
+that a live host was installed by this sweep.
 
 **Session boundary (#1069 phase 2):** host-only by default on each kernel
 host; `SESSION_COOKIE_SCOPE=domain` on that kernel process is the rollback.
@@ -546,7 +568,8 @@ scheduler.
 
 ## Deployment
 
-See [DEPLOYMENT.md](../DEPLOYMENT.md) for the full deployment pipeline.
+See [deploy/README.md](../deploy/README.md) for the deployment pipeline and
+[deploy posture](ops/DEPLOY-POSTURE.md) for evidence and approval boundaries.
 
 ## Database Migrations
 

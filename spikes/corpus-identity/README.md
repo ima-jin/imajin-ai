@@ -1,5 +1,14 @@
 # Spike: corpus identity + auth + provenance architecture
 
+> Historical design spike; implementation update 2026-10-25 (#3089/#3090).
+> The source-hash DID and caller-partition proposals below are not the current
+> contract. GitHub sources now use the registry-resolved owner's group DID;
+> workspace sources remain principal-owned. Live owner-issued corpus grants
+> precede claims and that owner's vault-backed OAuth connector lookup, with no
+> node-token fallback. The signed one-shot migration retains rows and historical
+> signatures. Use [the current corpus runbook](../../apps/corpus/README.md),
+> not this spike's pseudocode, for configuration or cutover.
+
 Addresses: #1749, #1750, #1751 (tracked under spike issue #1752)
 
 Risk: low — this is a design document only. No production code was

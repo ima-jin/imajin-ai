@@ -25,6 +25,8 @@
 ## For Contributors & Coding Agents
 
 - **[Canonical Patterns](./canonical-patterns.md)** — the one correct primitive for each seam (auth, settlement, .fair, checkout identity). Read before writing code at a primitive boundary; do not re-implement these inline.
+- **[Legal entity and sealed bank details](../DEVELOPER.md#sealed-bank-details-api-3075)** — distinct private-record and per-field disclosure contracts; no generic media/vault shortcut.
+- **[Corpus ownership and credentials](../../apps/corpus/README.md)** — owner-DID partitions, live grants, OAuth connector selection and signed migration.
 
 ## Security & Boundaries
 
@@ -33,6 +35,9 @@
 - **[.fair Settlement Disclosure](./fair-settlement-disclosure.md)** — the three-layer composable disclosure model for settlement lot manifests: floor, community overlay, and subject gates. How to configure per-deployment profiles and unlock on-consent fields via consent grants.
 - **[Broker Consent Vocabulary](./broker-consent-vocabulary.md)** — canonical broker purposes, fields, release modes, predicates, and term registries for consent config.
 - **[SECURITY.md](../../SECURITY.md)** — responsible disclosure + honest list of known limitations.
+- **[Domain ownership](./domain-ownership.md#domain-scoped-credentials)** — verified bindings and grantee-visible Cloudflare zone grants.
+- **[Vault SSH deploy](../deploy/vault-ssh-deploy.md)** — purpose-scoped certificates, GitHub OIDC and host/runner requirements.
+- **[Inference release deployment](../../deploy/infer-passthrough/README.md)** — exact-SHA production evidence, mint-backed health and rollback.
 
 ## Quick Links
 
@@ -40,7 +45,12 @@
 - **Protocol RFCs:** [docs/rfcs/](../rfcs/) (the "why" behind decisions)
 - **Source code:** [github.com/ima-jin/imajin-ai](https://github.com/ima-jin/imajin-ai)
 - **.fair spec:** [github.com/ima-jin/.fair](https://github.com/ima-jin/.fair)
-- **OpenAPI specs:** `https://jin.imajin.ai/{service}/api/spec`
+- **OpenAPI specs:** discover the catalogue through `/registry/api/specs` and
+  fetch the listed `/{service}/api/spec` endpoint, including `/vault/api/spec`.
+  Not every route group has a spec; the catalogue is not a live deployment list.
+- **Complete source-derived route references:** [llms.txt](../../apps/kernel/public/llms.txt)
+  and [llms-full.txt](../../apps/kernel/public/llms-full.txt), including internal
+  and dev-only handlers (presence does not grant access).
 
 ---
 

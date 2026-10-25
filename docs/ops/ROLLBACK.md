@@ -118,6 +118,14 @@ The one-line rule, also recorded in `docs/MIGRATIONS.md`:
 
 ## See also
 
+- [Inference passthrough rollback](../../deploy/infer-passthrough/README.md) —
+  the systemd updater stages release refs only with exact-SHA production evidence
+  and rolls back failed mint-backed post-restart health. This is separate from a
+  kernel tag rollback.
+- [Vault SSH deploy](../deploy/vault-ssh-deploy.md) — revoking an operation grant
+  stops new signing, not already-issued certificates. CA/trust/principal policy
+  on the host is a separate rollout; do not export a CA seed for rollback.
+
 - `docs/ops/DEPLOY-POSTURE.md` — how code reaches dev and prod, what's machine-checkable, known drift.
 - `docs/MIGRATIONS.md` — migration rules, ownership, tracking table.
 - `deploy/README.md:103-117` — the #1520 `prod-jin` env-file failure and its manual recovery.

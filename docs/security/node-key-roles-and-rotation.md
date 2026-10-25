@@ -110,6 +110,15 @@ existing issuance events under its locks before signing, so concurrent requests
 cannot exceed the budget. Excess requests return 429, record an authenticated
 refusal, and return no certificate. No separate rate-limit store or config exists.
 
+GitHub job signing (#3095) adds a verified external identity, not a new node-key
+role: fixed-issuer RS256 OIDC is checked before the existing CA/grant transaction.
+The signed issuance binds repository, environment, workflow ref, run ID and
+attempt. Grants authorize repository + environment, not workflow filenames.
+Reissue the grant for a replacement CA; do not export/reseal the old CA seed.
+The runner's per-job key is unrelated to `AUTH_PRIVATE_KEY` and never enters
+node-root rotation handoff. See [vault SSH deploy](../deploy/vault-ssh-deploy.md)
+for pinned host trust, non-swappable tmpfs and cleanup requirements.
+
 ### 2.2 Derived-secret roles (HKDF / HMAC; nobody outside the process can verify these)
 
 | Role | Consumers | What breaks on rotation | Who can read the old material |

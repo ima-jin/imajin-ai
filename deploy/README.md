@@ -17,6 +17,31 @@ and never recording the change (#1325).
 server's absolute paths (`/home/jin/dev/...`, `/home/jin/prod/...`) and are kept
 as-is because they *are* the deployed values.
 
+
+## v0.8.27 deployment additions (source checked 2026-10-25)
+
+- **Reusable SSH step:** follow [the vault SSH action contract](../docs/deploy/vault-ssh-deploy.md)
+  for `.github/actions/vault-ssh-deploy` and `POST /api/vault/ssh-ca/sign`.
+  Provision a repository/environment-bound grant and host CA trust/principals
+  first. Jobs need GitHub OIDC `id-token: write`, pinned known-hosts and a
+  non-swappable tmpfs runner. No stored deploy private key or CA export.
+  `vault-ssh-dry-run.yml` and CI's OpenSSH/Python prerequisites validate the
+  credential-free contract, not live target deployment.
+- **Inference shim:** [the tracked systemd release updater](infer-passthrough/README.md)
+  requires successful exact-SHA production deployment evidence and mint-backed
+  candidate/live health before promotion. It is separate from pm2 kernel deploys;
+  the host install and optional GitHub credential file remain operator-managed.
+- **Corpus:** deploy the kernel owner resolver before the daemon. Its GitHub
+  sources require owner-issued corpus grants and that source owner's OAuth
+  connector selection. Remove obsolete `GITHUB_TOKEN`/`GH_TOKEN` settings, not
+  vault bootstrap credentials. The [signed owner migration](../apps/corpus/README.md#one-shot-owner-migration)
+  is a backed-up, stopped-writer operation, not an automatic deploy step.
+- **Database:** `0221_vault_ssh_scope.sql` is a normal post-baseline migration;
+  never regenerate the baseline or alter applied ledger rows for it.
+
+These are shipped source contracts, not evidence that hosts or corpus data have
+been changed. Dev/prod approvals, vault files and app deployments remain separate.
+
 ## Pay caller rollout (#2735)
 
 Deploy the kernel's scoped refund/pledge contract before the migrated app callers.
@@ -506,18 +531,13 @@ All migration files and ownership metadata remain untouched, including shared
 history. This is not the #1991 ownership handoff, #2844 or the #2525 baseline squash;
 no schema or data is dropped. Public kernel APIs used by standalone remain available.
 
-### Deploy guard — source prune is not production approval
+### Cutover ruling — 2026-10-20
 
-**Deploy guard: this pruned kernel reaches prod only in a release cut after
-#2516 step 8 (events buy/refund) passes. Until then
-`~/prod/imajin-ai/apps/events` stays on disk as the rollback path;
-Ryan's tap 2 gates the prod deploy.**
-
-Do not deploy this prune, remove the on-disk rollback copy or dispatch a release
-as part of the source cleanup. Follow the reviewed release workflow and existing
-production approval only after that acceptance gate is satisfied. The completed
-cutover sequence is recorded in #2529/#2516/#2784; use the standalone repo's
-current runbook for future app deployments, not the former monorepo sequence.
+#2516 closed under the [operator ruling](https://github.com/ima-jin/imajin-ai/issues/2516#issuecomment-6294184437):
+buy/QR smoke is deferred to the future event in #2989. The old source-prune
+buy/refund prerequisite and retained kernel-copy rollback instruction are
+historical, not a present release gate. Use the standalone repo's current
+runbook and the normal reviewed, production-approved deployment workflow.
 
 Name-based kernel restarts may still bounce standalone processes, but reuse
 stored definitions. Removing an ecosystem declaration neither performs cutover
@@ -525,8 +545,8 @@ nor makes it safe to leave a monorepo process on a frozen build.
 
 ### Rollback
 
-Preserve the prod disk copy until the guard above clears. A rollback is an
-operator action using reviewed code and a verified matching build/dependency set,
+The kernel-copy rollback is retired. Events rollback uses its owned prior
+deployment ref. A rollback is an operator action using reviewed code and a verified matching build/dependency set,
 through the standard approved workflow; verify cwd, listener, prefixed health and
 pm2 persistence. Never restart an old `.next` against drifting `node_modules`.
 No SQL/data rollback or live server action is part of #2517.

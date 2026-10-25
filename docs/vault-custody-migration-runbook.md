@@ -108,6 +108,14 @@ nothing is re-migrated or re-granted.
 
 ## What this runbook does not cover
 
+- Private-custody namespaces `vault-group-key:*`, `vault-ssh-ca:*` and
+  `bank-details:*` are protected from generic migration, set/rotate/delete,
+  grant/fetch and export surfaces. Do not use this wrapper to move a CA seed
+  or financial identifiers. Use the dedicated lifecycle/record APIs and the
+  [node-root rotation instructions](security/node-key-roles-and-rotation.md).
+  Existing Tier 0 bank records must be replaced from the owner's original
+  banking source after root rotation; a generic sweep does not preserve them.
+
 - Per-environment `VAULT_PATH` splitting — tracked separately in #2357.
 - Key rotation — tracked separately in #2354. For `AUTH_PRIVATE_KEY` rotation (the v1
   entries must be at zero first) see `docs/security/node-key-roles-and-rotation.md` (#2081).

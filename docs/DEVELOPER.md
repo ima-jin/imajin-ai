@@ -107,7 +107,7 @@ Then use `postgresql://imajin_dev:PASSWORD@localhost:5432/imajin_dev` in your `.
 Each app needs a `.env.local` file. Start from the example:
 
 ```bash
-cp apps/auth/.env.example apps/auth/.env.local
+cp apps/kernel/.env.example apps/kernel/.env.local
 # Edit with your DATABASE_URL and secrets
 ```
 
@@ -116,8 +116,8 @@ cp apps/auth/.env.example apps/auth/.env.local
 | Variable | Where | What | How to Generate |
 |----------|-------|------|-----------------|
 | `DATABASE_URL` | All services | Postgres connection | Your local Postgres URL |
-| `AUTH_PRIVATE_KEY` | auth only | Ed25519 PKCS#8 key for signing JWTs | See below |
-| `NEXT_PUBLIC_DISABLE_INVITE_GATE` | auth only | Skip invite codes in dev | Set to `true` |
+| `AUTH_PRIVATE_KEY` | kernel only | Ed25519 node signing/custody key | Local setup script; production uses the operator's existing secure provisioning |
+| `NEXT_PUBLIC_DISABLE_INVITE_GATE` | kernel only | Skip invite codes in dev | Set to `true` for local dev only |
 | `NEXT_PUBLIC_SERVICE_PREFIX` | All services | URL pattern for cross-service links | `http://localhost:` for local dev |
 ### App secrets and import ordering (#2821)
 
@@ -152,7 +152,11 @@ the normal reviewed Release workflow, with no promised hard-coded version.
 
 The `.env.example` files default to `NEXT_PUBLIC_SERVICE_PREFIX=http://localhost:` which uses the canonical port map for cross-service browser links. No CORS issues, no hitting production by accident.
 
-Service-to-service (server-side) URLs use `AUTH_SERVICE_URL=http://localhost:3001` etc.
+Service-to-service URLs use kernel paths, for example
+`AUTH_SERVICE_URL=http://localhost:3000/auth` and
+`PAY_SERVICE_URL=http://localhost:3000/pay`. Corpus is a separate HTTP daemon:
+`CORPUS_SERVICE_URL` must reach its actual host/port. Do not configure removed
+split-service ports as kernel upstreams.
 
 ## Running Services
 
@@ -276,6 +280,11 @@ Code shared across services lives in `packages/`:
 | `@imajin/email` | Email sending (SendGrid), templates, QR codes |
 | `@imajin/trust-graph` | Trust graph queries for connection checks |
 | `@imajin/config` | Shared configuration |
+
+This is a selected list; the root README generates the complete package inventory.
+`@imajin/llm` now uses AI SDK 5, provider SDK 2 and Zod 4 (#3099):
+tools declare `inputSchema`, and streamed tool-call arguments are `input`.
+Do not reuse older AI SDK 4 `parameters`/`args` examples.
 
 ### When shared packages change
 
@@ -483,6 +492,39 @@ token counts stay unpriced. Moonshot JSON and SSE use our rate card, never an
 upstream `usage.cost` or account balance. The existing OpenRouter-specific
 explicit-cost contract is unchanged. `/jin` Spend UI work remains #2725.
 ## Testing
+
+The full agent suite is `pnpm --silent test:agent`; while iterating, pass only
+affected test files. SSH certificate/deploy tests require OpenSSH client
+(`ssh-keygen`) and Python 3; CI installs both. The credential-free
+`vault-ssh-dry-run.yml` checks the action without GitHub OIDC permission or host
+access. See the [consumer/runner contract](deploy/vault-ssh-deploy.md).
+
+### Sealed bank-details API (#3075)
+
+`GET/PUT/DELETE /auth/api/bank-details` requires a human session and the same
+auth-scoped organization owner/admin authorization as legal-entity editing.
+`PUT` validates a full replacement `bank-details:v1` record. Each financial
+identifier is sealed separately; the immutable private media document and
+metadata carry only references/non-secret fields and per-field visibility.
+Generic media mutation or vault fetch cannot open this record.
+
+The trusted `readBankDetails(ownerDid)` helper returns non-secret metadata,
+visibility and `hasRail` without unsealing; external consumers must apply the
+visibility policy. Save/revoke retains documents, signed create/revoke evidence
+and superseded grant history. This is node-delegated Tier 0 custody, **not
+zero-custody**; Tier 1 saves fail closed. Bank settings UI and invoice/PDF
+disclosure are separate work. Fetch `/auth/api/spec` for validation and errors.
+
+### Corpus integration (#3089, #3090)
+
+Read the [corpus-owned runbook](../apps/corpus/README.md) before loading sources.
+GitHub partitions use their registry-resolved owner group DID; workspace sources
+remain principal-owned. Live owner-issued grants are mandatory; membership or
+stub creation is not a grant. Choose that owner's GitHub OAuth connector on
+`/auth/corpus`; credentials are resolved from the kernel vault per operation,
+never from `GITHUB_TOKEN`, `GH_TOKEN` or a `gh` CLI file. The one-shot owner
+migration retains source rows and original signatures; it is not automatic on
+deploy and must not be inferred to have run in production.
 
 ### Legal-entity settings (#3071)
 
