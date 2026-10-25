@@ -249,10 +249,10 @@ jobs:
       - name: Rebuild native dependencies needed for tests
         run: pnpm rebuild -r better-sqlite3
 
-      - name: Install OpenSSH certificate parser for vault tests
+      - name: Install OpenSSH and Python for vault certificate/deploy tests
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends openssh-client
+          sudo apt-get install -y --no-install-recommends openssh-client python3
 
       - name: Run tests with coverage
         if: github.event_name != 'merge_group'
