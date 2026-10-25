@@ -553,7 +553,7 @@ export function ProvisionAppPanel() {
           disabled={busy}
         />
         <label className="block text-xs text-gray-400">
-          Visibility
+          <span>Visibility</span>
           <select
             value={values.visibility ?? 'public'}
             onChange={event => setField('visibility')(event.target.value)}
@@ -575,7 +575,7 @@ export function ProvisionAppPanel() {
           disabled={busy}
         />
         <label className="block text-xs text-gray-400">
-          Site owner
+          <span>Site owner</span>
           <select
             value={values.siteOwnerDid ?? ''}
             onChange={event => setField('siteOwnerDid')(event.target.value)}
