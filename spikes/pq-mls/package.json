@@ -1,0 +1,25 @@
+{
+  "name": "@imajin-spike/pq-mls",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "bundle": "node build.mjs",
+    "test:node": "node --test test/node.test.ts test/openmls.test.mjs"
+  },
+  "dependencies": {
+    "ts-mls": "1.6.4",
+    "@hpke/chacha20poly1305": "1.8.0",
+    "@hpke/dhkem-x448": "1.8.0",
+    "@hpke/hybridkem-x-wing": "0.7.0",
+    "@hpke/ml-kem": "0.3.0",
+    "@noble/ciphers": "2.1.1",
+    "@noble/curves": "2.0.1",
+    "@noble/post-quantum": "0.5.2"
+  },
+  "devDependencies": {
+    "@types/node": "24.0.0",
+    "esbuild": "0.25.12",
+    "typescript": "5.9.3"
+  }
+}
