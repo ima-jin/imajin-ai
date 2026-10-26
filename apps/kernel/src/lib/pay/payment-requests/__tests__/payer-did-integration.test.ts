@@ -135,6 +135,8 @@ const ERIC = 'did:imajin:eric';
 const ARTIFACT = 'did:imajin:artifact';
 const MEMBER_ORG = 'did:imajin:member-org';
 const MAINTAINER_ORG = 'did:imajin:maintainer-org';
+const AGENT_ORG = 'did:imajin:agent-org';
+const NO_SERVICES_ORG = 'did:imajin:no-services-org';
 const REMOVED_ORG = 'did:imajin:removed-org';
 const EVENTS_ONLY_ORG = 'did:imajin:events-only-org';
 const PAY_SCOPED_ORG = 'did:imajin:pay-scoped-org';
@@ -207,6 +209,8 @@ async function seedMemberships() {
   await seedMembership(PAY_SCOPED_ORG, ERIC, 'admin', { allowedServices: ['events', 'pay'] });
   await seedMembership(MEMBER_ORG, ERIC, 'member');
   await seedMembership(MAINTAINER_ORG, ERIC, 'maintainer');
+  await seedMembership(AGENT_ORG, ERIC, 'agent');
+  await seedMembership(NO_SERVICES_ORG, ERIC, 'admin', { allowedServices: [] });
   await seedMembership(REMOVED_ORG, ERIC, 'owner', { removed: true });
   await seedMembership(EVENTS_ONLY_ORG, ERIC, 'owner', { allowedServices: ['events'] });
   // A stranger's org that Eric has nothing to do with.
@@ -322,9 +326,14 @@ describe('GET payer-dids data — what the "Pay as" picker is offered', () => {
 
 describe('card: checkout stores a validated paid_by_did, and the webhook settles as it', () => {
   it.each([
-    ['owner with all services', ARTIFACT],
-    ['admin with pay access', PAY_SCOPED_ORG],
-  ])('#3125: a personal login with %s can pay an org-addressed request and settle as the org', async (_label, orgDid) => {
+    ['owner', null],
+    ['admin', null],
+    ['owner', ['pay']],
+    ['admin', ['events', 'pay']],
+  ])('#3125: a personal login with role %s and services %j can pay an org-addressed request and settle as the org', async (role, allowedServices) => {
+    const orgDid = ARTIFACT;
+    await h.client!.query('UPDATE auth.identity_members SET role = $1, allowed_services = $2 WHERE identity_did = $3 AND member_did = $4',
+      [role, allowedServices, orgDid, ERIC]);
     await h.client!.query('UPDATE pay.payment_request SET recipient_did = $1 WHERE id = $2', [orgDid, REQUEST_ID]);
     const session = await createPaymentRequestCheckoutSession({
       id: HANDLE,
@@ -347,6 +356,8 @@ describe('card: checkout stores a validated paid_by_did, and the webhook settles
   it.each([
     ['member', MEMBER_ORG],
     ['maintainer', MAINTAINER_ORG],
+    ['agent', AGENT_ORG],
+    ['admin without any allowed services', NO_SERVICES_ORG],
     ['removed owner', REMOVED_ORG],
     ['owner without pay access', EVENTS_ONLY_ORG],
     ['unrelated caller', STRANGER_ORG],
@@ -508,7 +519,7 @@ describe('e-Transfer: the chosen DID is recorded when the payer picks the rail, 
     expect(h.settlePaymentMock).toHaveBeenCalledWith(expect.objectContaining({ from_did: orgDid, funded_provider: 'emt' }));
   });
 
-  it.each([MEMBER_ORG, MAINTAINER_ORG, REMOVED_ORG, EVENTS_ONLY_ORG, STRANGER_ORG])(
+  it.each([MEMBER_ORG, MAINTAINER_ORG, AGENT_ORG, NO_SERVICES_ORG, REMOVED_ORG, EVENTS_ONLY_ORG, STRANGER_ORG])(
     '#3125: EMT rejects uncontrolled payer %s without changing the request',
     async (orgDid) => {
       await h.client!.query('UPDATE pay.payment_request SET recipient_did = $1 WHERE id = $2', [orgDid, REQUEST_ID]);
