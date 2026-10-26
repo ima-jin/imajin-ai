@@ -4,7 +4,7 @@ import type { OperatorApprovalCard } from '../../notify/operator-approvals-servi
 const mocks = vi.hoisted(() => ({
   auth: vi.fn(), select: vi.fn(), set: vi.fn(), write: vi.fn(), manifest: vi.fn(),
   ensure: vi.fn(), rotate: vi.fn(), revoke: vi.fn(), list: vi.fn(), consume: vi.fn(), supplied: vi.fn(), owner: vi.fn(),
-  prepare: vi.fn(), audit: vi.fn(), lock: vi.fn(),
+  prepare: vi.fn(), audit: vi.fn(), lock: vi.fn(), generate: vi.fn(),
 }));
 vi.mock('@/src/lib/auth/emit-mechanical-attestation', () => ({ prepareMechanicalAttestation: mocks.prepare }));
 vi.mock('../../vault/authorization', () => ({ resolveVaultAuthorization: mocks.auth }));
@@ -19,6 +19,7 @@ vi.mock('../self-secrets', () => ({
   ensureAppDeclaredSecrets: mocks.ensure, rotateAppDeclaredSecret: mocks.rotate,
   revokeAppDeclaredSecret: mocks.revoke, listAppDeclaredSecrets: mocks.list,
   setAppDeclaredSecret: mocks.supplied,
+  generateAppDeclaredSecret: mocks.generate,
 }));
 vi.mock('@/src/db', () => ({
   registryApps: {}, appProvisions: {}, appSigningKeyClaims: {}, operatorApprovals: {}, attestations: {},
@@ -52,6 +53,7 @@ beforeEach(() => {
   mocks.select.mockReset();
   mocks.rotate.mockReset();
   mocks.revoke.mockReset();
+  mocks.generate.mockReset();
   mocks.auth.mockReturnValue(authorization);
   mocks.owner.mockResolvedValue(authorization.operatorDid);
   mocks.consume.mockResolvedValue('OBVIOUSLY_FAKE_OPERATOR_INPUT');
@@ -97,6 +99,27 @@ describe('additive declaration refresh', () => {
     expect(mocks.audit).toHaveBeenCalledTimes(1);
     expect(mocks.ensure).not.toHaveBeenCalled();
     expect(mocks.consume).not.toHaveBeenCalled();
+  });
+  it('passes only the approved app/name and countersigned authority to Generate, never returns its material', async () => {
+    mocks.generate.mockResolvedValueOnce({ value: 'OBVIOUSLY_FAKE_GENERATED_MATERIAL' });
+    expect(await executeAppSecretsApproval(card('apps:secrets-generate', { name: declaration.name }))).toEqual({
+      ok: true, data: { appDid: 'did:imajin:fake-app', action: 'generate', names: [declaration.name] },
+    });
+    expect(mocks.generate).toHaveBeenCalledWith('did:imajin:fake-app', declaration.name, authorization);
+    expect(mocks.consume).not.toHaveBeenCalled();
+    expect(mocks.supplied).not.toHaveBeenCalled();
+  });
+  it.each(['unclaimed', 'inactive', 'undeclared', 'operator-supplied'])('refuses Generate for %s apps or declarations', async (boundary) => {
+    const app = { status: boundary === 'inactive' ? 'revoked' : 'active',
+      secrets: boundary === 'undeclared' ? [] : [{ ...declaration, kind: boundary === 'operator-supplied' ? 'operator-supplied' : declaration.kind }] };
+    mocks.select.mockReset().mockReturnValueOnce([app]).mockReturnValueOnce(boundary === 'unclaimed' ? [] : [{ appDid: 'did:imajin:fake-app' }]);
+    expect((await executeAppSecretsApproval(card('apps:secrets-generate', { name: declaration.name }))).ok).toBe(false);
+    expect(mocks.generate).not.toHaveBeenCalled();
+  });
+  it('redacts Generate custody failures without logging or returning underlying material', async () => {
+    mocks.generate.mockRejectedValueOnce(new Error('OBVIOUSLY_FAKE_GENERATED_MATERIAL'));
+    expect(await executeAppSecretsApproval(card('apps:secrets-generate', { name: declaration.name })))
+      .toEqual({ ok: false, error: 'App-secret execution failed' });
   });
   it('does not apply an approved kind change', async () => {
     const changed = { ...declaration, kind: 'random-64B' };
@@ -154,10 +177,11 @@ describe('app secret execution', () => {
     expect((await executeAppSecretsApproval(rejected)).ok).toBe(false);
     expect(mocks.consume).not.toHaveBeenCalled();
   });
-  it.each(['sync', 'set', 'rotate', 'revoke'])('refuses unsigned %s without any read or mutation', async (action) => {
+  it.each(['sync', 'generate', 'set', 'rotate', 'revoke'])('refuses unsigned %s without any read or mutation', async (action) => {
     mocks.auth.mockReturnValue(null);
     expect((await executeAppSecretsApproval(card(`apps:secrets-${action}`))).ok).toBe(false);
     expect(mocks.select).not.toHaveBeenCalled();
+    expect(mocks.generate).not.toHaveBeenCalled();
     expect(mocks.ensure).not.toHaveBeenCalled();
     expect(mocks.rotate).not.toHaveBeenCalled();
     expect(mocks.revoke).not.toHaveBeenCalled();
@@ -230,6 +254,9 @@ describe('app secret execution', () => {
     }));
     expect(mocks.audit).toHaveBeenCalledWith({ id: 'fake-attestation' });
     expect(mocks.write.mock.invocationCallOrder[0]).toBeLessThan(mocks.audit.mock.invocationCallOrder[0]);
+    expect(mocks.generate).not.toHaveBeenCalled();
+    expect(mocks.consume).not.toHaveBeenCalled();
+    expect(mocks.supplied).not.toHaveBeenCalled();
   });
   it.each([
     { error: 'unreadable', status: 404 },

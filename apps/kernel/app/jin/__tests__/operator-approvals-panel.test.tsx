@@ -1358,7 +1358,7 @@ describe('per-source renderer registry — apps', () => {
     expect(screen.getByText('did:imajin:dykil-app')).toBeDefined();
     expect(screen.queryByRole('button', { name: 'Approve & provision' })).toBeNull();
   });
-  it.each(['sync', 'set', 'rotate', 'revoke'])('renders secret %s approval with a sign control, no provisioning/reveal', async (action) => {
+  it.each(['sync', 'generate', 'set', 'rotate', 'revoke'])('renders secret %s approval with a sign control, no provisioning/reveal', async (action) => {
     const secretCard = appsApproval({
       kind: `apps:secrets-${action}`, summary: 'Change fake-app secrets',
       detail: {

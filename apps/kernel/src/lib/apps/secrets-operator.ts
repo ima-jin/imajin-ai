@@ -8,7 +8,7 @@ import { appManifestError, fetchAppManifest, tryGetInstallationToken } from '@/s
 import type { OperatorApprovalCard } from '@/src/lib/notify/operator-approvals-service';
 import { resolveVaultAuthorization, type VaultAuthorization } from '@/src/lib/vault/authorization';
 import { validateSecrets, type AppSecretDeclaration } from './secret-declarations';
-import { rotateAppDeclaredSecret, revokeAppDeclaredSecret, listAppDeclaredSecrets, setAppDeclaredSecret } from './self-secrets';
+import { generateAppDeclaredSecret, rotateAppDeclaredSecret, revokeAppDeclaredSecret, listAppDeclaredSecrets, setAppDeclaredSecret } from './self-secrets';
 import { appSecretsKind, isAppSecretsKind } from './secrets-kind';
 import { consumeAppSecret } from './secret-staging';
 import { getOperatorDid } from '@/src/lib/notify/operator-approvals';
@@ -184,6 +184,11 @@ async function executeNamedSecret(
   const name = card.detail?.name;
   const declaration = declarations.find((secret) => secret.name === name);
   if (typeof name !== 'string' || !declaration) return { ok: false, error: 'Secret is not declared for this app' };
+  if (card.kind === appSecretsKind('generate')) {
+    if (declaration.kind === 'operator-supplied') return { ok: false, error: 'Operator-supplied secrets require input' };
+    await generateAppDeclaredSecret(appDid, name, authorizedBy);
+    return { ok: true, data: { appDid, action: 'generate', names: [name] } };
+  }
   const action = card.kind === appSecretsKind('set') ? 'set' : 'rotate';
   if (card.kind === appSecretsKind('set') || (card.kind === appSecretsKind('rotate') && declaration.kind === 'operator-supplied')) {
     if (declaration.kind !== 'operator-supplied' || typeof card.detail?.stagingRef !== 'string'

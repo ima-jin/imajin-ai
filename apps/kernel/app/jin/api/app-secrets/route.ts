@@ -46,9 +46,9 @@ export async function GET(request: NextRequest) {
 
 function validateBody(body: Record<string, unknown>): string | null {
   if (Object.keys(body).some((key) => !['appDid', 'action', 'name', 'value'].includes(key))) return 'Invalid app-secret proposal';
-  if (typeof body.appDid !== 'string' || !body.appDid || !APP_SECRET_ACTIONS.includes(body.action as AppSecretAction)) return 'appDid and a sync, set, rotate or revoke action are required';
+  if (typeof body.appDid !== 'string' || !body.appDid || !APP_SECRET_ACTIONS.includes(body.action as AppSecretAction)) return 'appDid and a sync, generate, set, rotate or revoke action are required';
   if (body.action === 'sync' && body.name !== undefined) return 'Sync accepts no secret name';
-  if ((body.action === 'sync' || body.action === 'revoke') && body.value !== undefined) return 'Operator input not accepted for this action';
+  if (['sync', 'generate', 'revoke'].includes(body.action as string) && body.value !== undefined) return 'Operator input not accepted for this action';
   return null;
 }
 
@@ -84,6 +84,9 @@ async function prepareDetail(
   const declaration = declared.ok.find((secret) => secret.name === body.name);
   if (!declaration) return { error: 'Secret is not declared for this app' };
   detail.name = body.name;
+  if (action === 'generate') {
+    return declaration.kind === 'operator-supplied' ? { error: 'Operator-supplied secrets require input' } : { detail };
+  }
   if (declaration.kind === 'operator-supplied' && (action === 'set' || action === 'rotate')) {
     if (!isAppSecretValue(body.value)) return { error: 'Operator input must be a nonempty string of at most 65536 UTF-8 bytes' };
     detail.stagingRef = await stageAppSecret({

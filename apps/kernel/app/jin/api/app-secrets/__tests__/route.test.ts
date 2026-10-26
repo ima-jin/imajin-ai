@@ -58,6 +58,32 @@ describe('app secret operator routes', () => {
     expect(JSON.stringify(mocks.record.mock.calls)).not.toContain(value);
     expect(await response.json()).toEqual({ status: 'pending', proposalId: 'fake-proposal' });
   });
+  it.each([
+    { appDid, action: 'generate' },
+    { appDid, action: 'generate', name: 'UNDECLARED' },
+    { appDid, action: 'generate', name: declaration.name, value: 'OBVIOUSLY_FAKE_INPUT' },
+    { appDid, action: 'generate', name: declaration.name, secrets: [declaration] },
+  ])('refuses malformed or value-bearing generation requests', async (body) => {
+    mocks.select.mockResolvedValue([{ name: 'Fake app', status: 'active', secrets: [declaration] }]);
+    expect((await POST(req(body))).status).toBe(400);
+    expect(mocks.stage).not.toHaveBeenCalled();
+    expect(mocks.record).not.toHaveBeenCalled();
+  });
+  it('refuses Generate for operator-supplied declarations', async () => {
+    mocks.select.mockResolvedValue([{ name: 'Fake app', status: 'active', secrets: [{ ...declaration, kind: 'operator-supplied' }] }]);
+    expect((await POST(req({ appDid, action: 'generate', name: declaration.name }))).status).toBe(400);
+    expect(mocks.record).not.toHaveBeenCalled();
+  });
+  it.each(['unauthenticated', 'nonoperator', 'act-as', 'unclaimed', 'inactive'])('refuses %s Generate proposals', async (boundary) => {
+    mocks.select.mockResolvedValue([{ name: 'Fake app', status: boundary === 'inactive' ? 'revoked' : 'active', secrets: [declaration] }]);
+    if (boundary === 'unauthenticated') mocks.auth.mockResolvedValue({ error: 'Unauthorized', status: 401 });
+    if (boundary === 'nonoperator') mocks.isOperator.mockReturnValue(false);
+    if (boundary === 'act-as') mocks.actAs.mockReturnValue(Response.json({ error: 'act_as_not_permitted' }, { status: 403 }));
+    if (boundary === 'unclaimed') mocks.claimed.mockResolvedValue(false);
+    expect((await POST(req({ appDid, action: 'generate', name: declaration.name }))).status).toBeGreaterThanOrEqual(400);
+    expect(mocks.record).not.toHaveBeenCalled();
+    expect(mocks.stage).not.toHaveBeenCalled();
+  });
   it.each([undefined, '', 1, 'x'.repeat(65_537), '😀'.repeat(16_385)])('refuses invalid operator input without staging', async (value) => {
     mocks.select.mockResolvedValue([{ name: 'Fake app', status: 'active', secrets: [{ name: 'DATABASE_URL', kind: 'operator-supplied' }] }]);
     expect((await POST(req({ appDid, action: 'set', name: 'DATABASE_URL', value }))).status).toBe(400);
@@ -101,7 +127,7 @@ describe('app secret operator routes', () => {
     }));
     expect(mocks.hash.mock.calls[0][0].detail).toEqual(mocks.record.mock.calls[0][0].detail);
   });
-  it.each(['rotate', 'revoke'])('stages %s without any returned values', async (action) => {
+  it.each(['generate', 'rotate', 'revoke'])('stages %s without any returned values', async (action) => {
     mocks.select.mockResolvedValue([{ name: 'Fake app', slug: 'fake-app', status: 'active', secrets: [declaration] }]);
     const response = await POST(req({ appDid, action, name: 'SESSION_SECRET' }));
     expect(response.status).toBe(201);
@@ -109,6 +135,7 @@ describe('app secret operator routes', () => {
       kind: `apps:secrets-${action}`, detail: { appDid, appName: 'Fake app', name: 'SESSION_SECRET' },
     }));
     expect(mocks.preview).not.toHaveBeenCalled();
+    expect(mocks.stage).not.toHaveBeenCalled();
   });
   it.each([
     { appDid, action: 'sync', secrets: [declaration] },
