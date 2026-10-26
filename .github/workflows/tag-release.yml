@@ -55,6 +55,8 @@ jobs:
     permissions:
       # Pushes the annotated release tag (never to main).
       contents: write
+      # Moves open issues/PRs via the Issues API and closes the milestone.
+      issues: write
       # Only used to dispatch deploy-prod.yml (a workflow_dispatch call, not a
       # push) — see the "Dispatch the prod deploy" step for why that's needed
       # and why it doesn't bypass anything.
@@ -178,6 +180,13 @@ jobs:
         # deploy-prod.yml's `environment: production` required-reviewer
         # gate — nothing here bypasses that approval.
         run: gh workflow run deploy-prod.yml --ref "$TAG" -f ref="$TAG"
+      - name: Create the GitHub Release and close out its milestone
+        if: steps.check.outputs.is_release == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ steps.version.outputs.tag }}
+        run: node scripts/close-out-release.mjs
 
   publish-npm:
     name: Publish packages to npmjs
