@@ -277,6 +277,7 @@ export async function createPaymentRequestCheckoutSession(
   const found = (await getPaymentRequestById(input.id)) ?? (await findLiveRowByHandle(input.id));
   if (!found) return err('payment_request not found', 404);
   let existing: PaymentRequest = found;
+  // Recipient authorization must use the same payer-control rule as the Pay-as picker (#3125).
   if (existing.issuerDid !== input.callerDid && existing.recipientDid !== input.callerDid) {
     return err('Not authorized to create a checkout session for this payment_request', 403);
   }
