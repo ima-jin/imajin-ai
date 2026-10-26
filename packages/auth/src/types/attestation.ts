@@ -5,6 +5,8 @@
  */
 
 export const ATTESTATION_TYPES = [
+  'warp.brief.recorded',
+  'warp.brief.storage.changed',
   'vault.ssh-cert.issued',
   'vault.ssh-cert.refused',
   'vault.ssh-cert.grant-issued',
@@ -321,6 +323,8 @@ export type AttestationType = typeof ATTESTATION_TYPES[number];
  * excluded from any "pending your countersignature" view or query.
  */
 export const MECHANICAL_ATTESTATION_TYPES = [
+  'warp.brief.recorded',
+  'warp.brief.storage.changed',
   'document.revoked',
   'vault.ssh-cert.issued',
   'vault.ssh-cert.refused',

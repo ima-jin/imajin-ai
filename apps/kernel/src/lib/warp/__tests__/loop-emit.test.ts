@@ -62,6 +62,13 @@ beforeEach(() => {
 });
 
 describe('emitWarpRunLoopEvent', () => {
+  it('includes the text-free brief descriptor in the exact payload covered by the signature', async () => {
+    const brief = { hash: 'a'.repeat(64), assetId: 'asset_brief', storage: 'full-text' as const, browserTesting: 'no' as const };
+    await emitWarpRunLoopEvent({ ...TRANSITION, brief });
+    const request = ingestLoopEventMock.mock.calls[0][0];
+    expect(request.payload.brief).toEqual(brief);
+    expect(canonicalizeMock).toHaveBeenCalledWith({ type: 'loop.started', payload: request.payload });
+  });
   it('confirms accepted reconciliation through node-witnessed ingest, not a row write', async () => {
     const accepted = await emitWarpRunLoopEvent({
       ...TRANSITION, type: 'loop.finished', state: 'resolved', summary: 'resolved · PR #2993 merged',

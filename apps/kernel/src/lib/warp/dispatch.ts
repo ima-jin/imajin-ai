@@ -138,6 +138,7 @@ import { WarpApiError } from './errors';
 // reached only through the dynamic `import()` in `bridgeWarpRunToLoop` below.
 import type { WarpRunLoopTransition } from './loop-emit';
 import { warpRunLoopRefs, warpRunPrArtifacts } from './loop-refs';
+import type { WarpBrief } from './brief';
 
 // Re-exported for callers that need to catch it without importing
 // corpus-context.ts directly (mirroring the WarpApiError re-export below).
@@ -160,19 +161,20 @@ const log = createLogger('kernel');
  * `./loop-emit` or its transitive DB dependency) are unaffected by a failed
  * import in a test process with no real database configured.
  *
- * Never throws: a failed or unavailable loop-rail bridge must not cost the
- * `warp.run.*` publish it mirrors, the same invariant every publish in this
- * module already follows.
+ * Lifecycle telemetry stays best-effort. Brief-bearing observations are awaited
+ * and report failure explicitly, including the already-accepted provider run ID.
  */
 async function bridgeWarpRunToLoop(transition: WarpRunLoopTransition): Promise<void> {
   try {
     const { emitWarpRunLoopEvent } = await import('./loop-emit');
-    await emitWarpRunLoopEvent(transition);
+    const recorded = await emitWarpRunLoopEvent(transition);
+    if (transition.brief && recorded !== true) throw new Error('Brief event was not recorded');
   } catch (err) {
     log.warn(
       { err: String(err), type: transition.type, runId: transition.runId },
       'warp.run -> loop.* bridge unavailable; the warp.run.* event still published normally',
     );
+    if (transition.brief) throw new Error(`warp_brief_event_failed: run ${transition.runId} was accepted but its brief event could not be recorded`);
   }
 }
 
@@ -192,7 +194,7 @@ function warpRunLoopTransition(
   parentRunId: string | null,
   state: string,
   summary: string,
-  details: Pick<WarpRunLoopTransition, 'at' | 'refs' | 'prArtifacts'>,
+  details: Pick<WarpRunLoopTransition, 'at' | 'refs' | 'prArtifacts' | 'brief'>,
 ): WarpRunLoopTransition {
   return { type, runId, principalDid, parentRunId, state, summary, ...details };
 }
@@ -1053,10 +1055,12 @@ export async function dispatchAgentRun(
 
   const { prompt, corpusContextMetadata } = await resolvePrompt(
     principalDid,
-    trimmedPrompt,
+    input.prompt,
     input.corpusContext,
   );
 
+  const { recordWarpBrief } = await import('./brief-ledger');
+  const brief = await recordWarpBrief(principalDid, prompt);
   const payload = await warpFetch(agentKey, '/agent/run', {
     method: 'POST',
     body: {
@@ -1111,11 +1115,8 @@ export async function dispatchAgentRun(
     );
   });
 
-  // #2296: bridge onto the loop registry rail (loop.started, kind 'warp.run')
-  // alongside the audit event above — same fire-and-forget posture as the
-  // publish() call just above, for the same reason (a 201 response must not
-  // wait on this).
-  void bridgeWarpRunToLoop(
+  // Await the signed brief event before acknowledging the dispatch.
+  await bridgeWarpRunToLoop(
     warpRunLoopTransition(
       'loop.started',
       run.runId,
@@ -1123,7 +1124,7 @@ export async function dispatchAgentRun(
       run.parentRunId,
       warpStateToLoopState(run.state),
       `Warp run dispatched (${config.name})`,
-      { at: new Date().toISOString(), refs: warpRunLoopRefs(run), prArtifacts: warpRunPrArtifacts(run) },
+      { at: new Date().toISOString(), refs: warpRunLoopRefs(run), prArtifacts: warpRunPrArtifacts(run), brief },
     ),
   );
 
@@ -1409,6 +1410,7 @@ async function publishRunResumed(
   newSessionId: string | null,
   mode: WarpFollowupMode,
   parentRunId: string | null,
+  brief: WarpBrief,
 ): Promise<void> {
   const resumedAt = new Date().toISOString();
   try {
@@ -1433,7 +1435,6 @@ async function publishRunResumed(
       { err: String(err), principalDid, runId },
       'Bus publish error for warp.run.resumed',
     );
-    return;
   }
 
   // #2296: a resume starts a new loop segment onto the same loopId
@@ -1448,7 +1449,7 @@ async function publishRunResumed(
       parentRunId,
       'running',
       `Warp run resumed from ${previousState ?? 'unknown'}`,
-      { at: resumedAt, ...(newSessionId ? { refs: { sessionKey: newSessionId } } : {}) },
+      { at: resumedAt, brief, ...(newSessionId ? { refs: { sessionKey: newSessionId } } : {}) },
     ),
   );
 }
@@ -1485,8 +1486,8 @@ export async function sendFollowup(
 ): Promise<WarpFollowupAck> {
   const id = requireRunId(runId);
 
-  const message = input.message.trim();
-  if (message.length === 0) {
+  const message = input.message;
+  if (message.trim().length === 0) {
     throw new Error('warp_invalid_message: message must be a non-empty string');
   }
 
@@ -1509,6 +1510,8 @@ export async function sendFollowup(
   }
 
   const mode = input.mode ?? 'normal';
+  const { recordWarpBrief } = await import('./brief-ledger');
+  const brief = await recordWarpBrief(principalDid, message);
   const followupPayload = await warpFetch(agentKey, runPath(id, '/followups'), {
     method: 'POST',
     body: {
@@ -1536,12 +1539,18 @@ export async function sendFollowup(
       newSessionId,
       mode,
       current.parentRunId,
+      brief,
     );
     // #2055: reported back so the route can re-arm the in-request watch for
     // this resumed segment — see `WarpFollowupAck.resumed`'s doc.
     return { runId: id, accepted: true, resumed: { previousSessionId: current.sessionId } };
   }
 
+  await bridgeWarpRunToLoop(warpRunLoopTransition(
+    'loop.progress', id, principalDid, current.parentRunId,
+    warpStateToLoopState(current.state), 'Warp run follow-up accepted',
+    { at: new Date().toISOString(), brief },
+  ));
   return { runId: id, accepted: true };
 }
 
