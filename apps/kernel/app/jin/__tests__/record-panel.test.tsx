@@ -6,6 +6,7 @@ import { RecordPanel } from '../record-panel';
 import JinPage from '../page';
 
 vi.mock('../usage-feed-panel', () => ({ UsageFeedPanel: () => null }));
+vi.mock('../decisions-panel', () => ({ DecisionsPanel: () => null }));
 vi.mock('../operator-approvals-panel', () => ({ OperatorApprovalsPanel: () => null }));
 vi.mock('../vault-keys-panel', () => ({ VaultKeysPanel: () => null }));
 vi.mock('../vault-import-panel', () => ({ VaultImportPanel: () => null }));
