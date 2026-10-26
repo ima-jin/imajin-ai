@@ -178,7 +178,7 @@ This is fundamentally different from "run a server and hope people donate." It's
 
 ## Open Questions
 
-1. **E2EE chat content** — Chat messages are end-to-end encrypted. Backup includes metadata (conversations, participants) but message content requires the conversation keys. How do we handle key escrow for backup?
+1. **Future E2EE chat content** — Current chat uses TLS in transit and stores plaintext at rest on the hosting node in `chat.messages_v2.content`; push notifications carry the first 200 characters of the message preview. End-to-end encryption is planned under [#1070](https://github.com/ima-jin/imajin-ai/issues/1070), not implemented. Future backup design must follow that protocol's history policy: never share history with new group members in v1; any later opt-in must be group-admin controlled and visibly labelled.
 2. **Media blobs** — Do we sync actual media files or just references? Full sync = large packages. References = dependent on media service availability.
 3. **Revocation** — If a backup node goes rogue (serves stale data), how does the user revoke it?
 4. **Discovery** — How do new contacts find you after a failover? DNS update? On-chain pointer?
