@@ -115,6 +115,23 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+describe('chat security copy', () => {
+  it.each([
+    { state: 'empty', seeds: [] },
+    { state: 'populated', seeds: [MINE] },
+  ])('renders no encryption claim or lock in the $state list', async ({ seeds }) => {
+    installFetch(seeds);
+
+    const { container } = render(<ConversationsPage />);
+
+    await waitFor(() => expect(screen.queryByText('Loading conversations...')).toBeNull());
+    expect(screen.getByRole('heading', { name: 'Messages' })).toBeDefined();
+    expect(container.textContent).not.toMatch(/end.to.end|e2ee|encrypted|🔒/i);
+    expect(container.querySelector('[aria-label*="encrypt" i], [title*="encrypt" i]')).toBeNull();
+    expect(container.querySelector('[aria-label*="lock" i], [title*="lock" i]')).toBeNull();
+  });
+});
+
 describe('delete control visibility', () => {
   it('shows the delete control on a conversation the viewer created', async () => {
     installFetch([MINE]);

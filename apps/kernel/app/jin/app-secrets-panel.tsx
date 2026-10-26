@@ -193,7 +193,9 @@ export function AppSecretsPanel() {
     <section className="mt-8 min-w-0 space-y-3 [overflow-wrap:anywhere]" data-testid="app-secrets-panel">
       <h2 className="text-base font-semibold text-gray-100">App secrets</h2>
       <p className="text-xs text-gray-500">
-        Names and status only — no reveal. Sync reads the app manifest; all changes require your signature.
+        Names and status only — no reveal. Sync proposes only new manifest secret declarations; all changes require your signature.
+        Removals, kind changes and non-secret declarations are not applied.
+        After syncing a new generated declaration, use Generate and sign its separate proposal.
         Enter operator-supplied values here once; they are sealed pending your countersignature.
         Rotation takes effect on the app&apos;s next boot. Rotating SESSION_SECRET signs users out when the app restarts.
       </p>
@@ -224,6 +226,10 @@ export function AppSecretsPanel() {
                   </li>
                 ))}
               </ol>}
+              {app.active && app.claimed && app.appDid && secret.kind !== 'operator-supplied' && secret.status === 'missing' && (
+                <button type="button" disabled={busy} className="text-xs text-amber-300 disabled:opacity-40"
+                  onClick={() => void propose(app.appDid!, 'generate', secret.name)}>Generate</button>
+              )}
               {app.active && app.claimed && app.appDid && secret.kind === 'operator-supplied' && (
                 <OperatorSecretEntry name={secret.name} active={secret.status === 'active'} busy={busy}
                   submit={(value) => propose(app.appDid!, secret.status === 'active' ? 'rotate' : 'set', secret.name, value)} />

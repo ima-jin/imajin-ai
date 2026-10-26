@@ -65,7 +65,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       id,
       callerDid,
       customerEmail: body.customer_email,
-      ...(body.paidByDid ? { paidByDid: body.paidByDid, payerPersonDid: payerPersonDidOf(authResult.identity) } : {}),
+      payerPersonDid: payerPersonDidOf(authResult.identity),
+      ...(body.paidByDid ? { paidByDid: body.paidByDid } : {}),
     });
     if (isServiceError(result)) {
       // `code` (#2754) is the stable reason the pay page turns into a specific message.

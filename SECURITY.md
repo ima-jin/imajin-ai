@@ -67,9 +67,12 @@ close them as the work lands. As of this writing:
   it runs as a single operator's node today. Federation (multiple independent nodes) is a roadmap
   milestone; cross-node trust and DID resolution guarantees are not yet proven at scale. There are
   real gaps here, and we name them rather than paper over them.
-- **Chat encryption is transport-level / key-epoch, not a ratcheting E2EE protocol.** There is no
-  forward secrecy or post-compromise security guarantee yet. Do not treat chat as equivalent to
-  Signal-class messaging.
+- **Chat uses TLS in transit, with plaintext at rest on the hosting node.** Message content is
+  stored in `chat.messages_v2.content`; push notifications carry the first 200 characters of the
+  message preview. End-to-end encryption (MLS with mandatory hybrid post-quantum encryption) is
+  planned under [#1070](https://github.com/ima-jin/imajin-ai/issues/1070), not implemented.
+  There is no forward secrecy or post-compromise security guarantee yet. Do not treat chat as
+  equivalent to Signal-class messaging.
 - **Soft DIDs are low-assurance.** Email-backed soft identities exist for low-friction onboarding.
   They are rate-limited and require email verification before a session is issued, but they are not
   a substitute for key-based (hard) DIDs for high-value actions.

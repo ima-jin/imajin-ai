@@ -3,23 +3,39 @@
  * Execution requires a verified human signature, not a session or agent request.
  */
 import { and, asc, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
-import { db, registryApps, appSigningKeyClaims, appProvisions, operatorApprovals } from '@/src/db';
+import { db, registryApps, appSigningKeyClaims, appProvisions, operatorApprovals, attestations } from '@/src/db';
 import { appManifestError, fetchAppManifest, tryGetInstallationToken } from '@/src/lib/github/org-provisioning';
 import type { OperatorApprovalCard } from '@/src/lib/notify/operator-approvals-service';
 import { resolveVaultAuthorization, type VaultAuthorization } from '@/src/lib/vault/authorization';
 import { validateSecrets, type AppSecretDeclaration } from './secret-declarations';
-import { ensureAppDeclaredSecrets, rotateAppDeclaredSecret, revokeAppDeclaredSecret, listAppDeclaredSecrets, setAppDeclaredSecret } from './self-secrets';
+import { generateAppDeclaredSecret, rotateAppDeclaredSecret, revokeAppDeclaredSecret, listAppDeclaredSecrets, setAppDeclaredSecret } from './self-secrets';
 import { appSecretsKind, isAppSecretsKind } from './secrets-kind';
 import { consumeAppSecret } from './secret-staging';
 import { getOperatorDid } from '@/src/lib/notify/operator-approvals';
 import type { OperatorAppSecrets } from './secrets-metadata';
+import { newSecretDeclarations } from './declarations-approval';
 function provenanceIdentity(value: string | null | undefined): string | null {
   return value?.trim() || null;
 }
 
-export function sameSecretDeclarations(a: AppSecretDeclaration[], b: AppSecretDeclaration[]): boolean {
-  const canonical = (list: AppSecretDeclaration[]) => JSON.stringify([...list].sort((x, y) => x.name.localeCompare(y.name)));
-  return canonical(a) === canonical(b);
+
+/** One pending sync per app, including concurrent requests from multiple nodes. */
+export function withPendingSecretSync(
+  appDid: string, operatorDid: string, create: () => Promise<string>,
+): Promise<string> {
+  return db.transaction(async (tx) => {
+    // Fail fast rather than occupy connections needed by the approval service.
+    const lockKey = `app-secret-sync:${appDid}`;
+    const [lock] = await tx.execute<{ locked: boolean }>(
+      sql`SELECT pg_try_advisory_xact_lock(hashtextextended(${lockKey}, 0)) AS locked`,
+    );
+    if (!lock?.locked) throw new Error('App-secret sync busy');
+    const [pending] = await tx.select({ proposalId: operatorApprovals.proposalId }).from(operatorApprovals)
+      .where(and(eq(operatorApprovals.source, 'apps'), eq(operatorApprovals.kind, appSecretsKind('sync')),
+        eq(operatorApprovals.operatorDid, operatorDid), eq(operatorApprovals.status, 'pending'),
+        sql`${operatorApprovals.detail}->>'appDid' = ${appDid}`)).limit(1);
+    return pending?.proposalId ?? await create();
+  });
 }
 
 /** A manifest read failure must never be mistaken for an empty approved list. */
@@ -135,16 +151,31 @@ async function executeSync(
   if ('error' in approved) return { ok: false, error: approved.error };
   const actual = await previewAppSecrets(app.slug);
   if ('error' in actual) return { ok: false, error: actual.error };
-  if (!sameSecretDeclarations(actual.ok, approved.ok)) return { ok: false, error: 'App manifest secrets changed since proposal; propose again' };
+  if (approved.ok.some((secret) => !actual.ok.some((entry) => entry.name === secret.name && entry.kind === secret.kind))) {
+    return { ok: false, error: 'App manifest secrets changed since proposal; propose again' };
+  }
   if (approved.ok.some((secret) => current.some((old) => old.name === secret.name && old.kind !== secret.kind))) {
     return { ok: false, error: 'An existing secret generation kind cannot be changed by sync' };
   }
-  // Deliberately never writes providesScopes, dependsOn, or emittableEvents.
-  await db.update(registryApps).set({ secrets: approved.ok }).where(and(
-    eq(registryApps.appDid, appDid), eq(registryApps.status, 'active'),
-  ));
-  await ensureAppDeclaredSecrets(appDid, authorizedBy);
-  return { ok: true, data: { appDid, action: 'sync', names: approved.ok.map((secret) => secret.name) } };
+  const { additions } = newSecretDeclarations(current, approved.ok);
+  if (additions.length === 0) return { ok: true, data: { appDid, action: 'sync', names: [] } };
+  const merged = validateSecrets([...current, ...additions]);
+  if ('error' in merged) return { ok: false, error: merged.error };
+  const { prepareMechanicalAttestation } = await import('@/src/lib/auth/emit-mechanical-attestation');
+  const attestation = await prepareMechanicalAttestation({
+    subjectDid: appDid, type: 'apps.secrets.declarations-refreshed', contextId: appDid, contextType: 'app',
+    payload: { appDid, additions, authorizedBy },
+  });
+  await db.transaction(async (tx) => {
+    // CAS preserves concurrent additions; no identity, key, claim or timestamp writes.
+    const updated = await tx.update(registryApps).set({ secrets: merged.ok }).where(and(
+      eq(registryApps.appDid, appDid), eq(registryApps.status, 'active'), eq(registryApps.slug, app.slug!),
+      sql`coalesce(${registryApps.secrets}, '[]'::jsonb) = ${JSON.stringify(current)}::jsonb`,
+    )).returning({ appDid: registryApps.appDid });
+    if (updated.length === 0) throw new Error('Registered declarations changed; propose again');
+    await tx.insert(attestations).values(attestation);
+  });
+  return { ok: true, data: { appDid, action: 'sync', names: additions.map((secret) => secret.name) } };
 }
 
 async function executeNamedSecret(
@@ -153,6 +184,11 @@ async function executeNamedSecret(
   const name = card.detail?.name;
   const declaration = declarations.find((secret) => secret.name === name);
   if (typeof name !== 'string' || !declaration) return { ok: false, error: 'Secret is not declared for this app' };
+  if (card.kind === appSecretsKind('generate')) {
+    if (declaration.kind === 'operator-supplied') return { ok: false, error: 'Operator-supplied secrets require input' };
+    await generateAppDeclaredSecret(appDid, name, authorizedBy);
+    return { ok: true, data: { appDid, action: 'generate', names: [name] } };
+  }
   const action = card.kind === appSecretsKind('set') ? 'set' : 'rotate';
   if (card.kind === appSecretsKind('set') || (card.kind === appSecretsKind('rotate') && declaration.kind === 'operator-supplied')) {
     if (declaration.kind !== 'operator-supplied' || typeof card.detail?.stagingRef !== 'string'

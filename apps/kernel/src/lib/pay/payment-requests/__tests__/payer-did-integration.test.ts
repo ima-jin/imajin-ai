@@ -135,6 +135,8 @@ const ERIC = 'did:imajin:eric';
 const ARTIFACT = 'did:imajin:artifact';
 const MEMBER_ORG = 'did:imajin:member-org';
 const MAINTAINER_ORG = 'did:imajin:maintainer-org';
+const AGENT_ORG = 'did:imajin:agent-org';
+const NO_SERVICES_ORG = 'did:imajin:no-services-org';
 const REMOVED_ORG = 'did:imajin:removed-org';
 const EVENTS_ONLY_ORG = 'did:imajin:events-only-org';
 const PAY_SCOPED_ORG = 'did:imajin:pay-scoped-org';
@@ -207,6 +209,8 @@ async function seedMemberships() {
   await seedMembership(PAY_SCOPED_ORG, ERIC, 'admin', { allowedServices: ['events', 'pay'] });
   await seedMembership(MEMBER_ORG, ERIC, 'member');
   await seedMembership(MAINTAINER_ORG, ERIC, 'maintainer');
+  await seedMembership(AGENT_ORG, ERIC, 'agent');
+  await seedMembership(NO_SERVICES_ORG, ERIC, 'admin', { allowedServices: [] });
   await seedMembership(REMOVED_ORG, ERIC, 'owner', { removed: true });
   await seedMembership(EVENTS_ONLY_ORG, ERIC, 'owner', { allowedServices: ['events'] });
   // A stranger's org that Eric has nothing to do with.
@@ -321,6 +325,81 @@ describe('GET payer-dids data — what the "Pay as" picker is offered', () => {
 });
 
 describe('card: checkout stores a validated paid_by_did, and the webhook settles as it', () => {
+  it.each([
+    ['owner', null],
+    ['admin', null],
+    ['owner', ['pay']],
+    ['admin', ['events', 'pay']],
+  ])('#3125: a personal login with role %s and services %j can pay an org-addressed request and settle as the org', async (role, allowedServices) => {
+    const orgDid = ARTIFACT;
+    await h.client!.query('UPDATE auth.identity_members SET role = $1, allowed_services = $2 WHERE identity_did = $3 AND member_did = $4',
+      [role, allowedServices, orgDid, ERIC]);
+    await h.client!.query('UPDATE pay.payment_request SET recipient_did = $1 WHERE id = $2', [orgDid, REQUEST_ID]);
+    const session = await createPaymentRequestCheckoutSession({
+      id: HANDLE,
+      callerDid: ERIC,
+      paidByDid: orgDid,
+      payerPersonDid: ERIC,
+    });
+    expect(session).toMatchObject({ id: 'cs_new', reused: false });
+    expect(await paidByDidColumn()).toBe(orgDid);
+    const pending = await h.client!.query<{ from_did: string }>("SELECT from_did FROM pay.transactions WHERE status = 'pending'");
+    expect(pending.rows[0]!.from_did).toBe(orgDid);
+
+    await settlePaymentRequestFromStripeCheckout(stripeInput);
+    const settleArgs = h.settlePaymentMock.mock.calls[0]![0];
+    expect(settleArgs.from_did).toBe(orgDid);
+    expect(settleArgs.fair_manifest.chain.find((e: { role: string }) => e.role === 'buyer').did).toBe(orgDid);
+    expect(h.settledStripeAttestationMock).toHaveBeenCalledWith(expect.objectContaining({ paidByDid: orgDid, recipientDid: orgDid }));
+  });
+
+  it.each([
+    ['member', MEMBER_ORG],
+    ['maintainer', MAINTAINER_ORG],
+    ['agent', AGENT_ORG],
+    ['admin without any allowed services', NO_SERVICES_ORG],
+    ['removed owner', REMOVED_ORG],
+    ['owner without pay access', EVENTS_ONLY_ORG],
+    ['unrelated caller', STRANGER_ORG],
+  ])('#3125: an org-addressed request rejects a %s at the party gate, even when paying personally', async (_label, orgDid) => {
+    await h.client!.query('UPDATE pay.payment_request SET recipient_did = $1 WHERE id = $2', [orgDid, REQUEST_ID]);
+    const result = await createPaymentRequestCheckoutSession({
+      id: HANDLE,
+      callerDid: ERIC,
+      paidByDid: ERIC,
+      payerPersonDid: ERIC,
+    });
+    expect(result).toMatchObject({ status: 403, code: 'not_party_to_request' });
+    expect(await paidByDidColumn()).toBeNull();
+    expect(h.createByoSessionMock).not.toHaveBeenCalled();
+  });
+
+  it('#3125: controlling the issuer but not the recipient does not make a personal caller a party', async () => {
+    await seedMembership(ISSUER_DID, 'did:imajin:issuer-admin', 'admin');
+    const result = await createPaymentRequestCheckoutSession({ id: HANDLE, callerDid: 'did:imajin:issuer-admin' });
+    expect(result).toMatchObject({ status: 403, code: 'not_party_to_request' });
+    expect(h.createByoSessionMock).not.toHaveBeenCalled();
+  });
+
+  it('#3125: a recipient controller can pay personally but cannot choose an uncontrolled payer', async () => {
+    await h.client!.query('UPDATE pay.payment_request SET recipient_did = $1 WHERE id = $2', [ARTIFACT, REQUEST_ID]);
+    const denied = await createPaymentRequestCheckoutSession({ id: HANDLE, callerDid: ERIC, paidByDid: STRANGER_ORG });
+    expect(denied).toMatchObject({ status: 403, code: 'payer_not_controlled' });
+    expect(await paidByDidColumn()).toBeNull();
+    expect(h.createByoSessionMock).not.toHaveBeenCalled();
+
+    const session = await createPaymentRequestCheckoutSession({ id: HANDLE, callerDid: ERIC, paidByDid: ERIC });
+    expect(session).toMatchObject({ id: 'cs_new' });
+    expect(await paidByDidColumn()).toBe(ERIC);
+  });
+
+  it('#3125: an unaddressed request is not opened to unrelated callers', async () => {
+    await h.client!.query("UPDATE pay.payment_request SET recipient_did = NULL, recipient_stub_id = 'stub_1' WHERE id = $1", [REQUEST_ID]);
+    expect(await createPaymentRequestCheckoutSession({ id: HANDLE, callerDid: ERIC })).toMatchObject({
+      status: 403, code: 'not_party_to_request',
+    });
+    expect(h.createByoSessionMock).not.toHaveBeenCalled();
+  });
   it('personal pay — Eric pays as himself: stored, and the ledger payer, .fair buyer, attestation and events name Eric', async () => {
     const session = await createPaymentRequestCheckoutSession({
       id: HANDLE, // the pay page only has the opaque handle
@@ -432,6 +511,25 @@ describe('card: checkout stores a validated paid_by_did, and the webhook settles
 });
 
 describe('e-Transfer: the chosen DID is recorded when the payer picks the rail, and carried by Mark paid', () => {
+  it.each([ARTIFACT, PAY_SCOPED_ORG])('#3125: a controller of recipient %s gets EMT instructions from a personal login', async (orgDid) => {
+    await h.client!.query('UPDATE pay.payment_request SET recipient_did = $1 WHERE id = $2', [orgDid, REQUEST_ID]);
+    expect(await requestEmtPayInstructions(HANDLE, { paidByDid: orgDid, personDid: ERIC })).toHaveProperty('instructions');
+    expect(await paidByDidColumn()).toBe(orgDid);
+    await settlePaymentRequestEmt({ id: REQUEST_ID, callerDid: ISSUER_DID });
+    expect(h.settlePaymentMock).toHaveBeenCalledWith(expect.objectContaining({ from_did: orgDid, funded_provider: 'emt' }));
+  });
+
+  it.each([MEMBER_ORG, MAINTAINER_ORG, AGENT_ORG, NO_SERVICES_ORG, REMOVED_ORG, EVENTS_ONLY_ORG, STRANGER_ORG])(
+    '#3125: EMT rejects uncontrolled payer %s without changing the request',
+    async (orgDid) => {
+      await h.client!.query('UPDATE pay.payment_request SET recipient_did = $1 WHERE id = $2', [orgDid, REQUEST_ID]);
+      expect(await requestEmtPayInstructions(HANDLE, { paidByDid: orgDid, personDid: ERIC })).toMatchObject({
+        status: 403, code: 'payer_not_controlled',
+      });
+      expect(await paidByDidColumn()).toBeNull();
+      expect((await getPaymentRequestById(REQUEST_ID))?.status).toBe('issued');
+    },
+  );
   it('business pay — Artifact is recorded at choice time, then names the payer on settlement, attestation and event', async () => {
     const instructions = await requestEmtPayInstructions(HANDLE, { paidByDid: ARTIFACT, personDid: ERIC });
     expect('instructions' in instructions).toBe(true);

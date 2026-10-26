@@ -290,9 +290,6 @@ export default function ConversationsPage() {
       })()}
       </div>
 
-      <p className="text-center text-sm text-gray-500 mt-6">
-        🔒 All messages are end-to-end encrypted
-      </p>
 
       {showNewChat && <NewChatModal onClose={() => setShowNewChat(false)} />}
     </div>

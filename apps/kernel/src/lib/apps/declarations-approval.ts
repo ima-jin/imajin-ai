@@ -84,3 +84,19 @@ export function sameDeclarations(actual: ManifestDeclarations, approved: Manifes
 
 /** The empty list: what a proposal with no readable manifest approves. */
 export const NO_DECLARATIONS: ManifestDeclarations = { providesScopes: [], dependsOn: [], emittableEvents: [] };
+
+/** This refresh grants declaration slots only, never removals or recipe changes. */
+export function newSecretDeclarations(current: AppSecretDeclaration[], manifest: AppSecretDeclaration[]) {
+  const registered = new Map(current.map((secret) => [secret.name, secret.kind]));
+  const declared = new Map(manifest.map((secret) => [secret.name, secret.kind]));
+  return {
+    additions: manifest.filter((secret) => !registered.has(secret.name))
+      .sort((a, b) => a.name.localeCompare(b.name)),
+    notApplied: current.flatMap((secret) => {
+      if (!declared.has(secret.name)) return [`Removal of ${secret.name}`];
+      return declared.get(secret.name) === secret.kind ? [] : [`Kind change for ${secret.name}`];
+    }),
+  };
+}
+
+export const SECRET_REFRESH_NOTICE = 'Scope, event, service-scope, profile and other non-secret declaration changes are not applied by this refresh.';

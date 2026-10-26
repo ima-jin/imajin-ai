@@ -1358,7 +1358,7 @@ describe('per-source renderer registry — apps', () => {
     expect(screen.getByText('did:imajin:dykil-app')).toBeDefined();
     expect(screen.queryByRole('button', { name: 'Approve & provision' })).toBeNull();
   });
-  it.each(['sync', 'set', 'rotate', 'revoke'])('renders secret %s approval with a sign control, no provisioning/reveal', async (action) => {
+  it.each(['sync', 'generate', 'set', 'rotate', 'revoke'])('renders secret %s approval with a sign control, no provisioning/reveal', async (action) => {
     const secretCard = appsApproval({
       kind: `apps:secrets-${action}`, summary: 'Change fake-app secrets',
       detail: {
@@ -1379,6 +1379,20 @@ describe('per-source renderer registry — apps', () => {
     expect(document.body.textContent).not.toContain('obvious-fake-placeholder');
     expect(document.body.textContent).not.toContain('obvious-fake-staging-ref');
     expect(screen.getAllByText(/SESSION_SECRET/).length).toBeGreaterThan(0);
+  });
+  it('shows a pending declares-new-secrets card with append-only scope and excluded changes', async () => {
+    installFetch([{ isOperator: true, approvals: [appsApproval({
+      kind: 'apps:secrets-sync', summary: "'Dykil' declares new secrets",
+      detail: { appDid: 'did:imajin:dykil-app', secrets: [{ name: 'LEGACY_DATABASE_URL', kind: 'operator-supplied' }],
+        notApplied: 'Removal of OLD_SECRET. Scope and event changes are not applied.' },
+    })] }]);
+    render(<OperatorApprovalsPanel />);
+    expect(await screen.findByText("'Dykil' declares new secrets")).toBeDefined();
+    expect(screen.getByText(/Append only these new manifest secrets/).textContent)
+      .toContain('LEGACY_DATABASE_URL (operator-supplied)');
+    expect(screen.getByText(/Not applied:/).textContent).toContain('Removal of OLD_SECRET');
+    expect(screen.getByRole('button', { name: 'Sign secret change' })).toBeDefined();
+    expect(screen.queryByRole('button', { name: 'Approve & provision' })).toBeNull();
   });
   it('renders the provisioning detail and Approve & provision / Deny controls', async () => {
     installFetch([{ isOperator: true, approvals: [appsApproval()] }]);
