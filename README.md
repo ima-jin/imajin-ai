@@ -1,4 +1,5 @@
 # Imajin
+<!-- Docs delta replay started 2026-10-26 for v0.8.28; Refs #2028. -->
 <!-- Wide documentation replay: 2026-10-25, source 4d7b2dc1aa3a1dc721a35c863b47d283ae5c67bf, v0.8.26..main (#2028). -->
 
 **You compose. Imajin orchestrates. Signed. Legible.**
