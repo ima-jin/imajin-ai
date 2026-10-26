@@ -4,6 +4,7 @@ import { cleanup, render, screen } from '@testing-library/react';
 import JinPage from '../page';
 
 vi.mock('../usage-feed-panel', () => ({ UsageFeedPanel: () => null }));
+vi.mock('../decisions-panel', () => ({ DecisionsPanel: () => <section aria-label="Decisions">Decisions fixture</section> }));
 vi.mock('../operator-approvals-panel', () => ({ OperatorApprovalsPanel: () => null }));
 vi.mock('../vault-keys-panel', () => ({ VaultKeysPanel: () => null }));
 vi.mock('../access-bearers-panel', () => ({ AccessBearersPanel: () => null }));
@@ -20,6 +21,7 @@ vi.mock('../reach-inbox-panel', () => ({ ReachInboxPanel: () => null }));
 afterEach(cleanup);
 it('links organization mail sender settings from the jin header', () => {
   render(<JinPage />);
+  expect(screen.getByRole('region', { name: 'Decisions' })).toBeDefined();
   expect(screen.getByRole('link', { name: 'Organization settings' }).getAttribute('href')).toBe('/jin/org-settings');
   expect(screen.getByRole('region', { name: 'Registered apps' })).toBeDefined();
   expect(screen.getByRole('region', { name: 'App secrets' }).nextElementSibling)
