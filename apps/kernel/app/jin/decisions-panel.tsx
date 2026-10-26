@@ -100,13 +100,15 @@ export function DecisionsPanel() {
         <p className="text-xs text-gray-500">Open decisions, oldest first. Expand a row to rule in place.</p>
         <ApprovalControllerNotices controller={controller} />
         <div className="grid min-w-0 gap-3 sm:grid-cols-2">
-          <label className="min-w-0 text-xs text-gray-400">Subject
+          <label className="min-w-0 text-xs text-gray-400">
+            <span className="block">Subject</span>
             <select className={SELECT_CLASS} value={subject} onChange={event => setSubject(event.target.value)}>
               <option value="">All subjects</option>
               {[...new Set(cards.map(subjectOf))].map(value => <option key={value} value={value}>{value}</option>)}
             </select>
           </label>
-          <label className="min-w-0 text-xs text-gray-400">Agent
+          <label className="min-w-0 text-xs text-gray-400">
+            <span className="block">Agent</span>
             <select className={SELECT_CLASS} value={agent} onChange={event => setAgent(event.target.value)}>
               <option value="">All agents</option>
               {[...new Set(cards.map(agentOf))].map(value => <option key={value} value={value}>{value}</option>)}

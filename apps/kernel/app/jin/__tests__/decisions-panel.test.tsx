@@ -153,6 +153,7 @@ describe('Decisions lane (#3058)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'None of these' }));
     await screen.findByText('Countersignature required');
     await loaded(1);
+    expect(openRows()).toHaveLength(1);
   });
 
   it('keeps act-as decisions locked and does not infer an agent from the emission category', async () => {

@@ -1388,7 +1388,8 @@ export function useRunApprovals(
     const generation = ++loadGeneration.current;
     if (!silent) setLoading(true);
     try {
-      const res = await fetch(`/jin/api/operator-approvals?view=acting${historyRef.current ? '&history=true' : ''}${source ? `&source=${encodeURIComponent(source)}` : ''}`, {
+      const sourceQuery = source ? `&source=${encodeURIComponent(source)}` : '';
+      const res = await fetch(`/jin/api/operator-approvals?view=acting${historyRef.current ? '&history=true' : ''}${sourceQuery}`, {
         credentials: 'include', cache: 'no-store', headers: getActingAsHeaders(), signal: controller.signal,
       });
       if (!res.ok) throw new Error('Inbox unavailable');
