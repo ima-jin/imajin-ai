@@ -57,7 +57,7 @@ import { findLiveRowByHandle, getPaymentRequestById, type ServiceError } from '.
 import { emitPaymentRequestSettledStripeAttestation } from './attestations';
 import { attestAndAnnounceEmtSettled } from './emt-announce';
 import { resolveSettlementPayerDid, payingDidOf } from './settlement-payer';
-import { resolvePayerDidChoice } from './payer-dids';
+import { controlsPayerDid, resolvePayerDidChoice } from './payer-dids';
 import { taxBreakdownOf } from './tax';
 import type { PaymentRequestFairManifest, PaymentRequestLineItem, PaymentRequestSettlementRef } from './types';
 
@@ -86,7 +86,7 @@ function err(error: string, status: number, code?: string): ServiceError {
 export interface CreatePaymentRequestCheckoutInput {
   /** The internal id, or the opaque pay-link handle (the public pay page only ever has the handle). */
   id: string;
-  /** The authenticated caller's resolved effective DID. Must be the issuer or the recipient. */
+  /** The authenticated caller's resolved effective DID. Must be a party or control the recipient. */
   callerDid: string;
   customerEmail?: string;
   /**
@@ -262,7 +262,7 @@ async function startCardSession(input: StartCardSessionInput): Promise<StartedCa
 
 /**
  * Create (or reuse) a Stripe Checkout session for a payment_request. Either
- * the issuer or the recipient may call this — anonymous pay-link checkout
+ * the issuer, recipient, or a controller of the recipient may call this — anonymous pay-link checkout
  * (no recipient DID) is deferred to #2210. Refuses when the request isn't
  * `issued` or doesn't `allow_on_platform`.
  *
@@ -277,11 +277,16 @@ export async function createPaymentRequestCheckoutSession(
   const found = (await getPaymentRequestById(input.id)) ?? (await findLiveRowByHandle(input.id));
   if (!found) return err('payment_request not found', 404);
   let existing: PaymentRequest = found;
+  const personDid = input.payerPersonDid ?? input.callerDid;
   // Recipient authorization must use the same payer-control rule as the Pay-as picker (#3125).
-  if (existing.issuerDid !== input.callerDid && existing.recipientDid !== input.callerDid) {
-    return err('Not authorized to create a checkout session for this payment_request', 403);
+  if (
+    existing.issuerDid !== input.callerDid &&
+    existing.recipientDid !== input.callerDid &&
+    !(existing.recipientDid && await controlsPayerDid(personDid, existing.recipientDid))
+  ) {
+    return err('Not authorized to create a checkout session for this payment_request', 403, 'not_party_to_request');
   }
-  const paidByChoice = await resolvePayerDidChoice(input.paidByDid, input.payerPersonDid ?? input.callerDid);
+  const paidByChoice = await resolvePayerDidChoice(input.paidByDid, personDid);
   if (typeof paidByChoice === 'object' && paidByChoice !== null) return paidByChoice;
   if (!isOpenStatus(existing.status)) {
     return err(
