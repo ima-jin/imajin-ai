@@ -83,7 +83,7 @@ const SERVICES: ServiceConfig[] = [
   {
     name: 'chat',
     title: 'imajin chat',
-    description: 'Conversations, messages, E2EE key bundles, event lobbies, reactions, invites, and media upload.',
+    description: 'Conversations, messages, public key bundles, event lobbies, reactions, invites, and media upload. Chat uses TLS in transit and stores plaintext at rest on the hosting node; key bundles do not provide current message encryption.',
     prodUrl: 'https://chat.imajin.ai',
     devUrl: 'https://dev-chat.imajin.ai',
     port: 7007,

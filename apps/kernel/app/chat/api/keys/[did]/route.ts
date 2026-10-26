@@ -7,7 +7,7 @@ import { createLogger } from '@imajin/logger';
 const log = createLogger('kernel');
 
 /**
- * GET /api/keys/:did - Get public keys for E2EE
+ * GET /api/keys/:did - Get public key bundle (not used for current message encryption)
  * Public endpoint - no auth required
  */
 export async function GET(

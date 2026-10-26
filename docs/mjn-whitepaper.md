@@ -186,8 +186,11 @@ DID-based messaging. Every conversation is itself a DID:
 
 Real-time delivery uses WebSocket on the kernel HTTP server. Message signing is best-effort
 with the platform key for chain-verified identities, not a mandatory sender-DID signature.
-Encryption utilities use X25519 and XChaCha20-Poly1305 with simplified key epochs, not a
-ratcheting protocol. There is no forward-secrecy or post-compromise-security guarantee;
+Chat uses TLS in transit, with plaintext at rest on the hosting node in
+`chat.messages_v2.content`. Push notifications carry the first 200 characters of the
+message preview. End-to-end encryption (MLS with mandatory hybrid post-quantum encryption)
+is planned under [#1070](https://github.com/ima-jin/imajin-ai/issues/1070), not implemented.
+There is no forward-secrecy or post-compromise-security guarantee;
 see [SECURITY.md](https://github.com/ima-jin/imajin-ai/blob/main/SECURITY.md).
 
 The intended communication grammar follows identity scope: Actors get private channels. Families get shared
@@ -384,8 +387,8 @@ exchange" is not the integration contract. See [registration](https://github.com
 |-----------|---------|
 | Ed25519 | DID keypairs, attestation signing, .fair signing, sessions |
 | SHA-256 | Content hashing and key derivation; key-based DIDs encode public-key bytes |
-| X25519 | Chat key agreement and vault delegation-key wrapping |
-| XChaCha20-Poly1305 | Chat message encryption |
+| X25519 | Vault delegation-key wrapping; unused legacy chat encryption utility |
+| XChaCha20-Poly1305 | Unused legacy chat encryption utility, not current message protection |
 | AES-256-GCM | Vault data sealing |
 | dag-cbor + CID | DFOS content addressing, attestation CIDs |
 | JWS | DFOS signature format |

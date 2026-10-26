@@ -69,7 +69,10 @@ License: Imajin Network License (INL) v1.0, source-available, not MIT.
   infer universal 2% fees or mandatory manifest verification on every settlement
   path. Consult current settlement implementation and the whitepaper's caveats.
 - Chat uses the kernel HTTP server's WebSocket, not a separate ws process.
-  Simplified key-epoch encryption is not a ratcheting/forward-secret guarantee.
+  TLS in transit; plaintext at rest on the hosting node in chat.messages_v2.content.
+  Push notifications carry the first 200 characters of the message preview.
+  End-to-end encryption (MLS with mandatory hybrid post-quantum encryption) is
+  planned under #1070, not implemented; no forward-secrecy or post-compromise guarantee.
 
 ## How to read the inventory
 
@@ -991,8 +994,8 @@ declaration never overrides the implementation's authorization.
 - GET /chat/api/invites/{id} — Get invite info (public — for preview before joining); parameters: path:id (required); security: not declared (not proof of anonymous access); responses: 200, 404, 410
 - POST /chat/api/invites/{id} — Accept a conversation invite — increments use count and returns conversation DID; parameters: path:id (required); security: [{"cookieAuth":[]}]; responses: 200, 403, 410
 - DELETE /chat/api/invites/{id} — Revoke a conversation invite (creator or conversation member); parameters: path:id (required); security: [{"cookieAuth":[]}]; responses: 200, 403, 404
-- GET /chat/api/keys — Get own E2EE key bundle with unused pre-key count; security: [{"cookieAuth":[]}]; responses: 200, 404
-- POST /chat/api/keys — Upload or update E2EE key bundle (X3DH-style) — signature is verified server-side; body: application/json (required); security: [{"cookieAuth":[]}]; responses: 200, 400
+- GET /chat/api/keys — Get own public key bundle with unused pre-key count; security: [{"cookieAuth":[]}]; responses: 200, 404
+- POST /chat/api/keys — Upload or update public key bundle — signature is verified server-side; body: application/json (required); security: [{"cookieAuth":[]}]; responses: 200, 400
 - GET /chat/api/keys/{did} — Get public keys for a DID (public endpoint) — consumes one one-time pre-key if available; parameters: path:did (required); security: not declared (not proof of anonymous access); responses: 200, 404
 - GET /chat/api/lookup/{did} — Resolve DID to handle and name (proxies to auth service); parameters: path:did (required); security: not declared (not proof of anonymous access); responses: 200
 - GET /chat/api/profile — Proxy profile lookup by handle to profile service; parameters: query:handle (required); security: not declared (not proof of anonymous access); responses: 200, 404
