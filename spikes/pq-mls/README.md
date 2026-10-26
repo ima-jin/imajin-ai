@@ -1,8 +1,9 @@
 # PQ-MLS spike (#3112)
 Isolated automated assertions; imported by no app, kernel, or shared production
 package. No database, credentials, environment secrets, or app server needed.
-The new workspace has no `build`, `test`, or `typecheck` Turbo task: app builds
-do not compile Rust or run this experiment. Run its commands explicitly.
+The spike is a standalone package, not a pnpm workspace member: app builds and
+merge-group affected-workspace tests do not include it. Install its dependencies
+with `--ignore-workspace` using its own lockfile and run its commands explicitly.
 
 ## Prerequisites
 Node **24**, pnpm **9.15.0**, Rust **1.99.1**, target
@@ -13,12 +14,16 @@ or use its matching upstream release binary. Rust is pinned in
 
 ## Build and Node tests (from repository root)
 ```sh
-pnpm install --frozen-lockfile --loglevel=error
+pnpm --dir spikes/pq-mls --ignore-workspace install --frozen-lockfile --loglevel=error
 bash spikes/pq-mls/build-wasm.sh
-pnpm --filter @imajin-spike/pq-mls check:types
-pnpm --filter @imajin-spike/pq-mls test:node
-pnpm --filter @imajin-spike/pq-mls bundle
+pnpm --dir spikes/pq-mls --ignore-workspace check:types
+pnpm --dir spikes/pq-mls --ignore-workspace test:node
+pnpm --dir spikes/pq-mls --ignore-workspace bundle
 ```
+Alternatively, inside `spikes/pq-mls`, install with
+`pnpm install --ignore-workspace --frozen-lockfile` and run
+`pnpm --ignore-workspace <script>` so pnpm does not use the parent workspace or
+its lockfile.
 Both candidates create a group, add Bob via serialized Welcome, apply a further
 commit at the existing member, and decrypt 0/32/1024-byte application messages.
 Assertions reject altered ciphertext and replay. OpenMLS also asserts the
