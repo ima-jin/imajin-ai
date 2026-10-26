@@ -193,7 +193,8 @@ export function AppSecretsPanel() {
     <section className="mt-8 min-w-0 space-y-3 [overflow-wrap:anywhere]" data-testid="app-secrets-panel">
       <h2 className="text-base font-semibold text-gray-100">App secrets</h2>
       <p className="text-xs text-gray-500">
-        Names and status only — no reveal. Sync reads the app manifest; all changes require your signature.
+        Names and status only — no reveal. Sync proposes only new manifest secret declarations; all changes require your signature.
+        Removals, kind changes and non-secret declarations are not applied.
         Enter operator-supplied values here once; they are sealed pending your countersignature.
         Rotation takes effect on the app&apos;s next boot. Rotating SESSION_SECRET signs users out when the app restarts.
       </p>

@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({
   auth: vi.fn(), operator: vi.fn(), isOperator: vi.fn(), actAs: vi.fn(), select: vi.fn(),
   claimed: vi.fn(), preview: vi.fn(), list: vi.fn(), record: vi.fn(), hash: vi.fn(), stage: vi.fn(),
+  pending: vi.fn(),
 }));
 vi.mock('@/src/lib/apps/secret-staging', async (importOriginal) => ({
   ...await importOriginal<typeof import('@/src/lib/apps/secret-staging')>(),
@@ -18,11 +19,13 @@ vi.mock('@/src/lib/notify/operator-approvals', () => ({
 vi.mock('@/src/lib/notify/operator-approvals-service', () => ({ recordApprovalRequested: mocks.record }));
 vi.mock('@/src/lib/apps/secrets-operator', () => ({
   hasClaimedApp: mocks.claimed, previewAppSecrets: mocks.preview, listOperatorAppSecrets: mocks.list,
+  withPendingSecretSync: mocks.pending,
 }));
 vi.mock('@/src/db', () => ({
   registryApps: {}, db: { select: () => ({ from: () => ({ where: mocks.select }) }) },
 }));
 import { GET, POST } from '../route';
+import { SECRET_REFRESH_NOTICE } from '@/src/lib/apps/declarations-approval';
 const declaration = { name: 'SESSION_SECRET', kind: 'random-32B' };
 const appDid = 'did:imajin:fake-app';
 function req(body: unknown = { appDid, action: 'sync' }) {
@@ -33,10 +36,11 @@ beforeEach(() => {
   mocks.auth.mockResolvedValue({ identity: { id: 'did:imajin:fake-operator' } });
   mocks.operator.mockResolvedValue('did:imajin:fake-operator');
   mocks.isOperator.mockReturnValue(true);
-  mocks.select.mockResolvedValue([{ name: 'Fake app', slug: 'fake-app', status: 'active', secrets: [declaration] }]);
+  mocks.select.mockResolvedValue([{ name: 'Fake app', slug: 'fake-app', status: 'active', secrets: [] }]);
   mocks.claimed.mockResolvedValue(true);
   mocks.preview.mockResolvedValue({ ok: [declaration] });
   mocks.hash.mockReturnValue('fake-content-hash');
+  mocks.pending.mockImplementation(async (_appDid, _operatorDid, create) => create());
 });
 describe('app secret operator routes', () => {
   it.each(['set', 'rotate'])('seals %s input outside the proposal and returns no input or input hash', async (action) => {
@@ -75,12 +79,10 @@ describe('app secret operator routes', () => {
     expect(mocks.select).not.toHaveBeenCalled();
     expect(mocks.record).not.toHaveBeenCalled();
   });
-  it('snapshots genuine declared-none secrets for signed Sync', async () => {
+  it('does not create an empty approval for declared-none secrets', async () => {
     mocks.preview.mockResolvedValue({ ok: [] });
-    expect((await POST(req())).status).toBe(201);
-    expect(mocks.record).toHaveBeenCalledWith(expect.objectContaining({
-      detail: { appDid, appName: 'Fake app', slug: 'fake-app', secrets: [] },
-    }));
+    expect((await POST(req())).status).toBe(409);
+    expect(mocks.record).not.toHaveBeenCalled();
   });
   it('refuses act-as writes before reading the app', async () => {
     mocks.actAs.mockReturnValue(Response.json({ error: 'act_as_not_permitted' }, { status: 403 }));
@@ -94,11 +96,13 @@ describe('app secret operator routes', () => {
     expect(mocks.record).toHaveBeenCalledWith(expect.objectContaining({
       kind: 'apps:secrets-sync', operatorDid: 'did:imajin:fake-operator',
       contentHash: 'fake-content-hash',
-      detail: { appDid, appName: 'Fake app', slug: 'fake-app', secrets: [declaration] },
+      summary: "'Fake app' declares new secrets",
+      detail: { appDid, appName: 'Fake app', slug: 'fake-app', secrets: [declaration], notApplied: SECRET_REFRESH_NOTICE },
     }));
     expect(mocks.hash.mock.calls[0][0].detail).toEqual(mocks.record.mock.calls[0][0].detail);
   });
   it.each(['rotate', 'revoke'])('stages %s without any returned values', async (action) => {
+    mocks.select.mockResolvedValue([{ name: 'Fake app', slug: 'fake-app', status: 'active', secrets: [declaration] }]);
     const response = await POST(req({ appDid, action, name: 'SESSION_SECRET' }));
     expect(response.status).toBe(201);
     expect(mocks.record).toHaveBeenCalledWith(expect.objectContaining({
@@ -173,5 +177,52 @@ describe('app secret operator routes', () => {
   it('does not disclose unexpected provider exceptions', async () => {
     mocks.preview.mockRejectedValue(new Error('obvious-fake-placeholder'));
     expect(await (await POST(req())).json()).toEqual({ error: 'App-secret proposal unavailable' });
+  });
+  it('reuses a pending proposal without fetching or staging again', async () => {
+    mocks.pending.mockResolvedValue('existing-proposal');
+    const response = await POST(req());
+    expect(await response.json()).toEqual({ status: 'pending', proposalId: 'existing-proposal' });
+    expect(mocks.pending).toHaveBeenCalledWith(appDid, 'did:imajin:fake-operator', expect.any(Function));
+    expect(mocks.preview).not.toHaveBeenCalled();
+    expect(mocks.record).not.toHaveBeenCalled();
+  });
+  it('proposes only new slots and reports removals and kind changes as not applied', async () => {
+    mocks.select.mockResolvedValue([{ name: 'Fake app', slug: 'fake-app', status: 'active', secrets: [
+      declaration, { name: 'REMOVED_SECRET', kind: 'operator-supplied' },
+    ] }]);
+    const added = { name: 'LEGACY_DATABASE_URL', kind: 'operator-supplied' };
+    mocks.preview.mockResolvedValue({ ok: [added, { ...declaration, kind: 'random-64B' }] });
+    expect((await POST(req())).status).toBe(201);
+    const detail = mocks.record.mock.calls[0][0].detail;
+    expect(detail.secrets).toEqual([added]);
+    expect(detail.notApplied).toContain('Removal of REMOVED_SECRET');
+    expect(detail.notApplied).toContain('Kind change for SESSION_SECRET');
+    expect(detail.notApplied).toContain(SECRET_REFRESH_NOTICE);
+    expect(mocks.stage).not.toHaveBeenCalled();
+  });
+  it.each([
+    { manifest: [] }, { manifest: [{ ...declaration, kind: 'random-64B' }] }, { manifest: [declaration] },
+  ])('does not stage removals, kind changes or unchanged declarations without additions', async ({ manifest }) => {
+    mocks.select.mockResolvedValue([{ name: 'Fake app', slug: 'fake-app', status: 'active', secrets: [declaration] }]);
+    mocks.preview.mockResolvedValue({ ok: manifest });
+    const response = await POST(req());
+    expect(response.status).toBe(409);
+    expect((await response.json()).error).toContain('No new secret declarations. Not applied:');
+    expect(mocks.record).not.toHaveBeenCalled();
+  });
+  it.each([
+    { slug: null, secrets: [] },
+    { slug: 'fake-app', secrets: [{ name: 'BAD', kind: 'invalid' }] },
+    { slug: 'fake-app', secrets: Array.from({ length: 32 }, (_, i) => ({ name: `EXISTING_${i}`, kind: 'operator-supplied' })) },
+  ])('refuses invalid source, registered declarations, or oversized union', async (fields) => {
+    mocks.select.mockResolvedValue([{ name: 'Fake app', status: 'active', ...fields }]);
+    expect((await POST(req())).status).toBe(409);
+    expect(mocks.record).not.toHaveBeenCalled();
+  });
+  it('requires operator identity for sync writes, not just metadata reads', async () => {
+    mocks.isOperator.mockReturnValue(false);
+    expect((await POST(req())).status).toBe(403);
+    expect(mocks.select).not.toHaveBeenCalled();
+    expect(mocks.pending).not.toHaveBeenCalled();
   });
 });

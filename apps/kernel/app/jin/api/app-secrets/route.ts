@@ -8,11 +8,12 @@ import { generateId } from '@/src/lib/kernel/id';
 import { actAsRefusal } from '@/src/lib/notify/act-as-guard';
 import { getOperatorDid, isOperatorIdentity, computeApprovalContentHash } from '@/src/lib/notify/operator-approvals';
 import { recordApprovalRequested } from '@/src/lib/notify/operator-approvals-service';
-import { listOperatorAppSecrets, hasClaimedApp, previewAppSecrets } from '@/src/lib/apps/secrets-operator';
+import { listOperatorAppSecrets, hasClaimedApp, previewAppSecrets, withPendingSecretSync } from '@/src/lib/apps/secrets-operator';
 import { APP_SECRET_ACTIONS, appSecretsKind, type AppSecretAction } from '@/src/lib/apps/secrets-kind';
 import { validateSecrets } from '@/src/lib/apps/secret-declarations';
 import { isAppSecretValue, stageAppSecret } from '@/src/lib/apps/secret-staging';
 import { publicAppSecrets } from '@/src/lib/apps/secrets-metadata';
+import { newSecretDeclarations, SECRET_REFRESH_NOTICE } from '@/src/lib/apps/declarations-approval';
 
 export const dynamic = 'force-dynamic';
 
@@ -63,7 +64,14 @@ async function prepareDetail(
     if (!app.slug) return { error: 'App has no manifest repo slug', status: 409 };
     const snapshot = await previewAppSecrets(app.slug);
     if ('error' in snapshot) return { error: snapshot.error, status: 409 };
-    return { detail: { ...detail, slug: app.slug, secrets: snapshot.ok } };
+    const current = validateSecrets(app.secrets ?? []);
+    if ('error' in current) return { error: 'Registered secret declarations are invalid', status: 409 };
+    const { additions, notApplied } = newSecretDeclarations(current.ok, snapshot.ok);
+    const notice = [...notApplied, SECRET_REFRESH_NOTICE].join('. ');
+    if (additions.length === 0) return { error: `No new secret declarations. Not applied: ${notice}`, status: 409 };
+    const merged = validateSecrets([...current.ok, ...additions]);
+    if ('error' in merged) return { error: merged.error, status: 409 };
+    return { detail: { ...detail, slug: app.slug, secrets: additions, notApplied: notice } };
   }
   const declared = validateSecrets(app.secrets ?? []);
   if ('error' in declared || typeof body.name !== 'string') return { error: 'Secret is not declared for this app' };
@@ -101,21 +109,31 @@ export async function POST(request: NextRequest) {
     }).from(registryApps).where(eq(registryApps.appDid, appDid));
     if (!app) return fail('Unknown app', 404);
     if (app.status !== 'active' || !(await hasClaimedApp(appDid))) return fail('App must be active and claimed', 409);
-    const proposalId = generateId('appsecret');
-    const prepared = await prepareDetail(body, app, proposalId, auth.operatorDid);
-    if ('error' in prepared) return fail(prepared.error, prepared.status);
-    const { detail } = prepared;
-    const kind = appSecretsKind(action);
-    const summary = `${action} app secrets for '${app.name}'`;
-    const contentHash = computeApprovalContentHash({ proposalId, source: 'apps', kind, summary, keysTouched: [], detail });
-    await recordApprovalRequested({
-      proposalId, operatorDid: auth.operatorDid, source: 'apps', kind, summary, keysTouched: [],
-      detail, contentHash, notificationId: null, signerDid: auth.operatorDid,
-    });
+    const create = async () => {
+      const proposalId = generateId('appsecret');
+      const prepared = await prepareDetail(body, app, proposalId, auth.operatorDid);
+      if ('error' in prepared) throw new ProposalValidationError(prepared.error, prepared.status);
+      const { detail } = prepared;
+      const kind = appSecretsKind(action);
+      const summary = action === 'sync' ? `'${app.name}' declares new secrets` : `${action} app secrets for '${app.name}'`;
+      const contentHash = computeApprovalContentHash({ proposalId, source: 'apps', kind, summary, keysTouched: [], detail });
+      await recordApprovalRequested({
+        proposalId, operatorDid: auth.operatorDid, source: 'apps', kind, summary, keysTouched: [],
+        detail, contentHash, notificationId: null, signerDid: auth.operatorDid,
+      });
+      return proposalId;
+    };
+    const proposalId = action === 'sync'
+      ? await withPendingSecretSync(appDid, auth.operatorDid, create)
+      : await create();
     return NextResponse.json({ status: 'pending', proposalId }, { status: 201, headers: auth.cors });
-  } catch {
+  } catch (error) {
+    if (error instanceof ProposalValidationError) return fail(error.message, error.status);
     return fail('App-secret proposal unavailable', 503);
   }
+}
+class ProposalValidationError extends Error {
+  constructor(message: string, readonly status = 400) { super(message); }
 }
 
 export { corsOptions as OPTIONS } from '@/src/lib/kernel/cors';

@@ -23,6 +23,19 @@ const app = {
   ] }],
 };
 describe('AppSecretsPanel', () => {
+  it('lists the approved new operator-supplied slot as ready to set without changing app identity', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({ apps: [{
+      ...app, secrets: [{ name: 'LEGACY_DATABASE_URL', kind: 'operator-supplied', status: 'missing', timeline: [] }],
+    }] })));
+    render(<AppSecretsPanel />);
+    const input = await screen.findByLabelText('New value for LEGACY_DATABASE_URL') as HTMLInputElement;
+    expect(input.value).toBe('');
+    expect(input.type).toBe('password');
+    expect(screen.getByText(/LEGACY_DATABASE_URL/).parentElement?.textContent).toContain('not set');
+    expect(screen.getByRole('button', { name: 'Set' })).toBeDefined();
+    expect(screen.getAllByText(app.appDid).length).toBeGreaterThan(0);
+    expect(screen.queryByRole('button', { name: 'Rotate' })).toBeNull();
+  });
   it('shows provision failed without awaiting claim, reissue links, or mutation controls', async () => {
     const fetchMock = vi.fn().mockResolvedValue(Response.json({ apps: [{
       ...app, claimed: false, provisionFailed: true, claimExpiresAt: null, secrets: [],
