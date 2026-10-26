@@ -139,6 +139,7 @@ import { WarpApiError, WarpBriefEventError } from './errors';
 import type { WarpRunLoopTransition } from './loop-emit';
 import { warpRunLoopRefs, warpRunPrArtifacts } from './loop-refs';
 import type { WarpBrief } from './brief';
+import { assertWarpBriefSize } from './brief-limit';
 
 // Re-exported for callers that need to catch it without importing
 // corpus-context.ts directly (mirroring the WarpApiError re-export below).
@@ -784,6 +785,24 @@ async function warpFetch(
   return readJsonBody(response);
 }
 
+/** Only prompt-bearing POSTs use this wrapper; reads do not create brief attempts. */
+async function warpFetchWithBrief(
+  principalDid: string, brief: WarpBrief, agentKey: string, path: string, init: WarpRequestInit,
+): Promise<unknown> {
+  try {
+    return await warpFetch(agentKey, path, init);
+  } catch (error) {
+    try {
+      const { recordWarpBriefDispatchFailed } = await import('./brief-ledger');
+      await recordWarpBriefDispatchFailed(principalDid, brief, error);
+    } catch {
+      // Never log the original exception: network/driver errors may contain input.
+      log.warn({ principalDid, hash: brief.hash, assetId: brief.assetId }, 'Brief dispatch-failure audit unavailable');
+    }
+    throw error;
+  }
+}
+
 // ── Run parsing ───────────────────────────────────────────────────────────────
 
 /**
@@ -1036,6 +1055,7 @@ export async function dispatchAgentRun(
   principalDid: string,
   input: DispatchAgentRunInput,
 ): Promise<WarpAgentRun> {
+  assertWarpBriefSize(input.prompt);
   const trimmedPrompt = input.prompt.trim();
   if (trimmedPrompt.length === 0) {
     throw new Error('warp_invalid_prompt: prompt must be a non-empty string');
@@ -1059,9 +1079,10 @@ export async function dispatchAgentRun(
     input.corpusContext,
   );
 
+  assertWarpBriefSize(prompt);
   const { recordWarpBrief } = await import('./brief-ledger');
   const brief = await recordWarpBrief(principalDid, prompt);
-  const payload = await warpFetch(agentKey, '/agent/run', {
+  const payload = await warpFetchWithBrief(principalDid, brief, agentKey, '/agent/run', {
     method: 'POST',
     body: {
       prompt,
@@ -1482,6 +1503,7 @@ export async function sendFollowup(
   runId: string,
   input: SendFollowupInput,
 ): Promise<WarpFollowupAck> {
+  assertWarpBriefSize(input.message);
   const id = requireRunId(runId);
 
   const message = input.message;
@@ -1510,7 +1532,7 @@ export async function sendFollowup(
   const mode = input.mode ?? 'normal';
   const { recordWarpBrief } = await import('./brief-ledger');
   const brief = await recordWarpBrief(principalDid, message);
-  const followupPayload = await warpFetch(agentKey, runPath(id, '/followups'), {
+  const followupPayload = await warpFetchWithBrief(principalDid, brief, agentKey, runPath(id, '/followups'), {
     method: 'POST',
     body: {
       message,

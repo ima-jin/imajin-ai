@@ -1,6 +1,6 @@
 # Imajin — You compose. Imajin orchestrates. Signed. Legible.
 
-Generated 2026-10-26 UTC from source 8f2ebbfd455857d3b6b09cc5b4919db78d2b69bd, release comparison v0.8.27..8f2ebbfd4.
+Generated 2026-10-26 UTC from merged working tree based on source 6e4b1d28aa1b5e7888a5a827f407aa54e82974ce, release comparison v0.8.27..6e4b1d28a.
 This is a source inventory, not deployment evidence or a permission grant.
 
 Imajin is Agentic Relation Management. The kernel serves six primitives:
@@ -21,10 +21,16 @@ License: Imajin Network License (INL) v1.0, source-available, not MIT.
 ## Integration and safety
 - Warp briefs: GET/PUT /jin/api/brief-settings (human session, warp-scoped
   owner/admin act-as only), UI /jin/brief-settings. Default full-text stores
-  exact outgoing UTF-8 in a private immutable signed media asset; hash-only
-  stores no prompt text. Each dispatch/resume/follow-up loop event carries
-  brief {hash,assetId,storage,browserTesting}; settings changes are node-signed.
-  Earlier assets remain. /jin Runs opens and verifies the brief's SHA-256.
+  exact outgoing UTF-8 in a private immutable signed media asset. The final
+  prompt/message, including corpus context, is capped at 1048576 UTF-8 bytes
+  (1 MiB); oversized HTTP requests return 413 and MCP tools name the limit.
+  Each dispatch/resume/follow-up loop event carries brief
+  {hash,assetId,storage,browserTesting}; settings changes are node-signed.
+  A provider rejection/network failure retains the recorded brief plus a signed
+  warp.brief.dispatch_failed containing only hash, assetId, upstreamStatus and
+  errorClass. Hash-only stores no text; anyone holding a guess of a brief's text
+  can confirm it against the plain SHA-256 hash. Earlier assets remain.
+  /jin Runs opens and verifies the brief's SHA-256.
 
 - /jin Decisions reads /jin/api/operator-approvals?view=acting&source=decision&history=true.
   Open decision:card rows are oldest first; ruled pending apply and applied history
@@ -143,7 +149,7 @@ are omitted from the implemented reference and reported in the #2028 run-log.
 - /vault/api/spec — imajin vault — apps/kernel/api-spec/vault.yaml
 - corpus:/spec — imajin corpus — apps/corpus/api-spec/openapi.yaml
 
-## Complete App Router inventory (667 handlers)
+## Complete App Router inventory (668 handlers)
 
 - GET /.well-known/agent.json — apps/kernel/app/.well-known/agent.json/route.ts
 - GET, OPTIONS /.well-known/agent/{id} — apps/kernel/app/.well-known/agent/[id]/route.ts
@@ -415,8 +421,8 @@ are omitted from the implemented reference and reported in the #2028 run-log.
 - OPTIONS, POST /auth/api/session/soft — apps/kernel/app/auth/api/session/soft/route.ts
 - GET /auth/api/spec — apps/kernel/app/auth/api/spec/route.ts
 - OPTIONS, POST /auth/api/stored-keys — apps/kernel/app/auth/api/stored-keys/route.ts
-- OPTIONS, POST /auth/api/tokens — apps/kernel/app/auth/api/tokens/app/route.ts
-- OPTIONS, POST /auth/api/tokens — apps/kernel/app/auth/api/tokens/app/verify/route.ts
+- OPTIONS, POST /auth/api/tokens/app — apps/kernel/app/auth/api/tokens/app/route.ts
+- OPTIONS, POST /auth/api/tokens/app/verify — apps/kernel/app/auth/api/tokens/app/verify/route.ts
 - POST /auth/api/validate — apps/kernel/app/auth/api/validate/route.ts
 - GET /auth/api/vault/delegation/grants — apps/kernel/app/auth/api/vault/delegation/grants/route.ts
 - POST /auth/api/vault/delegation/grants/{grantId}/ack — apps/kernel/app/auth/api/vault/delegation/grants/[grantId]/ack/route.ts
@@ -550,6 +556,7 @@ are omitted from the implemented reference and reported in the #2028 run-log.
 - GET, OPTIONS /infer/v1/models — apps/kernel/app/infer/v1/models/route.ts
 - GET, OPTIONS /infer/v1/models/usable — apps/kernel/app/infer/v1/models/usable/route.ts
 - GET, OPTIONS, POST /jin/api/app-secrets — apps/kernel/app/jin/api/app-secrets/route.ts
+- GET, OPTIONS, PUT /jin/api/brief-settings — apps/kernel/app/jin/api/brief-settings/route.ts
 - GET, OPTIONS, POST /jin/api/cloudflare-grants — apps/kernel/app/jin/api/cloudflare-grants/route.ts
 - GET, OPTIONS /jin/api/events — apps/kernel/app/jin/api/events/route.ts
 - GET, OPTIONS, PUT /jin/api/front-door — apps/kernel/app/jin/api/front-door/route.ts

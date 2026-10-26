@@ -32,6 +32,7 @@ vi.mock('@/src/lib/warp/dispatch', () => ({
 // DATABASE_URL. Registry membership is enforced by the typechecked import in
 // tools/index.ts; behaviour is what is worth testing here.
 import { warpTools } from '../tools/warp';
+import { WARP_BRIEF_MAX_BYTES } from '@/src/lib/warp/brief-limit';
 import { sealWarpAgentKey } from '@/src/lib/warp/connector';
 import {
   cancelAgentRun,
@@ -163,6 +164,18 @@ describe('warp_seal_key', () => {
 // ─── warp_dispatch_agent ───────────────────────────────────────────────────
 
 describe('warp_dispatch_agent', () => {
+  it.each(['warp_dispatch_agent', 'warp_send_followup'])('rejects oversized UTF-8 input in %s before invoking the client', async name => {
+    const text = '今'.repeat(Math.floor(WARP_BRIEF_MAX_BYTES / 3) + 1);
+    const args = name === 'warp_dispatch_agent' ? { prompt: text } : { run_id: RUN_ID, message: text };
+    await expect(call(name, args)).rejects.toThrow(`${WARP_BRIEF_MAX_BYTES} UTF-8 bytes`);
+    expect(dispatchAgentRun).not.toHaveBeenCalled();
+    expect(sendFollowup).not.toHaveBeenCalled();
+  });
+  it.each(['warp_dispatch_agent', 'warp_send_followup'])('accepts exactly the byte cap in %s', async name => {
+    const text = 'x'.repeat(WARP_BRIEF_MAX_BYTES);
+    await call(name, name === 'warp_dispatch_agent' ? { prompt: text } : { run_id: RUN_ID, message: text });
+    expect(name === 'warp_dispatch_agent' ? dispatchInput().prompt : vi.mocked(sendFollowup).mock.calls[0][2].message).toBe(text);
+  });
   it('keeps prompt and follow-up whitespace for exact ledger hashing', async () => {
     const text = '  Browser testing: no\n今人\r\n  ';
     await call('warp_dispatch_agent', { prompt: text });

@@ -11,7 +11,7 @@
  */
 import { NextResponse } from 'next/server';
 import { CorpusContextError } from './corpus-context';
-import { WarpApiError, WarpBriefEventError } from './errors';
+import { WarpApiError, WarpBriefEventError, WarpBriefSizeError } from './errors';
 
 /** Status Warp returned, mapped to what *our* caller should see. */
 function statusForUpstream(upstream: number): number {
@@ -44,6 +44,10 @@ function upstreamErrorResponse(err: WarpApiError, cors: Record<string, string>):
  * upstream failure is nothing they can act on.
  */
 export function warpErrorResponse(err: unknown, cors: Record<string, string>): NextResponse {
+  if (err instanceof WarpBriefSizeError) {
+    return NextResponse.json({ error: 'warp_brief_too_large', maxBytes: err.maxBytes, detail: err.message },
+      { status: 413, headers: cors });
+  }
   if (err instanceof WarpBriefEventError) {
     return NextResponse.json({
       error: 'warp_brief_event_failed', runId: err.runId, accepted: true, retryable: false,

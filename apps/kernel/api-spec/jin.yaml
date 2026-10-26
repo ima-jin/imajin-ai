@@ -616,6 +616,17 @@ components:
         No prompt text is placed on the event. Full-text assets are private,
         immutable, owner-pinned and signed using existing media primitives.
         Hash-only creates no asset. Missing browser telemetry is null, not no.
+        In hash-only mode, anyone holding a guess of a brief's text can confirm
+        it against the plain SHA-256 hash.
+        All entry points enforce WARP_BRIEF_MAX_BYTES = 1048576 (1 MiB) on the
+        exact final UTF-8 prompt or follow-up message, including corpus prefix
+        and separator, before any brief asset, attestation or Warp request.
+        HTTP routes return 413; MCP tools name the byte limit in their error.
+        A provider 4xx/5xx or network failure retains the recorded brief and adds
+        a node-signed warp.brief.dispatch_failed attestation with only hash,
+        assetId, upstreamStatus (null for network) and errorClass
+        (http_4xx, http_5xx or network). Its contextId is assetId or the hash.
+        The original provider error is rethrown even if failure auditing fails.
       properties:
         hash: { type: string, pattern: '^[a-f0-9]{64}$' }
         assetId: { type: [string, "null"] }

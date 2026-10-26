@@ -15,6 +15,9 @@
  * Returns `{ runId, accepted: true }`. Acceptance is not application: Warp routes
  * the message according to whatever the run is doing, and the effect is observed
  * through `GET /warp/api/runs/{runId}`.
+ * Messages are capped at 1,048,576 UTF-8 bytes (1 MiB); oversize is 413
+ * before storage or any Warp call. Provider failures retain the brief plus a
+ * value-free warp.brief.dispatch_failed attestation, without changing the error.
  *
  * A terminal run is refused with 409 `warp_run_terminal` unless `resume: true`
  * is given (#1939) — refusal-by-default, so a follow-up cannot accidentally wake
@@ -43,6 +46,8 @@ import { sendFollowup, watchRun, type WarpFollowupMode } from '@/src/lib/warp/di
 import { warpActingDid, warpRunId } from '@/src/lib/warp/route-context';
 import { warpErrorResponse } from '@/src/lib/warp/route-errors';
 import { claimTerminalPublish, countPriorResumes } from '@/src/lib/warp/run-watch-sweep';
+import { isWarpBriefTooLarge, WARP_BRIEF_MAX_BYTES } from '@/src/lib/warp/brief-limit';
+import { WarpBriefSizeError } from '@/src/lib/warp/errors';
 
 const log = createLogger('kernel');
 
@@ -64,6 +69,7 @@ export async function POST(request: NextRequest, props: { params: Promise<{ runI
   }
 
   const message = typeof body.message === 'string' ? body.message : '';
+  if (isWarpBriefTooLarge(message)) return warpErrorResponse(new WarpBriefSizeError(WARP_BRIEF_MAX_BYTES), cors);
   if (message.trim().length === 0) {
     return NextResponse.json(
       { error: 'message must be a non-empty string' },
@@ -102,7 +108,7 @@ export async function POST(request: NextRequest, props: { params: Promise<{ runI
     return NextResponse.json(ack, { status: 202, headers: cors });
   } catch (err) {
     log.error(
-      { err: String(err), principalDid: acting.did, runId: run.runId },
+      { principalDid: acting.did, runId: run.runId },
       'Warp run follow-up failed',
     );
     return warpErrorResponse(err, cors);

@@ -41,7 +41,7 @@ const {
 vi.mock('../connector', () => ({
   requireAgentKey: requireAgentKeyMock,
 }));
-vi.mock('../brief-ledger', () => ({ recordWarpBrief: vi.fn().mockResolvedValue({
+vi.mock('../brief-ledger', () => ({ recordWarpBriefDispatchFailed: vi.fn(), recordWarpBrief: vi.fn().mockResolvedValue({
   hash: 'a'.repeat(64), assetId: 'asset_brief', storage: 'full-text', browserTesting: null,
 }) }));
 

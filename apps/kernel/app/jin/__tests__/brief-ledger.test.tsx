@@ -75,6 +75,7 @@ describe('brief settings page', () => {
       .mockResolvedValueOnce(response({ storage: 'full-text' }))
       .mockResolvedValueOnce(response({ storage: 'hash-only', attestationId: 'att_signed' })));
     render(<BriefSettingsPage />);
+    expect(screen.getByText(/anyone holding a guess.*plain SHA-256 hash/)).toBeDefined();
     await waitFor(() => expect((screen.getByRole('combobox') as HTMLSelectElement).value).toBe('full-text'));
     fireEvent.change(screen.getByRole('combobox'), { target: { value: 'hash-only' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save brief setting' }));

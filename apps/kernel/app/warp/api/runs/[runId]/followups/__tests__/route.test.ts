@@ -35,6 +35,7 @@ import { POST, OPTIONS } from '../route';
 import { sendFollowup, watchRun } from '@/src/lib/warp/dispatch';
 import { claimTerminalPublish, countPriorResumes } from '@/src/lib/warp/run-watch-sweep';
 import { WarpApiError } from '@/src/lib/warp/errors';
+import { WARP_BRIEF_MAX_BYTES } from '@/src/lib/warp/brief-limit';
 
 // ─── Fixtures ────────────────────────────────────────────────────────────────
 
@@ -64,6 +65,30 @@ beforeEach(() => {
 // ─── Tests ───────────────────────────────────────────────────────────────────
 
 describe('POST /warp/api/runs/{runId}/followups', () => {
+  it.each([422, 503, null])('retains the original provider error response for status %s', async status => {
+    vi.mocked(sendFollowup).mockRejectedValueOnce(status === null ? new TypeError('network unavailable')
+      : new WarpApiError('provider refusal', { status, detail: 'unchanged detail' }));
+    const response = await POST(makeReq({ message: 'opaque brief' }), { params: Promise.resolve({ runId: RUN_ID }) });
+    expect(response.status).toBe(status === 422 ? 422 : status === null ? 500 : 502);
+    expect(await response.json()).toMatchObject(status === null ? { error: 'warp_dispatch_failed' }
+      : { error: 'warp_upstream_error', upstreamStatus: status, detail: 'unchanged detail' });
+  });
+  it('returns 413 before sending, resuming or watching an oversized UTF-8 message', async () => {
+    const response = await POST(makeReq({
+      message: '今'.repeat(Math.floor(WARP_BRIEF_MAX_BYTES / 3) + 1), resume: true,
+    }), { params: Promise.resolve({ runId: RUN_ID }) });
+    expect(response.status).toBe(413);
+    expect(await response.json()).toMatchObject({ error: 'warp_brief_too_large', maxBytes: WARP_BRIEF_MAX_BYTES });
+    expect(sendFollowup).not.toHaveBeenCalled();
+    expect(countPriorResumes).not.toHaveBeenCalled();
+    expect(watchRun).not.toHaveBeenCalled();
+  });
+  it('accepts exactly the shared byte limit at ingress', async () => {
+    const message = 'x'.repeat(WARP_BRIEF_MAX_BYTES);
+    const response = await POST(makeReq({ message }), { params: Promise.resolve({ runId: RUN_ID }) });
+    expect(response.status).toBe(202);
+    expect(sendFollowup).toHaveBeenCalledWith(OWNER_DID, RUN_ID, { message });
+  });
   it('preserves exact follow-up bytes for its ledger hash', async () => {
     await POST(makeReq({ message: '  Browser testing: no\nExact\r\n  ' }), { params: Promise.resolve({ runId: RUN_ID }) });
     expect(sendFollowup).toHaveBeenCalledWith(OWNER_DID, RUN_ID, { message: '  Browser testing: no\nExact\r\n  ' });

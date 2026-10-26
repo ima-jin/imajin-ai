@@ -7,6 +7,14 @@
  * alongside the client that throws it.
  */
 
+/** Byte budget refusal before any brief storage or provider call. */
+export class WarpBriefSizeError extends Error {
+  constructor(readonly maxBytes: number) {
+    super(`warp_brief_too_large: final brief must not exceed ${maxBytes} UTF-8 bytes, including corpus context`);
+    this.name = 'WarpBriefSizeError';
+  }
+}
+
 /** Provider accepted work; do not retry dispatch after an audit failure. */
 export class WarpBriefEventError extends Error {
   constructor(readonly runId: string) {

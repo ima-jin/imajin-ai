@@ -29,6 +29,7 @@
  */
 import type { McpTool } from '../types';
 import { str, num, json } from './utils';
+import { assertWarpBriefSize, WARP_BRIEF_MAX_BYTES } from '@/src/lib/warp/brief-limit';
 import { sealWarpAgentKey, WARP_DISPATCH_SCOPE } from '@/src/lib/warp/connector';
 import { CORPUS_CONTEXT_MAX_LIMIT, type CorpusContextInput } from '@/src/lib/warp/corpus-context';
 import {
@@ -143,7 +144,7 @@ const dispatchTool: McpTool = {
     properties: {
       prompt: {
         type: 'string',
-        description: 'The task for the cloud agent to carry out',
+        description: `The task for the cloud agent to carry out; final prompt including corpus context must be at most ${WARP_BRIEF_MAX_BYTES} UTF-8 bytes`,
       },
       title: {
         type: 'string',
@@ -217,6 +218,7 @@ const dispatchTool: McpTool = {
   async handler(args, ctx) {
     const prompt = args.prompt;
     if (typeof prompt !== 'string' || prompt.trim().length === 0) throw new Error('prompt is required');
+    assertWarpBriefSize(prompt);
 
     const title = str(args, 'title');
     const skillSpec = str(args, 'skill_spec');
@@ -475,7 +477,7 @@ const sendFollowupTool: McpTool = {
       },
       message: {
         type: 'string',
-        description: 'The message to deliver to the running agent',
+        description: `The message to deliver to the running agent, at most ${WARP_BRIEF_MAX_BYTES} UTF-8 bytes`,
       },
       mode: {
         type: 'string',
@@ -500,6 +502,7 @@ const sendFollowupTool: McpTool = {
 
     const message = args.message;
     if (typeof message !== 'string' || message.trim().length === 0) throw new Error('message is required');
+    assertWarpBriefSize(message);
 
     // Cast rather than validated here: the closed set lives in the client, so the
     // HTTP and MCP callers reject an unknown mode with the same error.

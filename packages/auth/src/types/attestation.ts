@@ -6,6 +6,7 @@
 
 export const ATTESTATION_TYPES = [
   'warp.brief.recorded',
+  'warp.brief.dispatch_failed',
   'warp.brief.storage.changed',
   'vault.ssh-cert.issued',
   'vault.ssh-cert.refused',
@@ -324,6 +325,7 @@ export type AttestationType = typeof ATTESTATION_TYPES[number];
  */
 export const MECHANICAL_ATTESTATION_TYPES = [
   'warp.brief.recorded',
+  'warp.brief.dispatch_failed',
   'warp.brief.storage.changed',
   'document.revoked',
   'vault.ssh-cert.issued',

@@ -4,6 +4,8 @@ import { db, assets, attestations, identities } from '@/src/db';
 import { createAsset } from '@/src/lib/media/create-asset';
 import { prepareMechanicalAttestation } from '@/src/lib/auth/emit-mechanical-attestation';
 import { browserTestingFlag, isBriefStorage, type BriefStorage, type WarpBrief } from './brief';
+import { assertWarpBriefSize } from './brief-limit';
+import { WarpApiError } from './errors';
 
 const PREFERENCE = 'warpBriefStorage';
 type Reader = Pick<typeof db, 'select'>;
@@ -13,6 +15,21 @@ async function principal(did: string, executor: Reader = db) {
     .where(eq(identities.id, did)).limit(1);
   if (!row) throw new Error('Brief principal unavailable');
   return row;
+}
+
+/** A failed provider attempt keeps its original brief but never copies error text. */
+export async function recordWarpBriefDispatchFailed(did: string, brief: WarpBrief, error: unknown): Promise<void> {
+  const upstreamStatus = error instanceof WarpApiError ? error.status : null;
+  let errorClass = 'network';
+  if (upstreamStatus !== null) {
+    errorClass = upstreamStatus >= 500 ? 'http_5xx' : 'http_4xx';
+  }
+  const audit = await prepareMechanicalAttestation({
+    subjectDid: did, type: 'warp.brief.dispatch_failed',
+    contextId: brief.assetId ?? brief.hash, contextType: 'warp.brief',
+    payload: { hash: brief.hash, assetId: brief.assetId, upstreamStatus, errorClass },
+  });
+  await db.insert(attestations).values(audit);
 }
 
 function storageFromMetadata(metadata: unknown): BriefStorage {
@@ -48,6 +65,7 @@ export function writeBriefStorage(did: string, actingHumanDid: string, storage: 
 
 /** Called after authority checks, before the provider sees any prompt bytes. */
 export async function recordWarpBrief(did: string, text: string): Promise<WarpBrief> {
+  assertWarpBriefSize(text);
   const storage = await readBriefStorage(did);
   const buffer = Buffer.from(text, 'utf8');
   const brief: WarpBrief = {

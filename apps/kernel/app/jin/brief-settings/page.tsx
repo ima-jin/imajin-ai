@@ -49,6 +49,7 @@ export default function BriefSettingsPage() {
       <option value="hash-only">Hash only · do not store brief text on this node</option>
     </select>
     <p className="text-sm text-gray-400">Warp still receives the prompt to execute the run. Changes are witnessed and signed by the kernel on your behalf.</p>
+    <p className="text-sm text-gray-400">In hash-only mode, anyone holding a guess of a brief&apos;s text can confirm it against the plain SHA-256 hash.</p>
     <button type="button" className="min-h-11 border border-gray-700 px-4 font-mono disabled:opacity-50"
       disabled={!storage || busy} onClick={() => void save()}>{busy ? 'Saving…' : 'Save brief setting'}</button>
     <output className="block break-words">{message}</output>
