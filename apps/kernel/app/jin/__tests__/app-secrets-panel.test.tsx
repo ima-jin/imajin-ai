@@ -23,6 +23,42 @@ const app = {
   ] }],
 };
 describe('AppSecretsPanel', () => {
+  it.each(['random-32B', 'random-64B'])('offers Generate for a never-minted %s slot and only proposes an app/name action', async (kind) => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(Response.json({ apps: [{
+      ...app, secrets: [{ name: 'NEW_SECRET', kind, status: 'missing', timeline: [] }],
+    }] })).mockResolvedValueOnce(Response.json({ proposalId: 'generate-fixture' }));
+    vi.stubGlobal('fetch', fetchMock);
+    render(<AppSecretsPanel />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Generate' }));
+    await screen.findByRole('link', { name: 'Review proposal' });
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toEqual({ appDid: app.appDid, action: 'generate', name: 'NEW_SECRET' });
+    expect(screen.queryByRole('button', { name: 'Rotate' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Set' })).toBeNull();
+    expect(screen.queryByRole('textbox')).toBeNull();
+  });
+  it.each(['active', 'revoked'])('never offers Generate for an already-issued %s secret', async (status) => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({ apps: [{
+      ...app, secrets: [{ ...app.secrets[0], status }],
+    }] })));
+    render(<AppSecretsPanel />);
+    await screen.findByText('SESSION_SECRET', { exact: true });
+    expect(screen.queryByRole('button', { name: 'Generate' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Rotate' }) !== null).toBe(status === 'active');
+    if (status === 'revoked') expect(screen.queryByRole('button', { name: 'Revoke' })).toBeNull();
+  });
+  it('lists the approved new operator-supplied slot as ready to set without changing app identity', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({ apps: [{
+      ...app, secrets: [{ name: 'LEGACY_DATABASE_URL', kind: 'operator-supplied', status: 'missing', timeline: [] }],
+    }] })));
+    render(<AppSecretsPanel />);
+    const input = await screen.findByLabelText('New value for LEGACY_DATABASE_URL') as HTMLInputElement;
+    expect(input.value).toBe('');
+    expect(input.type).toBe('password');
+    expect(screen.getByText(/LEGACY_DATABASE_URL/).parentElement?.textContent).toContain('not set');
+    expect(screen.getByRole('button', { name: 'Set' })).toBeDefined();
+    expect(screen.getAllByText(app.appDid).length).toBeGreaterThan(0);
+    expect(screen.queryByRole('button', { name: 'Rotate' })).toBeNull();
+  });
   it('shows provision failed without awaiting claim, reissue links, or mutation controls', async () => {
     const fetchMock = vi.fn().mockResolvedValue(Response.json({ apps: [{
       ...app, claimed: false, provisionFailed: true, claimExpiresAt: null, secrets: [],

@@ -4,7 +4,9 @@ import type { OperatorApprovalCard } from '../../notify/operator-approvals-servi
 const mocks = vi.hoisted(() => ({
   auth: vi.fn(), select: vi.fn(), set: vi.fn(), write: vi.fn(), manifest: vi.fn(),
   ensure: vi.fn(), rotate: vi.fn(), revoke: vi.fn(), list: vi.fn(), consume: vi.fn(), supplied: vi.fn(), owner: vi.fn(),
+  prepare: vi.fn(), audit: vi.fn(), lock: vi.fn(), generate: vi.fn(),
 }));
+vi.mock('@/src/lib/auth/emit-mechanical-attestation', () => ({ prepareMechanicalAttestation: mocks.prepare }));
 vi.mock('../../vault/authorization', () => ({ resolveVaultAuthorization: mocks.auth }));
 vi.mock('../secret-staging', () => ({ consumeAppSecret: mocks.consume }));
 vi.mock('@/src/lib/notify/operator-approvals', () => ({ getOperatorDid: mocks.owner }));
@@ -17,10 +19,19 @@ vi.mock('../self-secrets', () => ({
   ensureAppDeclaredSecrets: mocks.ensure, rotateAppDeclaredSecret: mocks.rotate,
   revokeAppDeclaredSecret: mocks.revoke, listAppDeclaredSecrets: mocks.list,
   setAppDeclaredSecret: mocks.supplied,
+  generateAppDeclaredSecret: mocks.generate,
 }));
 vi.mock('@/src/db', () => ({
-  registryApps: {}, appProvisions: {}, appSigningKeyClaims: {}, operatorApprovals: {},
+  registryApps: {}, appProvisions: {}, appSigningKeyClaims: {}, operatorApprovals: {}, attestations: {},
   db: {
+    transaction: async (run: (tx: unknown) => Promise<unknown>) => run({
+      execute: mocks.lock,
+      select: () => ({ from: () => ({ where: () => ({ limit: mocks.select }) }) }),
+      update: () => ({ set: mocks.set.mockImplementation(() => ({
+        where: () => ({ returning: mocks.write }),
+      })) }),
+      insert: () => ({ values: mocks.audit }),
+    }),
     select: () => ({ from: () => {
       const rows = mocks.select();
       const result = Object.assign(Promise.resolve(rows), { orderBy: () => Promise.resolve(rows) });
@@ -29,7 +40,7 @@ vi.mock('@/src/db', () => ({
     update: () => ({ set: mocks.set.mockImplementation(() => ({ where: mocks.write })) }),
   },
 }));
-import { executeAppSecretsApproval, listOperatorAppSecrets, previewAppSecrets } from '../secrets-operator';
+import { executeAppSecretsApproval, listOperatorAppSecrets, previewAppSecrets, withPendingSecretSync } from '../secrets-operator';
 
 const declaration = { name: 'SESSION_SECRET', kind: 'random-32B' };
 const authorization = { operatorDid: 'did:imajin:fake-operator', decidedAt: '2026-10-14T00:00:00Z', approvalId: 'fake-proposal', contentHash: 'fake-hash' };
@@ -42,13 +53,117 @@ beforeEach(() => {
   mocks.select.mockReset();
   mocks.rotate.mockReset();
   mocks.revoke.mockReset();
+  mocks.generate.mockReset();
   mocks.auth.mockReturnValue(authorization);
   mocks.owner.mockResolvedValue(authorization.operatorDid);
   mocks.consume.mockResolvedValue('OBVIOUSLY_FAKE_OPERATOR_INPUT');
   mocks.select.mockReturnValueOnce([{ status: 'active', slug: 'fake-app', secrets: [declaration] }])
     .mockReturnValueOnce([{ appDid: 'did:imajin:fake-app' }]);
   mocks.manifest.mockResolvedValue({ ok: { secrets: [declaration] } });
-  mocks.write.mockResolvedValue(undefined);
+  mocks.write.mockResolvedValue([{ appDid: 'did:imajin:fake-app' }]);
+  mocks.lock.mockResolvedValue([{ locked: true }]);
+  mocks.prepare.mockResolvedValue({ id: 'fake-attestation' });
+  mocks.audit.mockResolvedValue(undefined);
+});
+
+describe('additive declaration refresh', () => {
+  const added = { name: 'LEGACY_DATABASE_URL', kind: 'operator-supplied' };
+  function registered(secrets = [declaration]) {
+    return {
+      status: 'active', slug: 'fake-app', secrets, appDid: 'did:imajin:fake-app',
+      id: 'app_fixture', publicKey: 'fixture-public-key', ownerDid: 'did:imajin:fixture-owner',
+      claim: { status: 'claimed' }, providesScopes: ['fake:read'], dependsOn: [],
+      emittableEvents: [], updatedAt: '2026-10-14T00:00:00Z',
+    };
+  }
+  it('adds the prod-dykil-shaped slot, preserves every other column, and executing twice is a no-op', async () => {
+    const row = registered();
+    const before = structuredClone(row);
+    mocks.select.mockReset().mockImplementation(() => [row]);
+    mocks.manifest.mockResolvedValue({ ok: {
+      secrets: [added], providesScopes: ['fake:admin'], dependsOn: [{ aud: 'other', scopes: ['write'] }],
+      emittableEvents: ['new.event'],
+    } });
+    mocks.write.mockImplementation(async () => {
+      Object.assign(row, mocks.set.mock.calls.at(-1)![0]);
+      return [{ appDid: row.appDid }];
+    });
+    const approved = card('apps:secrets-sync', { slug: row.slug, secrets: [added] });
+    expect((await executeAppSecretsApproval(approved)).ok).toBe(true);
+    expect(row).toEqual({ ...before, secrets: [...before.secrets, added] });
+    expect(mocks.set).toHaveBeenCalledWith({ secrets: [...before.secrets, added] });
+    expect(await executeAppSecretsApproval(approved)).toEqual({
+      ok: true, data: { appDid: row.appDid, action: 'sync', names: [] },
+    });
+    expect(mocks.set).toHaveBeenCalledTimes(1);
+    expect(mocks.audit).toHaveBeenCalledTimes(1);
+    expect(mocks.ensure).not.toHaveBeenCalled();
+    expect(mocks.consume).not.toHaveBeenCalled();
+  });
+  it('passes only the approved app/name and countersigned authority to Generate, never returns its material', async () => {
+    mocks.generate.mockResolvedValueOnce({ value: 'OBVIOUSLY_FAKE_GENERATED_MATERIAL' });
+    expect(await executeAppSecretsApproval(card('apps:secrets-generate', { name: declaration.name }))).toEqual({
+      ok: true, data: { appDid: 'did:imajin:fake-app', action: 'generate', names: [declaration.name] },
+    });
+    expect(mocks.generate).toHaveBeenCalledWith('did:imajin:fake-app', declaration.name, authorization);
+    expect(mocks.consume).not.toHaveBeenCalled();
+    expect(mocks.supplied).not.toHaveBeenCalled();
+  });
+  it.each(['unclaimed', 'inactive', 'undeclared', 'operator-supplied'])('refuses Generate for %s apps or declarations', async (boundary) => {
+    const app = { status: boundary === 'inactive' ? 'revoked' : 'active',
+      secrets: boundary === 'undeclared' ? [] : [{ ...declaration, kind: boundary === 'operator-supplied' ? 'operator-supplied' : declaration.kind }] };
+    mocks.select.mockReset().mockReturnValueOnce([app]).mockReturnValueOnce(boundary === 'unclaimed' ? [] : [{ appDid: 'did:imajin:fake-app' }]);
+    expect((await executeAppSecretsApproval(card('apps:secrets-generate', { name: declaration.name }))).ok).toBe(false);
+    expect(mocks.generate).not.toHaveBeenCalled();
+  });
+  it('redacts Generate custody failures without logging or returning underlying material', async () => {
+    mocks.generate.mockRejectedValueOnce(new Error('OBVIOUSLY_FAKE_GENERATED_MATERIAL'));
+    expect(await executeAppSecretsApproval(card('apps:secrets-generate', { name: declaration.name })))
+      .toEqual({ ok: false, error: 'App-secret execution failed' });
+  });
+  it('does not apply an approved kind change', async () => {
+    const changed = { ...declaration, kind: 'random-64B' };
+    mocks.manifest.mockResolvedValue({ ok: { secrets: [changed] } });
+    expect((await executeAppSecretsApproval(card('apps:secrets-sync', { slug: 'fake-app', secrets: [changed] }))).ok).toBe(false);
+    expect(mocks.set).not.toHaveBeenCalled();
+  });
+  it('refuses a combined list exceeding the declaration limit', async () => {
+    mocks.select.mockReset().mockReturnValueOnce([registered(Array.from({ length: 32 }, (_, i) => ({
+      name: `EXISTING_${i}`, kind: 'random-32B',
+    }))) ]).mockReturnValueOnce([{ appDid: 'did:imajin:fake-app' }]);
+    mocks.manifest.mockResolvedValue({ ok: { secrets: [added] } });
+    expect((await executeAppSecretsApproval(card('apps:secrets-sync', { slug: 'fake-app', secrets: [added] }))).ok).toBe(false);
+    expect(mocks.prepare).not.toHaveBeenCalled();
+    expect(mocks.set).not.toHaveBeenCalled();
+  });
+  it.each(['sign', 'compare-and-set', 'audit'])('fails closed on %s failure', async (step) => {
+    mocks.manifest.mockResolvedValue({ ok: { secrets: [added] } });
+    if (step === 'sign') mocks.prepare.mockRejectedValueOnce(new Error('fixture'));
+    if (step === 'compare-and-set') mocks.write.mockResolvedValueOnce([]);
+    if (step === 'audit') mocks.audit.mockRejectedValueOnce(new Error('fixture'));
+    expect((await executeAppSecretsApproval(card('apps:secrets-sync', { slug: 'fake-app', secrets: [added] }))).ok).toBe(false);
+    if (step === 'sign') expect(mocks.set).not.toHaveBeenCalled();
+    if (step === 'compare-and-set') expect(mocks.audit).not.toHaveBeenCalled();
+  });
+  it('reuses the pending card without rereading the manifest or creating another', async () => {
+    mocks.select.mockReset().mockResolvedValue([{ proposalId: 'pending-fixture' }]);
+    const create = vi.fn();
+    expect(await withPendingSecretSync('did:imajin:fake-app', authorization.operatorDid, create)).toBe('pending-fixture');
+    expect(create).not.toHaveBeenCalled();
+  });
+  it('creates a card only after acquiring the per-app lock and finding no pending card', async () => {
+    mocks.select.mockReset().mockResolvedValue([]);
+    const create = vi.fn().mockResolvedValue('new-fixture');
+    expect(await withPendingSecretSync('did:imajin:fake-app', authorization.operatorDid, create)).toBe('new-fixture');
+    expect(create).toHaveBeenCalledTimes(1);
+    expect(mocks.lock.mock.invocationCallOrder[0]).toBeLessThan(create.mock.invocationCallOrder[0]);
+  });
+  it.each([{ lock: [] }, { lock: [{ locked: false }] }])('does not create duplicates when a concurrent detector holds the lock', async ({ lock }) => {
+    mocks.lock.mockResolvedValueOnce(lock);
+    const create = vi.fn();
+    await expect(withPendingSecretSync('did:imajin:fake-app', authorization.operatorDid, create)).rejects.toThrow('busy');
+    expect(create).not.toHaveBeenCalled();
+  });
 });
 describe('app secret execution', () => {
   it.each(['pending', 'denied', 'withdrawn', 'expired', 'applied'])('refuses %s cards even when signature authorization fields exist', async (status) => {
@@ -62,10 +177,11 @@ describe('app secret execution', () => {
     expect((await executeAppSecretsApproval(rejected)).ok).toBe(false);
     expect(mocks.consume).not.toHaveBeenCalled();
   });
-  it.each(['sync', 'set', 'rotate', 'revoke'])('refuses unsigned %s without any read or mutation', async (action) => {
+  it.each(['sync', 'generate', 'set', 'rotate', 'revoke'])('refuses unsigned %s without any read or mutation', async (action) => {
     mocks.auth.mockReturnValue(null);
     expect((await executeAppSecretsApproval(card(`apps:secrets-${action}`))).ok).toBe(false);
     expect(mocks.select).not.toHaveBeenCalled();
+    expect(mocks.generate).not.toHaveBeenCalled();
     expect(mocks.ensure).not.toHaveBeenCalled();
     expect(mocks.rotate).not.toHaveBeenCalled();
     expect(mocks.revoke).not.toHaveBeenCalled();
@@ -123,15 +239,24 @@ describe('app secret execution', () => {
     expect(await previewAppSecrets('fake-app')).toEqual({ ok: [] });
     expect(await executeAppSecretsApproval(card('apps:secrets-sync', { slug: 'fake-app', secrets: [] })))
       .toEqual({ ok: true, data: { appDid: 'did:imajin:fake-app', action: 'sync', names: [] } });
-    expect(mocks.set).toHaveBeenCalledWith({ secrets: [] });
-    expect(mocks.ensure).toHaveBeenCalledWith('did:imajin:fake-app', authorization);
+    expect(mocks.set).not.toHaveBeenCalled();
+    expect(mocks.ensure).not.toHaveBeenCalled();
   });
-  it('persists exactly the approved recipes then issues with signed authority, never scopes/events', async () => {
+  it('persists only the approved recipes with signed authority, never generates values', async () => {
+    mocks.select.mockReset().mockReturnValueOnce([{ status: 'active', slug: 'fake-app', secrets: [] }])
+      .mockReturnValueOnce([{ appDid: 'did:imajin:fake-app' }]);
     const result = await executeAppSecretsApproval(card());
     expect(result).toEqual({ ok: true, data: { appDid: 'did:imajin:fake-app', action: 'sync', names: ['SESSION_SECRET'] } });
     expect(mocks.set).toHaveBeenCalledWith({ secrets: [declaration] });
-    expect(mocks.ensure).toHaveBeenCalledWith('did:imajin:fake-app', authorization);
-    expect(mocks.write.mock.invocationCallOrder[0]).toBeLessThan(mocks.ensure.mock.invocationCallOrder[0]);
+    expect(mocks.ensure).not.toHaveBeenCalled();
+    expect(mocks.prepare).toHaveBeenCalledWith(expect.objectContaining({
+      payload: { appDid: 'did:imajin:fake-app', additions: [declaration], authorizedBy: authorization },
+    }));
+    expect(mocks.audit).toHaveBeenCalledWith({ id: 'fake-attestation' });
+    expect(mocks.write.mock.invocationCallOrder[0]).toBeLessThan(mocks.audit.mock.invocationCallOrder[0]);
+    expect(mocks.generate).not.toHaveBeenCalled();
+    expect(mocks.consume).not.toHaveBeenCalled();
+    expect(mocks.supplied).not.toHaveBeenCalled();
   });
   it.each([
     { error: 'unreadable', status: 404 },
@@ -194,7 +319,9 @@ describe('metadata and manifest preview', () => {
     vi.stubGlobal('fetch', vi.fn().mockImplementation(async () => Response.json({ secrets })));
     expect(await previewAppSecrets('fake-app')).toEqual({ ok: secrets });
   });
-  it('reads a public manifest without credentials, then persists the signed Sync names and issues secrets', async () => {
+  it('reads a public manifest without credentials, then persists only signed declaration slots', async () => {
+    mocks.select.mockReset().mockReturnValueOnce([{ status: 'active', slug: 'fake-app', secrets: [] }])
+      .mockReturnValueOnce([{ appDid: 'did:imajin:fake-app' }]);
     const { fetchAppManifest } = await vi.importActual<typeof import('@/src/lib/github/org-provisioning')>('@/src/lib/github/org-provisioning');
     mocks.manifest.mockImplementation(fetchAppManifest);
     const fetchMock = vi.fn().mockImplementation(async () => Response.json({ secrets: [declaration] }));
@@ -210,7 +337,7 @@ describe('metadata and manifest preview', () => {
       expect(init.headers).toBeUndefined();
     }
     expect(mocks.set).toHaveBeenCalledWith({ secrets: [declaration] });
-    expect(mocks.ensure).toHaveBeenCalledWith('did:imajin:fake-app', authorization);
+    expect(mocks.ensure).not.toHaveBeenCalled();
   });
   it.each([
     [404, 'provider placeholder', 'unreadable'],

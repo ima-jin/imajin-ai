@@ -380,10 +380,12 @@ function renderAppSecretsDetail(approval: OperatorApprovalCard): ReactNode {
       <p>{approval.summary}</p>
       <p className="font-mono">{detailString(approval.detail, 'appDid', '—')}</p>
       {approval.kind === 'apps:secrets-sync' ? (
-        <p>Approve only these manifest secrets: {'ok' in snapshot
+        <p>Append only these new manifest secrets: {'ok' in snapshot
           ? snapshot.ok.map((secret) => `${secret.name} (${secret.kind})`).join(', ') || 'none'
           : 'invalid snapshot — execution will be refused'}. No scope or event changes.</p>
       ) : <p className="font-mono">{detailString(approval.detail, 'name', '—')}</p>}
+      {approval.kind === 'apps:secrets-sync' && <p>Not applied: {detailString(approval.detail, 'notApplied',
+        'Secret removals, kind changes and all non-secret declaration changes.')}</p>}
       <p>No values are revealed. Rotation takes effect at next boot; SESSION_SECRET signs users out after restart. Revoke blocks future fetches, not values already in memory.</p>
     </div>
   );
