@@ -52,27 +52,33 @@ function validateBody(body: Record<string, unknown>): string | null {
   return null;
 }
 
+type ProposalDetail = { detail: Record<string, unknown> } | { error: string; status?: number };
+
+async function prepareSyncDetail(
+  app: { slug: string | null; secrets: unknown }, detail: Record<string, unknown>,
+): Promise<ProposalDetail> {
+  if (!app.slug) return { error: 'App has no manifest repo slug', status: 409 };
+  const snapshot = await previewAppSecrets(app.slug);
+  if ('error' in snapshot) return { error: snapshot.error, status: 409 };
+  const current = validateSecrets(app.secrets ?? []);
+  if ('error' in current) return { error: 'Registered secret declarations are invalid', status: 409 };
+  const { additions, notApplied } = newSecretDeclarations(current.ok, snapshot.ok);
+  const notice = [...notApplied, SECRET_REFRESH_NOTICE].join('. ');
+  if (additions.length === 0) return { error: `No new secret declarations. Not applied: ${notice}`, status: 409 };
+  const merged = validateSecrets([...current.ok, ...additions]);
+  if ('error' in merged) return { error: merged.error, status: 409 };
+  return { detail: { ...detail, slug: app.slug, secrets: additions, notApplied: notice } };
+}
+
 async function prepareDetail(
   body: Record<string, unknown>,
   app: { name: string; slug: string | null; secrets: unknown },
   proposalId: string, operatorDid: string,
-): Promise<{ detail: Record<string, unknown> } | { error: string; status?: number }> {
+): Promise<ProposalDetail> {
   const appDid = body.appDid as string;
   const action = body.action as AppSecretAction;
   const detail: Record<string, unknown> = { appDid, appName: app.name };
-  if (action === 'sync') {
-    if (!app.slug) return { error: 'App has no manifest repo slug', status: 409 };
-    const snapshot = await previewAppSecrets(app.slug);
-    if ('error' in snapshot) return { error: snapshot.error, status: 409 };
-    const current = validateSecrets(app.secrets ?? []);
-    if ('error' in current) return { error: 'Registered secret declarations are invalid', status: 409 };
-    const { additions, notApplied } = newSecretDeclarations(current.ok, snapshot.ok);
-    const notice = [...notApplied, SECRET_REFRESH_NOTICE].join('. ');
-    if (additions.length === 0) return { error: `No new secret declarations. Not applied: ${notice}`, status: 409 };
-    const merged = validateSecrets([...current.ok, ...additions]);
-    if ('error' in merged) return { error: merged.error, status: 409 };
-    return { detail: { ...detail, slug: app.slug, secrets: additions, notApplied: notice } };
-  }
+  if (action === 'sync') return prepareSyncDetail(app, detail);
   const declared = validateSecrets(app.secrets ?? []);
   if ('error' in declared || typeof body.name !== 'string') return { error: 'Secret is not declared for this app' };
   const declaration = declared.ok.find((secret) => secret.name === body.name);

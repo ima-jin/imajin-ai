@@ -6,6 +6,11 @@ describe('MECHANICAL_ATTESTATION_TYPES (#1822)', () => {
     expect(MECHANICAL_ATTESTATION_TYPES).toContain('session.created');
   });
 
+  it('classifies declaration refresh history as mechanical, not a bilateral signing request', () => {
+    expect(ATTESTATION_TYPES).toContain('apps.secrets.declarations-refreshed');
+    expect(MECHANICAL_ATTESTATION_TYPES).toContain('apps.secrets.declarations-refreshed');
+  });
+
   it('contains apps.signing-key.claimed (#2444)', () => {
     expect(MECHANICAL_ATTESTATION_TYPES).toContain('apps.signing-key.claimed');
     expect((ATTESTATION_TYPES as readonly string[]).includes('apps.signing-key.claimed')).toBe(true);

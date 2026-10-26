@@ -19,10 +19,6 @@ function provenanceIdentity(value: string | null | undefined): string | null {
   return value?.trim() || null;
 }
 
-export function sameSecretDeclarations(a: AppSecretDeclaration[], b: AppSecretDeclaration[]): boolean {
-  const canonical = (list: AppSecretDeclaration[]) => JSON.stringify([...list].sort((x, y) => x.name.localeCompare(y.name)));
-  return canonical(a) === canonical(b);
-}
 
 /** One pending sync per app, including concurrent requests from multiple nodes. */
 export async function withPendingSecretSync(
