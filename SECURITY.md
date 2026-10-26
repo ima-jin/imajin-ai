@@ -67,7 +67,7 @@ close them as the work lands. As of this writing:
   it runs as a single operator's node today. Federation (multiple independent nodes) is a roadmap
   milestone; cross-node trust and DID resolution guarantees are not yet proven at scale. There are
   real gaps here, and we name them rather than paper over them.
-- **Chat encryption is transport-level / key-epoch, not a ratcheting E2EE protocol.** There is no
+- **Chat uses TLS in transit, with plaintext at rest on the hosting node.** There is no
   forward secrecy or post-compromise security guarantee yet. Do not treat chat as equivalent to
   Signal-class messaging.
 - **Soft DIDs are low-assurance.** Email-backed soft identities exist for low-friction onboarding.
