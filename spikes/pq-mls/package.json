@@ -5,7 +5,7 @@
   "scripts": {
     "check:types": "tsc --noEmit",
     "bundle": "node build.config.mjs",
-    "test:node": "node --test test/node.test.ts test/openmls.test.mjs"
+    "test:node": "node --test test/node.test.ts test/openmls.test.ts"
   },
   "dependencies": {
     "ts-mls": "1.6.4",

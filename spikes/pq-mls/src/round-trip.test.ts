@@ -27,7 +27,16 @@ function decode(wire: Uint8Array): MLSMessage {
   return decoded[0];
 }
 
-export async function roundTrip() {
+// A tiny portable test runner: no Node-only imports in the browser assertions.
+export async function test<T>(name: string, run: () => Promise<T>): Promise<T> {
+  try {
+    return await run();
+  } catch (cause) {
+    throw new Error(`Test failed: ${name}`, { cause });
+  }
+}
+
+export const roundTrip = () => test('X-Wing create/add/commit/messages and rejection cases', async () => {
   requireXWing(suite);
   const impl = await getCiphersuiteImpl(getCiphersuiteFromName(suite));
   const capabilities = { ...defaultCapabilities(), ciphersuites: [suite] };
@@ -95,4 +104,4 @@ export async function roundTrip() {
     messages.push({ plaintext: length, wire: wire.length, overhead: wire.length - length });
   }
   return { library: 'ts-mls', version: '1.6.4', suite: ciphersuites[suite], tamperRejected: true, replayRejected: true, commitBytes: commitWire.length, welcomeBytes: welcomeWire.length, messages };
-}
+});

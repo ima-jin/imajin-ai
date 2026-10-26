@@ -72,7 +72,7 @@ promise for a future production API.
 - OpenMLS wasm: **2,614,928 bytes raw / 570,992 bytes gzip**.
 - OpenMLS generated JS loader: **6,404 raw / 1,900 gzip**.
 - OpenMLS total wasm + loader: **572,892 bytes gzip (~559.5 KiB)**.
-- TypeScript browser harness: **303,935 raw / 92,118 gzip (~90.0 KiB)**.
+- TypeScript browser harness: **304,115 raw / 92,191 gzip (~90.0 KiB)**.
   This conservatively includes the test driver, OpenMLS loading stub, and
   optional algorithm branches bundled by ts-mls; it excludes the wasm/loader.
 

@@ -1,4 +1,4 @@
-import { roundTrip } from './round-trip.test.ts';
+import { roundTrip, test } from './round-trip.test.ts';
 
 const output = document.querySelector('pre')!;
 const results = [];
@@ -11,7 +11,7 @@ for (const [library, run] of [
   }],
 ] as const) {
   try {
-    results.push({ library, status: 'PASS', result: await run() });
+    results.push({ library, status: 'PASS', result: await test(`${library} browser`, run) });
   } catch (error) {
     results.push({ library, status: 'FAIL', error: String(error) });
   }
