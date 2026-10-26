@@ -1,6 +1,6 @@
 # MJN Protocol
 ## A Cryptographic Operating System for Sovereign Commerce
-### v0.8 · October 2026
+### v0.9 · October 2026
 
 *Ryan Veteze · ryan@imajin.ai · [github.com/ima-jin/imajin-ai](https://github.com/ima-jin/imajin-ai)*
 
@@ -476,6 +476,12 @@ CA/signing/OIDC deploy boundaries, sealed bank-details/legal-entity records,
 owner-DID corpus and OAuth requirements, Cloudflare metadata grants and the
 production-evidence-gated inference updater; record #2516's 2026-10-20 ruling.
 Economic/model annotations are unchanged.
+
+v0.9 (2026-10): Record the previously unversioned [#3121](https://github.com/ima-jin/imajin-ai/pull/3121)
+chat disclosure correction: TLS in transit, plaintext at rest and notification previews;
+public key bundles/legacy utilities do not provide current message encryption.
+MLS with mandatory hybrid post-quantum encryption remains planned under #1070.
+This documentation version is not the kernel release number or deployment evidence.
 
 *[Developer Guide](https://github.com/ima-jin/imajin-ai/blob/main/docs/developer-guide.md) · [llms-full.txt](https://imajin.ai/llms-full.txt) · [.fair spec](https://github.com/ima-jin/.fair) · [DFOS](https://protocol.dfos.com) · [Source](https://github.com/ima-jin/imajin-ai)*
 

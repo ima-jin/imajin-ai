@@ -12,6 +12,48 @@ pnpm --filter @imajin/kernel dev   # http://localhost:3000
 
 Full setup guide: [docs/DEVELOPER.md](../../docs/DEVELOPER.md).
 
+## Pre-cut delta for v0.8.28
+
+Merged-source snapshot **2026-10-26**, limited to `v0.8.27..8f2ebbfd`.
+These changes are source availability, not a production deployment claim.
+
+- **Chat security disclosure:** current chat uses TLS in transit and plaintext at rest in
+  `chat.messages_v2.content`; push previews include the first 200 characters. Public key
+  bundles and unused encryption utilities do not protect current messages. MLS with
+  mandatory hybrid post-quantum encryption remains planned under #1070, not shipped;
+  there is no forward-secrecy or post-compromise guarantee
+  ([#3121](https://github.com/ima-jin/imajin-ai/pull/3121); [security](../../SECURITY.md)).
+- **Organization-addressed payments:** a personal human login controlling the recipient
+  organization through current owner/admin membership with `pay` service access can start
+  card checkout. Member/maintainer, agent, removed membership, excluded/empty service access
+  and unrelated callers do not gain that authority. The authenticated `payerPersonDid`
+  remains separate from the effective caller and selected `paidByDid`; the latter determines
+  the settlement payer, ledger, `.fair` buyer and attestation. HTTP 403 distinguishes
+  `not_party_to_request` from `payer_not_controlled`. EMT keeps its opaque-handle capability
+  model and existing payer-control validation; it does not acquire the card party gate
+  ([#3126](https://github.com/ima-jin/imajin-ai/pull/3126)).
+- **App-secret declaration refresh:** `/jin` → **App secrets** → **Sync manifest secrets**
+  proposes only new validated name/kind slots from the existing app's manifest. A signed
+  **declares new secrets** approval appends those slots atomically with the node-signed
+  `apps.secrets.declarations-refreshed` record. It preserves DID, keys, slug, claims, prior
+  declarations and grants; removals, kind changes and non-secret permissions are not applied.
+  One pending sync is reused; cancel an obsolete proposal before proposing a new snapshot.
+  Sync generates no values. A new random slot needs a separate signed **Generate** approval;
+  prior grant history, including revoked tombstones, refuses Generate. Operator-supplied
+  slots need separate masked **Set** and countersign. No re-provisioning or SQL is needed;
+  app adoption/restart and production dykil verification remain separate
+  ([#3124](https://github.com/ima-jin/imajin-ai/pull/3124);
+  [operator steps](../../docs/app-self-secrets-operator.md),
+  [author boot contract](../../docs/app-self-secrets-author.md)).
+- **Release close-out:** after successful tagging/deploy dispatch, an independent job creates
+  missing GitHub Releases with generated notes, moves open issues and PRs to the lowest open
+  next patch milestone in the same major/minor series, then closes the released milestone.
+  Missing next milestone warns and leaves the source open; existing Releases/closed milestones
+  are skipped. Failures are visible without blocking npm publish. The production approval gate
+  is unchanged; no release is dispatched by this sweep
+  ([#3120](https://github.com/ima-jin/imajin-ai/pull/3120);
+  [release mechanism](../../docs/npm-publishing.md)).
+
 ## Pre-cut delta for v0.8.27
 
 Merged-source snapshot **2026-10-25**, limited to the delta after [#3054](https://github.com/ima-jin/imajin-ai/pull/3054) (`d8047d11c`). These features are not a production deployment claim. The earlier dated snapshots below are retained.

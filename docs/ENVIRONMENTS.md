@@ -191,6 +191,11 @@ Each service has a `.env.local` file for its current bootstrap/non-secret config
 Every app that uses env vars should have a matching `.env.example` file.
 ### Operator-supplied app secrets (#2821)
 Registered apps can declare `{"name":"DATABASE_URL","kind":"operator-supplied"}` in `imajin.app.json`, with names/kinds only and no values. An operator enters a value through the masked `/jin` App secrets control, then countersigns its pending set/rotate proposal. Staging seals the input; pending/rejected/expired values are not app grants. Cards, metadata, audit and error surfaces never echo the input. Manifest sync alone cannot generate an operator value or make the app ready to boot.
+For an already-claimed app, **Sync manifest secrets** appends only new declaration slots under
+a countersigned approval; no identity/key/claim change, removal, kind change, value generation
+or grant occurs. New random slots need separate signed **Generate** (refused after any prior
+grant history); operator-supplied slots need separate masked **Set** and countersign.
+This requires no new environment variable or re-provisioning (#3124).
 The app must adopt the SDK's `createVaultBoot` boundary: load vault credentials, install typed server-only in-memory config, then dynamically import/start the application. DB modules that read `DATABASE_URL` at module initialization must use `boot.getConfig().DATABASE_URL`, not `process.env`. A static DB/server import before the fetch is not safe. See the [author boot example](app-self-secrets-author.md#pre-import-boot-boundary-for-database-consumers) and [operator approval/restart guide](app-self-secrets-operator.md).
 Adoption order, with a separate reviewed change and coordinated restart per app/environment:
 1. events, coffee, learn, market, links: **`DATABASE_URL` first**.

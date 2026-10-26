@@ -26,9 +26,11 @@ Do **not** roll back for:
 
 ## Pick the last good tag
 
-This repo ships tags, not GitHub Releases — `tag-release.yml` creates and pushes an annotated
-`vX.Y.Z` (`.github/workflows/tag-release.yml:80-92`) and nothing publishes a Release, so
-`gh release list` is empty. Use tags plus the deploy run log:
+Tags remain the rollback authority. Since [#3120](https://github.com/ima-jin/imajin-ai/pull/3120),
+`tag-release.yml` also creates a GitHub Release with generated notes in its independent
+`close-out` job. An existing Release is left untouched; close-out failure does not block
+npm publishing or undo tagging/deploy dispatch. Neither a tag nor Release proves a successful
+production deployment. Use tags plus the deploy run log:
 
 ```bash
 # candidate tags, newest first
