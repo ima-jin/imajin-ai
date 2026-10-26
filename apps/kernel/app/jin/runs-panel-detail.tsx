@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import type { LoopWithHistory, LoopsPage } from '@/src/lib/loops/query';
 import { RunOutput } from './run-output';
 import { RunComposer } from './run-composer';
+import { RunBrief } from './run-brief';
 import type { SessionCommandClient } from './session-command-client';
 
 
@@ -107,6 +108,7 @@ export function RunsPanelDetail({ loopId, onSelect, onDenied, client }: Readonly
               <p className="text-gray-200">{event.type}</p>
               <time dateTime={event.occurredAt}>{event.occurredAt}</time>
               <p>{String(event.payload.summary ?? '')}</p>
+              <RunBrief value={event.payload.brief} />
               {event.payload.output && <RunOutput output={event.payload.output} />}
               <p className="break-all">Signed by {event.issuer}</p>
             </li>

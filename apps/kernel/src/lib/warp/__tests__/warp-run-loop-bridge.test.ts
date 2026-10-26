@@ -56,6 +56,9 @@ vi.mock('@imajin/logger', () => ({
 vi.mock('../loop-emit', () => ({
   emitWarpRunLoopEvent: emitWarpRunLoopEventMock,
 }));
+vi.mock('../brief-ledger', () => ({ recordWarpBrief: vi.fn().mockResolvedValue({
+  hash: 'a'.repeat(64), assetId: 'asset_brief', storage: 'full-text', browserTesting: null,
+}) }));
 
 import {
   dispatchAgentRun,
@@ -63,6 +66,8 @@ import {
   watchRun,
   publishTimeoutRunOutcome,
 } from '../dispatch';
+import { recordWarpBrief } from '../brief-ledger';
+import { createHash } from 'node:crypto';
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 
@@ -88,12 +93,15 @@ function loopEventsOfType(type: string): LoopEventCall[] {
 }
 
 beforeEach(() => {
+  vi.mocked(recordWarpBrief).mockResolvedValue({
+    hash: 'a'.repeat(64), assetId: 'asset_brief', storage: 'full-text', browserTesting: null,
+  });
   process.env.WARP_API_BASE_URL = BASE_URL;
 
   requireAgentKeyMock.mockReset().mockResolvedValue(AGENT_KEY);
   lookupIdentityMock.mockReset().mockResolvedValue({ did: PRINCIPAL, handle: 'veteze' });
   publishMock.mockReset().mockResolvedValue(undefined);
-  emitWarpRunLoopEventMock.mockReset().mockResolvedValue(undefined);
+  emitWarpRunLoopEventMock.mockReset().mockResolvedValue(true);
   logMock.info.mockReset();
   logMock.warn.mockReset();
   logMock.error.mockReset();
@@ -161,17 +169,37 @@ describe('dispatchAgentRun bridges loop.started', () => {
     expect(loopEventsOfType('loop.started')[0]).toMatchObject({ parentRunId: null });
   });
 
-  it('never fails the dispatch when the loop bridge itself rejects', async () => {
+  it('reports the accepted run id when its required brief event cannot commit', async () => {
     emitWarpRunLoopEventMock.mockRejectedValue(new Error('loop rail unavailable'));
     respondJson({ run_id: RUN_ID, state: 'QUEUED' });
 
-    await expect(dispatchAgentRun(PRINCIPAL, { prompt: 'go' })).resolves.toMatchObject({ runId: RUN_ID });
+    await expect(dispatchAgentRun(PRINCIPAL, { prompt: 'go' })).rejects.toThrow(`warp_brief_event_failed: run ${RUN_ID}`);
   });
 });
 
 // ── loop.started (new segment): resume case ──────────────────────────────────
 
 describe('sendFollowup resume bridges a fresh loop.started segment', () => {
+  it('carries a distinct hash-only record for dispatch, follow-up and resume on the same run', async () => {
+    vi.mocked(recordWarpBrief).mockImplementation(async (_did, text) => ({
+      hash: createHash('sha256').update(text).digest('hex'), assetId: null,
+      storage: 'hash-only', browserTesting: 'no',
+    }));
+    respondJson({ run_id: RUN_ID, state: 'QUEUED' });
+    await dispatchAgentRun(PRINCIPAL, { prompt: 'first' });
+    respondJson({ run_id: RUN_ID, state: 'INPROGRESS' });
+    respondJson({});
+    await sendFollowup(PRINCIPAL, RUN_ID, { message: 'second' });
+    respondJson({ run_id: RUN_ID, state: 'SUCCEEDED' });
+    respondJson({});
+    await sendFollowup(PRINCIPAL, RUN_ID, { message: 'third', resume: true });
+    const events = emitWarpRunLoopEventMock.mock.calls.map(([event]) => event);
+    expect(events.map(event => event.type)).toEqual(['loop.started', 'loop.progress', 'loop.started']);
+    expect(events.map(event => event.brief?.hash)).toEqual(['first', 'second', 'third'].map(
+      text => createHash('sha256').update(text).digest('hex'),
+    ));
+    expect(events.every(event => event.brief?.assetId === null && event.runId === RUN_ID)).toBe(true);
+  });
   it('uses only a confirmed new session id on resume', async () => {
     respondJson({ run_id: RUN_ID, state: 'SUCCEEDED', session_id: 'old-session' });
     respondJson({ session_id: 'new-session' });
@@ -197,13 +225,15 @@ describe('sendFollowup resume bridges a fresh loop.started segment', () => {
     expect(loopEventsOfType('loop.finished')).toHaveLength(0);
   });
 
-  it('does not bridge anything for an ordinary non-terminal follow-up (no resume)', async () => {
+  it('records an ordinary follow-up with its own descriptor on loop.progress', async () => {
     respondJson({ run_id: RUN_ID, state: 'INPROGRESS' });
     respondJson({});
 
     await sendFollowup(PRINCIPAL, RUN_ID, { message: 'carry on' });
 
-    expect(emitWarpRunLoopEventMock).not.toHaveBeenCalled();
+    expect(emitWarpRunLoopEventMock).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'loop.progress', brief: expect.objectContaining({ hash: 'a'.repeat(64) }),
+    }));
   });
 });
 

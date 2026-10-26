@@ -11,7 +11,7 @@
  */
 import { NextResponse } from 'next/server';
 import { CorpusContextError } from './corpus-context';
-import { WarpApiError } from './errors';
+import { WarpApiError, WarpBriefEventError, WarpBriefSizeError } from './errors';
 
 /** Status Warp returned, mapped to what *our* caller should see. */
 function statusForUpstream(upstream: number): number {
@@ -22,6 +22,19 @@ function statusForUpstream(upstream: number): number {
   if (upstream >= 500) return 502;
   return upstream;
 }
+function upstreamErrorResponse(err: WarpApiError, cors: Record<string, string>): NextResponse {
+  return NextResponse.json(
+    {
+      error: 'warp_upstream_error',
+      upstreamStatus: err.status,
+      ...(err.code === undefined ? {} : { code: err.code }),
+      ...(err.detail === undefined ? {} : { detail: err.detail }),
+      ...(err.retryable === undefined ? {} : { retryable: err.retryable }),
+      ...(err.traceId === undefined ? {} : { traceId: err.traceId }),
+    },
+    { status: statusForUpstream(err.status), headers: cors },
+  );
+}
 
 /**
  * Translate a dispatch/status failure into a JSON response.
@@ -31,6 +44,16 @@ function statusForUpstream(upstream: number): number {
  * upstream failure is nothing they can act on.
  */
 export function warpErrorResponse(err: unknown, cors: Record<string, string>): NextResponse {
+  if (err instanceof WarpBriefSizeError) {
+    return NextResponse.json({ error: 'warp_brief_too_large', maxBytes: err.maxBytes, detail: err.message },
+      { status: 413, headers: cors });
+  }
+  if (err instanceof WarpBriefEventError) {
+    return NextResponse.json({
+      error: 'warp_brief_event_failed', runId: err.runId, accepted: true, retryable: false,
+      detail: 'Run accepted but brief event recording failed. Inspect this run; do not redispatch.',
+    }, { status: 502, headers: cors });
+  }
   // Corpus retrieval failed for a dispatch that named `corpusContext` (#2021).
   // Fail-closed: this is deliberately returned instead of falling back to
   // dispatching without the requested context (which would make the run's
@@ -47,17 +70,7 @@ export function warpErrorResponse(err: unknown, cors: Record<string, string>): N
   }
 
   if (err instanceof WarpApiError) {
-    return NextResponse.json(
-      {
-        error: 'warp_upstream_error',
-        upstreamStatus: err.status,
-        ...(err.code === undefined ? {} : { code: err.code }),
-        ...(err.detail === undefined ? {} : { detail: err.detail }),
-        ...(err.retryable === undefined ? {} : { retryable: err.retryable }),
-        ...(err.traceId === undefined ? {} : { traceId: err.traceId }),
-      },
-      { status: statusForUpstream(err.status), headers: cors },
-    );
+    return upstreamErrorResponse(err, cors);
   }
 
   const message = err instanceof Error ? err.message : String(err);

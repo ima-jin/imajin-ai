@@ -47,6 +47,7 @@ import { ingestLoopEvent } from '@/src/lib/loops/ingest';
 import type { LoopEnvelope, LoopLifecycleType, LoopRefs } from '@/src/lib/loops/types';
 import { observeWarpPullRequestArtifact } from '@/src/lib/github/loop-observe';
 import { forEachSequential } from '@/src/lib/async/sequential';
+import type { WarpBrief } from './brief';
 
 const log = createLogger('kernel:warp-loop-emit');
 
@@ -73,6 +74,7 @@ export interface WarpRunLoopTransition {
   refs?: LoopRefs;
   /** Canonical URLs extracted only from provider-typed PULL_REQUEST artifacts. */
   prArtifacts?: string[];
+  brief?: WarpBrief;
 }
 
 /**
@@ -96,6 +98,7 @@ export async function emitWarpRunLoopEvent(transition: WarpRunLoopTransition): P
       state: transition.state,
       summary: transition.summary,
       at: transition.at,
+      ...(transition.brief ? { brief: transition.brief } : {}),
     };
 
     const identity = getNodeSigningIdentity();

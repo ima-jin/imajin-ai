@@ -230,6 +230,9 @@ async function prepareAssetManifest(input: CreateAssetInput, assetId: string) {
   // Staged bank records carry their own transactional create/revoke provenance.
   if (input.status === 'processing') {
     const { contentSigner } = await import('@/src/lib/media/content-signer');
+    fairManifest.integrity = {
+      hash: createHash('sha256').update(buffer).digest('hex'), size: buffer.byteLength,
+    };
     return { signedManifest: await contentSigner.sign(fairManifest), change: null };
   }
   const platformDid = process.env.PLATFORM_DID;
