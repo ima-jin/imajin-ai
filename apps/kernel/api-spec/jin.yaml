@@ -88,6 +88,9 @@ components:
       properties:
         proposalId: { type: string }
         operatorDid: { type: string }
+        signerDid:
+          type: [string, "null"]
+          description: "DecisionCard requesting agent DID recorded at ingest; null when not recorded. Never inferred from a harness or the emission source category."
         source: { type: string, example: "skill-workshop", description: "Open vocabulary namespace." }
         kind: { type: string, example: "skill-workshop:update", description: "'<source>:<subkind>'." }
         summary: { type: string }

@@ -427,6 +427,16 @@ describe('app-secret terminal cleanup', () => {
 });
 
 describe('recordApprovalRequested', () => {
+  it.each([AGENT_DID, null])('projects only the recorded DecisionCard requesting agent: %s', async signerDid => {
+    const { db } = await import('@/src/db');
+    vi.mocked(db.select).mockReturnValueOnce({
+      from: () => ({ where: () => ({ orderBy: vi.fn().mockResolvedValue([
+        row({ source: 'decision', kind: 'decision:card', signerDid }),
+      ]) }) }),
+    } as unknown as ReturnType<typeof db.select>);
+    const [card] = await listApprovalsForOperator(OPERATOR_DID);
+    expect(card.signerDid).toBe(signerDid);
+  });
   it('inserts a new pending row', async () => {
     mockSelectLimit.mockResolvedValueOnce([]); // no existing row
 

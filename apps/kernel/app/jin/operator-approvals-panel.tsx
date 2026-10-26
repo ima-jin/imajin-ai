@@ -252,6 +252,8 @@ export type DecisionAction = 'approve' | 'reject' | 'withdrawn';
 
 export interface OperatorApprovalCard {
   proposalId: string;
+  /** Recorded requesting agent, never inferred from a harness or the card's source category. */
+  signerDid?: string | null;
   /** Open vocabulary namespace, e.g. 'system-agent', 'skill-workshop' (#2152). */
   source: string;
   /** '<source>:<subkind>', e.g. 'system-agent:restart' (#2152). */
@@ -1348,7 +1350,11 @@ function renderPanelBody(
   );
 }
 
-export function useRunApprovals(prepareCommand = prepareSignedSessionCommand) {
+export function useRunApprovals(
+  prepareCommand = prepareSignedSessionCommand,
+  options?: { source: string; includeHistory: boolean },
+) {
+  const source = options?.source;
 
   const [isOperator, setIsOperator] = useState(false);
   const [actAs, setActAs] = useState<ActAsState | null>(null);
@@ -1358,7 +1364,7 @@ export function useRunApprovals(prepareCommand = prepareSignedSessionCommand) {
   const [reachActAsAllowed, setReachActAsAllowed] = useState(false);
   const [approvals, setApprovals] = useState<OperatorApprovalCard[]>([]);
   const [hasHistory, setHasHistory] = useState(false);
-  const historyRef = useRef(false);
+  const historyRef = useRef(options?.includeHistory ?? false);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState('');
   const [revealedBearer, setRevealedBearer] = useState<RevealedBearer | null>(null);
@@ -1382,7 +1388,8 @@ export function useRunApprovals(prepareCommand = prepareSignedSessionCommand) {
     const generation = ++loadGeneration.current;
     if (!silent) setLoading(true);
     try {
-      const res = await fetch(`/jin/api/operator-approvals?view=acting${historyRef.current ? '&history=true' : ''}`, {
+      const sourceQuery = source ? `&source=${encodeURIComponent(source)}` : '';
+      const res = await fetch(`/jin/api/operator-approvals?view=acting${historyRef.current ? '&history=true' : ''}${sourceQuery}`, {
         credentials: 'include', cache: 'no-store', headers: getActingAsHeaders(), signal: controller.signal,
       });
       if (!res.ok) throw new Error('Inbox unavailable');
@@ -1413,7 +1420,7 @@ export function useRunApprovals(prepareCommand = prepareSignedSessionCommand) {
     } finally {
       if (generation === loadGeneration.current) setLoading(false);
     }
-  }, []);
+  }, [source]);
 
   const setHistory = useCallback((shown: boolean) => {
     historyRef.current = shown;

@@ -128,6 +128,14 @@ set/rotate input and a separate verified human countersign. Sealed pending
 staging is not an active credential; responses, approval cards and diagnostics
 must not echo submitted values or underlying provider messages.
 
+For an already-claimed app, manifest sync now appends **declaration slots only**
+([#3124](https://github.com/ima-jin/imajin-ai/pull/3124)). It preserves identity,
+keys and claims; removals, kind changes and non-secret changes are not applied.
+After the sync countersignature, random kinds require a separate signed
+**Generate** action (never for prior/revoked grant history); operator-supplied
+slots require masked **Set** and its own countersignature. Sync alone neither
+generates nor grants a value. See the [operator steps](app-self-secrets-operator.md).
+
 For runtime adoption, establish the app bootstrap keystore with
 `loadAppSigningKey()`, then use `createVaultBoot<Config>({ vault, configure })`
 from the released `@ima-jin/auth-client`. Keep its instance in a server-only

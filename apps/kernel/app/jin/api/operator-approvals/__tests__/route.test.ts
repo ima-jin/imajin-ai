@@ -153,6 +153,17 @@ describe('OPTIONS /jin/api/operator-approvals', () => {
 });
 
 describe('GET /jin/api/operator-approvals (#2059)', () => {
+  it('reads retained decision cards in the authenticated scope without consulting an external source', async () => {
+    mockRequireAuth.mockResolvedValue({ identity: operatorIdentity() });
+    const cards = ['pending', 'approved', 'applied'].map(status => pendingApprovalCard({
+      proposalId: status, source: 'decision', kind: 'decision:card', status,
+      actionable: status === 'pending',
+    }));
+    mockList.mockResolvedValue(cards);
+    const response = await GET(makeReq('?view=acting&source=decision&history=true&did=did:foreign') as Parameters<typeof GET>[0]);
+    expect(await response.json()).toMatchObject({ approvals: cards });
+    expect(mockList).toHaveBeenCalledWith(OPERATOR_DID, { source: 'decision' });
+  });
   it('returns only actionable cards by default and explicitly retrieves retained history in the same scope', async () => {
     mockRequireAuth.mockResolvedValue({ identity: operatorIdentity() });
     const active = pendingApprovalCard({ proposalId: 'active' });

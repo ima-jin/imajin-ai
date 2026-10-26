@@ -91,7 +91,7 @@ export function DecisionCardDetail({
 }
 
 const OPTION_BUTTON_BASE =
-  'px-3 py-1.5 rounded text-xs font-medium disabled:opacity-40 disabled:cursor-not-allowed transition-colors';
+  'min-h-11 px-3 py-1.5 rounded text-xs font-medium disabled:opacity-40 disabled:cursor-not-allowed transition-colors';
 
 function optionButtonClass(isRec: boolean): string {
   return isRec

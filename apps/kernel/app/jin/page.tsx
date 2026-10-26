@@ -1,6 +1,7 @@
 'use client';
 
 import { UsageFeedPanel } from './usage-feed-panel';
+import { DecisionsPanel } from './decisions-panel';
 import { OperatorApprovalsPanel } from './operator-approvals-panel';
 import { VaultKeysPanel } from './vault-keys-panel';
 import { VaultImportPanel } from './vault-import-panel';
@@ -49,6 +50,7 @@ export default function JinPage() {
       </header>
 
       <main className="px-6 py-4">
+        <DecisionsPanel />
         {/* Vault key cards (#2247) — mint/grant/rotate/revoke as signed
             canvas proposals; renders nothing for a non-admin. Rendered
             ABOVE the operator-approvals panel so a freshly-raised vault
