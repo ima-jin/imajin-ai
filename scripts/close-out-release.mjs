@@ -15,8 +15,8 @@ export function nextPatchMilestone(tag, milestones) {
   return milestones
     .filter((milestone) => {
       const candidate = version(milestone.title);
-      return milestone.state === 'open' && candidate
-        && candidate[1] === current[1] && candidate[2] === current[2]
+      return milestone.state === 'open'
+        && candidate?.[1] === current[1] && candidate[2] === current[2]
         && BigInt(candidate[3]) > BigInt(current[3]);
     })
     .sort((a, b) => {
@@ -27,7 +27,8 @@ export function nextPatchMilestone(tag, milestones) {
 }
 
 function runGh(args) {
-  return execFileSync('gh', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+  // tag-release.yml uses Ubuntu's system-installed CLI, never a PATH override.
+  return execFileSync('/usr/bin/gh', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
 }
 
 export function closeOutRelease({ tag, repo, gh = runGh, log = console.log }) {

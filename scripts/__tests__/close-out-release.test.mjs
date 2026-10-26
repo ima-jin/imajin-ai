@@ -1,7 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import YAML from 'yaml';
 import { closeOutRelease, nextPatchMilestone } from '../close-out-release.mjs';
+vi.mock('node:child_process', () => ({ execFileSync: vi.fn() }));
 
 const tag = 'v0.8.27';
 const repo = 'ima-jin/imajin-ai';
@@ -46,6 +48,16 @@ describe('release milestone selection', () => {
 });
 
 describe('release close-out', () => {
+  it('uses only the fixed system CLI, not an executable selected through PATH', () => {
+    vi.mocked(execFileSync).mockReturnValueOnce('{}').mockReturnValueOnce('[]');
+    closeOutRelease({ tag, repo, log: vi.fn() });
+    expect(execFileSync).toHaveBeenCalledTimes(2);
+    for (const [executable, , options] of vi.mocked(execFileSync).mock.calls) {
+      expect(executable).toBe('/usr/bin/gh');
+      expect(options).toEqual({ encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+    }
+    vi.mocked(execFileSync).mockReset();
+  });
   it('checks before creating a missing release with generated notes and an existing tag', () => {
     const f = fixture({ releaseError: missing });
     f.run();
