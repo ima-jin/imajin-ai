@@ -2,7 +2,7 @@ openapi: "3.1.0"
 info:
   title: imajin chat
   version: "2.0.0"
-  description: Conversations, messages, E2EE key bundles, event lobbies, reactions, invites, and media upload. Runs as a kernel service at /{service}/api/... on a shared node domain.
+  description: Conversations, messages, public key bundles, event lobbies, reactions, invites, and media upload. Runs as a kernel service at /{service}/api/... on a shared node domain. Chat uses TLS in transit and stores plaintext at rest on the hosting node; key bundles do not provide current message encryption.
 servers:
   - url: https://{node}.imajin.ai/{service}
     description: production node
@@ -1311,7 +1311,7 @@ paths:
     get:
       tags: [chat]
       operationId: getKeyBundle
-      summary: Get own E2EE key bundle with unused pre-key count
+      summary: Get own public key bundle with unused pre-key count
       security:
         - cookieAuth: []
       responses:
@@ -1330,7 +1330,7 @@ paths:
     post:
       tags: [chat]
       operationId: uploadKeyBundle
-      summary: Upload or update E2EE key bundle (X3DH-style) — signature is verified server-side
+      summary: Upload or update public key bundle — signature is verified server-side
       security:
         - cookieAuth: []
       requestBody:

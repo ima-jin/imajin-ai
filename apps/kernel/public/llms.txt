@@ -69,7 +69,10 @@ License: Imajin Network License (INL) v1.0, source-available, not MIT.
   infer universal 2% fees or mandatory manifest verification on every settlement
   path. Consult current settlement implementation and the whitepaper's caveats.
 - Chat uses the kernel HTTP server's WebSocket, not a separate ws process.
-  Simplified key-epoch encryption is not a ratcheting/forward-secret guarantee.
+  TLS in transit; plaintext at rest on the hosting node in chat.messages_v2.content.
+  Push notifications carry the first 200 characters of the message preview.
+  End-to-end encryption (MLS with mandatory hybrid post-quantum encryption) is
+  planned under #1070, not implemented; no forward-secrecy or post-compromise guarantee.
 
 ## How to read the inventory
 
