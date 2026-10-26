@@ -3,8 +3,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "typecheck": "tsc --noEmit",
-    "bundle": "node build.mjs",
+    "check:types": "tsc --noEmit",
+    "bundle": "node build.config.mjs",
     "test:node": "node --test test/node.test.ts test/openmls.test.mjs"
   },
   "dependencies": {

@@ -1,4 +1,4 @@
-import { roundTrip } from './round-trip.ts';
+import { roundTrip } from './round-trip.test.ts';
 
 const output = document.querySelector('pre')!;
 const results = [];

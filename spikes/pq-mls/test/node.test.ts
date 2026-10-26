@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { requireXWing, roundTrip } from '../src/round-trip.ts';
+import { requireXWing, roundTrip } from '../src/round-trip.test.ts';
 
 test('Node 24: X-Wing create → add → commit → messages', async () => {
   assert.equal(Number(process.versions.node.split('.')[0]), 24);

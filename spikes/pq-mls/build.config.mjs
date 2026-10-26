@@ -4,7 +4,7 @@ import { gzipSync } from 'node:zlib';
 
 await mkdir('dist', { recursive: true });
 const result = await build({
-  entryPoints: ['src/browser.ts'], bundle: true, format: 'esm',
+  entryPoints: ['src/browser.test.ts'], bundle: true, format: 'esm',
   platform: 'browser', target: 'es2022', minify: true,
   outfile: 'dist/browser.js', metafile: true,
   external: ['../openmls/pkg/pq_mls_openmls_spike.js'],

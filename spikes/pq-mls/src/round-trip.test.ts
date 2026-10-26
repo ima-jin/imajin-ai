@@ -94,5 +94,5 @@ export async function roundTrip() {
     await rejects(() => processPrivateMessage(bob, message.privateMessage, emptyPskIndex, impl), 'Reject replay');
     messages.push({ plaintext: length, wire: wire.length, overhead: wire.length - length });
   }
-  return { library: 'ts-mls', suite: ciphersuites[suite], commitBytes: commitWire.length, welcomeBytes: welcomeWire.length, messages };
+  return { library: 'ts-mls', version: '1.6.4', suite: ciphersuites[suite], tamperRejected: true, replayRejected: true, commitBytes: commitWire.length, welcomeBytes: welcomeWire.length, messages };
 }
