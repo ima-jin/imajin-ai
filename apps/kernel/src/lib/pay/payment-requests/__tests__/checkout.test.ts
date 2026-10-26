@@ -50,7 +50,8 @@ function selectWhereResult() {
   // `.orderBy().limit()` for the reusable-session lookup; bare `.limit()` for the retry's ledger-rows lookup (#2439).
   return { orderBy: orderByResult, limit: selectTxResult };
 }
-function selectFromResult() {
+function selectFromResult(table: { __table: string }) {
+  if (table.__table === 'identity_members') return { where: async () => [] };
   return { where: selectWhereResult };
 }
 
@@ -77,6 +78,7 @@ vi.mock('@/src/db', () => ({
     update: () => ({ set: updateSetResult }),
   },
   paymentRequests: { __table: 'payment_request', id: 'id', status: 'status' },
+  identityMembers: { __table: 'identity_members', identityDid: 'identityDid', memberDid: 'memberDid', role: 'role', removedAt: 'removedAt' },
   transactions: { __table: 'transactions', id: 'id', service: 'service', type: 'type', metadata: 'metadata', status: 'status', createdAt: 'createdAt', externalRef: 'externalRef', rail: 'rail' },
 }));
 
@@ -181,7 +183,9 @@ describe('createPaymentRequestCheckoutSession', () => {
   it('returns 403 when the caller is neither the issuer nor the recipient', async () => {
     state.getPaymentRequestByIdMock.mockResolvedValue(ISSUED_REQUEST);
     const result = await createPaymentRequestCheckoutSession({ id: 'pr_1', callerDid: 'did:imajin:stranger' });
-    expect(result).toMatchObject({ status: 403 });
+    expect(result).toMatchObject({ status: 403, code: 'not_party_to_request' });
+    expect(state.createByoSessionMock).not.toHaveBeenCalled();
+    expect(state.updateCalls).toHaveLength(0);
   });
 
   it('returns 409 when the request is not in issued status', async () => {

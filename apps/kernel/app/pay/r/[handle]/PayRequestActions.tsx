@@ -28,12 +28,20 @@ interface Props {
 }
 
 const ERROR_CLASSES = 'text-xs text-red-400 bg-red-900/20 border border-red-800 rounded-lg px-3 py-2';
+/** Authorization failures are rail-independent; a party failure is not a bad payer selection. */
+const PAYMENT_AUTH_ERROR_BY_CODE: Readonly<Record<string, (issuer: string) => string>> = {
+  not_party_to_request: (issuer) =>
+    `You aren't authorized to pay this request. Sign in as the recipient or someone who controls it, or contact ${issuer}.`,
+  payer_not_controlled: () =>
+    "You can't pay this request as the selected identity. Choose your personal identity or an organization you control with pay access.",
+};
 
 /**
  * Messages for the stable `code` a failed checkout call carries (#2754). Every one names what is wrong
  * and who to ask — a card failure is never reduced to a generic "try again".
  */
 const CHECKOUT_ERROR_BY_CODE: Readonly<Record<string, (issuer: string) => string>> = {
+  ...PAYMENT_AUTH_ERROR_BY_CODE,
   SELLER_NO_CARD_RAIL: (issuer) => `${issuer} hasn't set up card payments yet. Contact ${issuer} to pay another way.`,
   CARD_RAIL_KEY_MISSING: (issuer) => `${issuer}'s Stripe connection isn't active, so card payment can't start. Contact ${issuer}.`,
   CARD_RAIL_KEY_REJECTED: (issuer) =>
@@ -50,7 +58,7 @@ function checkoutErrorByStatus(status: number, issuer: string): string | null {
     case 401:
       return 'Sign in to pay by card — use the link below, and you will come straight back to this invoice.';
     case 403:
-      return "You can't pay this request as the selected identity.";
+      return `You aren't authorized to pay this request. Contact ${issuer} if you need access.`;
     case 404:
       return "Online payment isn't available for this request yet.";
     case 409:
@@ -127,7 +135,9 @@ function EmtInstructions({ instructions, card, onLeave, leaving }: Readonly<EmtI
 }
 
 /** What the e-Transfer start call failed with, by status — specific, never a bare "try again". */
-function emtErrorMessage(status: number, issuer: string): string {
+function emtErrorMessage(status: number, issuer: string, code?: string): string {
+  const authMessage = code ? PAYMENT_AUTH_ERROR_BY_CODE[code] : undefined;
+  if (authMessage) return authMessage(issuer);
   if (status === 404) return `e-Transfer isn't available for this request. Contact ${issuer}.`;
   if (status === 409) return `This request can no longer be paid — it may already be paid or voided. Reload the page, or contact ${issuer}.`;
   return `The e-Transfer details couldn't be loaded because of a problem on our side (error ${status}). Contact ${issuer} if this persists.`;
@@ -200,7 +210,7 @@ export default function PayRequestActions({ handle, status, issuerName, card, em
           : { method: 'POST' },
       );
       if (!res.ok) {
-        setEmtError(emtErrorMessage(res.status, issuerName));
+        setEmtError(emtErrorMessage(res.status, issuerName, await errorCodeOf(res)));
         return;
       }
       const data = await res.json();

@@ -112,7 +112,10 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   try {
     const result = await requestEmtPayInstructions(handle, ...(payer.choice ? [payer.choice] : []));
     if (isServiceError(result)) {
-      return NextResponse.json({ error: result.error }, { status: result.status, headers: cors });
+      return NextResponse.json(
+        { error: result.error, ...(result.code ? { code: result.code } : {}) },
+        { status: result.status, headers: cors },
+      );
     }
     const view = toEmtInstructionsView(result.instructions);
     return NextResponse.json(

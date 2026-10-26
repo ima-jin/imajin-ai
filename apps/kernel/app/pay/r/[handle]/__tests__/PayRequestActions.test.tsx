@@ -89,13 +89,15 @@ describe('checkoutErrorMessage (#2754) — a card failure is never a generic "tr
     ['CARD_RAIL_KEY_REJECTED', 502, /Stripe rejected Acme's connection.*Contact Acme/],
     ['CARD_RAIL_REQUEST_REJECTED', 502, /amount or currency may not be supported.*Contact Acme/],
     ['CARD_RAIL_UNAVAILABLE', 502, /Stripe isn't responding.*haven't been charged/],
+    ['not_party_to_request', 403, /aren't authorized.*Sign in as the recipient.*contact Acme/],
+    ['payer_not_controlled', 403, /selected identity.*Choose your personal identity/],
   ])('%s maps to its own message', (code, status, expected) => {
     expect(checkoutErrorMessage(status, code, 'Acme')).toMatch(expected);
   });
 
   it.each([
     [401, /Sign in to pay by card/],
-    [403, /can't pay this request as the selected identity/],
+    [403, /aren't authorized to pay this request.*Contact Acme/],
     [404, /isn't available for this request yet/],
     [409, /can no longer be paid by card/],
   ])('status %i without a code has a specific message', (status, expected) => {
@@ -112,6 +114,26 @@ describe('checkoutErrorMessage (#2754) — a card failure is never a generic "tr
 });
 
 describe('PayRequestActions — checkout (#2215 may not be merged yet)', () => {
+  it.each([
+    ['not_party_to_request', /Sign in as the recipient or someone who controls it/, /selected identity/],
+    ['payer_not_controlled', /selected identity.*Choose your personal identity/, /Sign in as the recipient/],
+  ])('#3125: renders the specific %s message from the JSON body', async (code, expected, absent) => {
+    installFetch({ ok: false, status: 403, body: { error: 'Forbidden', code } });
+    render(<PayRequestActions issuerName="Acme" card handle="ph_1" status="issued" />);
+    fireEvent.click(screen.getByRole('button', { name: 'Pay now' }));
+    expect(await screen.findByText(expected)).toBeDefined();
+    expect(screen.queryByText(absent)).toBeNull();
+  });
+
+  it('#3125: falls back safely when a forbidden response has no parseable JSON', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => ({
+      ok: false, status: 403, json: async () => { throw new Error('not JSON'); },
+    })));
+    render(<PayRequestActions issuerName="Acme" card handle="ph_1" status="issued" />);
+    fireEvent.click(screen.getByRole('button', { name: 'Pay now' }));
+    expect(await screen.findByText("You aren't authorized to pay this request. Contact Acme if you need access.")).toBeDefined();
+    expect(screen.queryByText(/selected identity/)).toBeNull();
+  });
   it('redirects to the checkout url on success', async () => {
     installFetch({ ok: true, body: { url: 'https://checkout.stripe.com/session_123' } });
     const originalHref = globalThis.location.href;
@@ -242,6 +264,7 @@ describe('PayRequestActions — e-Transfer (#2665)', () => {
     ['a 404', { ok: false, status: 404, body: { error: 'nope' } }, /e-Transfer isn't available for this request\. Contact Acme/],
     ['a 409', { ok: false, status: 409, body: { error: 'nope' } }, /can no longer be paid.*contact Acme/],
     ['a 400', { ok: false, status: 400, body: { error: 'nope' } }, /problem on our side \(error 400\)/],
+    ['a payer-control 403', { ok: false, status: 403, body: { error: 'Forbidden', code: 'payer_not_controlled' } }, /selected identity.*Choose your personal identity/],
     ['a malformed body', { ok: true, body: { success: true } }, /problem on our side \(error 502\)/],
   ])('shows a specific inline error — and the button stays — on %s', async (_label, response, expected) => {
     installFetch(response);
@@ -452,7 +475,7 @@ describe('PayRequestActions — "Pay as" picker (#2656)', () => {
       vi.fn(async (url: string) =>
         url.endsWith('/payer-dids')
           ? { ok: true, status: 200, json: async () => PICKER_BODY }
-          : { ok: false, status: 403, json: async () => ({ error: 'nope' }) },
+          : { ok: false, status: 403, json: async () => ({ error: 'nope', code: 'payer_not_controlled' }) },
       ),
     );
     render(<PayRequestActions issuerName="Acme" card handle="ph_1" status="issued" />);
@@ -460,7 +483,7 @@ describe('PayRequestActions — "Pay as" picker (#2656)', () => {
     await screen.findByLabelText('Pay as');
     fireEvent.click(screen.getByRole('button', { name: 'Pay now' }));
 
-    expect(await screen.findByText("You can't pay this request as the selected identity.")).toBeDefined();
+    expect(await screen.findByText(/You can't pay this request as the selected identity.*Choose your personal identity/)).toBeDefined();
   });
 
   it('an unexpected 200 body (not a picker feed) leaves the page exactly as it was', async () => {

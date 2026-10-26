@@ -133,9 +133,12 @@ describe('POST /pay/api/payment-requests/by-handle/:handle/emt (#2665)', () => {
 
     it('a DID the person cannot act for is a 403 straight from the service', async () => {
       mocks.requireAuth.mockResolvedValueOnce({ identity: { id: 'did:imajin:eric' } });
-      mocks.requestEmtPayInstructions.mockResolvedValueOnce({ error: 'You are not authorized to pay as that identity', status: 403 });
+      mocks.requestEmtPayInstructions.mockResolvedValueOnce({
+        error: 'You are not authorized to pay as that identity', status: 403, code: 'payer_not_controlled',
+      });
       const res = await callEmtWithBody(JSON.stringify({ paidByDid: 'did:imajin:someone-elses' }));
       expect(res.status).toBe(403);
+      expect(await res.json()).toEqual({ error: 'You are not authorized to pay as that identity', code: 'payer_not_controlled' });
     });
 
     it('rejects a non-string paidByDid and an unparseable body with 400', async () => {

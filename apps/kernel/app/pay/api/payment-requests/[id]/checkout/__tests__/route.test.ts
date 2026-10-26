@@ -8,7 +8,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('@imajin/auth', () => ({
   requireAuth: mocks.requireAuth,
-  resolveActingDid: (identity: { actingFor?: string; id: string }) => identity.actingFor ?? identity.id,
+  resolveActingDid: (identity: { actingFor?: string; actingAs?: string; id: string }) => identity.actingFor ?? identity.actingAs ?? identity.id,
 }));
 
 vi.mock('@imajin/logger', () => ({ createLogger: () => ({ error: vi.fn(), info: vi.fn(), warn: vi.fn() }) }));
@@ -67,6 +67,26 @@ describe('POST /pay/api/payment-requests/:id/checkout — payer DID choice (#265
       payerPersonDid: 'did:imajin:eric',
     });
   });
+  it('#3125: preserves the party-check 403 code in the JSON body', async () => {
+    mocks.createPaymentRequestCheckoutSession.mockResolvedValueOnce({
+      error: 'Not authorized to create a checkout session for this payment_request',
+      status: 403,
+      code: 'not_party_to_request',
+    });
+    const res = await callCheckout({ paidByDid: ISSUER_DID });
+    expect(res.status).toBe(403);
+    expect(await res.json()).toMatchObject({ code: 'not_party_to_request' });
+  });
+
+  it.each([{}, { paidByDid: 'did:imajin:artifact' }])('#3125: keeps the person distinct from the acting org with body %j', async (body) => {
+    mocks.requireAuth.mockResolvedValueOnce({ identity: { id: 'did:imajin:eric', actingAs: 'did:imajin:artifact' } });
+    mocks.createPaymentRequestCheckoutSession.mockResolvedValueOnce(OK);
+    expect((await callCheckout(body)).status).toBe(200);
+    expect(mocks.createPaymentRequestCheckoutSession).toHaveBeenCalledWith(expect.objectContaining({
+      callerDid: 'did:imajin:artifact',
+      payerPersonDid: 'did:imajin:eric',
+    }));
+  });
 
   it('for an agent acting for a human, the person whose DIDs may be chosen is the human', async () => {
     mocks.requireAuth.mockResolvedValueOnce({ identity: { id: 'did:imajin:agent', actingFor: 'did:imajin:eric' } });
@@ -82,10 +102,11 @@ describe('POST /pay/api/payment-requests/:id/checkout — payer DID choice (#265
     mocks.createPaymentRequestCheckoutSession.mockResolvedValueOnce({
       error: 'You are not authorized to pay as that identity',
       status: 403,
+      code: 'payer_not_controlled',
     });
     const res = await callCheckout({ paidByDid: 'did:imajin:not-mine' });
     expect(res.status).toBe(403);
-    expect(await res.json()).toEqual({ error: 'You are not authorized to pay as that identity' });
+    expect(await res.json()).toEqual({ error: 'You are not authorized to pay as that identity', code: 'payer_not_controlled' });
   });
 
   it('rejects a non-string paidByDid with 400, before the service is reached', async () => {
@@ -127,6 +148,7 @@ describe('POST /pay/api/payment-requests/:id/checkout', () => {
     expect(mocks.createPaymentRequestCheckoutSession).toHaveBeenCalledWith({
       id: 'pr_1',
       callerDid: ISSUER_DID,
+      payerPersonDid: ISSUER_DID,
       customerEmail: 'buyer@example.com',
     });
     const json = await res.json();
@@ -166,6 +188,7 @@ describe('POST /pay/api/payment-requests/:id/checkout', () => {
     expect(mocks.createPaymentRequestCheckoutSession).toHaveBeenCalledWith({
       id: 'pr_1',
       callerDid: ISSUER_DID,
+      payerPersonDid: ISSUER_DID,
       customerEmail: undefined,
     });
   });
