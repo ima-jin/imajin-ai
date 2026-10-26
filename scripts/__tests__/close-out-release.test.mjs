@@ -168,19 +168,40 @@ describe('release close-out', () => {
 
 describe('workflow and operator docs contract', () => {
   const workflow = YAML.parse(readFileSync(new URL('../../.github/workflows/tag-release.yml', import.meta.url), 'utf8'));
-  const job = workflow.jobs['tag-and-deploy'];
+  const job = workflow.jobs['close-out'];
   const step = job.steps.find((candidate) => candidate.run === 'node scripts/close-out-release.mjs');
 
-  it('runs close-out automatically for releases after tagging, without new auth', () => {
-    expect(step.if).toBe("steps.check.outputs.is_release == 'true'");
+  it('runs close-out as a separate release-only job with its own checkout and auth', () => {
+    expect(job.needs).toBe('tag-and-deploy');
+    expect(job.if).toBe("${{ needs.tag-and-deploy.outputs.is_release == 'true' }}");
+    expect(job['runs-on']).toBe('ubuntu-latest');
+    expect(job.permissions).toEqual({ contents: 'write', issues: 'write' });
+    expect(job.steps[0]).toEqual({ uses: 'actions/checkout@v4' });
     expect(step.env).toEqual({
       GH_TOKEN: '${{ github.token }}', GH_REPO: '${{ github.repository }}',
-      TAG: '${{ steps.version.outputs.tag }}',
+      TAG: '${{ needs.tag-and-deploy.outputs.tag }}',
     });
-    expect(job.permissions).toEqual({ contents: 'write', issues: 'write', actions: 'write' });
-    expect(job.steps.indexOf(step)).toBeGreaterThan(
-      job.steps.findIndex((candidate) => candidate.name === 'Create the annotated tag (idempotent)'),
-    );
+    expect(step.run).not.toContain('${{');
+    expect(job.concurrency).toBeUndefined();
+    expect(job['continue-on-error']).toBeUndefined();
+    for (const candidate of job.steps) {
+      expect(candidate['continue-on-error']).toBeUndefined();
+    }
+  });
+
+  it('keeps tagging and deploy dispatch at their original permissions without close-out', () => {
+    const tagging = workflow.jobs['tag-and-deploy'];
+    expect(tagging.permissions).toEqual({ contents: 'write', actions: 'write' });
+    for (const candidate of tagging.steps) {
+      expect(candidate.run ?? '').not.toContain('scripts/close-out-release.mjs');
+    }
+  });
+
+  it('keeps npm publishing independent of a failed close-out job', () => {
+    const publish = workflow.jobs['publish-npm'];
+    expect(publish.needs).toBe('tag-and-deploy');
+    expect(publish.needs).not.toContain('close-out');
+    expect(publish.if).toBe("${{ needs.tag-and-deploy.outputs.is_release == 'true' }}");
   });
 
   it('preserves the existing automatic and recovery triggers', () => {
@@ -194,5 +215,7 @@ describe('workflow and operator docs contract', () => {
     expect(docs).toContain('creates the GitHub Release with generated notes');
     expect(docs).toContain('moves open issues and PRs to the lowest open patch milestone');
     expect(docs).toContain('no next patch milestone means a warning with no close');
+    expect(docs).toContain('separate `close-out` job');
+    expect(docs).toContain('fails visibly without affecting tagging, the deploy dispatch or npm publish');
   });
 });

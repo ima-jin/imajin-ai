@@ -17,6 +17,10 @@ name: Tag Release
 # `production` review never delays it and a publish failure never touches the
 # deploy dispatch.
 #
+# Release notes and milestone rollover run in the separate `close-out` job.
+# A close-out failure fails that job visibly without affecting tagging, the
+# deploy dispatch or `publish-npm`.
+#
 # Release detection (#2685) lives in scripts/detect-release-commit.mjs. When a
 # push is a two-parent merge it walks the first-parent chain of HEAD^2 (the
 # merged branch, bounded, stopping at the merge-base with HEAD^1) for the
@@ -43,8 +47,8 @@ on:
         required: true
         type: string
 
-# Read-only by default; the one job that writes (tagging) and the publish call
-# each declare exactly what they need at job level.
+# Read-only by default; tagging, close-out and the publish call each declare
+# exactly what they need at job level.
 permissions:
   contents: read
 
@@ -55,8 +59,6 @@ jobs:
     permissions:
       # Pushes the annotated release tag (never to main).
       contents: write
-      # Moves open issues/PRs via the Issues API and closes the milestone.
-      issues: write
       # Only used to dispatch deploy-prod.yml (a workflow_dispatch call, not a
       # push) — see the "Dispatch the prod deploy" step for why that's needed
       # and why it doesn't bypass anything.
@@ -180,12 +182,22 @@ jobs:
         # deploy-prod.yml's `environment: production` required-reviewer
         # gate — nothing here bypasses that approval.
         run: gh workflow run deploy-prod.yml --ref "$TAG" -f ref="$TAG"
+
+  close-out:
+    name: GitHub Release + milestone close-out
+    needs: tag-and-deploy
+    if: ${{ needs.tag-and-deploy.outputs.is_release == 'true' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+    steps:
+      - uses: actions/checkout@v4
       - name: Create the GitHub Release and close out its milestone
-        if: steps.check.outputs.is_release == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-          TAG: ${{ steps.version.outputs.tag }}
+          TAG: ${{ needs.tag-and-deploy.outputs.tag }}
         run: node scripts/close-out-release.mjs
 
   publish-npm:
