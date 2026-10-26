@@ -14,7 +14,6 @@ import { consumeAppSecret } from './secret-staging';
 import { getOperatorDid } from '@/src/lib/notify/operator-approvals';
 import type { OperatorAppSecrets } from './secrets-metadata';
 import { newSecretDeclarations } from './declarations-approval';
-import { prepareMechanicalAttestation } from '@/src/lib/auth/emit-mechanical-attestation';
 function provenanceIdentity(value: string | null | undefined): string | null {
   return value?.trim() || null;
 }
@@ -161,6 +160,7 @@ async function executeSync(
   if (additions.length === 0) return { ok: true, data: { appDid, action: 'sync', names: [] } };
   const merged = validateSecrets([...current, ...additions]);
   if ('error' in merged) return { ok: false, error: merged.error };
+  const { prepareMechanicalAttestation } = await import('@/src/lib/auth/emit-mechanical-attestation');
   const attestation = await prepareMechanicalAttestation({
     subjectDid: appDid, type: 'apps.secrets.declarations-refreshed', contextId: appDid, contextType: 'app',
     payload: { appDid, additions, authorizedBy },
