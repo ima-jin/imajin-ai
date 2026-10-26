@@ -20,13 +20,14 @@ function provenanceIdentity(value: string | null | undefined): string | null {
 
 
 /** One pending sync per app, including concurrent requests from multiple nodes. */
-export async function withPendingSecretSync(
+export function withPendingSecretSync(
   appDid: string, operatorDid: string, create: () => Promise<string>,
 ): Promise<string> {
   return db.transaction(async (tx) => {
     // Fail fast rather than occupy connections needed by the approval service.
+    const lockKey = `app-secret-sync:${appDid}`;
     const [lock] = await tx.execute<{ locked: boolean }>(
-      sql`SELECT pg_try_advisory_xact_lock(hashtextextended(${`app-secret-sync:${appDid}`}, 0)) AS locked`,
+      sql`SELECT pg_try_advisory_xact_lock(hashtextextended(${lockKey}, 0)) AS locked`,
     );
     if (!lock?.locked) throw new Error('App-secret sync busy');
     const [pending] = await tx.select({ proposalId: operatorApprovals.proposalId }).from(operatorApprovals)
