@@ -51,6 +51,6 @@ export default function BriefSettingsPage() {
     <p className="text-sm text-gray-400">Warp still receives the prompt to execute the run. Changes are witnessed and signed by the kernel on your behalf.</p>
     <button type="button" className="min-h-11 border border-gray-700 px-4 font-mono disabled:opacity-50"
       disabled={!storage || busy} onClick={() => void save()}>{busy ? 'Saving…' : 'Save brief setting'}</button>
-    <p role="status" className="break-words">{message}</p>
+    <output className="block break-words">{message}</output>
   </main>;
 }

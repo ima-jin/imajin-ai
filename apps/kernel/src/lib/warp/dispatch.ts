@@ -1404,14 +1404,12 @@ const FOLLOWUP_MODES: readonly WarpFollowupMode[] = ['normal', 'plan', 'orchestr
  */
 async function publishRunResumed(
   principalDid: string,
-  runId: string,
-  previousState: string | null,
-  previousSessionId: string | null,
+  run: WarpAgentRun,
   newSessionId: string | null,
   mode: WarpFollowupMode,
-  parentRunId: string | null,
   brief: WarpBrief,
 ): Promise<void> {
+  const { runId, state: previousState, sessionId: previousSessionId, parentRunId } = run;
   const resumedAt = new Date().toISOString();
   try {
     await publish('warp.run.resumed', {
@@ -1533,12 +1531,9 @@ export async function sendFollowup(
     const newSessionId = optionalString(objectOrNull(followupPayload)?.session_id) ?? null;
     await publishRunResumed(
       principalDid,
-      id,
-      current.state,
-      current.sessionId,
+      current,
       newSessionId,
       mode,
-      current.parentRunId,
       brief,
     );
     // #2055: reported back so the route can re-arm the in-request watch for

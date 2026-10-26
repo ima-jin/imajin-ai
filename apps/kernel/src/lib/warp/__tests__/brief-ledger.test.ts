@@ -161,8 +161,12 @@ describe('brief ledger', () => {
 describe('brief telemetry validation', () => {
   it.each([['Browser testing: yes — because', 'yes'], ['Browser testing: no', 'no'],
     ['Browser testing: YES', 'yes'], ['none', null], ['Browser testing: maybe', null],
+    ['Browser testing: maybe\nBrowser testing: no', 'no'],
     ['quoted Browser testing: yes', null]])('reads %s as %s without a classification gate', (text, flag) => {
     expect(browserTestingFlag(text)).toBe(flag);
+  });
+  it('scans long whitespace without regex backtracking', () => {
+    expect(browserTestingFlag(`${' '.repeat(100000)}unrelated\nBrowser testing: yes`)).toBe('yes');
   });
   it.each([
     null, {}, { hash: 'x' }, { hash: 'a'.repeat(64), storage: 'hash-only', assetId: 'asset_1', browserTesting: null },

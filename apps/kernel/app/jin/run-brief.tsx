@@ -38,7 +38,7 @@ export function RunBrief({ value }: Readonly<{ value: unknown }>) {
         {busy ? 'Verifying brief…' : 'Open and verify brief'}
       </button>
     </>}
-    {result && <p role="status">{result}</p>}
+    {result && <output className="block">{result}</output>}
     {text !== null && <pre className="whitespace-pre-wrap break-words">{text}</pre>}
   </section>;
 }

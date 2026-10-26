@@ -23,5 +23,12 @@ export function isWarpBrief(value: unknown): value is WarpBrief {
 
 /** Missing flags stay unknown; telemetry is not a dispatch gate. */
 export function browserTestingFlag(text: string): WarpBrief['browserTesting'] {
-  return /^\s*Browser testing:\s*(yes|no)\b/im.exec(text)?.[1].toLowerCase() as WarpBrief['browserTesting'] ?? null;
+  const header = 'browser testing:';
+  for (const line of text.split('\n')) {
+    const trimmed = line.trimStart().toLowerCase();
+    if (!trimmed.startsWith(header)) continue;
+    const flag = /^(yes|no)\b/.exec(trimmed.slice(header.length).trimStart());
+    if (flag) return flag[1] as WarpBrief['browserTesting'];
+  }
+  return null;
 }

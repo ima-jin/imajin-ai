@@ -28,9 +28,9 @@ export async function readBriefStorage(did: string): Promise<BriefStorage> {
 }
 
 /** Projection and signed change commit together; every previous event/asset stays. */
-export async function writeBriefStorage(did: string, actingHumanDid: string, storage: BriefStorage) {
-  if (!isBriefStorage(storage)) throw new Error('Invalid brief storage preference');
+export function writeBriefStorage(did: string, actingHumanDid: string, storage: BriefStorage) {
   return db.transaction(async tx => {
+    if (!isBriefStorage(storage)) throw new Error('Invalid brief storage preference');
     await tx.select({ id: identities.id }).from(identities).where(eq(identities.id, did)).for('update');
     const { metadata } = await principal(did, tx);
     const previous = storageFromMetadata(metadata);
