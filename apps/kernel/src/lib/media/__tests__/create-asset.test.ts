@@ -164,6 +164,22 @@ beforeEach(() => {
 });
 
 describe('createAsset — signed legal control document', () => {
+  it('binds staged immutable brief bytes into the signed manifest before storing them', async () => {
+    const tx = { insert: () => ({ values: mockInsertValues }) };
+    setupInsert();
+    await createAsset({
+      ownerDid: MARKDOWN_INPUT.ownerDid, buffer: MD_BUFFER, filename: 'warp-brief.txt', mimeType: 'text/plain',
+      access: 'private', dedup: false, classify: false, immutable: true, status: 'processing', tx,
+    } as Parameters<typeof createAsset>[0]);
+    expect(legalMocks.sign).toHaveBeenCalledWith(expect.objectContaining({
+      access: { type: 'private' }, integrity: { hash: 'deadbeef', size: MD_BUFFER.byteLength },
+    }));
+    expect(mockInsertValues).toHaveBeenCalledWith(expect.objectContaining({
+      ownerDid: MARKDOWN_INPUT.ownerDid, immutable: true, status: 'processing',
+      fairManifest: expect.objectContaining({ signature: { value: 'fixture-signature' } }),
+    }));
+    expect(mockEmitAttestation).not.toHaveBeenCalled();
+  });
   function legalInput() {
     return {
       ...MARKDOWN_INPUT, controlDocument: 'legal-entity' as const,

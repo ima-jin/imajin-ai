@@ -15,11 +15,13 @@ vi.mock('drizzle-orm', () => ({ eq: (column: string, value: string) => [column, 
 vi.mock('@/src/lib/kernel/node-identity', () => ({ getNodeDid: async () => 'did:imajin:node' }));
 vi.mock('@/src/lib/media/create-asset', () => ({ createAsset: mocks.createAsset }));
 vi.mock('@/src/db', () => {
+  const where = ([, did]: string[]) => ({
+    limit: async () => mocks.metadata[did] ? [{ metadata: mocks.metadata[did] }] : [],
+    for: async () => [],
+  });
+  const from = () => ({ where });
   const executor = {
-    select: () => ({ from: () => ({ where: ([, did]: string[]) => ({
-      limit: async () => mocks.metadata[did] ? [{ metadata: mocks.metadata[did] }] : [],
-      for: async () => [],
-    }) }) }),
+    select: () => ({ from }),
     insert: () => ({ values: async (row: Record<string, unknown>) => {
       if (mocks.failInsert) throw new Error('insert failed');
       mocks.rows.push(row);

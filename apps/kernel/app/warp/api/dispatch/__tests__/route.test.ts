@@ -40,7 +40,7 @@ vi.mock('@/src/lib/warp/run-watch-sweep', () => ({
 
 import { POST, OPTIONS } from '../route';
 import { dispatchAgentRun, watchRun } from '@/src/lib/warp/dispatch';
-import { WarpApiError } from '@/src/lib/warp/errors';
+import { WarpApiError, WarpBriefEventError } from '@/src/lib/warp/errors';
 
 // ─── Fixtures ────────────────────────────────────────────────────────────────
 
@@ -124,9 +124,9 @@ describe('body validation', () => {
     expect(dispatchAgentRun).not.toHaveBeenCalled();
   });
 
-  it('trims the prompt before dispatching', async () => {
+  it('preserves exact brief bytes before dispatching', async () => {
     await POST(makeReq({ prompt: '  go  ' }));
-    expect(dispatchInput().prompt).toBe('go');
+    expect(dispatchInput().prompt).toBe('  go  ');
   });
 
   it('forwards the optional config surface', async () => {
@@ -188,6 +188,14 @@ describe('body validation', () => {
 // ─── Success ─────────────────────────────────────────────────────────────────
 
 describe('successful dispatch', () => {
+  it('returns the accepted run id without inviting redispatch if brief event persistence fails', async () => {
+    vi.mocked(dispatchAgentRun).mockRejectedValueOnce(new WarpBriefEventError(RUN.runId));
+    const response = await POST(makeReq({ prompt: 'go' }));
+    expect(response.status).toBe(502);
+    expect(await response.json()).toMatchObject({
+      error: 'warp_brief_event_failed', runId: RUN.runId, accepted: true, retryable: false,
+    });
+  });
   it('returns 201 with the run id, state, and session link', async () => {
     const res = await POST(makeReq({ prompt: 'go' }));
 

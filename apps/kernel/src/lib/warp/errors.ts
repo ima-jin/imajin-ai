@@ -7,13 +7,17 @@
  * alongside the client that throws it.
  */
 
+/** Provider accepted work; do not retry dispatch after an audit failure. */
+export class WarpBriefEventError extends Error {
+  constructor(readonly runId: string) {
+    super(`warp_brief_event_failed: run ${runId} was accepted but its brief event could not be recorded`);
+    this.name = 'WarpBriefEventError';
+  }
+}
+
 /**
  * A non-2xx response from Warp, reduced to RFC-7807 problem metadata.
- *
- * Deliberately narrow: only fields Warp documents as describing the *problem* are
- * carried over, so a route can return this to a caller without having to
- * re-audit whether the upstream body echoed the request (and with it, the sealed
- * Agent key).
+ * Narrow fields only: never echo request prompts or sealed credentials.
  */
 export class WarpApiError extends Error {
   readonly status: number;

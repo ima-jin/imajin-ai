@@ -215,8 +215,8 @@ const dispatchTool: McpTool = {
     additionalProperties: false,
   },
   async handler(args, ctx) {
-    const prompt = str(args, 'prompt');
-    if (prompt === undefined) throw new Error('prompt is required');
+    const prompt = args.prompt;
+    if (typeof prompt !== 'string' || prompt.trim().length === 0) throw new Error('prompt is required');
 
     const title = str(args, 'title');
     const skillSpec = str(args, 'skill_spec');
@@ -498,8 +498,8 @@ const sendFollowupTool: McpTool = {
   async handler(args, ctx) {
     const runId = requireRunIdArg(args);
 
-    const message = str(args, 'message');
-    if (message === undefined) throw new Error('message is required');
+    const message = args.message;
+    if (typeof message !== 'string' || message.trim().length === 0) throw new Error('message is required');
 
     // Cast rather than validated here: the closed set lives in the client, so the
     // HTTP and MCP callers reject an unknown mode with the same error.

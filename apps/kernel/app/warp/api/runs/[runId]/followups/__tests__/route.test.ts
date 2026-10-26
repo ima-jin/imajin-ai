@@ -64,6 +64,10 @@ beforeEach(() => {
 // ─── Tests ───────────────────────────────────────────────────────────────────
 
 describe('POST /warp/api/runs/{runId}/followups', () => {
+  it('preserves exact follow-up bytes for its ledger hash', async () => {
+    await POST(makeReq({ message: '  Browser testing: no\nExact\r\n  ' }), { params: Promise.resolve({ runId: RUN_ID }) });
+    expect(sendFollowup).toHaveBeenCalledWith(OWNER_DID, RUN_ID, { message: '  Browser testing: no\nExact\r\n  ' });
+  });
   it('returns 401 without sending anything when unauthenticated', async () => {
     mockRequireAuth.mockResolvedValueOnce({ error: 'Unauthorized', status: 401 });
 

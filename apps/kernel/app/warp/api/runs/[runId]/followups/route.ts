@@ -63,8 +63,8 @@ export async function POST(request: NextRequest, props: { params: Promise<{ runI
     return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400, headers: cors });
   }
 
-  const message = typeof body.message === 'string' ? body.message.trim() : '';
-  if (message.length === 0) {
+  const message = typeof body.message === 'string' ? body.message : '';
+  if (message.trim().length === 0) {
     return NextResponse.json(
       { error: 'message must be a non-empty string' },
       { status: 400, headers: cors },

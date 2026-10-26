@@ -189,8 +189,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400, headers: cors });
   }
 
-  const prompt = optionalString(body.prompt);
-  if (!prompt) {
+  const prompt = typeof body.prompt === 'string' ? body.prompt : '';
+  if (prompt.trim().length === 0) {
     return NextResponse.json(
       { error: 'prompt must be a non-empty string' },
       { status: 400, headers: cors },

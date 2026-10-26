@@ -19,6 +19,12 @@ the generated package table in README.md links checked public registry metadata.
 License: Imajin Network License (INL) v1.0, source-available, not MIT.
 
 ## Integration and safety
+- Warp briefs: GET/PUT /jin/api/brief-settings (human session, warp-scoped
+  owner/admin act-as only), UI /jin/brief-settings. Default full-text stores
+  exact outgoing UTF-8 in a private immutable signed media asset; hash-only
+  stores no prompt text. Each dispatch/resume/follow-up loop event carries
+  brief {hash,assetId,storage,browserTesting}; settings changes are node-signed.
+  Earlier assets remain. /jin Runs opens and verifies the brief's SHA-256.
 
 - Five standing tiers: soft, preliminary, established, steward, operator.
   Soft identities have no actor signing key; route authorization still applies.

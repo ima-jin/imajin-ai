@@ -131,7 +131,7 @@ import {
   type CorpusContextMetadata,
 } from './corpus-context';
 import { readEnvironmentId } from './environment';
-import { WarpApiError } from './errors';
+import { WarpApiError, WarpBriefEventError } from './errors';
 // Type-only: erased at compile time, so this adds no runtime dependency on
 // './loop-emit' (and therefore none of its DB dependency either) — see that
 // module's "Why this lives in its own module" doc. The real implementation is
@@ -174,7 +174,7 @@ async function bridgeWarpRunToLoop(transition: WarpRunLoopTransition): Promise<v
       { err: String(err), type: transition.type, runId: transition.runId },
       'warp.run -> loop.* bridge unavailable; the warp.run.* event still published normally',
     );
-    if (transition.brief) throw new Error(`warp_brief_event_failed: run ${transition.runId} was accepted but its brief event could not be recorded`);
+    if (transition.brief) throw new WarpBriefEventError(transition.runId);
   }
 }
 
@@ -1839,6 +1839,7 @@ function truncateText(value: string, maxChars: number): string {
  * transcript — {@link getAgentRunTranscript} is still the way to get that.
  */
 function toProgressMessage(index: number, entry: FlatMessage): ProgressMessage {
+  const role = optionalString(entry.message.role) ?? PROGRESS_UNKNOWN;
   const blocks = Array.isArray(entry.message.content) ? entry.message.content : [];
 
   const blockTypes: string[] = [];
@@ -1863,10 +1864,12 @@ function toProgressMessage(index: number, entry: FlatMessage): ProgressMessage {
   return {
     index,
     stepId: entry.stepId,
-    role: optionalString(entry.message.role) ?? PROGRESS_UNKNOWN,
+    role,
     blockTypes,
     actions,
-    text: text.length === 0 ? null : truncateText(text, PROGRESS_MESSAGE_TEXT_MAX_CHARS),
+    // Prompts belong only to the principal-selected brief ledger, never the bus.
+    text: role === 'user' || role === 'system' || text.length === 0
+      ? null : truncateText(text, PROGRESS_MESSAGE_TEXT_MAX_CHARS),
   };
 }
 

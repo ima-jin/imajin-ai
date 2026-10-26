@@ -67,6 +67,7 @@ import {
   publishTimeoutRunOutcome,
 } from '../dispatch';
 import { recordWarpBrief } from '../brief-ledger';
+import { createHash } from 'node:crypto';
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 
@@ -179,6 +180,26 @@ describe('dispatchAgentRun bridges loop.started', () => {
 // ── loop.started (new segment): resume case ──────────────────────────────────
 
 describe('sendFollowup resume bridges a fresh loop.started segment', () => {
+  it('carries a distinct hash-only record for dispatch, follow-up and resume on the same run', async () => {
+    vi.mocked(recordWarpBrief).mockImplementation(async (_did, text) => ({
+      hash: createHash('sha256').update(text).digest('hex'), assetId: null,
+      storage: 'hash-only', browserTesting: 'no',
+    }));
+    respondJson({ run_id: RUN_ID, state: 'QUEUED' });
+    await dispatchAgentRun(PRINCIPAL, { prompt: 'first' });
+    respondJson({ run_id: RUN_ID, state: 'INPROGRESS' });
+    respondJson({});
+    await sendFollowup(PRINCIPAL, RUN_ID, { message: 'second' });
+    respondJson({ run_id: RUN_ID, state: 'SUCCEEDED' });
+    respondJson({});
+    await sendFollowup(PRINCIPAL, RUN_ID, { message: 'third', resume: true });
+    const events = emitWarpRunLoopEventMock.mock.calls.map(([event]) => event);
+    expect(events.map(event => event.type)).toEqual(['loop.started', 'loop.progress', 'loop.started']);
+    expect(events.map(event => event.brief?.hash)).toEqual(['first', 'second', 'third'].map(
+      text => createHash('sha256').update(text).digest('hex'),
+    ));
+    expect(events.every(event => event.brief?.assetId === null && event.runId === RUN_ID)).toBe(true);
+  });
   it('uses only a confirmed new session id on resume', async () => {
     respondJson({ run_id: RUN_ID, state: 'SUCCEEDED', session_id: 'old-session' });
     respondJson({ session_id: 'new-session' });

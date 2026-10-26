@@ -163,6 +163,13 @@ describe('warp_seal_key', () => {
 // ─── warp_dispatch_agent ───────────────────────────────────────────────────
 
 describe('warp_dispatch_agent', () => {
+  it('keeps prompt and follow-up whitespace for exact ledger hashing', async () => {
+    const text = '  Browser testing: no\n今人\r\n  ';
+    await call('warp_dispatch_agent', { prompt: text });
+    await call('warp_send_followup', { run_id: RUN_ID, message: text });
+    expect(dispatchInput().prompt).toBe(text);
+    expect(sendFollowup).toHaveBeenCalledWith(ctx.did, RUN_ID, { message: text });
+  });
   it('dispatches as the caller DID and returns run id, state, and session link', async () => {
     const res = await call('warp_dispatch_agent', { prompt: 'Fix the login error' });
 

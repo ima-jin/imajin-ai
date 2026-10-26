@@ -603,6 +603,21 @@ components:
           items: { $ref: "#/components/schemas/HorizonStep" }
         depth: { type: integer, minimum: 0, readOnly: true, description: "All non-done items, not truncated to 12." }
         targetDepth: { const: 12, readOnly: true }
+    WarpBrief:
+      type: object
+      required: [hash, assetId, storage, browserTesting]
+      description: >-
+        Node-witnessed brief descriptor on each kernel Warp dispatch/resume
+        loop.started and follow-up loop.progress. SHA-256 covers exact UTF-8
+        outgoing prompt bytes, including whitespace and injected corpus context.
+        No prompt text is placed on the event. Full-text assets are private,
+        immutable, owner-pinned and signed using existing media primitives.
+        Hash-only creates no asset. Missing browser telemetry is null, not no.
+      properties:
+        hash: { type: string, pattern: '^[a-f0-9]{64}$' }
+        assetId: { type: [string, "null"] }
+        storage: { type: string, enum: [full-text, hash-only] }
+        browserTesting: { type: [string, "null"], enum: [yes, no, null] }
     LoopEnvelope:
       type: object
       description: >-
@@ -619,6 +634,7 @@ components:
         summary: { type: string, maxLength: 2000 }
         at: { type: string, format: date-time, description: "When the publisher observed this transition. Bounded at ingest for clock skew." }
         output: { $ref: "#/components/schemas/LoopOutput" }
+        brief: { $ref: "#/components/schemas/WarpBrief" }
     StoredLoopEnvelope:
       type: object
       description: "Sanitized envelope retaining loop metadata and optional inline output or private artifact wrapper."
@@ -947,6 +963,60 @@ components:
         errorMessage: { type: string, nullable: true }
 
 paths:
+  /api/brief-settings:
+    get:
+      tags: [jin]
+      summary: Read the authenticated principal's Warp brief storage preference
+      description: >-
+        Human session only, warp-scoped act-as owner/admin authorization;
+        agents and actingFor delegations are refused. Default full-text.
+        GET and PUT are no-store. The /jin/brief-settings page exposes this control.
+      security: [{ cookieAuth: [] }]
+      responses:
+        "200":
+          description: Current preference
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  storage: { type: string, enum: [full-text, hash-only], default: full-text }
+        "401": { description: Authentication required }
+        "403": { description: Principal owner authority required }
+        "503": { description: Preference unavailable; never silently falls back }
+    put:
+      tags: [jin]
+      summary: Change future brief retention with an atomic node-signed event
+      description: >-
+        Same human-session authorization as GET. The principal is server-resolved,
+        never caller-selected in the body. Appends warp.brief.storage.changed and
+        updates the identity metadata projection in one transaction. Earlier assets
+        and events are retained. Signing/storage failure refuses the change.
+      security: [{ cookieAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [storage]
+              properties:
+                storage: { type: string, enum: [full-text, hash-only] }
+      responses:
+        "200":
+          description: Saved with signed audit reference
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  storage: { type: string, enum: [full-text, hash-only] }
+                  attestationId: { type: string }
+        "400": { description: Invalid JSON, storage value or extra field }
+        "401": { description: Authentication required }
+        "403": { description: Principal owner authority required }
+        "503": { description: Change not saved }
   /api/cron/registry-app-expiry:
     get:
       tags: [apps]
