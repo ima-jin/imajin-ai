@@ -39,6 +39,17 @@ exists or a complete live deployment inventory. Not every route group has a spec
 The generated [route index](../apps/kernel/public/llms.txt) and
 [contract reference](../apps/kernel/public/llms-full.txt) cover the current handler tree.
 
+### v0.8.28 integration delta (2026-10-26 source)
+
+Since v0.8.27, [kernel-owned details](../apps/kernel/README.md#pre-cut-delta-for-v0828)
+cover recipient-organization owner/admin card checkout, distinct 403 party/payer codes,
+and additive manifest-secret sync followed by a separate signed Generate or Set.
+EMT retains its opaque-handle capability model. Chat uses TLS in transit and plaintext
+at rest with notification previews; MLS/hybrid post-quantum encryption is planned,
+not implemented ([security](../SECURITY.md)). These are merged-source statements,
+not proof of deployment. [Release close-out](npm-publishing.md) now generates missing
+GitHub Releases and rolls milestones forward independently of npm publishing.
+
 ### v0.8.27 integration additions (2026-10-25 source)
 
 - [Legal entity and bank details](DEVELOPER.md#sealed-bank-details-api-3075):

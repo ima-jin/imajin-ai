@@ -1,6 +1,6 @@
 # Imajin — You compose. Imajin orchestrates. Signed. Legible.
 
-Generated 2026-10-25 UTC from source 4d7b2dc1aa3a1dc721a35c863b47d283ae5c67bf, release comparison v0.8.26..4d7b2dc1a.
+Generated 2026-10-26 UTC from source 8f2ebbfd455857d3b6b09cc5b4919db78d2b69bd, release comparison v0.8.27..8f2ebbfd4.
 This is a source inventory, not deployment evidence or a permission grant.
 
 Imajin is Agentic Relation Management. The kernel serves six primitives:
@@ -85,6 +85,31 @@ are not separately enumerated. Page components are not API route handlers.
 Corpus is Express, not App Router: its separate /spec operation definitions follow.
 Specs are contracts, not deployment inventories. Unmapped spec-only operations
 are omitted from the implemented reference and reported in the #2028 run-log.
+
+## v0.8.28 contract delta (merged source, not deployment)
+
+- POST /jin/api/app-secrets accepts sync, generate, set, rotate and revoke.
+  Sync proposes only new validated manifest name/kind slots; a human operator
+  countersigns apps:secrets-sync. It does not generate/grant values or change
+  DID, keys, slug, claims, removals, existing kinds or non-secret permissions.
+  A new generated slot needs separate signed apps:secrets-generate; any prior
+  grant history (including revoked tombstones) refuses Generate. Operator-supplied
+  slots use masked Set and a separate approval. No value is revealed.
+  See docs/app-self-secrets-operator.md; #3124.
+- POST /pay/api/payment-requests/{id}/checkout admits issuer, recipient or a
+  human controlling the recipient organization under current owner/admin plus
+  pay-service access. Member/maintainer, agent, removed membership and excluded
+  pay access do not gain control. payerPersonDid stays distinct from callerDid
+  and paidByDid; paidByDid determines settlement payer attribution.
+  HTTP 403 code not_party_to_request differs from payer_not_controlled.
+  EMT by-handle retains its opaque-handle capability and payer-control gate,
+  not the card party gate; its 403 payer error now carries the code. See #3126.
+- tag-release.yml close-out creates missing GitHub Releases with generated notes
+  and rolls open issues/PRs into the lowest open next patch milestone in the same
+  major/minor series before closing the released milestone. No next milestone
+  means warning/no close; existing Releases and closed milestones are skipped.
+  Failure is visible and independent of npm publishing. Production review is
+  unchanged. See docs/npm-publishing.md; #3120.
 
 ## Service spec catalogue
 
