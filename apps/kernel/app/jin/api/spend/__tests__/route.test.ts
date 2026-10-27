@@ -2,10 +2,11 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // ─── Mocks ───────────────────────────────────────────────────────────────────
 
-const { mockRequireAuth, mockGetOperatorDid, mockReadSpendLane } = vi.hoisted(() => ({
+const { mockRequireAuth, mockGetOperatorDid, mockReadSpendLane, mockBilling } = vi.hoisted(() => ({
   mockRequireAuth: vi.fn(),
   mockGetOperatorDid: vi.fn(),
   mockReadSpendLane: vi.fn(),
+  mockBilling: vi.fn(),
 }));
 
 const OPERATOR_DID = 'did:imajin:operator';
@@ -23,6 +24,7 @@ vi.mock('@/src/lib/notify/operator-approvals', async (importOriginal) => {
   return { ...actual, getOperatorDid: mockGetOperatorDid };
 });
 vi.mock('@/src/lib/jin/spend-lane', () => ({ readSpendLane: mockReadSpendLane }));
+vi.mock('@/src/lib/usage/billed/connection-status', () => ({ readBillingConnections: mockBilling }));
 
 import { GET, OPTIONS } from '../route';
 
@@ -35,6 +37,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   mockGetOperatorDid.mockResolvedValue(OPERATOR_DID);
   mockReadSpendLane.mockResolvedValue({ providers: [], trend: [] });
+  mockBilling.mockResolvedValue([{ provider: 'anthropic', status: 'not connected' }, { provider: 'openai', status: 'not connected' }]);
 });
 
 describe('GET /jin/api/spend (#2725)', () => {
@@ -48,6 +51,7 @@ describe('GET /jin/api/spend (#2725)', () => {
     const res = await call();
     expect(res.status).toBe(401);
     expect(mockReadSpendLane).not.toHaveBeenCalled();
+    expect(mockBilling).not.toHaveBeenCalled();
   });
 
   it('returns the spend lane for the operator identity', async () => {
@@ -55,7 +59,10 @@ describe('GET /jin/api/spend (#2725)', () => {
     const res = await call();
     expect(res.status).toBe(200);
     expect(res.headers.get('Cache-Control')).toBe('no-store');
-    expect(await res.json()).toEqual({ isOperator: true, spend: { providers: [], trend: [] } });
+    expect(await res.json()).toEqual({ isOperator: true, spend: { providers: [], trend: [], billingConnections: [
+      { provider: 'anthropic', status: 'not connected' }, { provider: 'openai', status: 'not connected' },
+    ] } });
+    expect(mockBilling).toHaveBeenCalledWith(OPERATOR_DID);
     expect(mockReadSpendLane).toHaveBeenCalledWith(OPERATOR_DID);
   });
 

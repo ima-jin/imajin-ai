@@ -37,6 +37,7 @@ import { buildConnectHref, readConnectOutcome } from '@/src/lib/kernel/connect-o
 import { validateStripeCredentialPair, validateStripeWebhookSecret } from '@/src/lib/stripe/credential-pair';
 import { ConnectionSlots, slotRoute, useConnectionSlot, useRefreshConnections } from './ConnectionSlots';
 import { GoogleSetupChecklist } from './GoogleSetupChecklist';
+import { BillingCredentialSection } from './BillingCredentialSection';
 import type { GoogleSetupView } from '@/src/lib/google/setup-content';
 
 // ── Types ─────────────────────────────────────────────────────
@@ -373,13 +374,14 @@ function ScopeRow({ scope, isActive, isGranting, isAnyGranting, tokenSealed, onT
 }
 
 /** Shared scope-grant section — used by GitHub, Discord, and QuickBooks. */
-function ScopeGrantSection({ entry, activeSet, stepNumber, grantingScope, grantError, tokenSealed, noTokenHint, onToggle, requiredScope, blockedScopes }: Readonly<{
+function ScopeGrantSection({ entry, activeSet, stepNumber, grantingScope, grantError, tokenSealed, noTokenHint, onToggle, requiredScope, blockedScopes, credentialReadyScopes }: Readonly<{
   entry: ConnectorEntry; activeSet: Set<string>; stepNumber: string | number;
   grantingScope: string | null; grantError: string | null;
   tokenSealed: boolean; noTokenHint: string;
   onToggle: (name: string, enable: boolean) => void;
   requiredScope?: string;
   blockedScopes?: ReadonlySet<string>;
+  credentialReadyScopes?: ReadonlyMap<string, boolean>;
 }>) {
   const hasActive = requiredScope ? activeSet.has(requiredScope) : activeSet.size > 0;
   // Only worth saying when the credential actually blocks something: on a card
@@ -404,7 +406,7 @@ function ScopeGrantSection({ entry, activeSet, stepNumber, grantingScope, grantE
             isActive={activeSet.has(scope.name)}
             isGranting={grantingScope === scope.name}
             isAnyGranting={grantingScope !== null}
-            tokenSealed={tokenSealed}
+            tokenSealed={credentialReadyScopes?.get(scope.name) ?? tokenSealed}
             onToggle={onToggle}
             blocked={blockedScopes?.has(scope.name) && !activeSet.has(scope.name)}
           />
@@ -1506,6 +1508,7 @@ function CredentialPasteConnectorCard({ entry }: Readonly<{ entry: ConnectorEntr
   const [sealError, setSealError] = useState<string | null>(null);
   const [showCredentialInput, setShowCredentialInput] = useState(false);
   const [webhookReady, setWebhookReady] = useState(false);
+  const [billingReady, setBillingReady] = useState(false);
 
   const ui = credentialCopy(entry);
   const additionalField = ui.additionalField;
@@ -1711,6 +1714,9 @@ function CredentialPasteConnectorCard({ entry }: Readonly<{ entry: ConnectorEntr
             />
           )}
 
+          {entry.billingCredential && (
+            <BillingCredentialSection credential={entry.billingCredential} onReady={setBillingReady} />
+          )}
           {/* ── Scope grants ── */}
           {ui.webhookSetup && sealed && !additionalMissing && entry.tokenRoute && (
             <WebhookSecretSetup route={entry.tokenRoute} onSaved={() => { void refreshStatus(); }} onReady={setWebhookReady} />
@@ -1722,6 +1728,7 @@ function CredentialPasteConnectorCard({ entry }: Readonly<{ entry: ConnectorEntr
             grantingScope={grantingScope}
             grantError={grantError}
             tokenSealed={sealed}
+            credentialReadyScopes={entry.billingCredential ? new Map([[entry.billingCredential.scope, billingReady]]) : undefined}
             noTokenHint={`Seal your ${ui.label} (step 1) to enable scope grants.`}
             requiredScope={requiredScope}
             onToggle={(name, enable) => { void handleToggleScope(name, enable); }}

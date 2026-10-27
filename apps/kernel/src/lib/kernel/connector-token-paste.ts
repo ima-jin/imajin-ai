@@ -82,6 +82,8 @@ export interface ConnectorTokenPasteOptions {
   connectorDid: string;
   /** Channel label in `auth.channel_links.channel`. Conventionally equals `id`. */
   channel: string;
+  /** Sibling credential slots share scopes: revoke only this slot's custody. */
+  preserveScopesOnRevoke?: boolean;
 }
 
 /** Credentials resolved for one DID. The key must not outlive the calling scope. */
@@ -405,8 +407,10 @@ export function createConnectorTokenPaste(
   }
 
   async function revokeApiKey(ownerDid: string): Promise<boolean> {
-    const revokedGrants = await revokeVaultDelegationGrantsForConnector(opts.id, ownerDid);
-    const revokedLinks = await revokeActiveChannelLinks(ownerDid);
+    const revokedGrants = opts.preserveScopesOnRevoke
+      ? await revokeVaultDelegationGrantsForConnector(opts.id, ownerDid, { attest: true })
+      : await revokeVaultDelegationGrantsForConnector(opts.id, ownerDid);
+    const revokedLinks = opts.preserveScopesOnRevoke ? 0 : await revokeActiveChannelLinks(ownerDid);
     // Both authoritative surfaces are already revoked at this point; the
     // registry is brought into agreement afterwards and never throws (#1924).
     await revokeConnectorRegistration(ownerDid, opts.id);

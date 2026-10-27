@@ -320,7 +320,7 @@ export function mockRouteWiringFactories(): RouteWiringMockFactories {
   const tokenOpts: { current: Record<string, unknown> | null } = { current: null };
   const disconnectOpts: { current: Record<string, unknown> | null } = { current: null };
   const manifestOpts: { current: Record<string, unknown> | null } = { current: null };
-  const handlers = { GET: vi.fn(), POST: vi.fn(), OPTIONS: vi.fn() };
+  const handlers = { GET: vi.fn(), POST: vi.fn(), DELETE: vi.fn(), OPTIONS: vi.fn() };
 
   vi.doMock('@/src/lib/kernel/connector-token-route', () => ({
     createConnectorTokenRoutes: vi.fn((opts: Record<string, unknown>) => {
@@ -455,7 +455,10 @@ export function mockBillingKeyConnector(connectorModulePath: string): { sealBill
   const sealBillingKey = Symbol('sealBillingKey');
   const billingKeySealed = Symbol('billingKeySealed');
 
-  vi.doMock(connectorModulePath, () => ({ sealBillingKey, billingKeySealed }));
+  vi.doMock(connectorModulePath, () => ({
+    sealBillingKey, billingKeySealed,
+    billingKeyPending: Symbol('billingKeyPending'), revokeBillingKey: Symbol('revokeBillingKey'),
+  }));
 
   return { sealBillingKey, billingKeySealed };
 }
@@ -485,9 +488,12 @@ export function describeBillingKeyRouteWiringContract(fixture: BillingKeyRouteWi
     expect(tokenOpts.current?.keySealed).toBe(billingKeySealed);
   });
 
-  it('exports the full credential lifecycle (no disconnect/manifest routes for Stage 1)', () => {
+  it('exports seal, status, pending and billing-only revocation', () => {
     expect(route.GET).toBeDefined();
     expect(route.POST).toBeDefined();
+    expect(route.DELETE).toBeDefined();
+    expect(tokenOpts.current?.keyPending).toBeDefined();
+    expect(tokenOpts.current?.revokeApiKey).toBeDefined();
     expect(route.OPTIONS).toBeDefined();
   });
 }
