@@ -1038,9 +1038,8 @@ function GitHubConnectorCard({ entry }: Readonly<{ entry: ConnectorEntry }>) {
 
   // Configure form state
   const [showConfigure, setShowConfigure] = useState(false);
-  // Device flow is the default (#1391): it is the BYO path that needs neither a
-  // client secret nor a byte-exact callback URL, which are the two steps that
-  // actually trip people up.
+  // Device flow is the default: no client secret or callback round-trip.
+  // GitHub's app registration still requires a callback URL for either mode.
   const [flowMode, setFlowMode] = useState<GitHubAuthFlow>('device');
   const [clientId, setClientId] = useState('');
   const [clientSecret, setClientSecret] = useState('');

@@ -40,10 +40,10 @@ export function GitHubSetupChecklist({ flow, callbackUrl }: Readonly<{
             className="border border-white/20 px-3 py-2 text-sm text-gray-200 hover:bg-white/10 disabled:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-amber-400">
             Copy callback URL
           </button>
-          <p role="status" className="text-sm text-gray-300">
+          <output className="block text-sm text-gray-300">
             {copyState === 'copied' && 'Copied callback URL.'}
             {copyState === 'failed' && 'Could not copy. Select and copy the callback URL above.'}
-          </p>
+          </output>
           {device ? (
             <p className="text-sm text-gray-300">Device flow doesn&apos;t use this URL, but GitHub requires it to register the app.</p>
           ) : (
