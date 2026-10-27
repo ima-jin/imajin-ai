@@ -18,7 +18,7 @@ const response = (body: unknown, status = 200) => ({
 
 function step(stepId: string, zone: HorizonStep['zone'], rank = 1): HorizonStep {
   return {
-    stepId, zone, rank, stepKind: 'human', intention: `Intention ${stepId}`, state: 'queued',
+    stepId, publisher: 'did:imajin:publisher', zone, rank, stepKind: 'human', intention: `Intention ${stepId}`, state: 'queued',
     exitConditions: [{ id: 'human', kind: 'attestation', attestorDid: 'did:human:reviewer' }],
     conditions: [], openExitConditions: ['human'],
   };
@@ -61,6 +61,23 @@ afterEach(() => {
 });
 
 describe('Runs horizon observations', () => {
+  it('renders each step’s publisher as plain text, never a DID link or HTML', async () => {
+    const first = { ...step('first', 'tail'), publisher: 'did:imajin:first' };
+    const second = { ...step('second', 'near'), publisher: 'did:imajin:<b>second</b>' };
+    fixture([first, second]);
+    mount();
+    await screen.findByText('Intention first');
+    const rows = screen.getAllByTestId('horizon-step');
+    for (const item of [first, second]) {
+      const row = rows.find(row => within(row).queryByText(`Intention ${item.stepId}`));
+      expect(row).toBeDefined();
+      const attribution = within(row!).getByText(`Publisher · ${item.publisher}`);
+      expect(attribution.textContent).toBe(`Publisher · ${item.publisher}`);
+      expect(attribution.getAttribute('title')).toBe(item.publisher);
+      expect(attribution.closest('a')).toBeNull();
+      expect(attribution.children).toHaveLength(0);
+    }
+  });
   it('renders all zones in nearest-first order, ranks within zones and hides exited steps', async () => {
     fixture([
       step('tail', 'tail', 0), step('middle-later', 'middle', 9),
