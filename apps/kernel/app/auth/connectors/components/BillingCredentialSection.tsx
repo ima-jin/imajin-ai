@@ -4,6 +4,11 @@ import { useCallback, useEffect, useState } from 'react';
 import type { ConnectorEntry } from '@/src/lib/kernel/connector-registry';
 
 type BillingCredential = NonNullable<ConnectorEntry['billingCredential']>;
+function billingKeyLabel(status: { keySealed: boolean; credentialPending: boolean }): string {
+  if (status.keySealed) return 'Billing key sealed';
+  if (status.credentialPending) return 'Billing key awaiting owner approval';
+  return 'billed: not connected';
+}
 
 /** Write-only credential slot. Never render server error text from a secret path. */
 export function BillingCredentialSection({ credential, onReady }: Readonly<{
@@ -58,7 +63,7 @@ export function BillingCredentialSection({ credential, onReady }: Readonly<{
       <p className="text-xs text-gray-400">{credential.hint} Sealed through the kernel vault; never returned.</p>
       {status && (
         <output className="block text-xs text-gray-400">
-          {status.keySealed ? 'Billing key sealed' : status.credentialPending ? 'Billing key awaiting owner approval' : 'billed: not connected'}
+          {billingKeyLabel(status)}
         </output>
       )}
       <p className="text-xs text-gray-400">After sealing, explicitly enable {credential.scope} in Scope grants below. Sealing alone does not grant billing access.</p>
@@ -82,9 +87,14 @@ export function BillingCredentialSection({ credential, onReady }: Readonly<{
         <div className="flex flex-wrap gap-2">
           <button type="button" disabled={busy} onClick={() => { setEditing(true); setValue(''); }}
             className="px-4 py-2 text-sm text-gray-300 disabled:opacity-50">Rotate billing key</button>
-          <button type="button" disabled={busy} onClick={() => { void mutate('DELETE'); }}
-            className="px-4 py-2 text-sm text-red-400 disabled:opacity-50">Revoke billing key</button>
+          {status?.keySealed && (
+            <button type="button" disabled={busy} onClick={() => { void mutate('DELETE'); }}
+              className="px-4 py-2 text-sm text-red-400 disabled:opacity-50">Revoke billing key</button>
+          )}
         </div>
+      )}
+      {status?.credentialPending && (
+        <p className="text-xs text-gray-400">No usable grant exists yet. Withdraw the billing scope below to keep ingestion off while approval is pending.</p>
       )}
     </section>
   );

@@ -336,7 +336,7 @@ function ScopeRow({ scope, isActive, isGranting, isAnyGranting, tokenSealed, onT
   // the whole card. A read-only scope that unseals nothing stays grantable with
   // no key in place — otherwise it is structurally hostage to a credential its
   // holder may never want, which is how `discovery:read` ended up ungrantable.
-  const credentialBlocked = !tokenSealed && !scope.credentialFree;
+  const credentialBlocked = !tokenSealed && !scope.credentialFree && !isActive;
   let badge: React.ReactNode;
   if (isGranting) badge = <Badge variant="info">Saving…</Badge>;
   else if (isLocked) badge = <Badge variant="inactive">N/A</Badge>;

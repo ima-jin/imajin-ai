@@ -163,7 +163,7 @@ are omitted from the implemented reference and reported in the #2028 run-log.
 - GET /.well-known/oauth-protected-resource — apps/kernel/app/.well-known/oauth-protected-resource/route.ts
 - GET /.well-known/oauth-protected-resource/reach/{handle}/mcp — apps/kernel/app/.well-known/oauth-protected-resource/reach/[handle]/mcp/route.ts
 - GET /.well-known/security.txt — apps/kernel/app/.well-known/security.txt/route.ts
-- GET, OPTIONS, POST /anthropic/api/billing-key — apps/kernel/app/anthropic/api/billing-key/route.ts
+- DELETE, GET, OPTIONS, POST /anthropic/api/billing-key — apps/kernel/app/anthropic/api/billing-key/route.ts
 - OPTIONS, POST /anthropic/api/disconnect — apps/kernel/app/anthropic/api/disconnect/route.ts
 - GET, OPTIONS, PUT /anthropic/api/models — apps/kernel/app/anthropic/api/models/route.ts
 - GET, OPTIONS, POST /anthropic/api/scope-manifest — apps/kernel/app/anthropic/api/scope-manifest/route.ts
@@ -647,7 +647,7 @@ are omitted from the implemented reference and reported in the #2028 run-log.
 - GET, POST /oauth/authorize — apps/kernel/app/oauth/authorize/route.ts
 - POST /oauth/register — apps/kernel/app/oauth/register/route.ts
 - POST /oauth/token — apps/kernel/app/oauth/token/route.ts
-- GET, OPTIONS, POST /openai/api/billing-key — apps/kernel/app/openai/api/billing-key/route.ts
+- DELETE, GET, OPTIONS, POST /openai/api/billing-key — apps/kernel/app/openai/api/billing-key/route.ts
 - OPTIONS, POST /openai/api/disconnect — apps/kernel/app/openai/api/disconnect/route.ts
 - GET, OPTIONS, PUT /openai/api/models — apps/kernel/app/openai/api/models/route.ts
 - GET, OPTIONS, POST /openai/api/scope-manifest — apps/kernel/app/openai/api/scope-manifest/route.ts
@@ -819,6 +819,17 @@ are omitted from the implemented reference and reported in the #2028 run-log.
 - GET, OPTIONS, POST /zai/api/scope-manifest — apps/kernel/app/zai/api/scope-manifest/route.ts
 - DELETE, GET, OPTIONS, PUT /zai/api/spend-cap — apps/kernel/app/zai/api/spend-cap/route.ts
 - GET, OPTIONS, POST /zai/api/token — apps/kernel/app/zai/api/token/route.ts
+
+## Provider-billed reconciliation
+
+Provider-billed reconciliation setup (#3136): use /auth/connectors/anthropic or
+/auth/connectors/openai, Billing (admin) key. GET/POST/DELETE
+/{anthropic|openai}/api/billing-key are authenticated kernel-root routes.
+GET returns only presence/pending booleans; POST seals or rotates {token};
+DELETE revokes billing custody, not inference scopes, and retains signed history.
+Never send credentials through chat. Explicitly grant the provider's :billing
+scope after sealing. /jin Spend shows billed: not connected when keys are absent;
+the next usage-billed-ingest cron populates source=api rows for reconciliation.
 
 ## Further reading
 

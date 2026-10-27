@@ -7,11 +7,12 @@ import { ConnectorDetail } from '../ConnectorDetail';
 vi.mock('next/navigation', () => ({ useSearchParams: () => new URLSearchParams() }));
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
-function mount(provider: string, options: { sealed?: boolean; pending?: boolean; failure?: boolean; statusFailure?: boolean } = {}) {
+function mount(provider: string, options: { sealed?: boolean; pending?: boolean; failure?: boolean; statusFailure?: boolean; activeScopes?: string[] } = {}) {
   const entry = getConnector(provider)!;
   let keySealed = options.sealed ?? false;
   let credentialPending = options.pending ?? false;
   const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+    if (url === entry.statusEndpoint && init?.method === 'POST') return Response.json({ activeScopes: [] });
     if (url === entry.billingCredential!.route) {
       if (init?.method) {
         if (options.failure) return Response.json({ error: 'must never render provider details' }, { status: 403 });
@@ -22,7 +23,7 @@ function mount(provider: string, options: { sealed?: boolean; pending?: boolean;
       if (options.statusFailure) return Response.json({}, { status: 503 });
       return Response.json({ keySealed, credentialPending });
     }
-    return Response.json({ keySealed: false, activeScopes: [], validScopes: [], manifestAssetId: null });
+    return Response.json({ keySealed: false, activeScopes: options.activeScopes ?? [], validScopes: [], manifestAssetId: null });
   });
   vi.stubGlobal('fetch', fetchMock);
   render(<ConnectorDetail entry={entry} />);
@@ -90,15 +91,27 @@ describe.each(['anthropic', 'openai'])('%s billing slot on the connector card', 
     expect(document.body.textContent).not.toContain('must never render provider details');
     expect(screen.queryByText('Billing key sealed')).toBeNull();
   });
-  it('distinguishes pending approval from missing and keeps revoke available', async () => {
+  it('distinguishes pending approval from missing without offering a no-op custody revoke', async () => {
     mount(provider, { pending: true });
     await screen.findByText('Billing key awaiting owner approval');
     expect(screen.queryByLabelText('Billing (admin) key', { selector: 'input' })).toBeNull();
-    expect(screen.getByRole('button', { name: 'Revoke billing key' })).toBeDefined();
+    expect(screen.queryByRole('button', { name: 'Revoke billing key' })).toBeNull();
+    expect(screen.getByText(/No usable grant exists yet/)).toBeDefined();
   });
   it('does not offer a form when status cannot be read', async () => {
     mount(provider, { statusFailure: true });
     expect(await screen.findByRole('alert')).toBeDefined();
     expect(screen.queryByLabelText('Billing (admin) key', { selector: 'input' })).toBeNull();
+  });
+  it('allows withdrawing an existing billing scope even while custody is pending', async () => {
+    const { entry, fetchMock } = mount(provider, { pending: true, activeScopes: [`${provider}:billing`] });
+    await screen.findByText('Billing key awaiting owner approval');
+    const scope = entry.scopes.find(({ name }) => name === `${provider}:billing`)!;
+    const toggle = screen.getByRole('checkbox', { name: scope.label }) as HTMLInputElement;
+    expect(toggle.checked).toBe(true);
+    expect(toggle.disabled).toBe(false);
+    fireEvent.click(toggle);
+    await waitFor(() => expect(toggle.checked).toBe(false));
+    expect(fetchMock).toHaveBeenCalledWith(entry.statusEndpoint, expect.objectContaining({ method: 'POST', body: '{"scopes":[]}' }));
   });
 });
