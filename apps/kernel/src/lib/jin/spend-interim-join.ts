@@ -1,4 +1,5 @@
 /**
+ * Shared helpers will move to spend-shared.ts as part of #3141.
  * INTERIM run → cost → issue derivation for the /jin Spend lane (#2725).
  *
  * ┌──────────────────────────────────────────────────────────────────────────┐
