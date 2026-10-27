@@ -12,7 +12,7 @@ export function forwardAuthCallback(
   options: ForwardAuthCallbackOptions = {},
 ): NextResponse | null {
   const { pathname, searchParams } = req.nextUrl;
-  if (!searchParams.get('attestation_id') || !searchParams.get('user_did')) {
+  if (!searchParams.get('code') || !searchParams.get('state')) {
     return null;
   }
 

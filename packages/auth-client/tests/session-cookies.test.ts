@@ -7,6 +7,12 @@ import {
 } from '../src/session';
 import { createCallbackHandler, createLogoutHandler, createSessionHandler } from '../src/handlers';
 import { getSession } from '../src/get-session';
+import { callbackQuery, mockCallbackFetch, withState } from './callback-fixture';
+vi.mock('../src/load-app-signing-key', async () => {
+  const { generateBootstrapKeypair } = await import('../src/ed25519');
+  const key = generateBootstrapKeypair();
+  return { loadAppSigningKey: vi.fn(async ({ appDid }: { appDid: string }) => ({ ...key, appDid })) };
+});
 
 const { readCookie } = vi.hoisted(() => ({ readCookie: vi.fn() }));
 vi.mock('next/headers', () => ({ cookies: vi.fn(async () => ({ get: readCookie })) }));
@@ -18,7 +24,7 @@ const user = { did: 'did:imajin:alice', displayName: 'Alice', handle: 'alice', a
 
 beforeEach(() => {
   readCookie.mockReset();
-  vi.stubGlobal('fetch', vi.fn().mockImplementation(async () => Response.json(user)));
+  mockCallbackFetch(user);
 });
 
 afterEach(() => {
@@ -110,7 +116,7 @@ describe('lazy handler configuration', () => {
     const writeCookie = vi.spyOn(cookiePrototype, 'set');
     const redirect = vi.spyOn(NextResponse, 'redirect');
     // The query is valid, so rejection cannot be attributed to missing callback parameters.
-    const request = new NextRequest(`${origin}/api/auth/callback?attestation_id=att_123&user_did=${user.did}`);
+    const request = new NextRequest(`${origin}/api/auth/callback${callbackQuery}`);
     for (const factory of factories) {
       expect(() => factory(invalid)).not.toThrow();
       await expect(factory(invalid)(request)).rejects.toThrow(error);
@@ -127,12 +133,12 @@ describe('lazy handler configuration', () => {
     const callback = createCallbackHandler(runtimeConfig);
     const session = createSessionHandler(runtimeConfig);
     const logout = createLogoutHandler(runtimeConfig);
-    const request = new NextRequest(`${origin}/api/auth/callback?attestation_id=att_123&user_did=${user.did}`);
+    const request = new NextRequest(`${origin}/api/auth/callback${callbackQuery}`);
     for (const appDid of ['did:imajin:coffee', 'did:imajin:events']) {
       runtimeConfig.appDid = appDid;
       const name = sessionCookieName(runtimeConfig);
-      const response = await callback(request);
-      expect(response.cookies.getAll().map((cookie) => cookie.name)).toEqual([name]);
+      const response = await callback(withState(request, runtimeConfig));
+      expect(response.cookies.getAll().map((cookie) => cookie.name)).toEqual([`${name}_state`, name]);
       readCookie.mockReturnValue(response.cookies.get(name));
       expect(await (await session()).json()).toEqual(user);
       expect(readCookie).toHaveBeenLastCalledWith(name);
@@ -182,7 +188,7 @@ describe('same-host callback and logout isolation', () => {
     }));
 
     function applyResponse(response: Response, sessionConfig: SessionConfig) {
-      const header = response.headers.get('set-cookie');
+      const header = response.headers.getSetCookie().find(value => value.startsWith(`${sessionCookieName(sessionConfig)}=`));
       expect(header).toBeTruthy();
       const cookie = jar.setCookieSync(header!, origin);
       expect(cookie.key).toBe(sessionCookieName(sessionConfig));
@@ -191,7 +197,7 @@ describe('same-host callback and logout isolation', () => {
 
     for (const app of apps) {
       const before = jar.getCookieStringSync(origin);
-      const request = new NextRequest(`${app.publicUrl}/api/auth/callback?attestation_id=att_123&user_did=${user.did}`);
+      const request = withState(new NextRequest(`${app.publicUrl}/api/auth/callback${callbackQuery}`), app);
       applyResponse(await createCallbackHandler(app)(request), app);
       for (const cookie of before.split('; ')) expect(jar.getCookieStringSync(origin)).toContain(cookie);
     }
@@ -206,13 +212,13 @@ describe('same-host callback and logout isolation', () => {
   });
 
   it('never emits a kernel-cookie write with a safe explicit override', async () => {
-    const custom = { ...baseConfig, cookieName: 'custom_app_session' };
-    const request = new NextRequest(`${origin}/api/auth/callback?attestation_id=att_123&user_did=${user.did}`);
+    const custom = { ...config, cookieName: 'custom_app_session' };
+    const request = withState(new NextRequest(`${origin}/api/auth/callback${callbackQuery}`), custom);
     for (const response of [
       await createCallbackHandler(custom)(request),
       await createLogoutHandler(custom)(request),
     ]) {
-      expect(response.cookies.getAll().map((cookie) => cookie.name)).toEqual(['custom_app_session']);
+      expect(response.cookies.get('custom_app_session')).toBeDefined();
       expect(response.cookies.get('imajin_session')).toBeUndefined();
     }
   });

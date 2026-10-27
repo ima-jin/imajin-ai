@@ -7,7 +7,7 @@ import { forwardAuthCallback } from '../src/middleware';
 import { forwardAuthCallback as rootExport } from '../src/index';
 
 const publicUrl = 'https://jin.imajin.ai/coffee';
-const query = '?attestation_id=att_%2B123&user_did=did%3Aimajin%3Aalice&extra=a+b&extra=%20';
+const query = '?code=opaque%2Bvalue&state=opaque%3Astate&extra=a+b&extra=%20';
 
 describe('forwardAuthCallback', () => {
   it.each(['/coffee', '/coffee/'])('forwards root %s with the identical query to the public callback', (path) => {

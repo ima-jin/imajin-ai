@@ -34,6 +34,9 @@ import { createLogger } from '@imajin/logger';
 import { canConsentToApp, PRIVATE_APP_CONSENT_ERROR } from '@/src/lib/kernel/app-consent';
 import { isLiveAppAuthorization } from '@/src/lib/auth/live-app-authorization';
 import { recordAppAuthorizationUse } from '@/src/lib/auth/app-authorization-usage';
+import { consumeAppAuthorizationCode } from '@/src/lib/auth/app-authorization-code';
+
+export const dynamic = 'force-dynamic';
 
 const log = createLogger('kernel');
 
@@ -51,10 +54,12 @@ async function resolveAuthorization(appDid: string, selector: string, byPrincipa
 
 function validateMintRequest(body: Record<string, unknown>) {
 
-  const { appDid, attestationId, principalDid, scope, aud, nonce, timestamp, signature } = body as {
+  const { appDid, attestationId, principalDid, code, state, scope, aud, nonce, timestamp, signature } = (body ?? {}) as {
     appDid?: string;
     attestationId?: string;
     principalDid?: string;
+    code?: string;
+    state?: string;
     scope?: string;
     aud?: string;
     nonce?: string;
@@ -62,28 +67,33 @@ function validateMintRequest(body: Record<string, unknown>) {
     signature?: string;
   };
 
-  const selector = principalDid ?? attestationId;
-  if (!appDid || !selector || !nonce || !timestamp || !signature) {
-    return { error: 'appDid, attestationId or principalDid, nonce, timestamp, signature are required', status: 400 };
+  const selector = code ?? principalDid ?? attestationId;
+  if (![appDid, selector, nonce, timestamp, signature].every(value => typeof value === 'string' && value.length > 0)) {
+    return { error: 'appDid, selector, nonce, timestamp, signature are required', status: 400 };
   }
-  if (typeof selector !== 'string' || (principalDid !== undefined && attestationId !== undefined)) {
-    return { error: 'Provide exactly one of attestationId or principalDid as a non-empty string', status: 400 };
+  if ([code, principalDid, attestationId].filter(value => value !== undefined).length !== 1) {
+    return { error: 'Provide exactly one of code, attestationId or principalDid', status: 400 };
   }
-
-  if (nonce.length < 16) {
+  if (code !== undefined && (!/^[a-f0-9]{64}$/.test(code) || typeof state !== 'string' || state.length < 32 || state.length > 256)) {
+    return { error: 'Invalid code or state', status: 400 };
+  }
+  if (nonce!.length < 16) {
     return { error: 'nonce too short', status: 400 };
   }
 
   // Freshness: reject stale/future timestamps (replay window bound)
-  const ts = Date.parse(timestamp);
+  const ts = Date.parse(timestamp!);
   if (Number.isNaN(ts) || Math.abs(Date.now() - ts) > MAX_CLOCK_SKEW_MS) {
     return { error: 'timestamp outside allowed window', status: 401 };
   }
-  return { appDid, selector, byPrincipal: principalDid !== undefined, scope, aud, nonce, timestamp, signature };
+  return {
+    appDid: appDid!, selector: selector!, byPrincipal: principalDid !== undefined,
+    code, state, scope, aud, nonce: nonce!, timestamp: timestamp!, signature: signature!,
+  };
 }
 
 export async function POST(request: NextRequest) {
-  const cors = corsHeaders(request);
+  const cors = { ...corsHeaders(request), 'Cache-Control': 'no-store' };
 
   let body: Record<string, unknown>;
   try {
@@ -95,7 +105,7 @@ export async function POST(request: NextRequest) {
   if ('error' in mint) {
     return NextResponse.json({ error: mint.error }, { status: mint.status, headers: cors });
   }
-  const { appDid, selector, byPrincipal, scope, aud, nonce, timestamp, signature } = mint;
+  const { appDid, selector, byPrincipal, code, state, scope, aud, nonce, timestamp, signature } = mint;
 
   // Proof of possession: app must sign with its own key. Resolve the public
   // key from registry.apps — the source of truth for developer app keys
@@ -112,6 +122,7 @@ export async function POST(request: NextRequest) {
       visibility: registryApps.visibility,
       ownerDid: registryApps.ownerDid,
       signInAudience: registryApps.signInAudience,
+      callbackUrl: registryApps.callbackUrl,
     })
     .from(registryApps)
     .where(eq(registryApps.appDid, appDid))
@@ -138,7 +149,17 @@ export async function POST(request: NextRequest) {
   }
 
   // Validate the user's authorization attestation (same checks as /apps/validate)
-  const att = await resolveAuthorization(appDid, selector, byPrincipal);
+  let grantSelector = selector;
+  let codeSubject: string | undefined;
+  if (code !== undefined) {
+    const exchange = await consumeAppAuthorizationCode({ appDid, code, state: state!, callbackUrl: app.callbackUrl });
+    if ('error' in exchange) {
+      return NextResponse.json({ error: exchange.error }, { status: 400, headers: cors });
+    }
+    grantSelector = exchange.authorization.attestationId;
+    codeSubject = exchange.authorization.subjectDid;
+  }
+  const att = await resolveAuthorization(appDid, grantSelector, byPrincipal);
 
   if (!att && byPrincipal) {
     return NextResponse.json(
@@ -152,6 +173,9 @@ export async function POST(request: NextRequest) {
   }
   if (att.revokedAt) {
     return NextResponse.json({ error: 'Authorization has been revoked' }, { status: 403, headers: cors });
+  }
+  if (code !== undefined && (!isLiveAppAuthorization(att) || att.issuerDid !== codeSubject)) {
+    return NextResponse.json({ error: 'code_invalid' }, { status: 400, headers: cors });
   }
   if (!await canConsentToApp(app, att.issuerDid)) {
     return NextResponse.json({ error: PRIVATE_APP_CONSENT_ERROR }, { status: 403, headers: cors });
@@ -179,7 +203,10 @@ export async function POST(request: NextRequest) {
   void recordAppAuthorizationUse(att.id);
 
   return NextResponse.json(
-    { token, expiresIn: 600, scopes: grantedScopes },
+    {
+      token, expiresIn: 600, scopes: grantedScopes,
+      ...(code !== undefined ? { subjectDid: att.issuerDid, attestationId: att.id } : {}),
+    },
     { headers: cors }
   );
 }

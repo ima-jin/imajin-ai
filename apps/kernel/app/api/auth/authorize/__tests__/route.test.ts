@@ -7,6 +7,7 @@ const h = vi.hoisted(() => ({
   upsert: vi.fn(),
   promote: vi.fn(),
   membership: vi.fn(),
+  issue: vi.fn(),
 }));
 vi.mock('@/src/db', () => ({
   db: { select: () => ({ from: () => ({ where: h.where }) }) },
@@ -25,11 +26,14 @@ vi.mock('@imajin/logger', () => ({
 vi.mock('@/src/lib/auth/upsert-app-authorization', () => ({ upsertAppAuthorization: h.upsert }));
 vi.mock('@/src/lib/auth/promote-actor', () => ({ promoteActorOnGrant: h.promote }));
 vi.mock('@/src/lib/kernel/app-membership', () => ({ addConsentedApp: h.membership }));
+vi.mock('@/src/lib/auth/app-authorization-code', () => ({ issueAppAuthorizationCode: h.issue }));
 
 import { POST } from '../route';
 
 const PERSONAL_DID = 'did:imajin:person';
 const BUSINESS_DID = 'did:imajin:business';
+const STATE = 's'.repeat(64);
+const CODE = 'a'.repeat(64);
 const APP = {
   id: 'app_test', slug: 'coffee', appDid: 'did:imajin:app',
   publicKey: 'a1'.repeat(32), status: 'active', requestedScopes: ['profile:read'],
@@ -38,7 +42,7 @@ const APP = {
 };
 function request(body: unknown = { appId: APP.id, scopes: ['profile:read'] }) {
   return new Request('https://kernel.test/api/auth/authorize', {
-    method: 'POST', body: JSON.stringify(body),
+    method: 'POST', body: JSON.stringify({ state: STATE, ...(body as object) }),
   }) as never;
 }
 beforeEach(() => {
@@ -48,6 +52,7 @@ beforeEach(() => {
   h.where.mockResolvedValue([APP]);
   h.validate.mockImplementation((scopes: string[]) => ({ valid: scopes, invalid: [] }));
   h.upsert.mockResolvedValue('att_shared');
+  h.issue.mockResolvedValue(CODE);
 });
 afterEach(() => vi.unstubAllEnvs());
 
@@ -56,7 +61,12 @@ describe('POST /api/auth/authorize — shared consent seam (#3008)', () => {
     h.validate.mockReturnValue({ valid: ['profile:read'], invalid: [] });
     const response = await POST(request({ appId: APP.id, scopes: ['input-normalized-by-validator'] }));
     expect(response.status).toBe(201);
-    expect(await response.json()).toEqual({ attestationId: 'att_shared', userDid: PERSONAL_DID });
+    expect(await response.json()).toEqual({ redirect: `${APP.callbackUrl}?code=${CODE}&state=${STATE}` });
+    expect(h.issue).toHaveBeenCalledWith({
+      appDid: APP.appDid, subjectDid: PERSONAL_DID, attestationId: 'att_shared',
+      callbackUrl: APP.callbackUrl, state: STATE,
+    });
+    expect(response.headers.get('cache-control')).toBe('no-store');
     expect(h.upsert).toHaveBeenCalledOnce();
     expect(h.upsert).toHaveBeenCalledWith({
       ownerDid: PERSONAL_DID, appDid: APP.appDid, appId: APP.id,
@@ -78,7 +88,7 @@ describe('POST /api/auth/authorize — shared consent seam (#3008)', () => {
 
   it('restores membership on repeat consent, using the same helper ID without route-level grant writes', async () => {
     for (let i = 0; i < 2; i++) {
-      expect((await (await POST(request())).json()).attestationId).toBe('att_shared');
+      expect((await POST(request())).status).toBe(201);
     }
     expect(h.upsert).toHaveBeenCalledTimes(2);
     expect(h.membership).toHaveBeenCalledTimes(2);
@@ -139,5 +149,20 @@ describe('POST /api/auth/authorize — shared consent seam (#3008)', () => {
     vi.stubEnv('AUTH_PRIVATE_KEY', '');
     expect((await POST(request())).status).toBe(500);
     expect(h.upsert).not.toHaveBeenCalled();
+  });
+
+  it.each([null, '', 'short', 's'.repeat(257), 123])('rejects invalid state before issuing a grant', async state => {
+    expect((await POST(request({ appId: APP.id, scopes: [], state }))).status).toBe(400);
+    expect(h.upsert).not.toHaveBeenCalled();
+    expect(h.issue).not.toHaveBeenCalled();
+  });
+
+  it('uses only the registry callback and authenticated subject when issuing', async () => {
+    await POST(request({
+      appId: APP.id, scopes: [], callbackUrl: 'https://other.test', subjectDid: BUSINESS_DID,
+    }));
+    expect(h.issue).toHaveBeenCalledWith(expect.objectContaining({
+      callbackUrl: APP.callbackUrl, subjectDid: PERSONAL_DID,
+    }));
   });
 });
