@@ -7,9 +7,14 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { randomInt } from 'node:crypto';
 import { loadAppSigningKey } from '../src/load-app-signing-key';
 import { writeKeystore } from '../src/keystore';
 import { generateBootstrapKeypair } from '../src/ed25519';
+vi.mock('node:crypto', async (importOriginal) => ({
+  ...await importOriginal<typeof import('node:crypto')>(),
+  randomInt: vi.fn(),
+}));
 
 const KERNEL_URL = 'https://kernel.test';
 let dir: string;
@@ -154,7 +159,7 @@ describe('loadAppSigningKey — bootstrap startup retries', () => {
   beforeEach(() => {
     writeKeystore(keystorePath, generateBootstrapKeypair());
     vi.useFakeTimers();
-    vi.spyOn(Math, 'random').mockReturnValue(0);
+    vi.mocked(randomInt).mockImplementation(((min: number) => min) as typeof randomInt);
     vi.spyOn(console, 'error').mockImplementation(() => undefined);
   });
 
@@ -216,7 +221,8 @@ describe('loadAppSigningKey — bootstrap startup retries', () => {
 
   it('applies exponential equal jitter, caps delay, and bounds the final wait', async () => {
     const attempts: number[] = [];
-    vi.spyOn(Math, 'random').mockReturnValue(0.5);
+    vi.mocked(randomInt).mockImplementation(((min: number, max: number) =>
+      Math.floor((min + max) / 2)) as typeof randomInt);
     vi.stubGlobal('fetch', vi.fn(() => {
       attempts.push(Date.now());
       return Promise.resolve(new Response(null, { status: 503 }));

@@ -37,7 +37,7 @@
  *    operator to re-approve `apps.provision` with `reissueClaim: true` for
  *    a fresh code — that also revokes the lost key's binding.
  */
-import { randomUUID } from 'node:crypto';
+import { randomInt, randomUUID } from 'node:crypto';
 import { generateBootstrapKeypair, signBootstrapPayload, canonicalizeBootstrapFetchPayload, type BootstrapKeypair } from './ed25519';
 import { readKeystore, writeKeystore, resolveKeystorePath } from './keystore';
 
@@ -216,9 +216,17 @@ async function fetchBootstrapWithRetry(
   const deadline = Date.now() + retry.maxElapsedMs;
   let delayMs = Math.min(retry.initialDelayMs, retry.maxDelayMs);
   let lastFailure = '';
-  while (Date.now() < deadline) {
+  function exhausted(): never {
+    const error = new Error(`${lastFailure}; bootstrap retry budget exhausted; exiting with code 1`);
+    console.error(error.message);
+    (options.exit ?? process.exit)(1);
+    throw error;
+  }
+  async function attempt(): Promise<AppSigningKey> {
+    const attemptBudgetMs = deadline - Date.now();
+    if (attemptBudgetMs <= 0) return exhausted();
     try {
-      return await fetchBootstrapAttempt(params, Math.min(retry.requestTimeoutMs, deadline - Date.now()));
+      return await fetchBootstrapAttempt(params, Math.min(retry.requestTimeoutMs, attemptBudgetMs));
     } catch (error) {
       if (!(error instanceof SigningKeyFetchError)) throw error;
       const message = `${error.message} for app ${params.appDid}`;
@@ -226,17 +234,15 @@ async function fetchBootstrapWithRetry(
       lastFailure = message;
     }
     const remainingMs = deadline - Date.now();
-    if (remainingMs <= 0) break;
+    if (remainingMs <= 0) return exhausted();
     // Equal jitter avoids synchronized boots; never sleep beyond the total budget.
     await new Promise((resolve) => setTimeout(resolve, Math.min(
-      Math.ceil(delayMs * (0.5 + Math.random() * 0.5)), remainingMs,
+      randomInt(Math.ceil(delayMs / 2), delayMs + 1), remainingMs,
     )));
     delayMs = Math.min(delayMs * 2, retry.maxDelayMs);
+    return attempt();
   }
-  const error = new Error(`${lastFailure}; bootstrap retry budget exhausted; exiting with code 1`);
-  console.error(error.message);
-  (options.exit ?? process.exit)(1);
-  throw error;
+  return attempt();
 }
 
 /**
