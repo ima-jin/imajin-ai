@@ -11,12 +11,16 @@ const lease: HorizonLease = {
 };
 const project = (events: ReturnType<typeof stepEvent>[], now = STEP_NOW, leases: HorizonLease[] = []) =>
   projectHorizon(events, 'cycle', STEP_PRINCIPAL, now, false, leases);
+function mutationFields(type: string, holderDid: string) {
+  if (type === 'step.updated') return { update: STEP_ISSUE_UPDATE };
+  if (type === 'step.claimed') return { claim: { ...STEP_CLAIM, holderDid } };
+  return {};
+}
 
 describe('signed horizon projection', () => {
   it.each(['step.updated', 'step.claimed', 'step.started', 'step.progress', 'step.blocked', 'step.finished'] as const)(
     'ignores another publisher’s %s without changing history', type => {
-      const fields = type === 'step.updated' ? { update: STEP_ISSUE_UPDATE }
-        : type === 'step.claimed' ? { claim: { ...STEP_CLAIM, holderDid: 'did:imajin:other' } } : {};
+      const fields = mutationFields(type, 'did:imajin:other');
       const foreign = { ...stepEvent(type, 2, fields), issuer: 'did:imajin:other' };
       const events = [queuedStep(), foreign];
       const snapshot = JSON.stringify(events);
@@ -28,8 +32,7 @@ describe('signed horizon projection', () => {
   it.each(['step.updated', 'step.claimed', 'step.started', 'step.progress', 'step.blocked', 'step.finished'] as const)(
     'allows the current scoped lease holder’s %s while retaining the original publisher', type => {
       const holderDid = 'did:imajin:other';
-      const fields = type === 'step.updated' ? { update: STEP_ISSUE_UPDATE }
-        : type === 'step.claimed' ? { claim: { ...STEP_CLAIM, holderDid } } : {};
+      const fields = mutationFields(type, holderDid);
       const event = { ...stepEvent(type, 2, fields), issuer: holderDid };
       const holding = { ...lease, holderDid, acquiredAt: queuedStep().occurredAt };
       const result = project([queuedStep(), event], STEP_NOW, [holding]).steps[0];

@@ -59,7 +59,7 @@ export interface HorizonLease {
 export function projectHorizon(events: LoopEventJson[], loopId: string, principal: string, now = Date.now(), includeExited = false, leases: HorizonLease[] = []): Horizon {
   const steps = new Map<string, ReplayStep>();
   const liveLeases = new Map(leases.filter(lease => lease.loopId === loopId && lease.principal === principal
-    && Date.parse(lease.acquiredAt) <= now && Date.parse(lease.expiresAt) > now).map(lease => [lease.surface, lease]));
+    && Date.parse(lease.expiresAt) > now).map(lease => [lease.surface, lease]));
   const ordered = events.filter(event => event.loopId === loopId && event.principal === principal)
     .sort((a, b) => Date.parse(a.occurredAt) - Date.parse(b.occurredAt) || a.id.localeCompare(b.id));
   // Seed immutable declarations first so a batched same-timestamp update
