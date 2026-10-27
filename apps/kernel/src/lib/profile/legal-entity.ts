@@ -1,23 +1,24 @@
 import { createHash } from 'node:crypto';
 import { open } from 'node:fs/promises';
-import { and, eq, sql } from 'drizzle-orm';
+import { and, desc, eq, sql } from 'drizzle-orm';
 import { verifyManifest, type SignedFairManifest } from '@imajin/fair';
 import { db, assets, identities, type Asset } from '@/src/db';
 import { getNodeDid } from '../kernel/node-identity';
 import { createAsset } from '../media/create-asset';
-import { updateAssetContent } from '../media/update-asset';
+import { withAssetContentLock } from '../media/update-asset';
 import { releaseLegalEntity } from './legal-entity-release';
 import {
   LEGAL_ENTITY_MAX_BYTES, type LegalEntityInput,
 } from './legal-entity-schema';
 import { composeLegalEntity, composeLegalEntityRevocation, parseLegalEntity } from './legal-entity-document';
 
+// Select the newest active legal-entity record when retained history contains duplicates.
 async function findLegalEntityAsset(did: string): Promise<Asset | null> {
   const [asset] = await db.select().from(assets).where(and(
     eq(assets.ownerDid, did),
     eq(assets.status, 'active'),
     sql`${assets.metadata}->>'kind' = 'legal-entity'`,
-  )).limit(1);
+  )).orderBy(desc(assets.createdAt), desc(assets.id)).limit(1);
   return asset ?? null;
 }
 
@@ -38,6 +39,7 @@ async function readSignedLegalEntity(asset: Asset) {
   const nodeDid = await getNodeDid();
   if (!manifest?.signature || !nodeDid || manifest.signature.signer !== nodeDid
     || manifest.owner !== asset.ownerDid || manifest.id !== asset.id
+    || manifest.intent?.purpose !== 'legal-entity'
     || manifest.integrity?.hash !== hash || asset.hash !== hash
     || manifest.integrity.size !== Buffer.byteLength(content, 'utf8')) {
     throw new Error('Document signature binding mismatch');
@@ -79,9 +81,7 @@ export async function getOwnerLegalEntity(did: string) {
 /** Serializes create/edit/revoke per DID across processes, without any schema additions. */
 export function saveLegalEntity(did: string, composedBy: string, input: LegalEntityInput | null) {
   const content = input ? composeLegalEntity(did, input) : composeLegalEntityRevocation(did);
-  const lockKey = `legal-entity:${did}`;
-  return db.transaction(async tx => {
-    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))`);
+  return withAssetContentLock(did, async update => {
     let asset = await findLegalEntityAsset(did);
     if (!asset) {
       if (!input) return;
@@ -100,7 +100,7 @@ export function saveLegalEntity(did: string, composedBy: string, input: LegalEnt
     }
     // Uses the #1205/#1208 rail for every operation, including a signed,
     // value-free deletion revision. Lore history and the asset row are retained.
-    const result = await updateAssetContent({
+    const result = await update({
       assetId: asset.id, requesterDid: did, content,
       controlDocument: 'legal-entity', composedBy,
     });

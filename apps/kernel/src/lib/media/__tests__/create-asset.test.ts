@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { writeFile } from 'node:fs/promises';
+import { nanoid } from 'nanoid';
 
 // ─── Mocks ─────────────────────────────────────────────────────────────────
 //
@@ -180,6 +181,23 @@ describe('createAsset — signed legal control document', () => {
     }));
     expect(mockEmitAttestation).not.toHaveBeenCalled();
   });
+  it('preserves the deleted record mirror when the legal entity is recreated', async () => {
+    setupInsert({ kind: 'legal-entity' });
+    await createAsset(legalInput());
+    const firstValues = mockInsertValues.mock.calls[0][0];
+    // Revoke retains this row and its signed mirror; create must use a new ID.
+    firstValues.status = 'deleted';
+    vi.mocked(nanoid).mockReturnValueOnce('recreated1234567');
+    setupInsert({ kind: 'legal-entity' });
+    await createAsset(legalInput());
+    const records = mockInsertValues.mock.calls.map(([values]) => values).filter(values => values.fairPath);
+    expect(records[1].fairPath).not.toBe(records[0].fairPath);
+    expect(records[0].status).toBe('deleted');
+    expect(records[1].fairPath).toMatch(/asset_recreated1234567\.fair\.json$/);
+    expect(writeFile).toHaveBeenCalledWith(records[0].fairPath, expect.any(String));
+    expect(writeFile).toHaveBeenCalledWith(records[1].fairPath, expect.any(String));
+    expect(vi.mocked(writeFile).mock.calls.filter(([path]) => path === records[0].fairPath)).toHaveLength(1);
+  });
   function legalInput() {
     return {
       ...MARKDOWN_INPUT, controlDocument: 'legal-entity' as const,
@@ -191,7 +209,7 @@ describe('createAsset — signed legal control document', () => {
     setupInsert({ kind: 'legal-entity' });
     await createAsset(legalInput());
     expect(writeFile).toHaveBeenCalledWith(expect.stringMatching(/\/assets\/legal-entity\.md$/), expect.any(Buffer));
-    expect(writeFile).toHaveBeenCalledWith(expect.stringMatching(/\/assets\/legal-entity\.fair\.json$/), expect.stringContaining('fixture-signature'));
+    expect(writeFile).toHaveBeenCalledWith(expect.stringMatching(/\/assets\/asset_testid1234567890\.fair\.json$/), expect.stringContaining('fixture-signature'));
     expect(legalMocks.sign).toHaveBeenCalledWith(expect.objectContaining({
       access: { type: 'private' }, integrity: { hash: 'deadbeef', size: legalInput().buffer.byteLength },
     }));
