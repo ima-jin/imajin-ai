@@ -5,7 +5,7 @@
 
 interface RateLimitEntry {
   timestamps: number[];
-  lastSeen: number;
+  retainUntil: number;
 }
 
 const store = new Map<string, RateLimitEntry>();
@@ -14,7 +14,7 @@ let lastGlobalCleanup = Date.now();
 function pruneStore(now: number) {
   if (now - lastGlobalCleanup < 60_000) return;
   store.forEach((entry, key) => {
-    if (now - entry.lastSeen > 120_000) {
+    if (now >= entry.retainUntil) {
       store.delete(key);
     }
   });
@@ -30,10 +30,11 @@ export function rateLimit(
   pruneStore(now);
 
   const windowStart = now - windowMs;
-  const entry = store.get(key) ?? { timestamps: [], lastSeen: now };
+  const entry = store.get(key) ?? { timestamps: [], retainUntil: now };
 
   entry.timestamps = entry.timestamps.filter((t) => t > windowStart);
-  entry.lastSeen = now;
+  // Cleanup must not erase a still-live long window (e.g. hourly warnings).
+  entry.retainUntil = Math.max(entry.retainUntil, now + Math.max(120_000, windowMs));
 
   if (entry.timestamps.length >= limit) {
     const oldest = entry.timestamps[0];

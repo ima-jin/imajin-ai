@@ -19,6 +19,7 @@
  * written for a rejected event.
  */
 import { createLogger } from '@imajin/logger';
+import { rateLimit } from '@imajin/config';
 import * as bus from '@imajin/bus';
 import { verifyLoopPublisherSignature } from './verify-publisher-signature';
 import { authorizeLoopPublisher } from './authorize-publisher';
@@ -53,7 +54,7 @@ export async function ingestLoopEvent(request: LoopIngestRequest): Promise<Inges
   // (summary/refs/etc. may carry operator-authored free text).
   const authorization = await authorizeLoopPublisher(publisherDid, payload.principal);
   if (!authorization.authorized) {
-    log.warn({ publisherDid: redactLoopText(publisherDid), principal: redactLoopText(payload.principal) }, 'loop event publisher not authorized for principal');
+    warnUnauthorizedPublisher(publisherDid, payload.principal);
     return {
       ok: false,
       error: 'publisherDid is not authorized to publish loop history for principal',
@@ -102,6 +103,13 @@ export async function ingestLoopEvent(request: LoopIngestRequest): Promise<Inges
 
   log.info({ type, loopId: sanitized.loopId, kind: sanitized.kind, principal: sanitized.principal }, 'loop event ingested');
   return { ok: true };
+}
+
+function warnUnauthorizedPublisher(publisherDid: string, principal: string): void {
+  const warningKey = `loops:publisher-unauthorized:${JSON.stringify([publisherDid, principal])}`;
+  if (!rateLimit(warningKey, 1, 60 * 60 * 1000).limited) {
+    log.warn({ publisherDid: redactLoopText(publisherDid), principal: redactLoopText(principal) }, 'loop event publisher not authorized for principal');
+  }
 }
 
 function validateLoopFacts(request: LoopIngestRequest):

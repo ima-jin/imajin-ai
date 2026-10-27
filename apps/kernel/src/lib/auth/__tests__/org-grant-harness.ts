@@ -10,7 +10,7 @@ export async function createOrgGrantHarness() {
   await client.exec(`
     CREATE SCHEMA auth;
     CREATE TABLE auth.identities (
-      id text PRIMARY KEY, public_key text NOT NULL UNIQUE, scope text NOT NULL, subtype text, name text, handle text, suspended_at timestamptz
+      id text PRIMARY KEY, public_key text NOT NULL UNIQUE, scope text NOT NULL, tier text, subtype text, name text, handle text, suspended_at timestamptz
     );
     CREATE TABLE auth.identity_members (
       identity_did text NOT NULL, member_did text NOT NULL, role text NOT NULL DEFAULT 'member',
