@@ -35,7 +35,7 @@ directly, not assumed. No equivalent OpenClaw core-source checkout was
 available in this task's environment: only `openclaw-imajin-plugin` (the
 Imajin plugin FOR OpenClaw) was inspectable, not OpenClaw itself. RFC-31's
 own harness-comparison table
-(`docs/rfcs/RFC-31-agent-execution-sandbox.md`) already flags this
+(`docs/canon/rfcs/RFC-31-agent-execution-sandbox.md`) already flags this
 directly: OpenClaw's headless/gateway mode is listed as "no headless mode
 yet (near)" — i.e. not yet a settled, scriptable target as of that RFC's
 last update.

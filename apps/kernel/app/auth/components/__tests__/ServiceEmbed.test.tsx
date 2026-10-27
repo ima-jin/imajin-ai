@@ -2,7 +2,7 @@
 /**
  * Tests for <ServiceEmbed> (#2275): loading/error states around the iframe,
  * the health-check gate, and the RFC-19 postMessage handshake in both
- * directions (docs/rfcs/RFC-19-kernel-userspace-architecture.md).
+ * directions (docs/canon/rfcs/RFC-19-kernel-userspace-architecture.md).
  *
  * #2425 send-back: `service-registry.ts` no longer carries a hard-coded
  * per-app `NEXT_PUBLIC_<NAME>_URL` map, so every non-kernel-native test

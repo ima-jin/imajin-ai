@@ -9,7 +9,7 @@ describe('current chat security documentation', () => {
     'apps/kernel/public/llms.txt',
     'apps/kernel/public/llms-full.txt',
     'docs/mjn-whitepaper.md',
-    'docs/rfcs/RFC-06-identity-portability.md',
+    'docs/canon/rfcs/RFC-06-identity-portability.md',
   ])('%s describes transport protection, storage, notifications and planned encryption', (path) => {
     const copy = read(path);
 

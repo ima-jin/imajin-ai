@@ -6,6 +6,20 @@ Ruled 2026-10-26 (pre-cut issue audit v0.8.28, card 11, option c): canon lands h
 
 By **Veteze-Jin**: Ryan's thesis, translated by Jin (an AI) and signed as a translation.
 
+This directory is the one home for Imajin canon. Start here.
+
+## Map
+
+| Layer | Where | What it is |
+|---|---|---|
+| Whitepaper | [../mjn-whitepaper.md](../mjn-whitepaper.md) | The MJN protocol thesis, end to end. Stays at `docs/mjn-whitepaper.md` because the kernel's `/whitepaper` page and a copy test read that path at runtime. |
+| RFCs | [rfcs/INDEX.md](rfcs/INDEX.md) | Numbered protocol specs (RFC-01 onward). Moved here from `docs/rfcs/`; a redirect README stays at the old path. |
+| Carried canon issues | [the table below](#carried-canon-issues) | Thesis-weight positions carried from GitHub issues, verbatim. |
+| Architecture decisions | [../adr/](../adr/) | ADRs: one decision per file. |
+| Wire contracts | [../loops-rail-contract.md](../loops-rail-contract.md), [../notify-operator-approvals-contract.md](../notify-operator-approvals-contract.md) | Implementation contracts. They stay beside the code that cites them (kernel source and `api-spec/jin.yaml`). They're indexed here, not moved. |
+
+## Carried canon issues
+
 | Doc | Source | Thesis |
 |---|---|---|
 | [design(wallet): Cross-node MJNx transfer — attestation-based seat, no build](cross-node-mjnx-transfer.md) | [#2006](https://github.com/ima-jin/imajin-ai/issues/2006) | Cross-node MJNx transfer has exactly one valid trust model, and it's attestation-based. |
@@ -16,3 +30,9 @@ By **Veteze-Jin**: Ryan's thesis, translated by Jin (an AI) and signed as a tran
 | [Scoped signaling — signed, revocable disclosure to a chosen trust radius (payload: asset | state | need; disclosure_mode: discoverable vs readable)](scoped-signaling.md) | [#1224](https://github.com/ima-jin/imajin-ai/issues/1224) | Scoped signaling: a sovereign human authors a scoped, revocable, signed disclosure to a chosen trust radius. |
 | [epic: DFOS chain strategy — federated data across the Imajin network](dfos-chain-strategy.md) | [#555](https://github.com/ima-jin/imajin-ai/issues/555) | Every meaningful piece of data on Imajin is portable. |
 | [design: protocol-fee distribution model (dev / community / protocol residual + governance)](protocol-fee-distribution.md) | [#1306](https://github.com/ima-jin/imajin-ai/issues/1306) | Two layers that got conflated have to stay separate: the per-transaction fee cascade, decided by each asset's atomic .fair file, and protocol-fee distribution across dev, community and protocol reserve. |
+
+### Overlaps with the RFCs
+
+- [myterms-conformance-profile.md](myterms-conformance-profile.md) is the issue behind [RFC-42](rfcs/RFC-42-myterms-conformance-profile.md).
+- [verifiable-skills-invokable-agent.md](verifiable-skills-invokable-agent.md) is the epic behind [RFC-39](rfcs/RFC-39-verifiable-skills-invokable-agent.md).
+- [tiered-sovereign-agent-memory.md](tiered-sovereign-agent-memory.md) calls itself "RFC-40", but [rfcs/RFC-40](rfcs/RFC-40-did-imajin-resolution.md) is DID resolution. The issue title is carried verbatim, and the number collision is still open.

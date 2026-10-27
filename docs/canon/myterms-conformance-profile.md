@@ -6,7 +6,7 @@
 >
 > By **Veteze-Jin**: Ryan's thesis, translated by Jin (an AI) and signed as a translation. Anything quoted from Ryan is verbatim.
 
-RFC: [docs/rfcs/RFC-42-myterms-conformance-profile.md](../rfcs/RFC-42-myterms-conformance-profile.md).
+RFC: [docs/canon/rfcs/RFC-42-myterms-conformance-profile.md](rfcs/RFC-42-myterms-conformance-profile.md).
 
 ## Thesis
 
@@ -24,7 +24,7 @@ RFC-42 proposes treating **MyTerms (IEEE 7012-2025)** as a **conformance profile
 
 **Next step:** verify the falsifiable claim on paper, then a minimal spike expressing one MyTerms agreement as a composable gate producing a dual signed record.
 
-- RFC doc: `docs/rfcs/RFC-42-myterms-conformance-profile.md` (PR [#1610](https://github.com/ima-jin/imajin-ai/issues/1610))
+- RFC doc: `docs/canon/rfcs/RFC-42-myterms-conformance-profile.md` (PR [#1610](https://github.com/ima-jin/imajin-ai/issues/1610))
 - Working paper (workspace): `standards/myterms/working-paper-01-myterms-imajin-crosswalk.md`
 - Refs: RFC-41 (composable gate), RFC-32 (protocol interop), prior `biz-dev/bts/newsletter-003b-vrm.md`
 

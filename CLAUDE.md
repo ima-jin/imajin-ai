@@ -32,7 +32,7 @@ not workspace targets. Inventory and owned README links are generated in README.
 - [docs/DEBT.md](docs/DEBT.md) — read when considering refactors, to check if the debt is already tracked
 - [docs/MIGRATIONS.md](docs/MIGRATIONS.md) — read when changing database schemas
 - [DESIGN.md](DESIGN.md) — read when working on UI or frontend components
-- [docs/rfcs/](docs/rfcs/) — read when working on protocol-level features
+- [docs/canon/](docs/canon/) — canon home: thesis, RFCs ([docs/canon/rfcs/](docs/canon/rfcs/INDEX.md)), carried canon issues. Read when working on protocol-level features
 - [docs/proposals/](docs/proposals/) — read when working on proposed or in-progress features
 
 ## Architecture

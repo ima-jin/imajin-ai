@@ -6,7 +6,7 @@
 >
 > By **Veteze-Jin**: Ryan's thesis, translated by Jin (an AI) and signed as a translation. Anything quoted from Ryan is verbatim.
 
-RFC: [docs/rfcs/RFC-39-verifiable-skills-invokable-agent.md](../rfcs/RFC-39-verifiable-skills-invokable-agent.md).
+RFC: [docs/canon/rfcs/RFC-39-verifiable-skills-invokable-agent.md](rfcs/RFC-39-verifiable-skills-invokable-agent.md).
 
 ## Thesis
 
@@ -14,7 +14,7 @@ A skill should be a signed, verifiable artifact bound to the agent that invokes 
 
 ## Source (verbatim from [#1425](https://github.com/ima-jin/imajin-ai/issues/1425))
 
-**RFC:** `docs/rfcs/RFC-39-verifiable-skills-invokable-agent.md` (PR [#1424](https://github.com/ima-jin/imajin-ai/issues/1424))
+**RFC:** `docs/canon/rfcs/RFC-39-verifiable-skills-invokable-agent.md` (PR [#1424](https://github.com/ima-jin/imajin-ai/issues/1424))
 **Status:** Draft — architecture-first (STOP-and-discuss; net-new trust model for the agent's own tooling, not pure composition).
 
 ### Thesis

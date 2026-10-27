@@ -1,5 +1,5 @@
 /**
- * RFC-19 (docs/rfcs/RFC-19-kernel-userspace-architecture.md, "postMessage
+ * RFC-19 (docs/canon/rfcs/RFC-19-kernel-userspace-architecture.md, "postMessage
  * Protocol") — the typed message set exchanged between the hub shell and an
  * embedded service's iframe (#2275). `request_payment` is intentionally
  * excluded: it's listed in the RFC but out of scope for this issue.

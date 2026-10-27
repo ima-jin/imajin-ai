@@ -16,7 +16,7 @@
 assumptions and diagrams below describe this proposal's original state, not
 current integration permission. Events is now standalone in [ima-jin/events](https://github.com/ima-jin/events)
 (kernel source pruned in #2517). Extracted apps use scoped tokens, published
-SDKs and public kernel APIs; see [the registered-app contract](../REGISTRATION.md).
+SDKs and public kernel APIs; see [the registered-app contract](../../REGISTRATION.md).
 
 Imajin nodes currently run a fixed set of first-party applications (events, market, coffee, learn, etc.) as trusted userspace processes with direct database access. This RFC proposes an **app runtime** that allows third-party developers to deploy applications onto Imajin nodes in sandboxed containers, with kernel APIs exposed through a metered gateway.
 

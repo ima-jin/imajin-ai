@@ -6,7 +6,7 @@
 >
 > By **Veteze-Jin**: Ryan's thesis, translated by Jin (an AI) and signed as a translation. Anything quoted from Ryan is verbatim.
 
-Numbering note: the issue calls this RFC-40, but [docs/rfcs/RFC-40-did-imajin-resolution.md](../rfcs/RFC-40-did-imajin-resolution.md) already holds that number, so the RFC doc for this thesis needs a fresh number when it's drafted.
+Numbering note: the issue calls this RFC-40, but [docs/canon/rfcs/RFC-40-did-imajin-resolution.md](rfcs/RFC-40-did-imajin-resolution.md) already holds that number, so the RFC doc for this thesis needs a fresh number when it's drafted.
 
 ## Thesis
 
@@ -14,7 +14,7 @@ An agent's working state shouldn't be one flat pile on one drive. It's tiered (h
 
 ## Source (verbatim from [#1607](https://github.com/ima-jin/imajin-ai/issues/1607))
 
-**RFC:** RFC-40 — Tiered Sovereign Agent Memory & Per-Principal View Isolation *(doc to be drafted: `docs/rfcs/RFC-40-tiered-sovereign-memory-view-isolation.md`)*
+**RFC:** RFC-40 — Tiered Sovereign Agent Memory & Per-Principal View Isolation *(doc to be drafted: `docs/canon/rfcs/RFC-40-tiered-sovereign-memory-view-isolation.md`)*
 **Status:** Draft — **architecture-first (STOP-and-discuss).** Net-new storage/trust model for the agent's own working state. Filing to hold the frame + sculpt sub-issues; **NOT authorizing build.** Architecture is Ryan's to draw.
 
 ### Thesis

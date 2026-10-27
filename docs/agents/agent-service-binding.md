@@ -1,7 +1,7 @@
 # Agent DID and the `serviceOf` binding
 
 Refs [#2407](https://github.com/ima-jin/imajin-ai/issues/2407) (RFC-31 v2 Phase 1) under the
-Agent Runtime epic [#1758](https://github.com/ima-jin/imajin-ai/issues/1758). Spec: `docs/rfcs/RFC-31-agent-execution-sandbox.md`.
+Agent Runtime epic [#1758](https://github.com/ima-jin/imajin-ai/issues/1758). Spec: `docs/canon/rfcs/RFC-31-agent-execution-sandbox.md`.
 
 ## 1. What this is
 

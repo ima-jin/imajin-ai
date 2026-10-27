@@ -43,7 +43,7 @@
 ## Quick Links
 
 - **HTTP API reference:** [Developer Guide](../developer-guide.md) (curl-based walkthrough)
-- **Protocol RFCs:** [docs/rfcs/](../rfcs/) (the "why" behind decisions)
+- **Protocol RFCs:** [docs/canon/rfcs/](../canon/rfcs/) (the "why" behind decisions)
 - **Source code:** [github.com/ima-jin/imajin-ai](https://github.com/ima-jin/imajin-ai)
 - **.fair spec:** [github.com/ima-jin/.fair](https://github.com/ima-jin/.fair)
 - **OpenAPI specs:** `/registry/api/specs` lists configured service candidates,

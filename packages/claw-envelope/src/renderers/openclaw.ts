@@ -23,7 +23,7 @@
  *     that schema, so this renderer does not invent one.
  *
  * Unlike NanoClaw, OpenClaw's real on-disk workspace shape genuinely IS
- * RFC-31's own vocabulary (`docs/rfcs/RFC-31-agent-execution-sandbox.md`'s
+ * RFC-31's own vocabulary (`docs/canon/rfcs/RFC-31-agent-execution-sandbox.md`'s
  * "Workspace: The Agent IS Its Files" section: `AGENTS.md`, `SOUL.md`,
  * `MEMORY.md`, `USER.md`, `memory/README.md`, `memory/context/*.md`) — so
  * this renderer does not need NanoClaw's persona-squash step
