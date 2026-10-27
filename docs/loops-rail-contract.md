@@ -2,6 +2,7 @@
 Horizon bridge ruling #2931: issue-ref-only bindings and publisher-scoped envelope receipts.
 Horizon step entries extend this signed rail under #2878; #2879 binds claims to
 the existing surface leases. Runs rendering remains separate (#2880).
+Horizon steps retain their declaring publisher's DID (#3151).
 ## Horizon steps (#2878, parent #2313 decision a)
 
 Publish `step.queued|updated|claimed|started|progress|blocked|finished|observed|attested`
