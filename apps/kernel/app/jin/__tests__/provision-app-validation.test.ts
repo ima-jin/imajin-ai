@@ -32,6 +32,13 @@ describe('parseAttestationTypes', () => {
 });
 
 describe('validateProvisionForm', () => {
+  it('reuses domain and DID validation and refuses owners outside the controlled list', () => {
+    expect(validateProvisionForm(values({ domain: 'nested.gbs.imajin.ai' })).domain).toContain('direct imajin.ai');
+    expect(validateProvisionForm(values({ siteOwnerDid: '@gbs' })).siteOwnerDid).toBe('siteOwnerDid must be a DID');
+    expect(validateProvisionForm(values({ siteOwnerDid: 'did:imajin:outsider' })).siteOwnerDid).toBe('Choose a group you own or administer');
+    expect(validateProvisionForm(values({ siteOwnerDid: 'did:imajin:gbs', domain: 'dev-gbs.imajin.ai', visibility: 'private' }), ['did:imajin:gbs']).siteOwnerDid).toBeUndefined();
+    expect(validateProvisionForm(values({ visibility: 'bad' as never })).visibility).toContain('visibility must be one of');
+  });
   it.each(['https://github.com/gbscontracting/website', 'owner/repo/extra', ' owner/repo', 'owner/..'])(
     'refuses malformed source repository %j', (sourceRepo) => {
       expect(validateProvisionForm(values({ sourceRepo })).sourceRepo).toBeDefined();
@@ -98,6 +105,7 @@ describe('buildProvisionPayload', () => {
   it('trims fields, defaults the template and parses attestation types', () => {
     expect(buildProvisionPayload(values({ slug: ' coffee ', displayName: ' Coffee ', template: '  ', attestationTypes: 'coffee/order' }))).toEqual({
       slug: 'coffee',
+      visibility: 'public',
       signInAudience: 'members',
       displayName: 'Coffee',
       template: DEFAULT_APP_TEMPLATE,
