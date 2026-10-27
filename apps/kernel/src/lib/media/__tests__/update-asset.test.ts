@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { updateAssetContent } from '../update-asset';
+import { updateAssetContent, withAssetContentLock } from '../update-asset';
 
 // ─── Mocks ─────────────────────────────────────────────────────────────────
 //
@@ -15,10 +15,12 @@ const mockFrom = vi.fn(() => ({ where: mockSelectWhere }));
 const mockUpdateWhere = vi.fn().mockResolvedValue(undefined);
 const mockSet = vi.fn(() => ({ where: mockUpdateWhere }));
 const mockAttestationValues = vi.fn();
+const mockExecute = vi.fn().mockResolvedValue(undefined);
 
 vi.mock('@/src/db', () => ({
   db: {
     transaction: vi.fn(async fn => fn({
+      execute: mockExecute,
       update: () => ({ set: mockSet }),
       insert: () => ({ values: mockAttestationValues }),
     })),
@@ -87,6 +89,7 @@ import { publish } from '@imajin/bus';
 import { writeFile } from 'node:fs/promises';
 import { isFairManifestV11 } from '@imajin/fair';
 import { contentSigner } from '@/src/lib/media/content-signer';
+import { sql } from 'drizzle-orm';
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
 
@@ -117,6 +120,63 @@ beforeEach(() => {
   legalMocks.prepare.mockResolvedValue({ id: 'att_legal', signature: 'fixture-signature' });
 });
 
+describe('updateAssetContent — per-DID locking', () => {
+  it.each([{}, { kind: 'legal-entity' }])('waits for the settings lock before updating metadata %j', async metadata => {
+    setupAsset({ ownerDid, metadata });
+    vi.mocked(contentSigner.sign).mockImplementation(async manifest => manifest);
+    let releaseLock!: () => void;
+    let reachedLock!: () => void;
+    const blocked = new Promise<void>(resolve => { releaseLock = resolve; });
+    const waiting = new Promise<void>(resolve => { reachedLock = resolve; });
+    mockExecute.mockResolvedValueOnce(undefined).mockImplementationOnce(async () => {
+      reachedLock();
+      await blocked;
+    });
+    const order: string[] = [];
+    const settings = withAssetContentLock(ownerDid, async () => {
+      order.push('settings');
+      await blocked;
+      order.push('settings finished');
+    });
+    const update = updateAssetContent({
+      assetId: 'asset_test', requesterDid: ownerDid,
+      content: composeLegalEntity(ownerDid, legalEntityFixture()),
+      ...(metadata.kind ? { controlDocument: 'legal-entity' as const } : {}),
+    }).then(result => { order.push('media finished'); return result; });
+    await waiting;
+    expect(writeFile).not.toHaveBeenCalled();
+    expect(mockSet).not.toHaveBeenCalled();
+    expect(vi.mocked(sql).mock.calls.filter(call => call[1] === `legal-entity:${ownerDid}`)).toHaveLength(2);
+    releaseLock();
+    await settings;
+    expect((await update).ok).toBe(true);
+    expect(order).toEqual(['settings', 'settings finished', 'media finished']);
+  });
+  it('lets the settings writer update under its existing lock without reacquiring it', async () => {
+    setupAsset({ ownerDid });
+    const result = await withAssetContentLock(ownerDid, update => update({
+      assetId: 'asset_test', requesterDid: ownerDid, content: '# settings',
+    }));
+    expect(result.ok).toBe(true);
+    expect(mockExecute).toHaveBeenCalledOnce();
+  });
+  it.each(['deleted', 'owner-changed'])('rechecks %s after acquiring the lock', async change => {
+    const asset = setupAsset({ ownerDid });
+    mockLimit.mockResolvedValueOnce([asset]).mockResolvedValueOnce([{
+      ...asset, ...(change === 'deleted' ? { status: 'deleted' } : { ownerDid: 'different-owner' }),
+    }]);
+    expect(await updateAssetContent({ assetId: asset.id, requesterDid: ownerDid, content: '# stale' }))
+      .toMatchObject({ ok: false, code: change === 'deleted' ? 'not_found' : 'forbidden' });
+    expect(writeFile).not.toHaveBeenCalled();
+  });
+  it('does not write if the advisory lock cannot be acquired', async () => {
+    setupAsset({ ownerDid });
+    mockExecute.mockRejectedValueOnce(new Error('lock unavailable'));
+    await expect(updateAssetContent({ assetId: 'asset_test', requesterDid: ownerDid, content: '# denied' }))
+      .rejects.toThrow('lock unavailable');
+    expect(writeFile).not.toHaveBeenCalled();
+  });
+});
 describe('updateAssetContent — legal control document', () => {
   function input(content = composeLegalEntity(ownerDid, legalEntityFixture())) {
     return { assetId: 'asset_test', requesterDid: ownerDid, composedBy: 'actual-human', content, controlDocument: 'legal-entity' as const };

@@ -526,7 +526,8 @@ complete private record.
 
 The conventional source is
 `{MEDIA_ROOT}/{sanitized-DID}/assets/legal-entity.md`, with a
-`legal-entity.fair.json` sidecar. It uses the existing YAML frontmatter and
+`{assetId}.fair.json` sidecar, so revoke/recreate retains the old asset's mirror.
+It uses the existing YAML frontmatter and
 release header: UI `public` is header `silent`, plus `on-consent` and `never`.
 The signature binds both values and policy through the document's SHA-256
 integrity hash. It is node-witnessed on behalf of the authenticated owner,

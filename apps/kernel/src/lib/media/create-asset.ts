@@ -256,7 +256,7 @@ function assetStoragePaths(input: CreateAssetInput, assetId: string) {
   const storagePath = input.controlDocument
     ? `${dirPath}/legal-entity.md`
     : `${dirPath}/${assetId}${safeExtension(input.filename)}`;
-  const fairPath = `${dirPath}/${input.controlDocument ?? assetId}.fair.json`;
+  const fairPath = `${dirPath}/${assetId}.fair.json`;
   return { dirPath, storagePath, fairPath };
 }
 

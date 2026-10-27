@@ -192,10 +192,36 @@ async function publishDocumentChange(asset: Asset, cid: string, appDid?: string)
  * value-free tombstone plus status=deleted, never row/history destruction.
  */
 export async function updateAssetContent(input: UpdateAssetContentInput): Promise<UpdateAssetContentResult> {
+  const loaded = await loadWritableAsset(input);
+  if (!loaded.ok) return loaded;
+  return withAssetContentLock(loaded.asset.ownerDid, update => update(input));
+}
+
+/**
+ * Share the settings create/edit/revoke lock with every media content update.
+ * The callback gets the locked writer so settings never reacquire their own
+ * transaction lock. Keep the existing key to serialize with older processes.
+ */
+export function withAssetContentLock<T>(
+  did: string,
+  action: (update: (input: UpdateAssetContentInput) => Promise<UpdateAssetContentResult>) => Promise<T>,
+): Promise<T> {
+  const lockKey = `legal-entity:${did}`;
+  return db.transaction(async tx => {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))`);
+    return action(input => updateLockedAssetContent(input, did));
+  });
+}
+
+async function updateLockedAssetContent(input: UpdateAssetContentInput, lockedDid: string): Promise<UpdateAssetContentResult> {
   const { assetId, content, strict = false, appDid } = input;
+  // The record may have changed or been revoked while waiting for the lock.
   const loaded = await loadWritableAsset(input);
   if (!loaded.ok) return loaded;
   const { asset } = loaded;
+  if (asset.ownerDid !== lockedDid) {
+    return { ok: false, code: "forbidden", message: "Asset owner changed" };
+  }
   const articleWarning = guardArticleUpdate(asset, content, assetId);
   if (articleWarning && strict) {
     return { ok: false, code: "article_frontmatter_required", message: articleWarning.warning };
