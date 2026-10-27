@@ -1,5 +1,5 @@
 /**
- * Incurred-meter recovery on the existing lifecycle sweep (#2972).
+ * Incurred-meter recovery on the existing lifecycle sweep (#2972, #3133).
  * Local terminal records are replayed even after completion notification won
  * its publish claim. Descendant observation is scoped to locally recorded
  * kernel dispatches, never an arbitrary-key run scan or a vendor bill pull.
