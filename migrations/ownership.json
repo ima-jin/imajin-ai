@@ -18,6 +18,12 @@
     }
   },
   "tables": {
+    "auth.app_authorization_codes": {
+      "owner": "kernel",
+      "schema": "auth",
+      "firstMigration": "0222_app_authorization_codes.sql",
+      "notes": "Kernel-verified single-use app sign-in codes."
+    },
     "auth.app_authorization_usage": {
       "owner": "kernel",
       "schema": "auth",

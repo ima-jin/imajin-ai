@@ -149,7 +149,7 @@ function AuthorizeForm() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ appId: app.id, scopes: granted }),
+        body: JSON.stringify({ appId: app.id, scopes: granted, state }),
       });
 
       if (!res.ok) {
@@ -159,11 +159,8 @@ function AuthorizeForm() {
         return;
       }
 
-      const { attestationId, userDid } = await res.json();
-      const url = new URL(app.callbackUrl);
-      url.searchParams.set('attestation_id', attestationId);
-      url.searchParams.set('user_did', userDid);
-      globalThis.location.href = url.toString();
+      const { redirect } = await res.json();
+      globalThis.location.href = redirect;
     } catch {
       setError('Network error. Please try again.');
       setSubmitting(false);
