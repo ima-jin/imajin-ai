@@ -64,6 +64,7 @@ import { VaultDelegationError } from '@/src/lib/vault/errors';
 import { connectionSlot, connectionVaultField } from './connection-slots';
 import { currentConnectionSlot } from './connector-connection-context';
 import { recordConnectorRegistration } from './connector-registry-store';
+import { assertConnectionNotRemoved } from './connector-connection-status';
 
 const log = createLogger('kernel');
 
@@ -436,10 +437,12 @@ export function createConnectorOAuth<
   }
 
   async function storeConfig(ownerDid: string, config: TConfig, slot?: string): Promise<void> {
+    await assertConnectionNotRemoved(ownerDid, opts.name, selectedSlot(ownerDid, slot));
     await sealAndStoreV2(configField(ownerDid, slot), JSON.stringify(config));
   }
 
   async function loadConfig(ownerDid: string, slot?: string): Promise<TConfig> {
+    await assertConnectionNotRemoved(ownerDid, opts.name, selectedSlot(ownerDid, slot));
     const field = configField(ownerDid, slot);
     let raw: string | undefined;
     try {
@@ -458,12 +461,14 @@ export function createConnectorOAuth<
 
   async function storeTokens(ownerDid: string, tokens: TTokens, slot?: string): Promise<void> {
     const selected = selectedSlot(ownerDid, slot);
+    await assertConnectionNotRemoved(ownerDid, opts.name, selected);
     const field = tokenField(ownerDid, selected);
     await sealAndStoreV2(field, JSON.stringify(tokens));
     await recordConnectorRegistration({ ownerDid, provider: opts.name, slot: selected, sealedKeyField: field });
   }
 
   async function loadTokens(ownerDid: string, slot?: string): Promise<TTokens | undefined> {
+    await assertConnectionNotRemoved(ownerDid, opts.name, selectedSlot(ownerDid, slot));
     const field = tokenField(ownerDid, slot);
     let raw: string | undefined;
     try {
@@ -719,6 +724,7 @@ export function createConnectorOAuth<
   }
 
   async function resolveActiveGrant(ownerDid: string, requiredScope: string, slot?: string): Promise<boolean> {
+    await assertConnectionNotRemoved(ownerDid, opts.name, selectedSlot(ownerDid, slot));
     const rows = await db
       .select({ scopes: channelLinks.scopes })
       .from(channelLinks)

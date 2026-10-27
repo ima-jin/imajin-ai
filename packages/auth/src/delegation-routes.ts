@@ -33,6 +33,21 @@ export interface DelegationRouteEntry {
 }
 
 export const DELEGATION_ROUTES = {
+  "kernel.github.slot.remove": {
+    class: "irreversible", action: "remove", app: "kernel", method: "POST",
+    path: "/github/api/disconnect",
+    why: "remove=true permanently erases a slot's sealed credential; coarse delegation cannot execute custody destruction",
+  },
+  "kernel.google.slot.remove": {
+    class: "irreversible", action: "remove", app: "kernel", method: "POST",
+    path: "/google/api/disconnect",
+    why: "remove=true uses the shared irreversible slot credential destruction rail",
+  },
+  "kernel.quickbooks.slot.remove": {
+    class: "irreversible", action: "remove", app: "kernel", method: "POST",
+    path: "/quickbooks/api/disconnect",
+    why: "remove=true uses the shared irreversible slot credential destruction rail",
+  },
   "kernel.vault.import": {
     class: "irreversible", action: "import", app: "kernel", method: "POST",
     path: "/api/vault/import",

@@ -5,6 +5,7 @@
  */
 
 export const ATTESTATION_TYPES = [
+  'connector.disconnected',
   'warp.brief.recorded',
   'warp.brief.dispatch_failed',
   'warp.brief.storage.changed',
@@ -324,6 +325,7 @@ export type AttestationType = typeof ATTESTATION_TYPES[number];
  * excluded from any "pending your countersignature" view or query.
  */
 export const MECHANICAL_ATTESTATION_TYPES = [
+  'connector.disconnected',
   'warp.brief.recorded',
   'warp.brief.dispatch_failed',
   'warp.brief.storage.changed',

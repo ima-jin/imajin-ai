@@ -4,8 +4,8 @@ import { getClient } from '@imajin/db';
 import type { LoopEventPayload } from '@imajin/bus';
 import type { TransactionSql } from 'postgres';
 import { isSurfaceEventType, type LoopIngestRequest } from './types';
+export { SURFACE_LEASE_TTL_MS } from './surface-lease-policy';
 
-export const SURFACE_LEASE_TTL_MS = 15 * 60 * 1000;
 export interface SurfaceConflict {
   loopId: string;
   holderDid?: string;

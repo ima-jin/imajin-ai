@@ -37,6 +37,7 @@ vi.mock('@/src/db', () => ({
 }));
 vi.mock('@/src/lib/vault', () => ({ sealAndStoreV2: h.seal, loadAndUnseal: h.load }));
 vi.mock('../../kernel/connector-registry-store', () => ({
+  readConnectorRegistration: vi.fn(),
   recordConnectorRegistration: h.registration,
   revokeConnectorRegistration: vi.fn(),
   syncConnectorRegistrationScopes: vi.fn(),

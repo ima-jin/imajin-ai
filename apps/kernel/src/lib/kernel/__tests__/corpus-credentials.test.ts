@@ -11,6 +11,7 @@ vi.mock('../corpus-access-claim', () => ({ corpusAccessClaimHeader: claim }));
 vi.mock('../../github/corpus-credential', () => ({ resolveCorpusGitHubCredential: resolveCredential }));
 vi.mock('../corpus-owner', () => ({ resolveCorpusDid: resolveOwner, authorizeCorpusOwner: authorizeOwner }));
 import { corpusHttpRequest } from '../corpus-http';
+import { ConnectionRemovedError } from '../connection-slots';
 
 const did = 'did:imajin:corpus-owner';
 const source = 'github:ima-jin/imajin-ai';
@@ -37,6 +38,14 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals());
 
 describe('corpus GitHub credential transport', () => {
+  it('returns a visible connection removed state without sending sync or trying another connector', async () => {
+    resolveCredential.mockRejectedValueOnce(new ConnectionRemovedError());
+    const result = await corpusHttpRequest('POST', did, 'corpus:write', '/sync', { source, credentialRef: 'github:primary' });
+    expect(result).toMatchObject({ ok: false, status: 410, payload: { code: 'connection_removed', error: expect.stringContaining('Connection removed') } });
+    expect(resolveCredential).toHaveBeenCalledTimes(1);
+    expect(resolveCredential).toHaveBeenCalledWith(did, source, 'github:work');
+    expect(fetchMock.mock.calls.some(([url]) => url.endsWith('/sync'))).toBe(false);
+  });
   it('uses the group connector and persisted ref, never a caller personal connector or body owner', async () => {
     const group = 'did:imajin:group';
     resolveOwner.mockResolvedValue(group);

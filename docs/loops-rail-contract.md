@@ -2,6 +2,7 @@
 Horizon bridge ruling #2931: issue-ref-only bindings and publisher-scoped envelope receipts.
 Horizon step entries extend this signed rail under #2878; #2879 binds claims to
 the existing surface leases. Runs rendering remains separate (#2880).
+Horizon steps retain their declaring publisher's DID (#3151).
 ## Horizon steps (#2878, parent #2313 decision a)
 
 Publish `step.queued|updated|claimed|started|progress|blocked|finished|observed|attested`
@@ -66,7 +67,8 @@ corrections are new signed observations, never edits to historical rows.
 `GET /api/loops/{loopId}` and MCP `loops_get` return
 `{loop, events, horizon: {steps, depth, targetDepth: 12}}`. `steps` are sorted
 by rank then id. Each carries its declaration, sharpening facts, projected
-`state`, derived `zone`, optional `claim`, `conditions` (each declaration,
+`publisher` (the verified issuer of the earliest `step.queued`), `state`,
+derived `zone`, optional `claim`, `conditions` (each declaration,
 `satisfied`, and evidence `{eventId, issuer, at, fact}`), and `openExitConditions`
 (ids still unsatisfied). The flat loops list retains its existing contract;
 use detail for the horizon. For explicit audit reads only, HTTP
@@ -86,6 +88,73 @@ Zones are **read projection only**, in precedence order:
 6. `tail`: one-line intention only.
 
 A ref-only binding stays `tail`, but still satisfies matching `issue_closed` (→ `past`).
+### Publishing steps from any harness (#3151)
+
+No OpenClaw plugin is required. A second harness uses its **own registered DID
+and Ed25519 key**, with a live `loops:publish` grant from the same principal
+(unless publishing as that principal). Reuse the existing owning `loopId` and
+principal; choose a distinct `stepId`. Both publishers' steps appear in the
+same horizon, each attributed to its declaring `publisher`, not to the harness
+that reads it. `publisher` is derived from the verified event issuer, never
+from a caller-supplied payload field. Earliest declaration by `(occurred_at, id)`
+still wins, including when another DID queues the same `stepId`.
+
+The following is a minimal wire template. Replace the example DIDs, existing
+loop id, fresh `at`, registered public-key hex and signature placeholders.
+Sign the UTF-8 `canonicalize({type, payload})` with that publisher's private key
+using Ed25519, and POST the complete envelope to kernel-root `/api/loops`.
+Do not include the private key in the request. `kind` is descriptive, not a
+harness authorization mechanism; no session token or plugin credential is needed.
+
+<!-- any-harness-step-example -->
+```json
+{
+  "type": "step.queued",
+  "publisherDid": "did:imajin:second-harness",
+  "payload": {
+    "loopId": "cycle",
+    "kind": "cycle",
+    "principal": "did:imajin:owner",
+    "state": "queued",
+    "summary": "Queue a step from another harness",
+    "at": "2026-10-27T12:00:00.000Z",
+    "stepId": "second-harness:review",
+    "step": {
+      "stepKind": "ops",
+      "intention": "Review the next release",
+      "rank": 20,
+      "exitConditions": [
+        {"id": "reviewed", "kind": "attestation", "attestorDid": "did:imajin:owner"}
+      ]
+    }
+  },
+  "signature": {
+    "keyId": "<registered Ed25519 public key: 64 hex characters>",
+    "alg": "ed25519",
+    "sig": "<Ed25519 signature: 128 hex characters>"
+  }
+}
+```
+<!-- /any-harness-step-example -->
+
+`step.updated`, `step.claimed`, `step.started`, `step.progress`, `step.blocked`
+and `step.finished` change the derived step only when signed by its publisher
+or the holder of the `step:<stepId>` lease at the fact's `occurredAt`, for this
+loop and principal. Replay derives those windows from signed `surface.acquired`
+and `surface.released` history; `loop.finished` ends that issuer's holdings.
+Authority starts at acquisition and ends strictly before release/completion or
+the expiry in force at that time. A fresh same-holder `surface.acquired` renews
+the fifteen-minute TTL; an expired gap is never retroactively authorized.
+There is no separate `surface.heartbeat` event on this rail, and `loop.progress`
+does not renew step leases. Conflicted acquisitions never grant holder rights.
+Updates and work lifecycle facts accepted within a window survive its later
+release, expiry, or replacement by another holder. The current live table is
+used only for today's `claim`/`head` projection, not historical mutation authority.
+A signed claim alone cannot grant this authority. Unauthorized step
+mutations remain in immutable history with their publisher proofs but are
+ignored by replay; ingest's principal-level authorization is not step ownership.
+`step.observed` evidence and declared-completing-DID `step.attested` rules are
+unchanged: they do not require the step publisher's DID.
 
 Input `zone`, `depth`, derived `state: "exited"` and step `output` are rejected.
 Other common-envelope state labels are observational only; they cannot override
@@ -135,7 +204,8 @@ payload; credential-bearing/redaction-changing step facts are rejected instead
 of storing an unverifiable substitute. The existing Record lane can read
 `action=step.attested` from the emitted signed event stream, including the
 completing DID, statement and publisher proof, under its existing principal /
-delegated-issuer visibility rules. No `/jin` change is part of this PR.
+delegated-issuer visibility rules. `/jin` horizon rows show the declaring
+publisher DID as plain text, separately from any current lease holder (#3151).
 Record emission uses the existing batched, fire-and-forget adapter; only
 `loop_events` history/horizon has read-after-write durability. This feature
 does not change the shared Record adapter's delivery guarantees.

@@ -15,6 +15,7 @@
 import type { CorpusAccessScope } from './corpus-access-claim';
 import { corpusErrorMessage, corpusHttpRequest } from './corpus-http';
 import { forEachSequential } from '../async/sequential';
+import { ConnectionRemovedError } from './connection-slots';
 
 export interface CorpusSourceFreshness {
   source: string;
@@ -126,8 +127,19 @@ async function readGrantedCorpora<T>(did: string, read: (ownerDid: string) => Pr
 export async function fetchCorpusStatus(did: string): Promise<CorpusStatus> {
   const statuses = await readGrantedCorpora(did, ownerDid =>
     corpusRequest('GET', did, 'corpus:read', '/status', undefined, ownerDid) as Promise<CorpusStatus>);
+  const sources = await Promise.all(statuses.flatMap(({ value, ownerDid }) => value.sources.map(async source => {
+    const bound = { ...source, ownerDid };
+    if (!source.source.startsWith('github:') || !source.credentialRef?.startsWith('github:')) return bound;
+    try {
+      const { assertConnectionNotRemoved } = await import('./connector-connection-status');
+      await assertConnectionNotRemoved(ownerDid, 'github', source.credentialRef.slice('github:'.length));
+    } catch (err) {
+      bound.error = err instanceof ConnectionRemovedError ? 'Connection removed. Select another connection explicitly.' : 'Connection status unavailable.';
+    }
+    return bound;
+  })));
   return {
-    sources: statuses.flatMap(({ value, ownerDid }) => value.sources.map(source => ({ ...source, ownerDid }))),
+    sources,
     threadCount: statuses.reduce((total, { value }) => total + value.threadCount, 0),
   };
 }

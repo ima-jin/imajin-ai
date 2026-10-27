@@ -53,6 +53,9 @@ the historical state before the policy was applied.
 | Route | Irreversible? | Money / attribution? | Prior gate | Class | Key — why |
 | --- | --- | --- | --- | --- | --- |
 | `POST /api/vault/import` (kernel) | yes | no | human/direct-node only | **irreversible** | `kernel.vault.import` — credential custody/disclosure; coarse agent delegation is refused before metadata reads or input staging; the same boundary protects GET |
+| `POST /github/api/disconnect?remove=true` (kernel) | yes | no | owner/admin, service-scoped | **irreversible** | `kernel.github.slot.remove` — sealed credential erasure; delegates receive `AGENT_APPROVAL_REQUIRED` and the owner must re-issue |
+| `POST /google/api/disconnect?remove=true` (kernel) | yes | no | owner/admin, service-scoped | **irreversible** | `kernel.google.slot.remove` — shared slot-erasure rail |
+| `POST /quickbooks/api/disconnect?remove=true` (kernel) | yes | no | owner/admin, service-scoped | **irreversible** | `kernel.quickbooks.slot.remove` — shared slot-erasure rail |
 | `PUT /media/api/assets/[id]/fair` (kernel) | yes | yes | none | **value-moving** | `media.asset.fair-update` — rewrites .fair attribution and splits |
 | `POST /media/api/assets/[id]/settle` (kernel) | yes | yes | none | **value-moving** | `media.asset.settle` — buyer initiates a priced settlement |
 | `POST /media/api/assets/[id]/settle/confirm` (kernel) | yes | yes | none | **value-moving** | `media.asset.settle-confirm` — confirms payment receipt, signs receipt |

@@ -114,6 +114,29 @@ async function headStep(principal = 'did:imajin:alice', loopId = 'loop-a') {
 
 describe('horizon step surface leases', () => {
   beforeEach(async () => { await seedStep(); });
+  it.each(['released', 'expired'])('retains a non-publisher’s work through SQL history after its lease is %s', async ending => {
+    const start = -SURFACE_LEASE_TTL_MS - 1000;
+    await projectSurfaceLease(stepLease('surface.acquired', start, nextDid));
+    for (const [type, offset, fields] of [
+      ['step.updated', start + 100, { update: { issue: { ref: 'ima-jin/imajin-ai#3151' } } }],
+      ['step.finished', start + 200, {}],
+    ] as const) {
+      await loopProjectionReactor({
+        id: `holder-${type}`, type, issuer: nextDid, subject: 'did:imajin:alice', scope: 'loop',
+        payload: { ...request().payload, surface: undefined, stepId: 'next', at: stamp(offset), ...fields },
+      }, {});
+    }
+    if (ending === 'released') await projectSurfaceLease(stepLease('surface.released', start + 300, nextDid));
+    expect(await headStep()).toMatchObject({
+      publisher: holderDid, issue: { ref: 'ima-jin/imajin-ai#3151' }, state: 'finished', zone: 'tail',
+    });
+    expect(await headStep()).not.toHaveProperty('claim');
+    await projectSurfaceLease(stepLease('surface.acquired', 0, holderDid));
+    expect(await headStep()).toMatchObject({
+      publisher: holderDid, issue: { ref: 'ima-jin/imajin-ai#3151' }, state: 'finished',
+      claim: { holderDid },
+    });
+  });
 
   it('two DIDs claim the same head in the same loop: warning names the first holder and survives retry', async () => {
     expect(await projectSurfaceLease(stepLease())).toBeNull();

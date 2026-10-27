@@ -36,12 +36,14 @@ export async function GET(request: NextRequest, context: Context) {
   if (auth instanceof NextResponse) return auth;
   const { connector, ownerDid } = auth;
   try {
-    const rows = (await listConnectorRegistrations(ownerDid)).filter((row) => row.provider === connector.id);
+    const registrations = (await listConnectorRegistrations(ownerDid)).filter((row) => row.provider === connector.id);
+    const removed = new Set(registrations.filter(row => row.status === 'removed').map(row => row.slot));
+    const rows = registrations.filter(row => !removed.has(row.slot));
     const slots = new Set(['primary', ...rows.map((row) => row.slot)]);
     const googleState = connector.id === 'google'
       ? await db.select().from(googleWorkspaceState).where(eq(googleWorkspaceState.ownerDid, ownerDid))
       : [];
-    for (const row of googleState) slots.add(row.slot);
+    for (const row of googleState) if (!removed.has(row.slot)) slots.add(row.slot);
     const connections = await Promise.all([...slots].sort((a, b) => a.localeCompare(b, 'en')).map(async (slot) => {
       const registration = rows.find((row) => row.slot === slot);
       const state = googleState.find((row) => row.slot === slot);
@@ -69,7 +71,7 @@ export async function GET(request: NextRequest, context: Context) {
         scopes,
       };
     }));
-    return NextResponse.json({ connections }, { headers: headers(request) });
+    return NextResponse.json({ ownerDid, connections }, { headers: headers(request) });
   } catch {
     return NextResponse.json({ error: 'Connections unavailable' }, { status: 500, headers: headers(request) });
   }

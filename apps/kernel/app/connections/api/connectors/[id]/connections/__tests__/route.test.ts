@@ -46,6 +46,13 @@ beforeEach(() => {
 });
 
 describe('connection metadata API', () => {
+  it.each(['github', 'google', 'quickbooks'])('hides removed %s slots, including stale Google account state', async id => {
+    h.list.mockResolvedValue([{ provider: id, slot: 'work', status: 'removed', label: 'Removed account' }]);
+    h.googleRows = [{ slot: 'work', accountEmail: 'stale@example.test' }];
+    const body = await (await GET(request(), context(id))).json();
+    expect(body.connections.map((row: { slot: string }) => row.slot)).toEqual(['primary']);
+    expect(h.status).not.toHaveBeenCalledWith(`${id}-oauth:did:owner:work`);
+  });
   it('rejects unknown providers and unauthenticated callers without reading rows', async () => {
     expect((await GET(request(), context('unknown'))).status).toBe(404);
     h.auth.mockResolvedValue({ ok: false, error: 'Unauthorized', status: 401 });
@@ -60,7 +67,7 @@ describe('connection metadata API', () => {
   it('lists a selectable primary for a legacy owner with no registry metadata', async () => {
     const response = await GET(request(), context());
     expect(response.headers.get('cache-control')).toBe('no-store');
-    expect(await response.json()).toEqual({ connections: [{
+    expect(await response.json()).toEqual({ ownerDid: 'did:owner', connections: [{
       slot: 'primary', label: 'primary', accountEmail: null, connected: false, configured: false, scopes: [],
     }] });
     expect(h.list).toHaveBeenCalledWith('did:owner');
