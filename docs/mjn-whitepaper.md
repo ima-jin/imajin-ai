@@ -271,7 +271,7 @@ their node. k-anonymity enforced.
 
 > **Model review boundary:** the dual-unit ledger distinction agrees with current code,
 > but this section is not a delivery claim for future rails, a bridge, or the gas marketplace.
-> [RFC-12](https://github.com/ima-jin/imajin-ai/blob/main/docs/rfcs/RFC-12-mjn-token-economics.md) retains stale emission-route and schedule
+> [RFC-12](https://github.com/ima-jin/imajin-ai/blob/main/docs/canon/rfcs/RFC-12-mjn-token-economics.md) retains stale emission-route and schedule
 > wording: the [current schedule](https://github.com/ima-jin/imajin-ai/blob/main/packages/bus/src/emissions.ts) is versioned DB
 > configuration emitting MJNx, and the public emission route is disabled. Its percentage
 > calculation also uses a cent-based MJNx scale, which needs reconciliation with RFC-12's

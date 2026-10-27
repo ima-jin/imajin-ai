@@ -45,7 +45,7 @@ The original RFC assumed credential isolation and scoped access needed to be bui
 
 ### The DID IS the Agent
 
-> **Implementation note (#2407, Phase 1 identity):** `actor/agent` + the `serviceOf` relation, the principal → serving-agents lookup and live-connection state are shipped as a read-only view over `identity_members` (`role: 'agent'`) — see [docs/agents/agent-service-binding.md](../agents/agent-service-binding.md).
+> **Implementation note (#2407, Phase 1 identity):** `actor/agent` + the `serviceOf` relation, the principal → serving-agents lookup and live-connection state are shipped as a read-only view over `identity_members` (`role: 'agent'`) — see [docs/agents/agent-service-binding.md](../../agents/agent-service-binding.md).
 
 An agent is not a sub-feature hanging off a human DID. An agent is a first-class DID with subtype `actor/agent`. It can be **in service of** many other DIDs of most or all types — humans, businesses, communities, other agents — via `identity_members`.
 

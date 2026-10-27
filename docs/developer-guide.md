@@ -481,7 +481,7 @@ workspace `@imajin/*` imports are not external install names.
 ## Links
 
 - **Source code:** [github.com/ima-jin/imajin-ai](https://github.com/ima-jin/imajin-ai)
-- **Protocol RFCs:** See `docs/rfcs/` for protocol specifications
+- **Protocol RFCs:** See `docs/canon/rfcs/` for protocol specifications
 - **.fair spec:** [github.com/ima-jin/.fair](https://github.com/ima-jin/.fair)
 - **OpenAPI specs:** `https://jin.imajin.ai/{service}/api/spec`
 - **First demonstration:** April 1, 2026

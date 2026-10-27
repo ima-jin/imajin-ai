@@ -56,3 +56,4 @@ Triage performed 2026-09-03 per [#1852](https://github.com/ima-jin/imajin-ai/iss
 | [41](./RFC-41-composable-gate.md) | The Composable Gate (signed-predicate reactor primitive) | Draft — build deferred | [#965](https://github.com/ima-jin/imajin-ai/issues/965) | Current | ARM / Attestation |
 | [42](./RFC-42-myterms-conformance-profile.md) | MyTerms (IEEE 7012) as an Imajin Conformance Profile | Draft — alignment/research, build deferred | — | Current | Conformance |
 | [43](./RFC-43-receipt-grammar.md) | The Receipt Grammar | Draft — grammar confirmed, extraction sequencing open | — | Current | Settlement / Attribution |
+| [44](./RFC-44-tiered-sovereign-agent-memory.md) | Tiered Sovereign Agent Memory & Per-Principal View Isolation | Draft — architecture-first | [#1607](https://github.com/ima-jin/imajin-ai/issues/1607) | Current | Memory / Identity |

@@ -203,7 +203,7 @@ not a guessed network total.
 
 - [Guide index](docs/guide/README.md) · [proof model](docs/guide/proof-model.md) ·
   [migrations](docs/MIGRATIONS.md) · [whitepaper](docs/mjn-whitepaper.md).
-- [RFC index](docs/rfcs/INDEX.md) · [operator spec source](apps/kernel/app/jin/api/spec/route.ts) ·
+- [RFC index](docs/canon/rfcs/INDEX.md) · [operator spec source](apps/kernel/app/jin/api/spec/route.ts) ·
   [complete route index](apps/kernel/public/llms.txt) ·
   [service contract reference](apps/kernel/public/llms-full.txt).
 - [Conformance #1287](https://github.com/ima-jin/imajin-ai/issues/1287) tracks the
