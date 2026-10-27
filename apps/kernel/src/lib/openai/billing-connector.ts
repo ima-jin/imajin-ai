@@ -27,6 +27,7 @@ const openaiBilling = createConnectorTokenPaste({
   displayName: 'OpenAI Billing',
   connectorDid: OPENAI_CONNECTOR_DID,
   channel: OPENAI_CHANNEL,
+  preserveScopesOnRevoke: true,
 });
 
 /** Per-DID vault field for the OpenAI org admin API key: `openai-billing-api-key:{ownerDid}`. */

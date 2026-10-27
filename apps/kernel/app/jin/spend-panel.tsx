@@ -129,6 +129,14 @@ function ProviderBlock({ spend }: Readonly<{ spend: SpendLane }>) {
         </p>
       </div>
       <Trend days={spend.trend} />
+      <ul className="space-y-1 text-xs text-gray-400" aria-label="Provider billed connections">
+        {spend.billingConnections?.map(({ provider, status }) => (
+          <li key={provider}>
+            <a href={`/auth/connectors/${provider}`} className="text-amber-400">{provider}</a>
+            {' · billed: '}{status}
+          </li>
+        ))}
+      </ul>
       {spend.providers.length === 0 ? (
         <p className="text-sm text-gray-500">No provider spend or caps in the last 7 days.</p>
       ) : (

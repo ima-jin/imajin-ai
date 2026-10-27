@@ -9,6 +9,19 @@ info:
     manual/backfill entries), the drift between them, and the publicly
     verifiable `usage.rollup` attestation. Runs as a kernel service at
     /{service}/api/... on a shared node domain.
+    Provider-billed reconciliation is enabled on the existing profile connector
+    cards at /auth/connectors/anthropic and /auth/connectors/openai. Their
+    Billing (admin) key slot uses GET/POST/DELETE /anthropic/api/billing-key
+    and /openai/api/billing-key on the kernel root (not the /usage base).
+    GET returns keySealed and credentialPending booleans only, with no-store.
+    POST accepts a non-empty token string and seals through the existing vault;
+    re-posting rotates, and DELETE revokes billing custody with a signed audit,
+    preserving inference grants and sealed history. Authentication uses the
+    existing connector owner resolver. Keys and underlying errors are never
+    returned or logged. Sealing does not grant consent: enable anthropic:billing
+    or openai:billing separately. Pending custody is not connected.
+    The operator-only /jin Spend lane shows billed connection status for both
+    providers, including not connected when no usable admin key is sealed.
 servers:
   - url: https://{node}.imajin.ai/{service}
     description: production node

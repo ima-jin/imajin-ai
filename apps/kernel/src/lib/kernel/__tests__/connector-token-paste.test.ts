@@ -23,7 +23,7 @@ import { unlink } from 'node:fs/promises';
 
 type Row = Record<string, unknown>;
 
-const { tmpVaultPath, grantStore, envelopeStore, channelLinksStore } = vi.hoisted(() => {
+const { tmpVaultPath, grantStore, envelopeStore, channelLinksStore, auditStore, prepareAudit } = vi.hoisted(() => {
   const { join } = require('node:path') as typeof import('node:path');
   const { tmpdir } = require('node:os') as typeof import('node:os');
 
@@ -36,6 +36,8 @@ const { tmpVaultPath, grantStore, envelopeStore, channelLinksStore } = vi.hoiste
     grantStore: new Map<string, Row>(),
     envelopeStore: new Map<string, Row>(),
     channelLinksStore: new Map<string, Row>(),
+    auditStore: new Map<string, Row>(),
+    prepareAudit: vi.fn(async (params: Row) => ({ id: 'audit-revoke', signature: 'fixture-signature', ...params })),
   };
 });
 
@@ -72,11 +74,13 @@ vi.mock('@/src/db', () => {
   ]);
   const vaultGrantRequests = columns(['id', 'field', 'requestId', 'status', 'subject', 'grantedTo']);
   const channelLinks = columns(['id', 'channel', 'did', 'appDid', 'status', 'scopes', 'revokedAt']);
+  const attestations = columns(['id', 'signature', 'payload']);
 
   function storeFor(table: unknown): Map<string, Row> | undefined {
     if (table === vaultDelegationGrants) return grantStore;
     if (table === vaultOwnerEnvelopes) return envelopeStore;
     if (table === channelLinks) return channelLinksStore;
+    if (table === attestations) return auditStore;
     return undefined;
   }
 
@@ -146,6 +150,16 @@ vi.mock('@/src/db', () => {
 
   return {
     db: {
+      async transaction<T>(callback: (tx: unknown) => Promise<T>) {
+        const snapshot = new Map(grantStore);
+        try {
+          return await callback(this);
+        } catch (error) {
+          grantStore.clear();
+          for (const [id, row] of snapshot) grantStore.set(id, row);
+          throw error;
+        }
+      },
       insert: (table: unknown) => ({
         values: (data: Row) => {
           if (table === vaultOwnerEnvelopes) {
@@ -205,6 +219,7 @@ vi.mock('@/src/db', () => {
     vaultOwnerEnvelopes,
     vaultGrantRequests,
     channelLinks,
+    attestations,
   };
 });
 
@@ -213,6 +228,7 @@ vi.mock('@/src/lib/kernel/id', () => ({
 }));
 
 vi.mock('@imajin/bus', () => ({ publish: vi.fn().mockResolvedValue(undefined) }));
+vi.mock('@/src/lib/auth/emit-mechanical-attestation', () => ({ prepareMechanicalAttestation: prepareAudit }));
 
 // #2205 — connector-events.ts is exercised in its own dedicated unit tests
 // (notify/__tests__/connector-events.test.ts); here it is a plain double so
@@ -244,6 +260,8 @@ beforeEach(() => {
   grantStore.clear();
   envelopeStore.clear();
   channelLinksStore.clear();
+  auditStore.clear();
+  prepareAudit.mockClear();
   _resetSealingCache();
   process.env.AUTH_PRIVATE_KEY = randomBytes(32).toString('hex');
   notifySealedMock.mockClear();
@@ -257,6 +275,44 @@ afterEach(async () => {
 });
 
 describe('keySealed', () => {
+  it('revokes billing custody with an attestation, preserving inference, other owners, scope grants and history', async () => {
+    const billing = createConnectorTokenPaste({
+      id: 'testprov-billing', displayName: 'Billing',
+      connectorDid: 'did:imajin:testprov-connector', channel: 'testprov', preserveScopesOnRevoke: true,
+    });
+    await connector.sealApiKey(OWNER_DID, 'fixture-inference');
+    await billing.sealApiKey(OWNER_DID, 'fixture-billing');
+    await billing.sealApiKey('did:imajin:other', 'fixture-other-billing');
+    channelLinksStore.set('both-scopes', {
+      id: 'both-scopes', did: OWNER_DID, channel: 'testprov', appDid: 'did:imajin:testprov-connector',
+      status: 'active', scopes: ['testprov:infer', 'testprov:billing'],
+    });
+    const count = grantStore.size;
+    expect(await billing.revokeApiKey(OWNER_DID)).toBe(true);
+    expect(await billing.keySealed(OWNER_DID)).toBe(false);
+    expect(await connector.keySealed(OWNER_DID)).toBe(true);
+    expect(await billing.keySealed('did:imajin:other')).toBe(true);
+    expect(channelLinksStore.get('both-scopes')?.status).toBe('active');
+    expect(grantStore.size).toBe(count);
+    expect(prepareAudit).toHaveBeenCalledWith(expect.objectContaining({
+      subjectDid: OWNER_DID, type: 'delegation.grant.revoked',
+    }));
+    expect(auditStore.size).toBe(1);
+    expect(JSON.stringify([...auditStore.values()])).not.toContain('fixture-billing');
+    expect(await billing.revokeApiKey(OWNER_DID)).toBe(false);
+    expect(prepareAudit).toHaveBeenCalledTimes(1);
+  });
+  it('rolls billing revocation back when its audit cannot be signed', async () => {
+    const billing = createConnectorTokenPaste({
+      id: 'testprov-billing', displayName: 'Billing',
+      connectorDid: 'did:imajin:testprov-connector', channel: 'testprov', preserveScopesOnRevoke: true,
+    });
+    await billing.sealApiKey(OWNER_DID, 'fixture-billing');
+    prepareAudit.mockRejectedValueOnce(new Error('signing unavailable'));
+    await expect(billing.revokeApiKey(OWNER_DID)).rejects.toThrow('signing unavailable');
+    expect(await billing.keySealed(OWNER_DID)).toBe(true);
+    expect(auditStore.size).toBe(0);
+  });
   it('is false before anything is sealed', async () => {
     expect(await connector.keySealed(OWNER_DID)).toBe(false);
   });

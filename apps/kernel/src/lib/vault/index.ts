@@ -27,6 +27,7 @@ import { and, eq, isNull, gt, or, like, desc, type SQL } from 'drizzle-orm';
 import { createLogger } from '@imajin/logger';
 import {
   db,
+  attestations,
   vaultDelegationGrants,
   vaultGrantRequests,
   vaultOwnerEnvelopes,
@@ -1240,30 +1241,43 @@ export async function revokeStaticSecretGrant(
  *
  * Returns the number of grants revoked.
  */
-export async function revokeVaultDelegationGrantsForConnector(
+export function revokeVaultDelegationGrantsForConnector(
   connectorId: string,
   ownerDid: string,
+  options?: { attest: boolean },
 ): Promise<number> {
   const fieldPattern = `${connectorId}-%-key:${ownerDid}`;
+  async function revoke(executor: DbExecutor): Promise<number> {
+    const updated = await executor
+      .update(vaultDelegationGrants)
+      .set({ status: 'revoked', revokedAt: new Date() })
+      .where(
+        and(
+          like(vaultDelegationGrants.field, fieldPattern),
+          eq(vaultDelegationGrants.status, 'active'),
+        ),
+      )
+      .returning({
+        id: vaultDelegationGrants.id,
+        field: vaultDelegationGrants.field,
+        keyId: vaultDelegationGrants.keyId,
+      });
 
-  const updated = await db
-    .update(vaultDelegationGrants)
-    .set({ status: 'revoked', revokedAt: new Date() })
-    .where(
-      and(
-        like(vaultDelegationGrants.field, fieldPattern),
-        eq(vaultDelegationGrants.status, 'active'),
-      ),
-    )
-    .returning({
-      id: vaultDelegationGrants.id,
-      field: vaultDelegationGrants.field,
-      keyId: vaultDelegationGrants.keyId,
-    });
+    if (options?.attest && updated.length > 0) {
+      const { prepareMechanicalAttestation } = await import('@/src/lib/auth/emit-mechanical-attestation');
+      await executor.insert(attestations).values(await prepareMechanicalAttestation({
+        subjectDid: ownerDid,
+        type: 'delegation.grant.revoked',
+        contextId: `${connectorId}:${ownerDid}`,
+        contextType: 'vault.delegation',
+        payload: { connectorId, ownerDid, grants: updated.map(({ id, field, keyId }) => ({ id, field, keyId })) },
+      }));
+    }
+    await eraseGrantKeyMaterial(updated, executor);
 
-  await eraseGrantKeyMaterial(updated);
-
-  return updated.length;
+    return updated.length;
+  }
+  return options?.attest ? db.transaction(revoke) : revoke(db);
 }
 
 // ── Renewal (#1535) ──────────────────────────────────────────────────────

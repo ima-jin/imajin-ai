@@ -14,7 +14,7 @@
  * Security invariants:
  *   - The key is never logged, never returned, never echoed.
  *   - A sealing failure reports THAT it failed, not why: an upstream error can
- *     embed the value being sealed, so the cause is logged server-side only.
+ *     embed the value being sealed, so the cause is never logged either.
  *   - Per-DID isolation comes from the connector's vault field naming.
  */
 import { NextResponse, type NextRequest } from 'next/server';
@@ -31,6 +31,9 @@ export interface ConnectorTokenRouteOpts {
   sealApiKey: (ownerDid: string, apiKey: string, baseUrl?: string, modelId?: string) => Promise<void>;
   /** Whether a key is already sealed for this DID. */
   keySealed: (ownerDid: string) => Promise<boolean>;
+  keyPending?: (ownerDid: string) => Promise<boolean>;
+  /** Credential-only revoke; must not withdraw sibling inference grants. */
+  revokeApiKey?: (ownerDid: string) => Promise<boolean>;
 }
 
 type RouteHandler = (request: NextRequest) => Promise<NextResponse>;
@@ -38,6 +41,7 @@ type RouteHandler = (request: NextRequest) => Promise<NextResponse>;
 export interface ConnectorTokenRouteHandlers {
   GET: RouteHandler;
   POST: RouteHandler;
+  DELETE: RouteHandler;
   OPTIONS: RouteHandler;
 }
 
@@ -75,7 +79,13 @@ export function createConnectorTokenRoutes(
     }
     const { ownerDid } = auth;
 
-    return NextResponse.json({ keySealed: await opts.keySealed(ownerDid) }, { headers: cors });
+    try {
+      const keySealed = await opts.keySealed(ownerDid);
+      const pending = opts.keyPending ? { credentialPending: await opts.keyPending(ownerDid) } : {};
+      return NextResponse.json({ keySealed, ...pending }, { headers: { ...cors, 'Cache-Control': 'no-store' } });
+    } catch {
+      return NextResponse.json({ error: 'Credential status unavailable' }, { status: 503, headers: cors });
+    }
   }
 
   /**
@@ -98,7 +108,7 @@ export function createConnectorTokenRoutes(
       return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400, headers: cors });
     }
 
-    const token = optionalString(body.token);
+    const token = optionalString(body?.token);
     if (!token) {
       return NextResponse.json(
         { error: 'token must be a non-empty string' },
@@ -109,8 +119,8 @@ export function createConnectorTokenRoutes(
     try {
       await opts.sealApiKey(ownerDid, token, optionalString(body.baseUrl), optionalString(body.modelId));
       log.info({ ownerDid }, `${opts.name} API key sealed`);
-    } catch (err) {
-      log.error({ err: String(err), ownerDid }, `${opts.name} API key sealing failed`);
+    } catch {
+      log.error({ ownerDid }, `${opts.name} API key sealing failed`);
       return NextResponse.json(
         { error: `Failed to seal ${opts.name} API key` },
         { status: 500, headers: cors },
@@ -120,7 +130,21 @@ export function createConnectorTokenRoutes(
     return NextResponse.json({ sealed: true }, { status: 201, headers: cors });
   }
 
-  return { GET, POST, OPTIONS: optionsHandler };
+  async function DELETE(request: NextRequest): Promise<NextResponse> {
+    const cors = corsHeaders(request);
+    const auth = await resolveConnectorOwnerDid(request);
+    if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status, headers: cors });
+    if (!opts.revokeApiKey) return NextResponse.json({ error: 'Revocation unavailable' }, { status: 405, headers: cors });
+    try {
+      const revoked = await opts.revokeApiKey(auth.ownerDid);
+      return NextResponse.json({ revoked }, { headers: { ...cors, 'Cache-Control': 'no-store' } });
+    } catch {
+      log.error({ ownerDid: auth.ownerDid }, `${opts.name} API key revocation failed`);
+      return NextResponse.json({ error: 'Credential revocation failed' }, { status: 500, headers: cors });
+    }
+  }
+
+  return { GET, POST, DELETE, OPTIONS: optionsHandler };
 }
 
 // ── Disconnect (#1720) ────────────────────────────────────────────────────────────

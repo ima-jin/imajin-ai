@@ -10,9 +10,10 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // ─── Mocks ───────────────────────────────────────────────────────────
 
-const { mockRequireAuth, mockRequireAppAuth, registryState } = vi.hoisted(() => ({
+const { mockRequireAuth, mockRequireAppAuth, registryState, logError } = vi.hoisted(() => ({
   mockRequireAuth: vi.fn(),
   mockRequireAppAuth: vi.fn(),
+  logError: vi.fn(),
   // Absent by default — existing tests all exercise the per-user session path.
   registryState: {
     appOwnerRows: [] as Array<{ ownerDid: string }>,
@@ -35,7 +36,7 @@ vi.mock('@/src/lib/kernel/cors', () => ({
 }));
 
 vi.mock('@imajin/logger', () => ({
-  createLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
+  createLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: logError }),
 }));
 
 vi.mock('@/src/db', () => ({
@@ -70,6 +71,53 @@ const { GET, POST, OPTIONS } = createConnectorTokenRoutes({
   name: 'TestProvider',
   sealApiKey,
   keySealed,
+});
+
+describe('billing credential extensions', () => {
+  const keyPending = vi.fn();
+  const revokeApiKey = vi.fn();
+  const billing = createConnectorTokenRoutes({ name: 'Billing', sealApiKey, keySealed, keyPending, revokeApiKey });
+
+  it('exposes ready/pending booleans only with no-store', async () => {
+    keyPending.mockResolvedValueOnce(true);
+    const response = await billing.GET(makeReq());
+    expect(await response.json()).toEqual({ keySealed: false, credentialPending: true });
+    expect(response.headers.get('Cache-Control')).toBe('no-store');
+  });
+  it('sanitizes failed status checks', async () => {
+    keySealed.mockRejectedValueOnce(new Error(API_KEY));
+    const response = await billing.GET(makeReq());
+    expect(response.status).toBe(503);
+    expect(await response.text()).not.toContain(API_KEY);
+  });
+  it.each([401, 403])('refuses every operation before vault access for auth status %s', async (status) => {
+    for (const method of ['GET', 'POST', 'DELETE'] as const) {
+      mockRequireAuth.mockResolvedValueOnce({ error: 'Refused', status });
+      const response = await billing[method](makeReq({ token: API_KEY }));
+      expect(response.status).toBe(status);
+    }
+    expect(keySealed).not.toHaveBeenCalled();
+    expect(sealApiKey).not.toHaveBeenCalled();
+    expect(revokeApiKey).not.toHaveBeenCalled();
+  });
+  it('revokes for the acting DID and reports no key material', async () => {
+    mockRequireAuth.mockResolvedValueOnce({ identity: { id: OWNER, actingFor: BUSINESS_DID } });
+    revokeApiKey.mockResolvedValueOnce(true);
+    const response = await billing.DELETE(makeReq());
+    expect(await response.json()).toEqual({ revoked: true });
+    expect(revokeApiKey).toHaveBeenCalledWith(BUSINESS_DID);
+  });
+  it('sanitizes revocation failures in the response and logs', async () => {
+    revokeApiKey.mockRejectedValueOnce(new Error(API_KEY));
+    const response = await billing.DELETE(makeReq());
+    expect(response.status).toBe(500);
+    expect(await response.text()).not.toContain(API_KEY);
+    expect(JSON.stringify(logError.mock.calls)).not.toContain(API_KEY);
+  });
+  it('does not enable revoke on an ordinary token route', async () => {
+    const ordinary = createConnectorTokenRoutes({ name: 'Ordinary', sealApiKey, keySealed });
+    expect((await ordinary.DELETE(makeReq())).status).toBe(405);
+  });
 });
 
 type RouteRequest = Parameters<typeof POST>[0];
@@ -221,6 +269,8 @@ describe('token route — POST', () => {
   });
 
   it.each([
+    ['null', null],
+    ['array', []],
     ['missing', {}],
     ['blank', { token: '   ' }],
     ['non-string', { token: 42 }],
@@ -246,6 +296,7 @@ describe('token route — POST', () => {
     const body = JSON.stringify(await res.json());
     expect(body).not.toContain(API_KEY);
     expect(body).toContain('Failed to seal TestProvider API key');
+    expect(JSON.stringify(logError.mock.calls)).not.toContain(API_KEY);
   });
 
   it('names the connector in the failure so logs and UI stay legible', async () => {

@@ -134,6 +134,17 @@ describe('SpendPanel operator gate', () => {
 });
 
 describe('SpendPanel provider block', () => {
+  it('shows billed gaps for both providers with no spend or caps and links their existing cards', async () => {
+    installFetch({ spend: { isOperator: true, spend: lane({ providers: [], billingConnections: [
+      { provider: 'anthropic', status: 'not connected' }, { provider: 'openai', status: 'not connected' },
+    ] }) } });
+    render(<SpendPanel />);
+    const connections = await screen.findByRole('list', { name: 'Provider billed connections' });
+    expect(connections.textContent).toContain('anthropic · billed: not connected');
+    expect(connections.textContent).toContain('openai · billed: not connected');
+    expect(within(connections).getByRole('link', { name: 'anthropic' }).getAttribute('href')).toBe('/auth/connectors/anthropic');
+    expect(within(connections).getByRole('link', { name: 'openai' }).getAttribute('href')).toBe('/auth/connectors/openai');
+  });
   it('shows today per provider, the 7-day trend and totals', async () => {
     installFetch({ runs: { isOperator: true, interim: null } });
     render(<SpendPanel />);
