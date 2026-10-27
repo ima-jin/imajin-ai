@@ -50,7 +50,8 @@ export function recordInvalidGithubRefusal() {
 
 /** No separate accumulating replay store: only unexpired issuance history is consulted. */
 async function checkGithubReplay(tx: Transaction, job: GithubJob) {
-  await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${`vault.ssh-oidc:${job.jtiHash}`}, 0))`);
+  const lockKey = `vault.ssh-oidc:${job.jtiHash}`;
+  await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))`);
   const now = Math.floor(Date.now() / 1000);
   if (!/^[a-f0-9]{64}$/.test(job.jtiHash) || !Number.isSafeInteger(job.expiresAt)
     || job.expiresAt <= now || job.expiresAt > now + 605) throw new SshCaError(401, 'Expired GitHub OIDC token');

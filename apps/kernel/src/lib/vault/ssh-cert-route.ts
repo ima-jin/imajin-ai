@@ -43,6 +43,13 @@ export async function signSshCertRoute(request: Request) {
   }
 }
 
+function githubGrantInput(body: Record<string, unknown>): GithubGrant {
+  return {
+    repository: body.repository, environment: body.environment, repositoryId: body.repositoryId,
+    repositoryOwnerId: body.repositoryOwnerId, ...(body.allowedRefs === undefined ? {} : { allowedRefs: body.allowedRefs }),
+  } as GithubGrant;
+}
+
 export async function sshGrantRoute(request: Request, revoke = false) {
   try {
     const auth = await requireMintAuthority(request);
@@ -70,10 +77,7 @@ export async function sshGrantRoute(request: Request, revoke = false) {
     }
     const scope = { caId: body.caId, principals: body.principals, forceCommand: body.forceCommand,
       allowedHosts: body.allowedHosts } as SshScope;
-    const binding = github ? {
-      repository: body.repository, environment: body.environment, repositoryId: body.repositoryId,
-      repositoryOwnerId: body.repositoryOwnerId, ...(body.allowedRefs === undefined ? {} : { allowedRefs: body.allowedRefs }),
-    } as GithubGrant : undefined;
+    const binding = github ? githubGrantInput(body) : undefined;
     return sshCaJson(await issueSshGrant(body.purpose, grantee, scope, new Date(body.expiresAt), auth.authority, binding), 201);
   } catch (error) { return sshCaFailure(error); }
 }
