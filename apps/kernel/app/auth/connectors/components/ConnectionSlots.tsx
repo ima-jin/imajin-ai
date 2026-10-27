@@ -49,6 +49,7 @@ export function ConnectionSlots({ connectorId, children }: Readonly<{
   const [label, setLabel] = useState('');
   const [rename, setRename] = useState('');
   const [busy, setBusy] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
   const endpoint = `/connections/api/connectors/${encodeURIComponent(connectorId)}/connections`;
   const refresh = useCallback(() => {
     // Background metadata refresh keeps account identity/current connection
@@ -133,6 +134,23 @@ export function ConnectionSlots({ connectorId, children }: Readonly<{
     } finally { setBusy(false); }
   }
 
+  async function remove(connection: Connection) {
+    if (connection.slot === 'primary' || busy) return;
+    if (!window.confirm(`Remove "${connection.label}" (slot: ${connection.slot})? Its sealed credentials and grants will be destroyed. Consumers bound to it will show "Connection removed". Other connections are not affected.`)) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const response = await fetch(`/${encodeURIComponent(connectorId)}/api/disconnect?slot=${encodeURIComponent(connection.slot)}&remove=true`, { method: 'POST' });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error ?? 'Could not remove connection.');
+      setConnections(current => current.filter(c => c.slot !== connection.slot));
+      setNotice(`Connection removed: ${connection.label} (${connection.slot}). Select another connection explicitly.`);
+      // Keep the removed selector: never silently mount primary's controls.
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not remove connection.');
+    } finally { setBusy(false); }
+  }
+
   return (
     <div className="min-w-0 space-y-4">
       <section aria-label="Connections" className="min-w-0 rounded-xl border border-white/10 bg-white/5 p-4 sm:p-6 space-y-4">
@@ -166,6 +184,14 @@ export function ConnectionSlots({ connectorId, children }: Readonly<{
                     </span>
                     <span className="mt-1 block break-all font-mono text-xs text-gray-500">{connection.slot}</span>
                   </button>
+                  <button type="button" className={`${buttonClass} mt-2`}
+                    aria-label={`Remove ${connection.label} (${connection.slot})`}
+                    disabled={busy || connection.slot === 'primary'}
+                    title={connection.slot === 'primary' ? 'Primary connection cannot be removed. Disconnect it instead.' : undefined}
+                    onClick={() => { void remove(connection); }}>
+                    Remove
+                  </button>
+                  {connection.slot === 'primary' && <p className="mt-1 text-xs text-gray-400">Primary cannot be removed. Use Disconnect instead.</p>}
                 </li>
               ))}
             </ul>
@@ -216,6 +242,7 @@ export function ConnectionSlots({ connectorId, children }: Readonly<{
           </form>
         )}
         {error && <p role="alert" className="break-words text-sm text-red-400">{error}</p>}
+        {notice && <p role="status" className="break-words text-sm text-amber-300">{notice}</p>}
         {invalidSlot && <p role="alert" className="text-sm text-red-400">Invalid connection slot. Choose a valid connection.</p>}
         {!loading && !selected && !error && <p role="alert" className="text-sm text-red-400">Connection not found. Choose a connection or add one.</p>}
       </section>

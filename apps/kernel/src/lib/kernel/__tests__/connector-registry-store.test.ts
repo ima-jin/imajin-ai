@@ -82,6 +82,7 @@ describe('renameConnectorConnection', () => {
 vi.mock('drizzle-orm', () => ({
   and: (...args: unknown[]) => ({ and: args }),
   eq: (col: unknown, val: unknown) => ({ col, val }),
+  ne: (col: unknown, val: unknown) => ({ col, ne: val }),
 }));
 
 vi.mock('@/src/db', () => ({

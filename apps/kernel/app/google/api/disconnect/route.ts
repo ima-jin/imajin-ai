@@ -11,6 +11,7 @@ const sharedDisconnect = createDisconnectHandler({
   channel: 'google',
   connectorDid: GOOGLE_CONNECTOR_DID,
   connectorName: 'google',
+  allowSlotRemoval: true,
 });
 
 /**
@@ -25,6 +26,9 @@ const sharedDisconnect = createDisconnectHandler({
  * token, so it must run BEFORE the shared handler tombstones it.
  */
 export async function POST(request: NextRequest) {
+  // Removal uses the shared owner/slot validation and vault destruction seam.
+  // Do not revoke provider tokens before validating a permanent removal.
+  if (new URL(request.url).searchParams.has('remove')) return sharedDisconnect(request);
   let slot: string;
   try {
     slot = requestConnectionSlot(request);

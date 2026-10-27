@@ -11,6 +11,7 @@
  */
 import { corpusAccessClaimHeader, type CorpusAccessScope } from './corpus-access-claim';
 import { authorizeCorpusOwner, resolveCorpusDid } from './corpus-owner';
+import { ConnectionRemovedError } from './connection-slots';
 
 const GITHUB_OPERATIONS = new Set(['/ingest', '/sources', '/sync', '/crawl']);
 
@@ -31,7 +32,8 @@ async function githubCredentialHeaders(principalDid: string, ownerDid: string, p
     const { resolveCorpusGitHubCredential } = await import('../github/corpus-credential');
     const token = await resolveCorpusGitHubCredential(ownerDid, input.source, ref);
     return { 'X-Corpus-GitHub-Credential': token, 'X-Corpus-Credential-Ref': ref };
-  } catch {
+  } catch (err) {
+    if (err instanceof ConnectionRemovedError) throw err;
     // Corpus records a safe source error. Never forward vault/provider errors.
     return {};
   }
@@ -82,9 +84,15 @@ export async function corpusHttpRequest(
     return { ok: false, status: 403, statusText: 'Forbidden', payload: { error: `An owner-issued ${scope} grant is required` } };
   }
   const url = `${corpusServiceUrl()}/corpus/${encodeURIComponent(ownerDid)}${path}`;
-  const credentialHeaders = method === 'POST' && scope === 'corpus:write'
-    ? await githubCredentialHeaders(did, ownerDid, path, body)
-    : {};
+  let credentialHeaders: Record<string, string>;
+  try {
+    credentialHeaders = method === 'POST' && scope === 'corpus:write'
+      ? await githubCredentialHeaders(did, ownerDid, path, body)
+      : {};
+  } catch (err) {
+    if (!(err instanceof ConnectionRemovedError)) throw err;
+    return { ok: false, status: 410, statusText: 'Connection removed', payload: { error: 'Connection removed. Select another connection explicitly.', code: 'connection_removed' } };
+  }
   const response = await fetch(url, {
     method,
     headers: {

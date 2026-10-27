@@ -77,6 +77,39 @@ afterEach(() => {
 });
 
 describe('labelled OAuth connections', () => {
+  it.each(['github', 'google', 'quickbooks'])('removes only the confirmed %s slot and never selects primary implicitly', async id => {
+    navigation.query = 'slot=work';
+    const { fetch } = setup(id);
+    const confirm = vi.fn(() => true);
+    vi.stubGlobal('confirm', confirm);
+    fireEvent.click(await screen.findByRole('button', { name: 'Remove Company (work)' }));
+    expect(confirm).toHaveBeenCalledWith(expect.stringContaining('"Company" (slot: work)'));
+    expect(confirm).toHaveBeenCalledWith(expect.stringContaining('Other connections are not affected.'));
+    await waitFor(() => expect(fetch).toHaveBeenCalledWith(`/${id}/api/disconnect?slot=work&remove=true`, { method: 'POST' }));
+    expect(await screen.findByRole('status')).toHaveProperty('textContent', expect.stringContaining('Connection removed: Company'));
+    expect(screen.queryByRole('button', { name: 'Remove Company (work)' })).toBeNull();
+    expect(screen.queryByRole('link', { name: 'Reconnect' })).toBeNull();
+    expect((screen.getByRole('combobox', { name: 'Selected connection' }) as HTMLSelectElement).value).toBe('work');
+    expect((screen.getByRole('button', { name: 'Remove Personal (primary)' }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('does not call removal when its confirmation is cancelled', async () => {
+    const { fetch } = setup('github');
+    vi.stubGlobal('confirm', vi.fn(() => false));
+    fireEvent.click(await screen.findByRole('button', { name: 'Remove Company (work)' }));
+    expect(fetch.mock.calls.some(([, init]) => init?.method === 'POST')).toBe(false);
+    expect(screen.getByRole('button', { name: 'Remove Company (work)' })).toBeDefined();
+  });
+
+  it('keeps a failed removal visible and reports the safe server error', async () => {
+    const { fetch } = setup('github');
+    vi.stubGlobal('confirm', vi.fn(() => true));
+    const remove = await screen.findByRole('button', { name: 'Remove Company (work)' });
+    fetch.mockResolvedValueOnce(Response.json({ error: 'Removal unavailable' }, { status: 503 }));
+    fireEvent.click(remove);
+    expect(await screen.findByRole('alert')).toHaveProperty('textContent', 'Removal unavailable');
+    expect(screen.getByRole('button', { name: 'Remove Company (work)' })).toBeDefined();
+  });
   it.each(['google', 'github', 'quickbooks'])('shows both %s account labels and emails without opening the selector', async (id) => {
     const { fetch, entry } = setup(id);
     const list = await screen.findByRole('list', { name: 'Connection accounts' });
@@ -84,8 +117,8 @@ describe('labelled OAuth connections', () => {
     expect(within(list).getByText('me@example.com')).toBeDefined();
     expect(within(list).getByText('Company')).toBeDefined();
     expect(within(list).getByText('work@example.com')).toBeDefined();
-    const primaryButton = within(list).getByRole('button', { name: /Personal/ });
-    const workButton = within(list).getByRole('button', { name: /Company/ });
+    const primaryButton = within(list).getByRole('button', { name: /^Personal/ });
+    const workButton = within(list).getByRole('button', { name: /^Company/ });
     expect(primaryButton.getAttribute('aria-pressed')).toBe('true');
     expect(workButton.getAttribute('aria-pressed')).toBe('false');
     fireEvent.click(workButton);

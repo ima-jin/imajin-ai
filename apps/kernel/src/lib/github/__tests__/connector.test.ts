@@ -63,6 +63,7 @@ vi.mock('drizzle-orm', () => ({
   ),
 }));
 vi.mock('@/src/lib/vault', () => ({ sealAndStoreV2: sealMock, loadAndUnseal: loadMock }));
+vi.mock('../../kernel/connector-registry-store', () => ({ recordConnectorRegistration: vi.fn(), readConnectorRegistration: vi.fn() }));
 
 /**
  * @/src/db mock — routes select().from(table) to the correct terminal mock
