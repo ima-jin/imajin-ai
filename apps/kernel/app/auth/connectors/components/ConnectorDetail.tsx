@@ -906,7 +906,7 @@ function GitHubFlowSelector({ value, onChange }: Readonly<{
     {
       flow: 'device',
       title: 'Device flow (recommended)',
-      hint: 'Client ID only — no client secret, no callback URL. Requires “Enable Device Flow” in your OAuth App.',
+      hint: 'Client ID only — no client secret. GitHub still requires a callback URL and “Enable Device Flow” in your OAuth App.',
     },
     {
       flow: 'authorization_code',
