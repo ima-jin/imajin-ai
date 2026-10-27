@@ -139,9 +139,18 @@ harness authorization mechanism; no session token or plugin credential is needed
 
 `step.updated`, `step.claimed`, `step.started`, `step.progress`, `step.blocked`
 and `step.finished` change the derived step only when signed by its publisher
-or the current live `step:<stepId>` lease holder for this loop and principal.
-A holder's fact must also be dated within that lease's acquisition/expiry
-interval. A signed claim alone cannot grant this authority. Unauthorized step
+or the holder of the `step:<stepId>` lease at the fact's `occurredAt`, for this
+loop and principal. Replay derives those windows from signed `surface.acquired`
+and `surface.released` history; `loop.finished` ends that issuer's holdings.
+Authority starts at acquisition and ends strictly before release/completion or
+the expiry in force at that time. A fresh same-holder `surface.acquired` renews
+the fifteen-minute TTL; an expired gap is never retroactively authorized.
+There is no separate `surface.heartbeat` event on this rail, and `loop.progress`
+does not renew step leases. Conflicted acquisitions never grant holder rights.
+Updates and work lifecycle facts accepted within a window survive its later
+release, expiry, or replacement by another holder. The current live table is
+used only for today's `claim`/`head` projection, not historical mutation authority.
+A signed claim alone cannot grant this authority. Unauthorized step
 mutations remain in immutable history with their publisher proofs but are
 ignored by replay; ingest's principal-level authorization is not step ownership.
 `step.observed` evidence and declared-completing-DID `step.attested` rules are
@@ -195,7 +204,8 @@ payload; credential-bearing/redaction-changing step facts are rejected instead
 of storing an unverifiable substitute. The existing Record lane can read
 `action=step.attested` from the emitted signed event stream, including the
 completing DID, statement and publisher proof, under its existing principal /
-delegated-issuer visibility rules. No `/jin` change is part of this PR.
+delegated-issuer visibility rules. `/jin` horizon rows show the declaring
+publisher DID as plain text, separately from any current lease holder (#3151).
 Record emission uses the existing batched, fire-and-forget adapter; only
 `loop_events` history/horizon has read-after-write durability. This feature
 does not change the shared Record adapter's delivery guarantees.

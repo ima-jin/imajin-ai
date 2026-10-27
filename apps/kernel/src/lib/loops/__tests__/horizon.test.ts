@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { projectHorizon, type HorizonLease } from '../horizon';
 import {
   CODE_STEP, STEP_CLAIM, STEP_ISSUE, STEP_ISSUE_UPDATE, STEP_NOW, STEP_PRINCIPAL, STEP_READY,
-  STEP_REPOSITORY, closureStep, deployedStep, observedStep, queuedStep, releaseStep, stepEvent,
+  STEP_REPOSITORY, closureStep, deployedStep, observedStep, queuedStep, releaseStep, stepEvent, stepLeaseEvent,
 } from './horizon-fixtures';
 
 const lease: HorizonLease = {
@@ -30,12 +30,12 @@ describe('signed horizon projection', () => {
   );
 
   it.each(['step.updated', 'step.claimed', 'step.started', 'step.progress', 'step.blocked', 'step.finished'] as const)(
-    'allows the current scoped lease holder’s %s while retaining the original publisher', type => {
+    'allows the historical scoped lease holder’s %s while retaining the original publisher', type => {
       const holderDid = 'did:imajin:other';
       const fields = mutationFields(type, holderDid);
       const event = { ...stepEvent(type, 2, fields), issuer: holderDid };
       const holding = { ...lease, holderDid, acquiredAt: queuedStep().occurredAt };
-      const result = project([queuedStep(), event], STEP_NOW, [holding]).steps[0];
+      const result = project([queuedStep(), stepLeaseEvent('surface.acquired', 1, holderDid), event], STEP_NOW, [holding]).steps[0];
       expect(result.publisher).toBe(STEP_PRINCIPAL);
       if (type === 'step.updated') expect(result.issue).toEqual(STEP_ISSUE_UPDATE.issue);
       else expect(result.state).toBe({
@@ -61,7 +61,7 @@ describe('signed horizon projection', () => {
     const holderDid = 'did:imajin:other';
     const holding = { ...lease, holderDid, acquiredAt: queuedStep().occurredAt };
     const expired = { ...stepEvent('step.finished', 2), issuer: holderDid, occurredAt: holding.expiresAt };
-    expect(project([queuedStep(), expired], STEP_NOW, [holding]).steps[0].state).toBe('claimed');
+    expect(project([queuedStep(), stepLeaseEvent('surface.acquired', 1, holderDid), expired], STEP_NOW, [holding]).steps[0].state).toBe('claimed');
   });
 
   it('keeps the earliest publisher and declaration when another DID reuses the step id, including ties', () => {

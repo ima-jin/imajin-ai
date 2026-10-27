@@ -519,6 +519,11 @@ components:
             have none of these blocks. Zone/depth/output and state exited are forbidden.
             All text is nonblank. Step observations must remain inline and credential-free
             so their exact publisherProof can be retained.
+            Updates, claims and work lifecycle facts require the declaring publisher or
+            the step lease holder at the fact's occurredAt. Signed acquisitions renew
+            the fifteen-minute window; release, loop completion or expiry ends it.
+            Authorized historical facts survive lease release/expiry. The live
+            HorizonClaim is only the current claim, not historical mutation authority.
           properties:
             stepId: { type: string, minLength: 1, maxLength: 2000 }
             step: { $ref: "#/components/schemas/StepDeclaration" }

@@ -1,4 +1,5 @@
 import type { LoopEventJson } from './serialize';
+import { stepLeaseWindows, type StepLeaseWindow } from './step-lease-history';
 import {
   isStepEventType, validateStepPayload, type StepAttestation, type StepClaim,
   type StepDeclaration, type StepEvidence, type StepExitCondition, type StepUpdate,
@@ -12,11 +13,10 @@ interface ConditionEvidence {
   at: string;
   fact: StepEvidence | StepAttestation;
 }
-function canMutateStep(step: ReplayStep, event: LoopEventJson, lease?: HorizonLease): boolean {
+function canMutateStep(step: ReplayStep, event: LoopEventJson, windows: StepLeaseWindow[]): boolean {
   if (event.issuer === step.publisher) return true;
   const at = Date.parse(event.occurredAt);
-  return lease?.holderDid === event.issuer
-    && Date.parse(lease.acquiredAt) <= at && at < Date.parse(lease.expiresAt);
+  return windows.some(window => window.holderDid === event.issuer && window.acquiredAt <= at && at < window.endsAt);
 }
 function projectState(state: StepState, zone: StepZone, hasLease: boolean): StepState {
   if (zone === 'done') return 'exited';
@@ -62,13 +62,14 @@ export function projectHorizon(events: LoopEventJson[], loopId: string, principa
     && Date.parse(lease.expiresAt) > now).map(lease => [lease.surface, lease]));
   const ordered = events.filter(event => event.loopId === loopId && event.principal === principal)
     .sort((a, b) => Date.parse(a.occurredAt) - Date.parse(b.occurredAt) || a.id.localeCompare(b.id));
+  const leaseHistory = stepLeaseWindows(ordered);
   // Seed immutable declarations first so a batched same-timestamp update
   // cannot sort before its queue merely because its signed hash is smaller.
   for (const event of ordered) {
     if (event.type === 'step.queued') replayEvent(steps, event);
   }
   for (const event of ordered) {
-    if (event.type !== 'step.queued') replayEvent(steps, event, liveLeases.get(`step:${event.payload.stepId}`));
+    if (event.type !== 'step.queued') replayEvent(steps, event, leaseHistory.get(`step:${event.payload.stepId}`));
   }
   const projected = [...steps.values()].map(step => projectStep(step, liveLeases.get(`step:${step.stepId}`)));
   const visible = projected.filter(step => includeExited || step.zone !== 'done')
@@ -81,7 +82,7 @@ const lifecycle = {
   'step.started': 'running', 'step.progress': 'running', 'step.blocked': 'blocked', 'step.finished': 'finished',
 } as const;
 
-function replayEvent(steps: Map<string, ReplayStep>, event: LoopEventJson, lease?: HorizonLease): void {
+function replayEvent(steps: Map<string, ReplayStep>, event: LoopEventJson, windows: StepLeaseWindow[] = []): void {
   if (!isStepEventType(event.type) || !validateStepPayload(event.type, event.payload, event.issuer)) return;
   const stepId = event.payload.stepId as string;
   if (event.type === 'step.queued') {
@@ -98,7 +99,7 @@ function replayEvent(steps: Map<string, ReplayStep>, event: LoopEventJson, lease
     rememberEvidence(step, event);
     return;
   }
-  if (!canMutateStep(step, event, lease)) return;
+  if (!canMutateStep(step, event, windows)) return;
   if (event.type === 'step.updated') {
     step.update = { ...step.update, ...event.payload.update as StepUpdate };
   } else if (event.type === 'step.claimed') {

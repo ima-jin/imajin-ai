@@ -7,6 +7,14 @@ const spec = parse(readFileSync(new URL('../../../../api-spec/jin.yaml', import.
 const detail = spec.paths['/api/loops/{loopId}'].get;
 
 describe('published horizon API contract', () => {
+  it('documents event-time holder authority separately from the current claim', () => {
+    const description = spec.components.schemas.StepEnvelope.allOf[1].description;
+    expect(description).toContain("the step lease holder at the fact's occurredAt");
+    expect(description).toContain('Authorized historical facts survive lease release/expiry');
+    const doc = readFileSync(new URL('../../../../../../docs/loops-rail-contract.md', import.meta.url), 'utf8');
+    expect(doc).toContain("lease at the fact's `occurredAt`");
+    expect(doc).not.toContain('or the current live `step:<stepId>` lease holder');
+  });
   it('requires the declaring publisher DID as a read-only horizon field', () => {
     const step = spec.components.schemas.HorizonStep.allOf[0];
     expect(step.required).toContain('publisher');
