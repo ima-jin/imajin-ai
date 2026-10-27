@@ -23,7 +23,7 @@ This directory is the one home for Imajin canon. Start here.
 | Doc | Source | Thesis |
 |---|---|---|
 | [design(wallet): Cross-node MJNx transfer — attestation-based seat, no build](cross-node-mjnx-transfer.md) | [#2006](https://github.com/ima-jin/imajin-ai/issues/2006) | Cross-node MJNx transfer has exactly one valid trust model, and it's attestation-based. |
-| [Epic: RFC-44 — Tiered Sovereign Agent Memory & Per-Principal View Isolation (hot/warm/cold, scratch→DID, shares-as-grants)](tiered-sovereign-agent-memory.md) | [#1607](https://github.com/ima-jin/imajin-ai/issues/1607) | An agent's working state shouldn't be one flat pile on one drive. |
+| [Epic: RFC-44 — Tiered Sovereign Agent Memory & Per-Principal View Isolation (hot/warm/cold, scratch→DID, shares-as-grants)](rfcs/RFC-44-tiered-sovereign-agent-memory.md) | [#1607](https://github.com/ima-jin/imajin-ai/issues/1607) | An agent's working state shouldn't be one flat pile on one drive. |
 | [Epic: RFC-39 — Verifiable Skills & the Invokable Agent](verifiable-skills-invokable-agent.md) | [#1425](https://github.com/ima-jin/imajin-ai/issues/1425) | A skill should be a signed, verifiable artifact bound to the agent that invokes it, not a loose file matched by description. |
 | [RFC-42: MyTerms (IEEE 7012) as an Imajin conformance profile — verify falsifiable claim + spike](myterms-conformance-profile.md) | [#1611](https://github.com/ima-jin/imajin-ai/issues/1611) | Falsifiable claim: MyTerms (IEEE 7012-2025) can be expressed as a conformance profile of Imajin's existing trust primitives (composable gates, proof-of-history, delegation) across the trust and application layers, without new primitives. |
 | [Experience report: live MCP onboarding, an agent's-eye account](live-mcp-onboarding-experience-report.md) | [#1696](https://github.com/ima-jin/imajin-ai/issues/1696) | An agent's-eye account of connecting a real MCP client to a live Imajin node (Aug 7–8, 2026). |
@@ -35,4 +35,4 @@ This directory is the one home for Imajin canon. Start here.
 
 - [myterms-conformance-profile.md](myterms-conformance-profile.md) is the issue behind [RFC-42](rfcs/RFC-42-myterms-conformance-profile.md).
 - [verifiable-skills-invokable-agent.md](verifiable-skills-invokable-agent.md) is the epic behind [RFC-39](rfcs/RFC-39-verifiable-skills-invokable-agent.md).
-- [tiered-sovereign-agent-memory.md](tiered-sovereign-agent-memory.md) is **RFC-44** (renumbered 2026-10-27 from a colliding "RFC-40"; [rfcs/RFC-40](rfcs/RFC-40-did-imajin-resolution.md) stays DID resolution). Not yet drafted as an RFC doc.
+- [rfcs/RFC-44-tiered-sovereign-agent-memory.md](rfcs/RFC-44-tiered-sovereign-agent-memory.md) is **RFC-44** (renumbered 2026-10-27 from a colliding "RFC-40"; [rfcs/RFC-40](rfcs/RFC-40-did-imajin-resolution.md) stays DID resolution). Not yet drafted as an RFC doc.
