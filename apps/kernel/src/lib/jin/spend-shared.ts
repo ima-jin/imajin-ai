@@ -1,15 +1,7 @@
 /**
- * Shared helpers will move to spend-shared.ts as part of #3141.
- * INTERIM run → cost → issue derivation for the /jin Spend lane (#2725).
- *
- * ┌──────────────────────────────────────────────────────────────────────────┐
- * │ SWAP NOTE (#2290): this whole module is a STOPGAP. When the loop         │
- * │ registry projection (#2290, v0.9.0) lands, its                           │
- * │ run → subject issue/PR → `usage.incurred` correlation replaces this      │
- * │ file. Nothing else in the lane knows how the join is derived — the       │
- * │ route (`app/jin/api/spend/runs/route.ts`) calls `readInterimSpend` and   │
- * │ the panel renders its labelled output — so the swap is ONE file.         │
- * └──────────────────────────────────────────────────────────────────────────┘
+ * Shared Spend types, aggregation and missing-loop Warp derivation (#3141).
+ * The registry-first reader in spend-registry.ts uses this fallback only for
+ * runs without loop records. Registered runs use signed registry refs (#2290).
  *
  * Ruling (Ryan, 2026-10-07, a+c): until #2290, derive the join with NO schema
  * change from Warp run data plus branch names. Sources, in order:
@@ -91,7 +83,7 @@ export interface RunLinkage {
   issueVia: 'branch' | 'pr-body' | 'registry' | null;
 }
 
-export interface InterimRunCost {
+export interface SpendRunCost {
   runId: string;
   title: string | null;
   state: string | null;
@@ -102,7 +94,7 @@ export interface InterimRunCost {
   linkage: RunLinkage;
 }
 
-export interface InterimIssueCost {
+export interface SpendIssueCost {
   repo: string;
   number: number;
   state: IssueState;
@@ -120,7 +112,7 @@ export interface ClosedIssueCost {
   meteredUsdPerIssue: number | null;
 }
 
-export interface InterimSpend {
+export interface Spend {
   label: string;
   windowFrom: string;
   /** False when Warp runs could not be read (no key / upstream error). */
@@ -128,13 +120,13 @@ export interface InterimSpend {
   runsTruncated: boolean;
   /** True when at least one issue state came back from GitHub. */
   githubAvailable: boolean;
-  runs: InterimRunCost[];
-  issues: InterimIssueCost[];
+  runs: SpendRunCost[];
+  issues: SpendIssueCost[];
   closedIssueCost: ClosedIssueCost;
 }
 
 /** Everything the derivation touches outside itself — injectable for tests. */
-export interface InterimDeps {
+export interface SpendDeps {
   listRuns(principalDid: string, createdAfter: string): Promise<{ runs: WarpAgentRun[]; hasNextPage: boolean }>;
   meteredBySession(principalDid: string, sessionIds: string[]): Promise<Map<string, MeteredCost>>;
   /** `null` when the PR could not be read. */
@@ -271,7 +263,7 @@ function costsOf(run: WarpAgentRun, metered: Map<string, MeteredCost>, owners: M
 
 // ── Linkage (needs GitHub only when the branch carries no issue number) ───────
 
-async function linkageOf(run: WarpAgentRun, deps: InterimDeps, budget: { left: number }): Promise<RunLinkage> {
+async function linkageOf(run: WarpAgentRun, deps: SpendDeps, budget: { left: number }): Promise<RunLinkage> {
   const hint = prHintOf(run);
   const repo = hint.prRepo ?? BUG_TRACKER_REPO;
   let branch = hint.branch;
@@ -311,8 +303,8 @@ function issueKey(ref: IssueRef): string {
 }
 
 /** Group runs by linked issue; any unknown run USD keeps the issue total unknown. */
-export function groupByIssue(runs: InterimRunCost[], states: Map<string, IssueState>): InterimIssueCost[] {
-  const byIssue = new Map<string, InterimIssueCost>();
+export function groupByIssue(runs: SpendRunCost[], states: Map<string, IssueState>): SpendIssueCost[] {
+  const byIssue = new Map<string, SpendIssueCost>();
   const unknownUsd = new Set<string>();
   for (const run of runs) {
     const ref = run.linkage.issue;
@@ -332,7 +324,7 @@ export function groupByIssue(runs: InterimRunCost[], states: Map<string, IssueSt
 }
 
 /** Cost per closed issue over the supplied issues; each unit averaged separately. */
-export function costPerClosedIssue(issues: InterimIssueCost[]): ClosedIssueCost {
+export function costPerClosedIssue(issues: SpendIssueCost[]): ClosedIssueCost {
   const closed = issues.filter((i) => i.state === 'closed');
   const unknownCount = issues.filter((i) => i.state === 'unknown').length;
   const warp = closed.reduce<number | null>((sum, i) => addNullable(sum, i.warpTotal), null);
@@ -353,8 +345,8 @@ export function monthStartIso(now: Date): string {
 }
 
 async function resolveIssueStates(
-  runs: InterimRunCost[],
-  deps: InterimDeps,
+  runs: SpendRunCost[],
+  deps: SpendDeps,
 ): Promise<Map<string, IssueState>> {
   const refs = new Map<string, IssueRef>();
   for (const run of runs) {
@@ -368,19 +360,19 @@ async function resolveIssueStates(
   return new Map(resolved);
 }
 
-/** Derive the whole interim picture from injected readers. Pure aside from `deps`. */
-export async function deriveInterimSpend(
+/** Derive missing-loop spend from injected readers. Pure aside from `deps`. */
+export async function deriveSpend(
   principalDid: string,
-  deps: InterimDeps,
+  deps: SpendDeps,
   now: Date = new Date(),
   options: {
     registeredRunIds?: (runIds: string[]) => Promise<Set<string>>;
     recentLimit?: number;
   } = {},
-): Promise<InterimSpend> {
+): Promise<Spend> {
   const windowFrom = monthStartIso(now);
   const base = { label: INTERIM_LABEL, windowFrom };
-  let page: Awaited<ReturnType<InterimDeps['listRuns']>>;
+  let page: Awaited<ReturnType<SpendDeps['listRuns']>>;
   try {
     page = await deps.listRuns(principalDid, windowFrom);
   } catch (err) {
@@ -411,7 +403,7 @@ export async function deriveInterimSpend(
   });
 
   const budget = { left: MAX_GITHUB_LOOKUPS };
-  const runs = await mapWithConcurrency(page.runs, GITHUB_CONCURRENCY, async (run): Promise<InterimRunCost> => ({
+  const runs = await mapWithConcurrency(page.runs, GITHUB_CONCURRENCY, async (run): Promise<SpendRunCost> => ({
     runId: run.runId,
     title: run.title,
     state: run.state,
@@ -456,7 +448,7 @@ async function meteredBySession(principalDid: string, sessionIds: string[]): Pro
 }
 
 /** Operator DID is resolved per call so the readers can use the operator's own authorised credentials. */
-export function defaultInterimDeps(operatorDid: string): InterimDeps {
+export function defaultSpendDeps(operatorDid: string): SpendDeps {
   return {
     async listRuns(principalDid, createdAfter) {
       const page = await listAgentRuns(principalDid, { createdAfter, limit: RUN_LIMIT });
@@ -482,7 +474,3 @@ export function defaultInterimDeps(operatorDid: string): InterimDeps {
   };
 }
 
-/** Entry point for the route: the interim spend picture for the operator, this month. */
-export function readInterimSpend(operatorDid: string): Promise<InterimSpend> {
-  return deriveInterimSpend(operatorDid, defaultInterimDeps(operatorDid));
-}
