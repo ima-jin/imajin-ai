@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, it, vi } from 'vitest';
-import { githubGrantee, validGithubGrant, verifyGithubJob } from '../github-oidc';
+import { GithubPolicyError, githubGrantee, validGithubGrant, verifyGithubJob } from '../github-oidc';
 import { oidcFixture } from './github-oidc-fixture';
 vi.mock('../ssh-ca', () => ({
   SshCaError: class extends Error {
@@ -26,7 +26,37 @@ describe('GitHub SSH certificate identity', () => {
     const foreign = await oidcFixture();
     for (const token of [await foreign.token(), 'eyJhbGciOiJub25lIn0.e30.', 'x'.repeat(16385), '']) {
       await expect(verifyGithubJob(token, fixture.keys)).rejects.toMatchObject({ status: 401, message: 'Invalid GitHub OIDC token' });
+      await expect(verifyGithubJob(token, fixture.keys)).rejects.not.toBeInstanceOf(GithubPolicyError);
     }
+  });
+
+  it('does not classify key resolution failures or wrong origins as attributable policy refusals', async () => {
+    const keys = vi.fn().mockRejectedValue(new Error('upstream details must not escape'));
+    await expect(verifyGithubJob(await fixture.token(), keys)).rejects.not.toBeInstanceOf(GithubPolicyError);
+    expect(keys).toHaveBeenCalledTimes(1);
+    for (const overrides of [{ iss: 'https://attacker.invalid' }, { aud: 'other-service' },
+      { iss: undefined }, { aud: undefined }, { iss: 'https://attacker.invalid', jti: undefined }]) {
+      await expect(verifyGithubJob(await fixture.token(overrides), fixture.keys))
+        .rejects.not.toBeInstanceOf(GithubPolicyError);
+    }
+  });
+
+  it.each([
+    { jti: undefined }, { exp: 1 }, { iat: 1 }, { nbf: 9999999999 }, { repository_id: 'invalid' },
+    { workflow_ref: 'ima-jin/example/.github/workflows/deploy.yml@refs/pull/1/merge' },
+  ])('classifies signed matching-origin policy failures without retaining claims %j', async overrides => {
+    const failure = await verifyGithubJob(await fixture.token(overrides), fixture.keys).catch(error => error);
+    expect(failure).toBeInstanceOf(GithubPolicyError);
+    expect(failure).toMatchObject({ status: 401, message: 'Invalid GitHub OIDC token' });
+    expect(Object.keys(failure)).toEqual(['status']);
+  });
+
+  it('retains JOSE array-audience matching and resolves the verification key only once', async () => {
+    const keys = vi.fn(fixture.keys);
+    await expect(verifyGithubJob(await fixture.token({
+      aud: ['other-service', 'urn:imajin:vault:ssh-cert'],
+    }), keys)).resolves.toMatchObject({ repositoryId: '123' });
+    expect(keys).toHaveBeenCalledTimes(1);
   });
 
   it.each([

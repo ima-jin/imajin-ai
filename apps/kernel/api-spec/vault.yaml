@@ -290,9 +290,12 @@ paths:
         in a rolling 60-second window, counting existing issued events inside
         the signing transaction/lock. Over-budget requests return 429 and no cert.
         Authenticated refusals commit vault.ssh-cert.refused with grantee and
-        HTTP status, never raw request bytes. Invalid/forged OIDC commits a fixed
-        anonymous refusal under the node subject with status 401,
-        authentication github-oidc and reason invalid-token, never unverified claims.
+        HTTP status, never raw request bytes. OIDC policy failures after signature,
+        issuer, audience and algorithm verification commit a fixed refusal under
+        the node subject with status 401, authentication github-oidc and reason
+        invalid-token when a validated job grantee is not yet available.
+        Forged, malformed, empty or wrong-origin OIDC and JWKS/key-fetch failures
+        return a generic 401 without audit preparation, signing or database writes.
         Audit failure returns 503 and no certificate.
         Anonymous requests without OIDC return 401 without storing an audit record.
       security: [{ cookieAuth: [] }, { bearerAuth: [] }, { githubOidc: [] }]

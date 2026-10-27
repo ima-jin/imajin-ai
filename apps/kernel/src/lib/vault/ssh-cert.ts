@@ -41,7 +41,7 @@ async function checkIssuanceBudget(tx: Transaction, grantId: string) {
 export function recordSshRefusal(grantee: string, status: number) {
   return audit(db, 'refused', grantee, { grantee, status });
 }
-/** Fixed anonymous subject: never attribute unverified claims to a repository. */
+/** Signature/origin verified, but job claims refused: no unvalidated repository attribution. */
 export function recordInvalidGithubRefusal() {
   return audit(db, 'refused', getNodeSigningIdentity().senderDid, {
     status: 401, authentication: 'github-oidc', reason: 'invalid-token',

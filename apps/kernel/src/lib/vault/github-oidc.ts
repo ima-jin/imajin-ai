@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { createRemoteJWKSet, jwtVerify, type JWTVerifyGetKey, type JWTPayload } from 'jose';
+import { compactVerify, createRemoteJWKSet, decodeJwt, jwtVerify, type CompactVerifyGetKey, type JWTPayload } from 'jose';
 import { SshCaError } from './ssh-ca';
 
 export const GITHUB_ISSUER = 'https://token.actions.githubusercontent.com';
@@ -80,18 +80,41 @@ function verifiedJob(payload: JWTPayload): GithubJob {
   };
 }
 
-/** Fixed issuer/JWKS/audience/algorithm: never trust token-selected URLs or unverified claims. */
-export async function verifyGithubJob(token: string, keys: JWTVerifyGetKey = githubKeys): Promise<GithubJob> {
+/** Only this sanitized error permits an audit before a job grantee is resolved. */
+export class GithubPolicyError extends SshCaError {
+  constructor() { super(401, 'Invalid GitHub OIDC token'); }
+}
+
+/** Anonymous failures must not cause audit preparation, signing or database writes. */
+async function verifyGithubSignature(token: string, keys: CompactVerifyGetKey) {
   try {
     if (token.length > 16384) throw new Error('Token too large');
-    const { payload } = await jwtVerify(token, keys, {
+    const verified = await compactVerify(token, keys, { algorithms: ['RS256'] });
+    // Read origin claims only after signature verification; use JOSE's audience semantics.
+    const payload = decodeJwt(token);
+    const audience = Array.isArray(payload.aud) ? payload.aud : [payload.aud];
+    if (payload.iss !== GITHUB_ISSUER || !audience.includes(SSH_OIDC_AUDIENCE)) {
+      throw new Error('Invalid GitHub token origin');
+    }
+    return verified.key;
+  } catch {
+    // Neither request bytes nor JOSE/key-fetch errors escape this boundary.
+    throw new SshCaError(401, 'Invalid GitHub OIDC token');
+  }
+}
+
+/** Fixed issuer/JWKS/audience/algorithm: never trust token-selected URLs or unverified claims. */
+export async function verifyGithubJob(token: string, keys: CompactVerifyGetKey = githubKeys): Promise<GithubJob> {
+  const key = await verifyGithubSignature(token, keys);
+  try {
+    // Reuse the resolved key (no second JWKS fetch), retaining all JWT validation rules.
+    const { payload } = await jwtVerify(token, key, {
       issuer: GITHUB_ISSUER, audience: SSH_OIDC_AUDIENCE, algorithms: ['RS256'],
       requiredClaims: ['exp', 'iat', 'nbf', 'sub', 'jti'],
       maxTokenAge: '10m', clockTolerance: 5,
     });
     return verifiedJob(payload);
   } catch {
-    // JOSE errors and request bytes must not reach logs or responses.
-    throw new SshCaError(401, 'Invalid GitHub OIDC token');
+    throw new GithubPolicyError();
   }
 }

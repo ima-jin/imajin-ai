@@ -74,7 +74,9 @@ License: Imajin Network License (INL) v1.0, source-available, not MIT.
   and environment plus immutable repository/owner IDs in signed grant scope.
   Legacy GitHub grants without IDs require operator re-grant. Optional allowedRefs
   pins exact full workflow_ref strings. Each jti can mint once until token expiry;
-  invalid OIDC is anonymously audited. id-token:write and a protected environment
+  only signature/origin-verified policy refusals are audited. Unverified OIDC and
+  key-fetch failures return generic 401 with no audit signing or writes.
+  id-token:write and a protected environment
   are required, on a dedicated self-hosted no-swap runner with startup orphan cleanup.
   The per-job private key stays in non-swappable tmpfs; pinned known-hosts is
   mandatory. See docs/deploy/vault-ssh-deploy.md, not a stored deploy-key recipe.

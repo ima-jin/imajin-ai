@@ -6,6 +6,7 @@ import { eq } from 'drizzle-orm';
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import type { VaultFile } from '@imajin/vault-core';
+import { createRemoteJWKSet, customFetch } from 'jose';
 
 vi.setConfig({ testTimeout: 30_000, hookTimeout: 30_000 });
 const h = vi.hoisted(() => ({
@@ -101,7 +102,7 @@ beforeAll(async () => {
   const migration = readFileSync('migrations/0221_vault_ssh_scope.sql', 'utf8');
   await client.exec(migration);
   await client.exec(migration); // Idempotent on an already-upgraded schema.
-  const replayMigration = readFileSync('migrations/0222_vault_ssh_oidc_replay.sql', 'utf8');
+  const replayMigration = readFileSync('migrations/0223_vault_ssh_oidc_replay.sql', 'utf8');
   await client.exec(replayMigration);
   await client.exec(replayMigration);
   await client.exec(`
@@ -601,6 +602,78 @@ describe('restricted SSH certificates (#3064)', () => {
     expect((await audits()).filter(row => row.type === 'vault.ssh-cert.issued')).toHaveLength(0);
   });
 
+  it('leaves records unchanged and prepares/signs nothing for unverified OIDC or key-fetch failures', async () => {
+    const fixture = await oidcFixture();
+    const realVerify = githubOidc.verifyGithubJob;
+    const verifier = vi.spyOn(githubOidc, 'verifyGithubJob')
+      .mockImplementation(token => realVerify(token, fixture.keys));
+    const prepare = vi.spyOn(mechanicalAudit, 'prepareMechanicalAttestation');
+    const sign = vi.spyOn(crypto, 'signSync');
+    const before = await database.select().from(attestations);
+    const send = (token: string) => signRoute(new Request('https://kernel.test/api/vault/ssh-ca/sign', {
+      method: 'POST', headers: { 'x-github-oidc-token': token }, body: JSON.stringify(input),
+    }));
+    try {
+      const foreign = await oidcFixture();
+      for (const token of ['', 'garbage', 'eyJhbGciOiJub25lIn0.e30.', 'x'.repeat(16385),
+        await foreign.token(), await fixture.token({ iss: 'https://attacker.invalid' }),
+        await fixture.token({ aud: 'other-service' }),
+        await fixture.token({ iss: 'https://attacker.invalid', jti: undefined })]) {
+        const response = await send(token);
+        expect(response.status).toBe(401);
+        expect(await response.json()).toEqual({ error: 'Invalid GitHub OIDC token' });
+      }
+      const fetch = vi.fn().mockRejectedValue(new TypeError('sensitive upstream error details'));
+      const keys = createRemoteJWKSet(new URL(`${githubOidc.GITHUB_ISSUER}/.well-known/jwks`), {
+        timeoutDuration: 5000, [customFetch]: fetch,
+      });
+      verifier.mockImplementation(token => realVerify(token, keys));
+      const response = await send(await fixture.token());
+      expect(response.status).toBe(401);
+      expect(await response.json()).toEqual({ error: 'Invalid GitHub OIDC token' });
+      expect(fetch).toHaveBeenCalledTimes(1);
+      expect(prepare).not.toHaveBeenCalled();
+      expect(sign).not.toHaveBeenCalled();
+      expect(await database.select().from(attestations)).toEqual(before);
+    } finally {
+      verifier.mockRestore();
+      prepare.mockRestore();
+      sign.mockRestore();
+    }
+  });
+
+  it.each([
+    { jti: undefined }, { exp: 1 }, { iat: 1 }, { nbf: 9999999999 },
+    { repository_id: 'invalid' }, { environment: undefined },
+    { workflow_ref: 'ima-jin/example/.github/workflows/deploy.yml@refs/pull/1/merge' },
+  ])('records exactly one refusal for verified GitHub tokens with invalid policy %j', async overrides => {
+    const fixture = await oidcFixture();
+    const realVerify = githubOidc.verifyGithubJob;
+    const verifier = vi.spyOn(githubOidc, 'verifyGithubJob')
+      .mockImplementation(token => realVerify(token, fixture.keys));
+    const before = await database.select().from(attestations);
+    const prepare = vi.spyOn(mechanicalAudit, 'prepareMechanicalAttestation');
+    try {
+      const response = await signRoute(new Request('https://kernel.test/api/vault/ssh-ca/sign', {
+        method: 'POST', headers: { 'x-github-oidc-token': await fixture.token(overrides) },
+        body: JSON.stringify(input),
+      }));
+      expect(response.status).toBe(401);
+      expect(await response.json()).toEqual({ error: 'Invalid GitHub OIDC token' });
+      expect(prepare).toHaveBeenCalledTimes(1);
+      const added = (await database.select().from(attestations))
+        .filter(row => !before.some(previous => previous.id === row.id));
+      expect(added).toHaveLength(1);
+      expect(added[0]).toMatchObject({
+        type: 'vault.ssh-cert.refused', subjectDid: h.nodeDid,
+        payload: { status: 401, authentication: 'github-oidc', reason: 'invalid-token' },
+      });
+    } finally {
+      verifier.mockRestore();
+      prepare.mockRestore();
+    }
+  });
+
   it('bounds durable replay to token expiry, across grants, without consuming failed issuance', async () => {
     const fixture = await oidcFixture();
     const realVerify = githubOidc.verifyGithubJob;
@@ -705,7 +778,15 @@ describe('restricted SSH certificates (#3064)', () => {
         { workflow_ref: 'ima-jin/example/.github/workflows/deploy.yml@refs/tags/main' },
         { workflow_ref: 'ima-jin/example/.github/workflows/other.yml@refs/heads/main' },
       ]) {
+        const before = await database.select().from(attestations);
         expect((await githubRequest(await fixture.token({ jti: JSON.stringify(override), ...override }))).status).toBe(403);
+        const added = (await database.select().from(attestations))
+          .filter(row => !before.some(previous => previous.id === row.id));
+        expect(added).toHaveLength(1);
+        expect(added[0]).toMatchObject({
+          type: 'vault.ssh-cert.refused', subjectDid: grant.grantee,
+          payload: { grantee: grant.grantee, status: 403 },
+        });
       }
       const [stored] = await database.select().from(vaultDelegationGrants)
         .where(eq(vaultDelegationGrants.id, grant.grantId));
@@ -741,15 +822,17 @@ describe('restricted SSH certificates (#3064)', () => {
       }))).status).toBe(403);
       expect((await githubRequest(await (await oidcFixture()).token())).status).toBe(401);
       expect((await githubRequest('', {})).status).toBe(401); // no fallback to node auth
+      const invalidClaims = await fixture.token({ jti: undefined });
+      expect((await githubRequest(invalidClaims)).status).toBe(401);
       const refusals = (await database.select().from(attestations))
         .filter(row => row.type === 'vault.ssh-cert.refused' && row.payload?.authentication === 'github-oidc');
-      expect(refusals.slice(-2).map(row => row.payload)).toEqual(Array(2).fill({
+      expect(refusals.at(-1)?.payload).toEqual({
         status: 401, authentication: 'github-oidc', reason: 'invalid-token',
-      }));
+      });
       expect(refusals.at(-1)?.subjectDid).toBe(h.nodeDid);
       const auditFailure = vi.spyOn(mechanicalAudit, 'prepareMechanicalAttestation')
         .mockRejectedValueOnce(new Error('unsafe-audit-error'));
-      expect((await githubRequest('')).status).toBe(503);
+      expect((await githubRequest(invalidClaims)).status).toBe(503);
       auditFailure.mockRestore();
       expect((await githubRequest(valid, { job: 'spoofed' })).status).toBe(400);
       expect((await githubRequest(valid, { privateKey: 'rejected' })).status).toBe(400);

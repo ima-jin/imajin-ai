@@ -79,8 +79,12 @@ projection only consults issuance history from the last 605 seconds whose
 token `exp` is still live (token lifetime is capped at 10 minutes); expired
 entries leave that projection automatically. There is no separate accumulating
 replay cache or replay-table cleanup; immutable signed audit history remains.
-Failed issuance rolls back and does not spend the token. Forged/invalid tokens
-produce a fixed anonymous refusal event without trusting or retaining claims.
+Failed issuance rolls back and does not spend the token. Only policy refusals
+after RS256 signature, issuer and audience verification produce signed refusal
+events (under the node subject if a validated job grantee is not yet available).
+Forged, malformed, empty or wrong-origin tokens and JWKS/key-fetch failures
+return a generic 401 without audit preparation, signing or database writes.
+No token, unvalidated claim or upstream error detail is logged or retained.
 
 ## Runner and cleanup contract
 - Linux, Python 3, GNU `stat` and OpenSSH client (`ssh`/`ssh-keygen`) are required.

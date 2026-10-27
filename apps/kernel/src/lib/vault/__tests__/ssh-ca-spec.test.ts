@@ -31,7 +31,8 @@ it('documents verified GitHub job auth and mutually exclusive repo/environment g
   expect(grant.oneOf[1].required).toEqual(['repository', 'environment', 'repositoryId', 'repositoryOwnerId']);
   expect(grant.properties.allowedRefs).toMatchObject({ type: 'array', minItems: 1, maxItems: 64 });
   expect(sign.description).toContain('operator must re-grant');
-  expect(sign.description).toContain('Invalid/forged OIDC');
+  expect(sign.description).toContain('OIDC policy failures after signature,');
+  expect(sign.description).toContain('without audit preparation, signing or database writes');
   expect(grant.oneOf[1].not.required).toEqual(['grantee']);
 });
 
