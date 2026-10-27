@@ -38,6 +38,7 @@ import type { VerifiedState } from './connector-oauth-state';
 import type { DeviceTicketHelpers } from './connector-device-ticket';
 import { connectionSlot, connectionVaultField } from './connection-slots';
 import { revokeConnectorRegistration } from './connector-registry-store';
+import { connectorRemovalPolicy } from './connector-removal-policy';
 
 /** Request selectors are validated before any provider or vault side effect. */
 export function requestConnectionSlot(request: NextRequest): string {
@@ -429,6 +430,12 @@ export function createCallbackHandler(opts: {
 
 // ── Disconnect ────────────────────────────────────────────────────────────────
 
+/** Only permanent removal tightens the legacy disconnect's auth options. */
+function authenticateDisconnect(request: NextRequest, service: string, removal: string | null) {
+  if (removal === null) return requireAuth(request);
+  return requireAuth(request, { service });
+}
+
 /**
  * Build a `POST` handler that disconnects a connector for the authenticated DID.
  *
@@ -456,15 +463,35 @@ export function createDisconnectHandler(opts: {
   connectorDid: string;
   /** Short connector name for bus event topic and log messages, e.g. `'github'`. */
   connectorName: string;
+  /** Only slotted connectors expose permanent removal on this existing route. */
+  allowSlotRemoval?: boolean;
 }) {
   return async function POST(request: NextRequest) {
     let slot: string;
     try { slot = requestConnectionSlot(request); } catch (err) { return invalidSlot(err); }
-    const auth = await requireAuth(request);
+    const removal = new URL(request.url).searchParams.get('remove');
+    const auth = await authenticateDisconnect(request, opts.connectorName, removal);
     if ('error' in auth) {
       return NextResponse.json({ error: auth.error }, { status: auth.status });
     }
     const ownerDid = resolveActingDid(auth.identity);
+    if (removal !== null) {
+      if (removal !== 'true' || !opts.allowSlotRemoval) {
+        return NextResponse.json({ error: 'Invalid removal request' }, { status: 400 });
+      }
+      const refusal = connectorRemovalPolicy(auth.identity, opts.connectorName, slot);
+      if (refusal) return refusal;
+      const { removeConnectorConnection, ConnectionRemovalError } = await import('./connector-removal');
+      try {
+        const result = await removeConnectorConnection(ownerDid, opts.connectorName, slot, opts.vaultPrefixes, auth.identity);
+        return NextResponse.json({ connected: false, ...result });
+      } catch (err) {
+        const status = err instanceof ConnectionRemovalError ? err.status : 503;
+        return NextResponse.json({
+          error: err instanceof ConnectionRemovalError ? err.message : 'Connection removal unavailable. Try again.',
+        }, { status });
+      }
+    }
 
     // Tombstone all sealed vault fields (idempotent — absent fields are a no-op).
     await Promise.all(
@@ -667,6 +694,7 @@ export interface DeviceStartResponse {
  * user cannot act on.
  */
 function connectorErrorStatus(message: string): number {
+  if (message.startsWith('connection_removed:')) return 410;
   if (message.includes('_credential_pending')) return 409;
   if (message.includes('google_business_profile_approval_pending')) return 409;
   if (message.includes('google_business_profile_disabled')) return 403;

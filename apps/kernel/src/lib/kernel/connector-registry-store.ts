@@ -25,7 +25,7 @@
  * — the static catalogue it reads connector identity from — is client-safe and
  * stays that way; the dependency runs in this direction only.
  */
-import { and, eq } from 'drizzle-orm';
+import { and, eq, ne } from 'drizzle-orm';
 import { createHash } from 'node:crypto';
 import { createLogger } from '@imajin/logger';
 import { db, connectors, type ConnectorRow } from '@/src/db';
@@ -128,6 +128,7 @@ export async function recordConnectorRegistration(reg: ConnectorRegistration, sl
           updatedAt: now,
           revokedAt: null,
         },
+        setWhere: ne(connectors.status, 'removed'),
       });
   } catch (err) {
     log.warn(
@@ -153,7 +154,7 @@ export async function revokeConnectorRegistration(ownerDid: string, provider: st
     await db
       .update(connectors)
       .set({ status: 'revoked', scopes: [], revokedAt: now, updatedAt: now })
-      .where(and(eq(connectors.ownerDid, ownerDid), eq(connectors.provider, provider), eq(connectors.slot, selected)));
+      .where(and(eq(connectors.ownerDid, ownerDid), eq(connectors.provider, provider), eq(connectors.slot, selected), ne(connectors.status, 'removed')));
   } catch (err) {
     log.warn(
       { err: String(err), ownerDid, provider },
@@ -204,6 +205,7 @@ export async function syncConnectorRegistrationScopes(
       .onConflictDoUpdate({
         target: [connectors.ownerDid, connectors.provider, connectors.slot],
         set: { scopes: snapshot, updatedAt: now },
+        setWhere: ne(connectors.status, 'removed'),
       });
   } catch (err) {
     log.warn(
@@ -319,6 +321,7 @@ export async function renameConnectorConnection(
     .where(and(
       eq(connectors.ownerDid, ownerDid), eq(connectors.provider, provider),
       eq(connectors.slot, selected),
+      ne(connectors.status, 'removed'),
     )).returning();
   if (row || selected !== 'primary') return row;
 

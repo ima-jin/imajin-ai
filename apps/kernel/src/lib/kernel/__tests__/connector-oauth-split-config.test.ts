@@ -17,7 +17,7 @@ const { sealMock, loadMock, whereMock, recordMock } = vi.hoisted(() => ({
 }));
 
 vi.mock('@/src/lib/vault', () => ({ sealAndStoreV2: sealMock, loadAndUnseal: loadMock }));
-vi.mock('../connector-registry-store', () => ({ recordConnectorRegistration: recordMock }));
+vi.mock('../connector-registry-store', () => ({ recordConnectorRegistration: recordMock, readConnectorRegistration: vi.fn() }));
 
 vi.mock('drizzle-orm', () => ({
   and: (...args: unknown[]) => args,
@@ -31,6 +31,7 @@ vi.mock('@/src/db', () => ({
 
 import { createConnectorOAuth, type BaseOAuthConfig, type OAuthTokenResponse } from '../connector-oauth';
 import { withConnectorConnection } from '../connector-connection-context';
+import { readConnectorRegistration } from '../connector-registry-store';
 
 const OWNER = 'did:imajin:supplier';
 const APP = 'did:imajin:agrifortress';
@@ -99,9 +100,24 @@ beforeEach(() => {
   sealedConfigs();
   whereMock.mockReset().mockResolvedValue([]);
   recordMock.mockReset();
+  vi.mocked(readConnectorRegistration).mockReset();
 });
 
 describe('connection slots', () => {
+  it('refuses reads, writes and stale callback token stores for removed slots without touching custody', async () => {
+    vi.mocked(readConnectorRegistration).mockResolvedValue({ status: 'removed' } as never);
+    const connector = makeConnector();
+    for (const operation of [
+      () => connector.storeConfig(OWNER, APP_CONFIG, 'work'),
+      () => connector.loadConfig(OWNER, 'work'),
+      () => connector.storeTokens(OWNER, { accessToken: 'unused-fixture', expiresAt: 1 }, 'work'),
+      () => connector.loadTokens(OWNER, 'work'),
+      () => connector.resolveActiveGrant(OWNER, 'testly:read', 'work'),
+    ]) await expect(operation()).rejects.toThrow('Connection removed');
+    expect(sealMock).not.toHaveBeenCalled();
+    expect(loadMock).not.toHaveBeenCalled();
+    expect(recordMock).not.toHaveBeenCalled();
+  });
   it('restricts every grant lookup to the selected slot and propagates DB failures', async () => {
     const connector = makeConnector();
     expect(await connector.resolveActiveGrant(OWNER, 'testly:read', 'work')).toBe(false);

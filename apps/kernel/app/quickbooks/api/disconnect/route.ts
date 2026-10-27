@@ -7,4 +7,5 @@ export const POST = createDisconnectHandler({
   channel: 'quickbooks',
   connectorDid: QUICKBOOKS_CONNECTOR_DID,
   connectorName: 'quickbooks',
+  allowSlotRemoval: true,
 });

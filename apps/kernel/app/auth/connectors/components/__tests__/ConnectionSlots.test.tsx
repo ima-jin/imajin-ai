@@ -18,6 +18,7 @@ const status = { manifestAssetId: null, activeScopes: [], validScopes: [], confi
 function setup(id = 'google', options: {
   connected?: boolean; configured?: boolean; failWrite?: boolean; failList?: boolean;
   flow?: string; deviceSuccess?: boolean; disconnectedWork?: boolean;
+  sources?: Record<string, unknown>[]; failCorpus?: boolean; malformedCorpus?: boolean; failRemoval?: boolean; ownerDid?: string | null;
 } = {}) {
   const entry = getConnector(id)!;
   const endpoint = `/connections/api/connectors/${id}/connections`;
@@ -36,12 +37,25 @@ function setup(id = 'google', options: {
       ...(options.flow ? { flow: options.flow } : {}),
     };
   }
+  function corpusStatusResponse() {
+    if (options.malformedCorpus) return Response.json({ sources: null });
+    return options.failCorpus
+      ? Response.json({ error: 'Unavailable' }, { status: 503 })
+      : Response.json({ sources: options.sources ?? [] });
+  }
+  function removalResponse() {
+    return options.failRemoval
+      ? Response.json({ error: 'Removal unavailable' }, { status: 503 })
+      : Response.json({ removed: true, connected: false });
+  }
   const fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
+    if (url === '/auth/corpus/api/status') return corpusStatusResponse();
+    if (url.includes('remove=true')) return removalResponse();
     if (url.startsWith(endpoint)) {
       if (init?.method && options.failWrite) return Response.json({ error: 'Label was rejected' }, { status: 400 });
       if (!init?.method && options.failList) return Response.json({ error: 'Connections unavailable' }, { status: 503 });
-      return Response.json({ connections: [primary, work] });
+      return Response.json({ ownerDid: options.ownerDid === undefined ? 'did:imajin:owner' : options.ownerDid, connections: [primary, work] });
     }
     if (url.includes('/device/start')) return deviceStart();
     if (url.includes('/device/poll')) return Response.json({ status: 'authorized' });
@@ -77,6 +91,80 @@ afterEach(() => {
 });
 
 describe('labelled OAuth connections', () => {
+  it.each(['github', 'google', 'quickbooks'])('removes only the confirmed %s slot and never selects primary implicitly', async id => {
+    navigation.query = 'slot=work';
+    const { fetch } = setup(id);
+    const confirm = vi.fn(() => true);
+    vi.stubGlobal('confirm', confirm);
+    fireEvent.click(await screen.findByRole('button', { name: 'Remove Company (work)' }));
+    await waitFor(() => expect(confirm).toHaveBeenCalledWith(expect.stringContaining('"Company" (slot: work)')));
+    expect(confirm).toHaveBeenCalledWith(expect.stringContaining('Other connections are not affected.'));
+    await waitFor(() => expect(fetch).toHaveBeenCalledWith(`/${id}/api/disconnect?slot=work&remove=true`, { method: 'POST' }));
+    expect(await screen.findByRole('status')).toHaveProperty('textContent', expect.stringContaining('Connection removed: Company'));
+    expect(screen.queryByRole('button', { name: 'Remove Company (work)' })).toBeNull();
+    expect(screen.queryByRole('link', { name: 'Reconnect' })).toBeNull();
+    expect((screen.getByRole('combobox', { name: 'Selected connection' }) as HTMLSelectElement).value).toBe('work');
+    expect((screen.getByRole('button', { name: 'Remove Personal (primary)' }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('does not call removal when its confirmation is cancelled', async () => {
+    const { fetch } = setup('github');
+    const confirm = vi.fn(() => false);
+    vi.stubGlobal('confirm', confirm);
+    fireEvent.click(await screen.findByRole('button', { name: 'Remove Company (work)' }));
+    await waitFor(() => expect(confirm).toHaveBeenCalled());
+    expect(fetch.mock.calls.some(([, init]) => init?.method === 'POST')).toBe(false);
+    expect(screen.getByRole('button', { name: 'Remove Company (work)' })).toBeDefined();
+  });
+
+  it('names and counts only corpus sources bound to this owner and exact GitHub slot, without other metadata', async () => {
+    const { fetch } = setup('github', { sources: [
+      { source: 'github:org/beta', credentialRef: 'github:work', ownerDid: 'did:imajin:owner', error: 'not-for-confirm', threadCount: 99 },
+      { source: 'github:org/alpha', credentialRef: 'github:work', ownerDid: 'did:imajin:owner' },
+      { source: 'github:org/alpha', credentialRef: 'github:work', ownerDid: 'did:imajin:owner' },
+      { source: 'github:org/primary', credentialRef: 'github:primary', ownerDid: 'did:imajin:owner' },
+      { source: 'github:other/private', credentialRef: 'github:work', ownerDid: 'did:imajin:other' },
+      { source: 42, credentialRef: 'github:work', ownerDid: 'did:imajin:owner' },
+    ] });
+    const confirm = vi.fn(() => false);
+    vi.stubGlobal('confirm', confirm);
+    fireEvent.click(await screen.findByRole('button', { name: 'Remove Company (work)' }));
+    await waitFor(() => expect(confirm).toHaveBeenCalled());
+    const text = confirm.mock.calls[0][0] as string;
+    expect(text).toContain('2 corpus sources depend on this connection.');
+    expect(text).toContain('- github:org/alpha\n- github:org/beta');
+    for (const excluded of ['github:org/primary', 'github:other/private', 'not-for-confirm', 'threadCount', '99']) expect(text).not.toContain(excluded);
+    expect(fetch).toHaveBeenCalledWith('/auth/corpus/api/status', { credentials: 'include', cache: 'no-store' });
+    expect(fetch.mock.calls.some(([url]) => String(url).includes('remove=true'))).toBe(false);
+  });
+
+  it.each([0, 1])('reports the dependency count (%i) accurately', async count => {
+    setup('github', { sources: count ? [{ source: 'github:org/one', credentialRef: 'github:work', ownerDid: 'did:imajin:owner' }] : [] });
+    const confirm = vi.fn(() => false);
+    vi.stubGlobal('confirm', confirm);
+    fireEvent.click(await screen.findByRole('button', { name: 'Remove Company (work)' }));
+    await waitFor(() => expect(confirm).toHaveBeenCalledWith(expect.stringContaining(count ? '1 corpus source depends' : '0 corpus sources depend')));
+  });
+
+  it.each([{ failCorpus: true }, { ownerDid: null }, { malformedCorpus: true }])('does not destroy a slot when dependency metadata is unavailable: %j', async options => {
+    const { fetch } = setup('github', options);
+    const confirm = vi.fn();
+    vi.stubGlobal('confirm', confirm);
+    fireEvent.click(await screen.findByRole('button', { name: 'Remove Company (work)' }));
+    expect(await screen.findByRole('alert')).toHaveProperty('textContent', 'Could not load dependent corpus sources. Try again before removing this connection.');
+    expect(confirm).not.toHaveBeenCalled();
+    expect(fetch.mock.calls.some(([url]) => String(url).includes('remove=true'))).toBe(false);
+    expect(screen.getByRole('button', { name: 'Remove Company (work)' })).toBeDefined();
+  });
+
+  it('keeps a failed removal visible and reports the safe server error', async () => {
+    setup('github', { failRemoval: true });
+    vi.stubGlobal('confirm', vi.fn(() => true));
+    const remove = await screen.findByRole('button', { name: 'Remove Company (work)' });
+    fireEvent.click(remove);
+    expect(await screen.findByRole('alert')).toHaveProperty('textContent', 'Removal unavailable');
+    expect(screen.getByRole('button', { name: 'Remove Company (work)' })).toBeDefined();
+  });
   it.each(['google', 'github', 'quickbooks'])('shows both %s account labels and emails without opening the selector', async (id) => {
     const { fetch, entry } = setup(id);
     const list = await screen.findByRole('list', { name: 'Connection accounts' });
@@ -84,8 +172,8 @@ describe('labelled OAuth connections', () => {
     expect(within(list).getByText('me@example.com')).toBeDefined();
     expect(within(list).getByText('Company')).toBeDefined();
     expect(within(list).getByText('work@example.com')).toBeDefined();
-    const primaryButton = within(list).getByRole('button', { name: /Personal/ });
-    const workButton = within(list).getByRole('button', { name: /Company/ });
+    const primaryButton = within(list).getByRole('button', { name: /^Personal/ });
+    const workButton = within(list).getByRole('button', { name: /^Company/ });
     expect(primaryButton.getAttribute('aria-pressed')).toBe('true');
     expect(workButton.getAttribute('aria-pressed')).toBe('false');
     fireEvent.click(workButton);

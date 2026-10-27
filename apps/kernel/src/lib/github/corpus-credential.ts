@@ -4,6 +4,7 @@ import { db, channelLinks } from '@/src/db';
 import { GITHUB_CONNECTOR_DID, resolveActiveGrant, loadCorpusAccessToken } from './connector';
 import { readReadAllowlist, isRepoAllowed } from './allowlist';
 import { withConnectorConnection } from '../kernel/connector-connection-context';
+import { assertConnectionNotRemoved } from '../kernel/connector-connection-status';
 
 export function corpusConnectorSlot(ref: unknown): string {
   if (typeof ref !== 'string' || !/^github:[a-z0-9][a-z0-9_-]{0,63}$/.test(ref)) {
@@ -27,6 +28,7 @@ export async function listCorpusGitHubConnectors(ownerDid: string) {
 /** Live grant + disclosure policy + vault OAuth lookup on every source operation. No PAT path. */
 export async function resolveCorpusGitHubCredential(ownerDid: string, source: string, ref: unknown): Promise<string> {
   const slot = corpusConnectorSlot(ref);
+  await assertConnectionNotRemoved(ownerDid, 'github', slot);
   return withConnectorConnection('github', ownerDid, slot, async () => {
     if (!await resolveActiveGrant(ownerDid, 'github:read', slot)) {
       throw new Error('GitHub connector revoked or missing github:read permission.');

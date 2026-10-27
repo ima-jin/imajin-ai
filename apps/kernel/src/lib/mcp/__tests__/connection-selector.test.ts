@@ -20,6 +20,14 @@ beforeEach(() => {
 });
 
 describe('MCP connection selection', () => {
+  it.each(['work', 'Company'])('reports a removed slot or label (%s) without rebinding to another account', async selector => {
+    list.mockResolvedValue([
+      { provider: 'google', slot: 'work', label: 'Company', status: 'removed' },
+      { provider: 'google', slot: 'primary', label: 'Personal', status: 'active' },
+      { provider: 'google', slot: 'other', label: 'Company', status: 'active' },
+    ]);
+    await expect(resolveToolConnection(DID, 'google', selector)).rejects.toThrow('Connection removed');
+  });
   it('omitted means primary without needing a registry row', async () => {
     expect(await resolveToolConnection(DID, 'google')).toBe('primary');
     expect(list).not.toHaveBeenCalled();

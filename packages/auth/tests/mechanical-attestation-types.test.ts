@@ -2,6 +2,10 @@ import { describe, it, expect } from 'vitest';
 import { ATTESTATION_TYPES, MECHANICAL_ATTESTATION_TYPES } from '../src/types/attestation';
 
 describe('MECHANICAL_ATTESTATION_TYPES (#1822)', () => {
+  it('classifies signed connector removal as mechanical history, never a countersignature request', () => {
+    expect(ATTESTATION_TYPES).toContain('connector.disconnected');
+    expect(MECHANICAL_ATTESTATION_TYPES).toContain('connector.disconnected');
+  });
   it('contains session.created', () => {
     expect(MECHANICAL_ATTESTATION_TYPES).toContain('session.created');
   });

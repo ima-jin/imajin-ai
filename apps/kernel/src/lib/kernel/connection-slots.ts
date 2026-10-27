@@ -1,6 +1,12 @@
 /** Client-safe connection-slot identifiers. Org selectors are intentionally not supported yet. */
 export const PRIMARY_CONNECTION = 'primary';
 
+export class ConnectionRemovedError extends Error {
+  constructor() {
+    super('connection_removed: Connection removed. Select another connection explicitly.');
+  }
+}
+
 export function connectionSlot(value?: string | null): string {
   const slot = value ?? PRIMARY_CONNECTION;
   if (typeof slot !== 'string' || !/^[a-z0-9][a-z0-9_-]{0,63}$/.test(slot)) {

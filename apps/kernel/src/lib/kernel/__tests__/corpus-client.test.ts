@@ -1,5 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { crypto as authCrypto } from '@imajin/auth';
+vi.mock('../connector-connection-status', () => ({ assertConnectionNotRemoved: vi.fn() }));
+import { assertConnectionNotRemoved } from '../connector-connection-status';
+import { ConnectionRemovedError } from '../connection-slots';
 
 vi.mock('../node-identity', () => ({
   getNodeDid: vi.fn(async () => 'did:imajin:testnode'),
@@ -38,6 +41,7 @@ function decodeClaimHeader(header: string): Record<string, unknown> {
 }
 
 beforeEach(() => {
+  vi.mocked(assertConnectionNotRemoved).mockReset();
   vi.mocked(authorizeCorpusOwner).mockResolvedValue(true);
   vi.mocked(grantedCorpusOwners).mockResolvedValue([]);
   process.env.AUTH_PRIVATE_KEY = KEYPAIR.privateKey;
@@ -55,6 +59,24 @@ afterEach(() => {
 });
 
 describe('corpus-client CorpusAccessClaim attachment', () => {
+  it('shows connection removed on the bound source while preserving its ref and last success', async () => {
+    vi.mocked(assertConnectionNotRemoved).mockRejectedValueOnce(new ConnectionRemovedError());
+    fetchMock.mockResolvedValue(jsonResponse(200, { sources: [{
+      source: 'github:ima-jin/imajin-ai', credentialRef: 'github:work', lastSync: '2026-10-27', threadCount: 42,
+    }], threadCount: 42 }));
+    expect(await fetchCorpusStatus('did:imajin:alice')).toMatchObject({ sources: [{
+      credentialRef: 'github:work', lastSync: '2026-10-27', threadCount: 42, error: expect.stringContaining('Connection removed'),
+    }] });
+    expect(assertConnectionNotRemoved).toHaveBeenCalledWith('did:imajin:alice', 'github', 'work');
+  });
+
+  it('does not turn a connection status outage into a healthy source', async () => {
+    vi.mocked(assertConnectionNotRemoved).mockRejectedValueOnce(new Error('database unavailable'));
+    fetchMock.mockResolvedValue(jsonResponse(200, { sources: [{
+      source: 'github:ima-jin/imajin-ai', credentialRef: 'github:work', lastSync: '', threadCount: 0,
+    }], threadCount: 0 }));
+    expect((await fetchCorpusStatus('did:imajin:alice')).sources[0].error).toBe('Connection status unavailable.');
+  });
   it('includes granted group documents in unscoped search, never requesting ungranted partitions', async () => {
     vi.mocked(grantedCorpusOwners).mockResolvedValue(['did:imajin:org']);
     const hit = (source: string, id: string, score: number) => ({

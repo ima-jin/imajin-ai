@@ -43,7 +43,7 @@ vi.mock('@/src/db', () => {
 });
 
 vi.mock('@imajin/bus', () => ({ publish: publishMock }));
-vi.mock('../../kernel/connector-registry-store', () => ({ recordConnectorRegistration: vi.fn(), revokeConnectorRegistration: revokeRegistrationMock }));
+vi.mock('../../kernel/connector-registry-store', () => ({ recordConnectorRegistration: vi.fn(), revokeConnectorRegistration: revokeRegistrationMock, readConnectorRegistration: vi.fn() }));
 
 import { withConnectorConnection } from '../../kernel/connector-connection-context';
 import { recordConnectorRegistration } from '../../kernel/connector-registry-store';

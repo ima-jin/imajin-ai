@@ -208,6 +208,9 @@ paths:
         as primary without re-sealing. Disconnected slots may remain available
         for reconnecting. Labels are not unique identifiers: ambiguous label
         selectors fail with an error listing matching slots.
+        ownerDid is derived from authentication, never from a caller selector.
+        It scopes dependency warnings to this owner's slots; removed slot
+        history is excluded from live listings.
       security:
         - cookieAuth: []
       responses:
@@ -217,8 +220,9 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [connections]
+                required: [ownerDid, connections]
                 properties:
+                  ownerDid: { type: string, description: "Authenticated effective owner; metadata, not removal authority." }
                   connections:
                     type: array
                     items: { $ref: "#/components/schemas/ConnectorConnection" }
