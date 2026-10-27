@@ -12,7 +12,7 @@ export function forwardAuthCallback(
   options: ForwardAuthCallbackOptions = {},
 ): NextResponse | null {
   const { pathname, searchParams } = req.nextUrl;
-  if (!searchParams.get('attestation_id') || !searchParams.get('user_did')) {
+  if (!searchParams.get('code') || !searchParams.get('state')) {
     return null;
   }
 
@@ -26,5 +26,8 @@ export function forwardAuthCallback(
 
   const callback = appRedirectUrl('/api/auth/callback', req, options);
   callback.search = req.nextUrl.search;
-  return NextResponse.redirect(callback, 307);
+  const response = NextResponse.redirect(callback, 307);
+  response.headers.set('Cache-Control', 'no-store');
+  response.headers.set('Referrer-Policy', 'no-referrer');
+  return response;
 }

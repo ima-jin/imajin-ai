@@ -4,8 +4,8 @@
  * Creates an app.authorized attestation when a user consents to an app's access request.
  * Called by the consent UI (/auth/authorize).
  *
- * Body: { appId, scopes }
- * Returns: { attestationId }
+ * Body: { appId, scopes, state }
+ * Returns: { redirect } containing a short-lived code and the supplied state.
  * #3008: consent must converge to one live grant per (principal, app).
  *
  * Re-consent (#3008): identical scope sets reuse the newest live grant;
@@ -23,6 +23,7 @@ import { promoteActorOnGrant } from '@/src/lib/auth/promote-actor';
 import { upsertAppAuthorization } from '@/src/lib/auth/upsert-app-authorization';
 import { addConsentedApp } from '@/src/lib/kernel/app-membership';
 import { canConsentToApp, PRIVATE_APP_CONSENT_ERROR } from '@/src/lib/kernel/app-consent';
+import { issueAppAuthorizationCode } from '@/src/lib/auth/app-authorization-code';
 
 export const dynamic = 'force-dynamic';
 
@@ -44,13 +45,16 @@ export const POST = withLogger('kernel', async (request: NextRequest) => {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
   }
 
-  const { appId, scopes } = body as { appId?: string; scopes?: string[] };
+  const { appId, scopes, state } = (body ?? {}) as { appId?: string; scopes?: string[]; state?: string };
 
   if (!appId || typeof appId !== 'string') {
     return NextResponse.json({ error: 'appId is required' }, { status: 400 });
   }
   if (!Array.isArray(scopes)) {
     return NextResponse.json({ error: 'scopes must be an array' }, { status: 400 });
+  }
+  if (typeof state !== 'string' || state.length < 32 || state.length > 256) {
+    return NextResponse.json({ error: 'state must be 32 to 256 characters' }, { status: 400 });
   }
 
   // Load app
@@ -118,5 +122,16 @@ export const POST = withLogger('kernel', async (request: NextRequest) => {
 
   await addConsentedApp(identity.id, app.slug);
 
-  return NextResponse.json({ attestationId, userDid: identity.id }, { status: 201 });
+  const code = await issueAppAuthorizationCode({
+    appDid: app.appDid, subjectDid: identity.id, attestationId,
+    callbackUrl: app.callbackUrl, state,
+  });
+  const redirect = new URL(app.callbackUrl);
+  redirect.searchParams.delete('attestation_id');
+  redirect.searchParams.delete('user_did');
+  redirect.searchParams.set('code', code);
+  redirect.searchParams.set('state', state);
+  return NextResponse.json({ redirect: redirect.toString() }, {
+    status: 201, headers: { 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer' },
+  });
 });

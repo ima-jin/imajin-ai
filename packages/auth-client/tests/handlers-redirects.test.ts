@@ -3,14 +3,20 @@ import { NextRequest } from 'next/server';
 import { createCallbackHandler, createLogoutHandler, type ImajinAuthConfig } from '../src/handlers';
 import { sessionCookieName, verifySessionToken } from '../src/session';
 import { forwardAuthCallback } from '../src/middleware';
+import { callbackQuery, mockCallbackFetch, withState } from './callback-fixture';
+vi.mock('../src/load-app-signing-key', async () => {
+  const { generateBootstrapKeypair } = await import('../src/ed25519');
+  const key = generateBootstrapKeypair();
+  return { loadAppSigningKey: vi.fn(async ({ appDid }: { appDid: string }) => ({ ...key, appDid })) };
+});
 
 const origin = 'https://jin.imajin.ai';
-const query = '?attestation_id=att_123&user_did=did:imajin:alice';
+const query = callbackQuery;
 const profile = { did: 'did:imajin:alice', displayName: 'Alice', handle: 'alice' };
 const baseConfig: ImajinAuthConfig = { authUrl: origin, appDid: 'did:imajin:coffee', secret: 'test-secret-not-a-production-credential' };
 
 beforeEach(() => {
-  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json(profile)));
+  mockCallbackFetch(profile);
   vi.spyOn(console, 'error').mockImplementation(() => {});
 });
 
@@ -30,9 +36,9 @@ describe.each([
 ])('$name redirect destinations', ({ publicUrl, basePath, nextBasePath }) => {
   const config = { ...baseConfig, publicUrl };
   function request(search = query): NextRequest {
-    return new NextRequest(`${origin}${basePath}/api/auth/callback${search}`, {
+    return withState(new NextRequest(`${origin}${basePath}/api/auth/callback${search}`, {
       nextConfig: { basePath: nextBasePath },
-    });
+    }), config);
   }
 
   it('callback success returns to the app root and creates a verifiable session', async () => {
@@ -45,18 +51,18 @@ describe.each([
   });
 
   it.each(['', '?attestation_id=att_123', '?user_did=did:imajin:alice'])(
-    'missing_params returns to the app root: %s',
+    'invalid authorization returns to the app root: %s',
     async (search) => {
       const response = await createCallbackHandler(config)(request(search));
-      expect(response.headers.get('location')).toBe(`${origin}${basePath}/?auth_error=missing_params`);
+      expect(response.headers.get('location')).toBe(`${origin}${basePath}/?auth_error=authorization_invalid`);
       expect(fetch).not.toHaveBeenCalled();
       expect(response.cookies.get(sessionCookieName(config))).toBeUndefined();
     },
   );
 
   it.each([
-    { status: 403, error: 'attestation_revoked' },
-    { status: 500, error: 'profile_fetch_failed' },
+    { status: 403, error: 'authorization_invalid' },
+    { status: 500, error: 'authorization_invalid' },
   ])('$error returns to the app root', async ({ status, error }) => {
     vi.mocked(fetch).mockResolvedValue(new Response('unavailable', { status }));
     const response = await createCallbackHandler(config)(request());
@@ -67,7 +73,7 @@ describe.each([
   it('network_error returns to the app root', async () => {
     vi.mocked(fetch).mockRejectedValue(new Error('offline'));
     const response = await createCallbackHandler(config)(request());
-    expect(response.headers.get('location')).toBe(`${origin}${basePath}/?auth_error=network_error`);
+    expect(response.headers.get('location')).toBe(`${origin}${basePath}/?auth_error=authorization_invalid`);
     expect(response.cookies.get(sessionCookieName(config))).toBeUndefined();
   });
 
@@ -109,19 +115,19 @@ describe('public origin and path boundaries', () => {
     const rootRequest = new NextRequest(`${config.publicUrl}${query}`, { nextConfig: { basePath: '/coffee' } });
     const forwarded = forwardAuthCallback(rootRequest, config);
     expect(forwarded?.status).toBe(307);
-    const callbackRequest = new NextRequest(forwarded!.headers.get('location')!, {
+    const callbackRequest = withState(new NextRequest(forwarded!.headers.get('location')!, {
       nextConfig: { basePath: '/coffee' },
-    });
+    }), config);
     const response = await createCallbackHandler(config)(callbackRequest);
     expect(response.headers.get('location')).toBe(`${origin}/coffee/`);
     expect(await verifySessionToken(response.cookies.get(sessionCookieName(config))!.value, config))
       .toMatchObject({ did: profile.did, attestationId: 'att_123' });
   });
   it('shares forwarded origin resolution between handlers and middleware', async () => {
-    const req = new NextRequest(`http://localhost:3000/coffee/api/auth/callback${query}`, {
+    const req = withState(new NextRequest(`http://localhost:3000/coffee/api/auth/callback${query}`, {
       nextConfig: { basePath: '/coffee' },
       headers: { 'x-forwarded-host': 'dev-jin.imajin.ai', 'x-forwarded-proto': 'https' },
-    });
+    }), baseConfig);
     expect((await createCallbackHandler(baseConfig)(req)).headers.get('location')).toBe('https://dev-jin.imajin.ai/coffee/');
     expect((await createLogoutHandler(baseConfig)(req)).headers.get('location')).toBe('https://dev-jin.imajin.ai/coffee/');
   });
@@ -131,7 +137,7 @@ describe('public origin and path boundaries', () => {
       headers: { 'x-forwarded-host': 'other.example', 'x-forwarded-proto': 'http' },
     });
     const config = { ...baseConfig, publicUrl: `${origin}/coffee` };
-    expect((await createCallbackHandler(config)(req)).headers.get('location')).toBe(`${origin}/coffee/`);
+    expect((await createCallbackHandler(config)(withState(req, config))).headers.get('location')).toBe(`${origin}/coffee/`);
   });
 
   it.each(['/coffeehouse', '/coffee'])('only treats a complete path segment as the prefix: %s', async (path) => {

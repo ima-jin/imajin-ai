@@ -7,13 +7,15 @@ import { forwardAuthCallback } from '../src/middleware';
 import { forwardAuthCallback as rootExport } from '../src/index';
 
 const publicUrl = 'https://jin.imajin.ai/coffee';
-const query = '?attestation_id=att_%2B123&user_did=did%3Aimajin%3Aalice&extra=a+b&extra=%20';
+const query = '?code=opaque%2Bvalue&state=opaque%3Astate&extra=a+b&extra=%20';
 
 describe('forwardAuthCallback', () => {
   it.each(['/coffee', '/coffee/'])('forwards root %s with the identical query to the public callback', (path) => {
     const req = new NextRequest(`http://localhost:3000${path}${query}`);
     const response = forwardAuthCallback(req, { publicUrl });
     expect(response?.status).toBe(307);
+    expect(response?.headers.get('cache-control')).toBe('no-store');
+    expect(response?.headers.get('referrer-policy')).toBe('no-referrer');
     expect(response?.headers.get('location')).toBe(`${publicUrl}/api/auth/callback${query}`);
     expect(req.nextUrl.pathname).toBe(path);
     expect(req.nextUrl.search).toBe(query);

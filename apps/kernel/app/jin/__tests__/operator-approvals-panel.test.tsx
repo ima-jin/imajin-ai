@@ -1321,6 +1321,13 @@ describe('per-source renderer registry — apps', () => {
     expect(screen.getByText(/Independent of directory visibility/)).toBeDefined();
     expect(screen.getByRole('button', { name: 'Approve & provision' })).toBeDefined();
   });
+  it('discloses default provision choices for older cards without explicit values', async () => {
+    installFetch([{ isOperator: true, approvals: [appsApproval()] }]);
+    render(<OperatorApprovalsPanel />);
+    expect(await screen.findByText('public')).toBeDefined();
+    expect(screen.getByText('dykil.imajin.ai')).toBeDefined();
+    expect(screen.getByText('Node operator (default)')).toBeDefined();
+  });
   it('shows the signed visibility, site owner and approved host before the operator approves', async () => {
     const summary = "Provision app 'gbs' (GBS). Visibility: private. Site owner: did:imajin:gbs; issue dev-gbs.imajin.ai from Imajin's organization.";
     installFetch([{ isOperator: true, approvals: [appsApproval({
@@ -1329,6 +1336,12 @@ describe('per-source renderer registry — apps', () => {
     })] }]);
     render(<OperatorApprovalsPanel />);
     expect(await screen.findByText(summary)).toBeDefined();
+    expect(screen.getByText('Visibility')).toBeDefined();
+    expect(screen.getByText('private')).toBeDefined();
+    expect(screen.getByText('Domain')).toBeDefined();
+    expect(screen.getByText('dev-gbs.imajin.ai')).toBeDefined();
+    expect(screen.getByText('Site owner')).toBeDefined();
+    expect(screen.getByText('did:imajin:gbs')).toBeDefined();
     expect(screen.getByRole('button', { name: 'Approve & provision' })).toBeDefined();
   });
   it('shows the exact existing source repository instead of a misleading template', async () => {

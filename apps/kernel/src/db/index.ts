@@ -36,6 +36,7 @@ import * as appSigningKeyClaimsSchema from './schemas/app-signing-key-claims';
 import * as reachSchema from './schemas/reach';
 import * as mailSchema from './schemas/mail';
 import * as domainsSchema from './schemas/domains';
+import * as appAuthorizationCodesSchema from './schemas/app-authorization-codes';
 
 const schema = {
   ...authSchema,
@@ -74,6 +75,7 @@ const schema = {
   ...reachSchema,
   ...mailSchema,
   ...domainsSchema,
+  ...appAuthorizationCodesSchema,
 };
 
 export const db = createDb(schema);
@@ -115,6 +117,7 @@ export * from './schemas/app-signing-key-claims';
 export * from './schemas/reach';
 export * from './schemas/mail';
 export * from './schemas/domains';
+export * from './schemas/app-authorization-codes';
 
 // Aliases for backward-compatible imports
 export { podsInConnections as pods } from "./schemas/connections";

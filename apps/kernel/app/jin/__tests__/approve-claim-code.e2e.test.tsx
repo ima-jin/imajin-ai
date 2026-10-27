@@ -67,10 +67,12 @@ import { POST as decisionPost } from '../api/operator-approvals/[proposalId]/dec
 import { POST as provisionPost, GET as provisionGet } from '../../api/apps/provision/route';
 import { OperatorApprovalsPanel } from '../operator-approvals-panel';
 import { ProvisionAppPanel } from '../provision-app-panel';
+import { requestApprovalsRefresh } from '../approval-anchor';
 
 const CLAIM_CODE = 'claim_e2e_plaintext_code';
 const REISSUED_CODE = 'claim_e2e_reissued_code';
 const SECRET_CODES = [CLAIM_CODE, REISSUED_CODE];
+const GBS_DID = 'did:imajin:4HAssJChzMLewFpeNrH3pJGPp71nxpefLEihoid8uB2Q';
 
 type Card = ReturnType<typeof pendingApprovalCard>;
 
@@ -123,6 +125,9 @@ async function approveDecision(button: HTMLElement) {
 function installRoutedFetch(options: { dropDecision?: boolean; dropFirstDecision?: boolean; decisionStatus?: number } = {}) {
   let dropFirstDecision = options.dropFirstDecision === true;
   const route = async (url: string, init?: RequestInit): Promise<Response> => {
+    if (url === '/auth/api/groups') {
+      return Response.json([{ groupDid: GBS_DID, role: 'owner', scope: 'business', handle: 'gbs', name: 'GBS' }]);
+    }
     if (url.includes('/decision')) {
       if (options.dropDecision || dropFirstDecision) {
         dropFirstDecision = false;
@@ -211,6 +216,32 @@ beforeEach(() => {
     return { ok: true, card: cards[index] };
   });
   mockRunAppProvision.mockResolvedValue(succeededOutcome(CLAIM_CODE));
+});
+
+it('countersigns the private dev GBS panel choices unchanged into the provision execution', async () => {
+  installRoutedFetch();
+  render(<><ProvisionAppPanel /><OperatorApprovalsPanel /></>);
+  await screen.findByTestId('provision-app-panel');
+  await screen.findByRole('option', { name: /@gbs/ });
+  for (const [label, value] of [
+    ['Slug', 'gbs'], ['Display name', 'GBS'], ['Source repository', 'gbscontracting/website'],
+    ['Visibility', 'private'], ['Domain', 'dev-gbs.imajin.ai'], ['Site owner', GBS_DID],
+  ]) fireEvent.change(screen.getByLabelText(label, { exact: false }), { target: { value } });
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Propose provision' })); });
+  await act(async () => { requestApprovalsRefresh(); });
+  const button = await screen.findByRole('button', { name: 'Approve & provision' });
+  expect(cards[0].detail).toMatchObject({
+    slug: 'gbs', sourceRepo: 'gbscontracting/website', visibility: 'private',
+    domain: 'dev-gbs.imajin.ai', siteOwnerDid: GBS_DID,
+  });
+  expect(mockRunAppProvision).not.toHaveBeenCalled();
+  await approveDecision(button);
+  expect(mockRunAppProvision).toHaveBeenCalledWith(expect.objectContaining({
+    slug: 'gbs', sourceRepo: 'gbscontracting/website', visibility: 'private',
+    domain: 'dev-gbs.imajin.ai', siteOwnerDid: GBS_DID,
+    authorizedBy: expect.objectContaining({ operatorDid: OPERATOR_DID }),
+  }));
+  expect(cards[0].decision?.operatorSignature).toBeDefined();
 });
 
 afterEach(async () => {
