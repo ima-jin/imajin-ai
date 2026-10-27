@@ -20,6 +20,26 @@ import { recordWarpRunUsage, WARP_INCURRED_SOURCE, WARP_INCURRED_SINCE, type War
 const log = createLogger('kernel:warp:usage-sweep');
 export const WARP_USAGE_SETTLE_MS = 24 * 60 * 60 * 1000;
 
+// Driver errors can include bound values, SQL, URLs or provider response bodies.
+// Only retain value-free diagnostic text; unknown messages remain redacted.
+const SAFE_ERROR_MESSAGES = new Set([
+  'Invalid time value',
+  'Undefined values are not allowed',
+  'Warp lifecycle pagination unavailable',
+]);
+const ARGUMENT_TYPE_MESSAGE = 'The "string" argument must be of type string or an instance of Buffer, TypedArray, or DataView.';
+
+function errorContext(err: unknown) {
+  let errorMessage = '[redacted]';
+  if (err instanceof Error) {
+    if (SAFE_ERROR_MESSAGES.has(err.message)) errorMessage = err.message;
+    else if (err.message.startsWith(`${ARGUMENT_TYPE_MESSAGE} Received`)) {
+      errorMessage = `${ARGUMENT_TYPE_MESSAGE} Received [redacted].`;
+    }
+  }
+  return { errorType: err instanceof Error ? err.name : typeof err, errorMessage };
+}
+
 function observation(value: unknown): WarpUsageObservation | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
   const payload = value as Record<string, unknown>;
@@ -72,7 +92,7 @@ async function observeRoot(principalDid: string, rootRunId: string): Promise<voi
 
 async function observeKernelRoots(now: Date): Promise<void> {
   const sql = getClient();
-  const settleBefore = new Date(now.getTime() - WARP_USAGE_SETTLE_MS);
+  const settleBefore = new Date(now.getTime() - WARP_USAGE_SETTLE_MS).toISOString();
   const rows = await sql`
     WITH roots AS (
       SELECT subject_did AS principal_did, payload->>'runId' AS run_id,
@@ -97,7 +117,7 @@ async function observeKernelRoots(now: Date): Promise<void> {
     ) terminal ON TRUE
     WHERE meter.pricing->>'credits' IS NULL
       OR terminal.terminal_at IS NULL
-      OR terminal.terminal_at >= ${settleBefore}
+      OR terminal.terminal_at >= ${settleBefore}::timestamptz
       OR roots.dispatched_at > terminal.terminal_at
       OR EXISTS (
         SELECT 1 FROM kernel.event_subscription_log
@@ -111,7 +131,7 @@ async function observeKernelRoots(now: Date): Promise<void> {
     try {
       await observeRoot(row.principalDid, row.runId);
     } catch (err) {
-      log.warn({ errorType: err instanceof Error ? err.name : typeof err, principalDid: row.principalDid, runId: row.runId }, 'Warp lifecycle usage observation unavailable; next sweep will retry');
+      log.warn({ ...errorContext(err), principalDid: row.principalDid, runId: row.runId }, 'Warp lifecycle usage observation unavailable; next sweep will retry');
     }
   });
 }
@@ -121,11 +141,11 @@ export async function sweepWarpIncurredUsage(now: Date = new Date()): Promise<vo
   try {
     await replayTerminalObservations();
   } catch (err) {
-    log.warn({ errorType: err instanceof Error ? err.name : typeof err }, 'Warp terminal usage replay unavailable; next sweep will retry');
+    log.warn(errorContext(err), 'Warp terminal usage replay unavailable; next sweep will retry');
   }
   try {
     await observeKernelRoots(now);
   } catch (err) {
-    log.warn({ errorType: err instanceof Error ? err.name : typeof err }, 'Warp lifecycle usage roots unavailable; next sweep will retry');
+    log.warn(errorContext(err), 'Warp lifecycle usage roots unavailable; next sweep will retry');
   }
 }

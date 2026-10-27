@@ -76,16 +76,60 @@ describe('Warp incurred lifecycle recovery', () => {
   it('keeps safe error types for replay, root lookup and provider failures', async () => {
     sql.mockRejectedValueOnce(new TypeError('synthetic-private-marker')).mockRejectedValueOnce('synthetic-private-marker');
     await sweepWarpIncurredUsage();
-    expect(log.warn).toHaveBeenCalledWith({ errorType: 'TypeError' }, 'Warp terminal usage replay unavailable; next sweep will retry');
-    expect(log.warn).toHaveBeenCalledWith({ errorType: 'string' }, 'Warp lifecycle usage roots unavailable; next sweep will retry');
+    expect(log.warn).toHaveBeenCalledWith({ errorType: 'TypeError', errorMessage: '[redacted]' }, 'Warp terminal usage replay unavailable; next sweep will retry');
+    expect(log.warn).toHaveBeenCalledWith({ errorType: 'string', errorMessage: '[redacted]' }, 'Warp lifecycle usage roots unavailable; next sweep will retry');
     sql.mockRejectedValueOnce('synthetic-private-marker').mockResolvedValueOnce([{ principalDid: OWNER, runId: 'root' }]);
     getRun.mockRejectedValueOnce('synthetic-private-marker');
     await sweepWarpIncurredUsage();
     expect(log.warn).toHaveBeenCalledWith(
-      { errorType: 'string', principalDid: OWNER, runId: 'root' },
+      { errorType: 'string', errorMessage: '[redacted]', principalDid: OWNER, runId: 'root' },
       'Warp lifecycle usage observation unavailable; next sweep will retry',
     );
     expect(JSON.stringify(log.warn.mock.calls)).not.toContain('synthetic-private-marker');
+  });
+
+  it('binds the settle boundary as ISO text with an explicit timestamptz cast', async () => {
+    await sweepWarpIncurredUsage(new Date('2026-10-27T12:34:56.789Z'));
+    const [strings, ...values] = sql.mock.calls[1];
+    expect(values).toEqual(['2026-10-19T00:00:00.000Z', 'adapter:warp', '2026-10-26T12:34:56.789Z']);
+    expect(strings.join('?')).toContain('terminal.terminal_at >= ?::timestamptz');
+  });
+
+  it('retains a serializer diagnostic without logging the received value at both query catch sites', async () => {
+    const message = 'The "string" argument must be of type string or an instance of Buffer, TypedArray, or DataView. Received type string (synthetic-private-marker)';
+    sql.mockRejectedValueOnce(new TypeError(message)).mockRejectedValueOnce(new TypeError(message));
+    await sweepWarpIncurredUsage();
+    for (const [context] of log.warn.mock.calls) {
+      expect(context).toEqual({
+        errorType: 'TypeError',
+        errorMessage: 'The "string" argument must be of type string or an instance of Buffer, TypedArray, or DataView. Received [redacted].',
+      });
+    }
+    expect(log.warn).toHaveBeenCalledTimes(2);
+    expect(JSON.stringify(log.warn.mock.calls)).not.toContain('synthetic-private-marker');
+  });
+
+  it('retains value-free messages for query and per-root failures', async () => {
+    sql.mockRejectedValueOnce(new RangeError('Invalid time value'))
+      .mockResolvedValueOnce([{ principalDid: OWNER, runId: 'root' }]);
+    getRun.mockRejectedValueOnce(new Error('Warp lifecycle pagination unavailable'));
+    await sweepWarpIncurredUsage();
+    expect(log.warn).toHaveBeenCalledWith(
+      { errorType: 'RangeError', errorMessage: 'Invalid time value' },
+      'Warp terminal usage replay unavailable; next sweep will retry',
+    );
+    expect(log.warn).toHaveBeenCalledWith(
+      { errorType: 'Error', errorMessage: 'Warp lifecycle pagination unavailable', principalDid: OWNER, runId: 'root' },
+      'Warp lifecycle usage observation unavailable; next sweep will retry',
+    );
+  });
+
+  it('redacts arbitrary Error messages and does not stringify thrown objects', async () => {
+    const thrown = { toString: vi.fn(() => 'synthetic-private-marker') };
+    sql.mockRejectedValueOnce(new Error('synthetic-private-marker')).mockRejectedValueOnce(thrown);
+    await sweepWarpIncurredUsage();
+    expect(log.warn.mock.calls.map(([context]) => context.errorMessage)).toEqual(['[redacted]', '[redacted]']);
+    expect(thrown.toString).not.toHaveBeenCalled();
   });
 
   it.each([null, 'repeated'])('does not silently truncate broken descendant pagination (%s)', async (nextCursor) => {
