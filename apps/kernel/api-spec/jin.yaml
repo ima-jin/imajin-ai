@@ -562,9 +562,10 @@ components:
     HorizonStep:
       allOf:
         - type: object
-          required: [stepId, stepKind, intention, rank, exitConditions, state, zone, conditions, openExitConditions]
+          required: [stepId, publisher, stepKind, intention, rank, exitConditions, state, zone, conditions, openExitConditions]
           properties:
             stepId: { type: string }
+            publisher: { type: string, pattern: '^did:[^\s:]+:\S+$', maxLength: 512, readOnly: true, description: "Verified issuer of the earliest step.queued declaration; never supplied by an update." }
             stepKind: { type: string, enum: [code, human, ops] }
             intention: { type: string }
             rank: { type: number }

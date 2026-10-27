@@ -18,7 +18,7 @@ const response = (body: unknown, status = 200) => ({
 
 function step(stepId: string, zone: HorizonStep['zone'], rank = 1): HorizonStep {
   return {
-    stepId, zone, rank, stepKind: 'human', intention: `Intention ${stepId}`, state: 'queued',
+    stepId, publisher: 'did:imajin:publisher', zone, rank, stepKind: 'human', intention: `Intention ${stepId}`, state: 'queued',
     exitConditions: [{ id: 'human', kind: 'attestation', attestorDid: 'did:human:reviewer' }],
     conditions: [], openExitConditions: ['human'],
   };

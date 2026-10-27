@@ -13,6 +13,80 @@ const project = (events: ReturnType<typeof stepEvent>[], now = STEP_NOW, leases:
   projectHorizon(events, 'cycle', STEP_PRINCIPAL, now, false, leases);
 
 describe('signed horizon projection', () => {
+  it.each(['step.updated', 'step.claimed', 'step.started', 'step.progress', 'step.blocked', 'step.finished'] as const)(
+    'ignores another publisher’s %s without changing history', type => {
+      const fields = type === 'step.updated' ? { update: STEP_ISSUE_UPDATE }
+        : type === 'step.claimed' ? { claim: { ...STEP_CLAIM, holderDid: 'did:imajin:other' } } : {};
+      const foreign = { ...stepEvent(type, 2, fields), issuer: 'did:imajin:other' };
+      const events = [queuedStep(), foreign];
+      const snapshot = JSON.stringify(events);
+      expect(project(events)).toEqual(project([queuedStep()]));
+      expect(JSON.stringify(events)).toBe(snapshot);
+    },
+  );
+
+  it.each(['step.updated', 'step.claimed', 'step.started', 'step.progress', 'step.blocked', 'step.finished'] as const)(
+    'allows the current scoped lease holder’s %s while retaining the original publisher', type => {
+      const holderDid = 'did:imajin:other';
+      const fields = type === 'step.updated' ? { update: STEP_ISSUE_UPDATE }
+        : type === 'step.claimed' ? { claim: { ...STEP_CLAIM, holderDid } } : {};
+      const event = { ...stepEvent(type, 2, fields), issuer: holderDid };
+      const holding = { ...lease, holderDid, acquiredAt: queuedStep().occurredAt };
+      const result = project([queuedStep(), event], STEP_NOW, [holding]).steps[0];
+      expect(result.publisher).toBe(STEP_PRINCIPAL);
+      if (type === 'step.updated') expect(result.issue).toEqual(STEP_ISSUE_UPDATE.issue);
+      else expect(result.state).toBe({
+        'step.claimed': 'claimed', 'step.started': 'running', 'step.progress': 'running',
+        'step.blocked': 'blocked', 'step.finished': 'finished',
+      }[type]);
+    },
+  );
+
+  it.each([
+    { principal: 'did:imajin:foreign' }, { loopId: 'foreign' }, { surface: 'step:other' },
+    { holderDid: 'did:imajin:stranger' }, { expiresAt: new Date(STEP_NOW).toISOString() },
+    { acquiredAt: new Date(STEP_NOW + 1).toISOString() },
+    { acquiredAt: stepEvent('step.finished', 3).occurredAt },
+  ])('does not authorize a non-publisher using an unrelated or out-of-time lease: %j', mismatch => {
+    const holderDid = 'did:imajin:other';
+    const holding = { ...lease, holderDid, acquiredAt: queuedStep().occurredAt, ...mismatch };
+    const foreign = { ...stepEvent('step.finished', 2), issuer: holderDid };
+    expect(project([queuedStep(), foreign], STEP_NOW, [holding])).toEqual(project([queuedStep()], STEP_NOW, [holding]));
+  });
+
+  it('does not let a holder assert facts at or after its lease expiry', () => {
+    const holderDid = 'did:imajin:other';
+    const holding = { ...lease, holderDid, acquiredAt: queuedStep().occurredAt };
+    const expired = { ...stepEvent('step.finished', 2), issuer: holderDid, occurredAt: holding.expiresAt };
+    expect(project([queuedStep(), expired], STEP_NOW, [holding]).steps[0].state).toBe('claimed');
+  });
+
+  it('keeps the earliest publisher and declaration when another DID reuses the step id, including ties', () => {
+    const queue = { ...queuedStep(), id: 'a-first' };
+    const collision = { ...stepEvent('step.queued', 0, { step: { ...CODE_STEP, intention: 'Replacement', rank: -99 } }),
+      id: 'z-second', issuer: 'did:imajin:other' };
+    const later = { ...collision, occurredAt: stepEvent('step.queued', 1).occurredAt };
+    for (const duplicate of [collision, later]) {
+      expect(project([duplicate, queue]).steps[0]).toMatchObject({
+        publisher: STEP_PRINCIPAL, intention: CODE_STEP.intention, rank: 10, exitConditions: CODE_STEP.exitConditions,
+      });
+    }
+  });
+
+  it('still accepts another DID’s code observations and the declared human attestor’s evidence', () => {
+    const observer = 'did:imajin:observer';
+    const events = [queuedStep(), stepEvent('step.updated', 1, { update: STEP_ISSUE_UPDATE }),
+      { ...closureStep(), issuer: observer }];
+    expect(project(events).steps[0]).toMatchObject({ zone: 'past', publisher: STEP_PRINCIPAL });
+    const queue = stepEvent('step.queued', 0, { step: {
+      stepKind: 'human', intention: 'Approve', rank: 1,
+      exitConditions: [{ id: 'manual', kind: 'attestation', attestorDid: observer }],
+    } });
+    const attestation = { ...stepEvent('step.attested', 1, {
+      attestation: { conditionId: 'manual', did: observer, statement: 'Completed' },
+    }), issuer: observer };
+    expect(project([queue, attestation]).depth).toBe(0);
+  });
   it('moves tail → middle → near → head → past → gone using facts, not authored zones', () => {
     const events = [queuedStep()];
     expect(project(events).steps[0]).toMatchObject({ state: 'queued', zone: 'tail', rank: 10, openExitConditions: ['closed', 'released', 'prod'] });

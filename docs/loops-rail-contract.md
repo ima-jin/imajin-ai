@@ -67,7 +67,8 @@ corrections are new signed observations, never edits to historical rows.
 `GET /api/loops/{loopId}` and MCP `loops_get` return
 `{loop, events, horizon: {steps, depth, targetDepth: 12}}`. `steps` are sorted
 by rank then id. Each carries its declaration, sharpening facts, projected
-`state`, derived `zone`, optional `claim`, `conditions` (each declaration,
+`publisher` (the verified issuer of the earliest `step.queued`), `state`,
+derived `zone`, optional `claim`, `conditions` (each declaration,
 `satisfied`, and evidence `{eventId, issuer, at, fact}`), and `openExitConditions`
 (ids still unsatisfied). The flat loops list retains its existing contract;
 use detail for the horizon. For explicit audit reads only, HTTP
@@ -87,6 +88,64 @@ Zones are **read projection only**, in precedence order:
 6. `tail`: one-line intention only.
 
 A ref-only binding stays `tail`, but still satisfies matching `issue_closed` (→ `past`).
+### Publishing steps from any harness (#3151)
+
+No OpenClaw plugin is required. A second harness uses its **own registered DID
+and Ed25519 key**, with a live `loops:publish` grant from the same principal
+(unless publishing as that principal). Reuse the existing owning `loopId` and
+principal; choose a distinct `stepId`. Both publishers' steps appear in the
+same horizon, each attributed to its declaring `publisher`, not to the harness
+that reads it. `publisher` is derived from the verified event issuer, never
+from a caller-supplied payload field. Earliest declaration by `(occurred_at, id)`
+still wins, including when another DID queues the same `stepId`.
+
+The following is a minimal wire template. Replace the example DIDs, existing
+loop id, fresh `at`, registered public-key hex and signature placeholders.
+Sign the UTF-8 `canonicalize({type, payload})` with that publisher's private key
+using Ed25519, and POST the complete envelope to kernel-root `/api/loops`.
+Do not include the private key in the request. `kind` is descriptive, not a
+harness authorization mechanism; no session token or plugin credential is needed.
+
+<!-- any-harness-step-example -->
+```json
+{
+  "type": "step.queued",
+  "publisherDid": "did:imajin:second-harness",
+  "payload": {
+    "loopId": "cycle",
+    "kind": "cycle",
+    "principal": "did:imajin:owner",
+    "state": "queued",
+    "summary": "Queue a step from another harness",
+    "at": "2026-10-27T12:00:00.000Z",
+    "stepId": "second-harness:review",
+    "step": {
+      "stepKind": "ops",
+      "intention": "Review the next release",
+      "rank": 20,
+      "exitConditions": [
+        {"id": "reviewed", "kind": "attestation", "attestorDid": "did:imajin:owner"}
+      ]
+    }
+  },
+  "signature": {
+    "keyId": "<registered Ed25519 public key: 64 hex characters>",
+    "alg": "ed25519",
+    "sig": "<Ed25519 signature: 128 hex characters>"
+  }
+}
+```
+<!-- /any-harness-step-example -->
+
+`step.updated`, `step.claimed`, `step.started`, `step.progress`, `step.blocked`
+and `step.finished` change the derived step only when signed by its publisher
+or the current live `step:<stepId>` lease holder for this loop and principal.
+A holder's fact must also be dated within that lease's acquisition/expiry
+interval. A signed claim alone cannot grant this authority. Unauthorized step
+mutations remain in immutable history with their publisher proofs but are
+ignored by replay; ingest's principal-level authorization is not step ownership.
+`step.observed` evidence and declared-completing-DID `step.attested` rules are
+unchanged: they do not require the step publisher's DID.
 
 Input `zone`, `depth`, derived `state: "exited"` and step `output` are rejected.
 Other common-envelope state labels are observational only; they cannot override
