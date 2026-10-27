@@ -76,6 +76,8 @@ License: Imajin Network License (INL) v1.0, source-available, not MIT.
   pins exact full workflow_ref strings. Each jti can mint once until token expiry;
   only signature/origin-verified policy refusals are audited. Unverified OIDC and
   key-fetch failures return generic 401 with no audit signing or writes.
+  GitHub refusals are deduplicated for all time by issuer-separated jtiHash;
+  expired/not-yet-valid/stale or missing/malformed-jti tokens write nothing.
   id-token:write and a protected environment
   are required, on a dedicated self-hosted no-swap runner with startup orphan cleanup.
   The per-job private key stays in non-swappable tmpfs; pinned known-hosts is

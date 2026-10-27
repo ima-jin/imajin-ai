@@ -21,6 +21,16 @@ describe('GitHub SSH certificate identity', () => {
     expect(githubGrantee('ima-jin/example', 'production')).not.toBe(githubGrantee('ima-jin/other', 'production'));
     expect(githubGrantee('ima-jin/example', 'production')).not.toBe(githubGrantee('ima-jin/example', 'dev'));
   });
+  it.each([
+    { exp: 1 }, { iat: 1 }, { nbf: 9999999999 }, { jti: undefined }, { jti: '' },
+    { jti: null }, { jti: 123 }, { jti: 'a\nb' }, { jti: 'x'.repeat(257) },
+    { exp: Math.floor(Date.now() / 1000) - 1 },
+  ])('does not authorize an audit for invalid token lifetime or jti %j', async overrides => {
+    const failure = await verifyGithubJob(await fixture.token(overrides), fixture.keys).catch(error => error);
+    expect(failure).not.toBeInstanceOf(GithubPolicyError);
+    expect(failure).toMatchObject({ status: 401, message: 'Invalid GitHub OIDC token' });
+    expect(Object.keys(failure)).toEqual(['status']);
+  });
 
   it('rejects forged signatures, unsigned tokens and oversized tokens without revealing them', async () => {
     const foreign = await oidcFixture();
@@ -42,13 +52,14 @@ describe('GitHub SSH certificate identity', () => {
   });
 
   it.each([
-    { jti: undefined }, { exp: 1 }, { iat: 1 }, { nbf: 9999999999 }, { repository_id: 'invalid' },
+    { repository_id: 'invalid' },
     { workflow_ref: 'ima-jin/example/.github/workflows/deploy.yml@refs/pull/1/merge' },
   ])('classifies signed matching-origin policy failures without retaining claims %j', async overrides => {
     const failure = await verifyGithubJob(await fixture.token(overrides), fixture.keys).catch(error => error);
     expect(failure).toBeInstanceOf(GithubPolicyError);
     expect(failure).toMatchObject({ status: 401, message: 'Invalid GitHub OIDC token' });
-    expect(Object.keys(failure)).toEqual(['status']);
+    expect(Object.keys(failure)).toEqual(['status', 'identity']);
+    expect(failure.identity).toEqual({ jtiHash: expect.stringMatching(/^[a-f0-9]{64}$/), expiresAt: expect.any(Number) });
   });
 
   it('retains JOSE array-audience matching and resolves the verification key only once', async () => {

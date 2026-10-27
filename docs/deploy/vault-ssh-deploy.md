@@ -82,6 +82,13 @@ replay cache or replay-table cleanup; immutable signed audit history remains.
 Failed issuance rolls back and does not spend the token. Only policy refusals
 after RS256 signature, issuer and audience verification produce signed refusal
 events (under the node subject if a validated job grantee is not yet available).
+Both GitHub refusal paths share an all-time dedupe by the same issuer-separated
+`jtiHash`: at most one signed refusal per token ID, regardless of subject.
+A refusal-specific advisory transaction lock (separate from issuance) protects
+an index-backed lookup and insert; a partial unique hash index enforces the
+same invariant. Duplicates prepare/sign nothing. Expired, not-yet-valid, stale,
+or missing/malformed-`jti` tokens return generic 401 and produce no audit.
+Session-auth DID refusal auditing is unchanged.
 Forged, malformed, empty or wrong-origin tokens and JWKS/key-fetch failures
 return a generic 401 without audit preparation, signing or database writes.
 No token, unvalidated claim or upstream error detail is logged or retained.

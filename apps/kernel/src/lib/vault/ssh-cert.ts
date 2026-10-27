@@ -10,7 +10,7 @@ import { encodeSshUserCert, parseSshPublicKey } from './ssh-cert-wire';
 import { parseSignInput, validSshScope, type SshSignInput } from './ssh-cert-policy';
 import type { MintAuthority } from './mint-authority';
 import { SSH_CERT_ISSUANCE_LIMIT, SSH_CERT_ISSUANCE_WINDOW_SECONDS } from './ssh-ca-policy';
-import { githubGrantee, validGithubGrant, type GithubGrant, type GithubJob } from './github-oidc';
+import { githubGrantee, validGithubGrant, type GithubGrant, type GithubJob, type GithubTokenIdentity } from './github-oidc';
 
 type Transaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
 export type SshScope = NonNullable<VaultDelegationGrant['sshScope']>;
@@ -38,13 +38,32 @@ async function checkIssuanceBudget(tx: Transaction, grantId: string) {
 }
 
 /** Refusals never persist untrusted request bytes (which might contain a private key). */
-export function recordSshRefusal(grantee: string, status: number) {
+export function recordSshRefusal(grantee: string, status: number, githubIdentity?: GithubTokenIdentity) {
+  if (githubIdentity) return recordGithubRefusal(grantee, { grantee, status }, githubIdentity);
   return audit(db, 'refused', grantee, { grantee, status });
 }
 /** Signature/origin verified, but job claims refused: no unvalidated repository attribution. */
-export function recordInvalidGithubRefusal() {
-  return audit(db, 'refused', getNodeSigningIdentity().senderDid, {
+export function recordInvalidGithubRefusal(identity: GithubTokenIdentity) {
+  return recordGithubRefusal(getNodeSigningIdentity().senderDid, {
     status: 401, authentication: 'github-oidc', reason: 'invalid-token',
+  }, identity);
+}
+
+/** One refusal per issuer-separated token ID, across all subjects and for all time. */
+async function recordGithubRefusal(grantee: string, payload: Record<string, unknown>, identity: GithubTokenIdentity) {
+  if (!/^[a-f0-9]{64}$/.test(identity.jtiHash) || !Number.isSafeInteger(identity.expiresAt)) {
+    throw new SshCaError(401, 'Invalid GitHub OIDC token');
+  }
+  await db.transaction(async tx => {
+    // Separate from the issuance lock; duplicates must not even prepare/sign an audit.
+    const lockKey = `vault.ssh-oidc-refusal:${identity.jtiHash}`;
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))`);
+    if (identity.expiresAt <= Math.floor(Date.now() / 1000)) return;
+    const [existing] = await tx.select({ id: attestations.id }).from(attestations).where(and(
+      eq(attestations.type, 'vault.ssh-cert.refused'),
+      eq(sql`${attestations.payload}->>'jtiHash'`, identity.jtiHash),
+    )).limit(1);
+    if (!existing) await audit(tx, 'refused', grantee, { ...payload, jtiHash: identity.jtiHash });
   });
 }
 

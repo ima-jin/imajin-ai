@@ -5,7 +5,7 @@ import { SshCaError } from './ssh-ca';
 import { isSshCaPurpose } from './ssh-ca-policy';
 import { objectInput, onlyKeys, parseSignInput } from './ssh-cert-policy';
 import { issueSshGrant, recordSshRefusal, recordInvalidGithubRefusal, revokeSshGrant, signSshCert, type SshScope } from './ssh-cert';
-import { GithubPolicyError, githubGrantee, verifyGithubJob, type GithubGrant } from './github-oidc';
+import { GithubPolicyError, githubGrantee, verifyGithubJob, type GithubGrant, type GithubTokenIdentity } from './github-oidc';
 
 async function readInput(request: Request) {
   try { return await request.json(); }
@@ -14,9 +14,11 @@ async function readInput(request: Request) {
 
 export async function signSshCertRoute(request: Request) {
   let grantee: string | null = null;
+  let githubIdentity: GithubTokenIdentity | undefined;
   try {
     if (request.headers.has('x-github-oidc-token')) {
       const job = await verifyGithubJob(request.headers.get('x-github-oidc-token')!);
+      githubIdentity = { jtiHash: job.jtiHash, expiresAt: job.expiresAt };
       grantee = githubGrantee(job.repository, job.environment);
       const body = objectInput(await readInput(request));
       // The caller cannot substitute audit identity; retain the original route's validation.
@@ -33,8 +35,8 @@ export async function signSshCertRoute(request: Request) {
     return sshCaJson(await signSshCert(input, grantee), 201);
   } catch (error) {
     try {
-      if (error instanceof GithubPolicyError) await recordInvalidGithubRefusal();
-      else if (grantee) await recordSshRefusal(grantee, error instanceof SshCaError ? error.status : 503);
+      if (error instanceof GithubPolicyError) await recordInvalidGithubRefusal(error.identity);
+      else if (grantee) await recordSshRefusal(grantee, error instanceof SshCaError ? error.status : 503, githubIdentity);
     }
     catch { return sshCaFailure(new Error('Audit unavailable')); }
     return sshCaFailure(error);

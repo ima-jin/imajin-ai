@@ -8,7 +8,11 @@ const githubKeys = createRemoteJWKSet(new URL(`${GITHUB_ISSUER}/.well-known/jwks
   timeoutDuration: 5000,
 });
 
-export interface GithubJob {
+export interface GithubTokenIdentity {
+  jtiHash: string;
+  expiresAt: number;
+}
+export interface GithubJob extends GithubTokenIdentity {
   repository: string;
   repositoryId: string;
   repositoryOwnerId: string;
@@ -16,8 +20,6 @@ export interface GithubJob {
   environment: string;
   runId: string;
   runAttempt: string;
-  jtiHash: string;
-  expiresAt: number;
 }
 export interface GithubGrant {
   repository: string;
@@ -57,7 +59,19 @@ export function githubGrantee(repository: unknown, environment: unknown): string
   return `did:github:${createHash('sha256').update(JSON.stringify([repository, environment])).digest('hex')}`;
 }
 
-function verifiedJob(payload: JWTPayload): GithubJob {
+function verifiedTokenIdentity(payload: JWTPayload): GithubTokenIdentity {
+  if (typeof payload.jti !== 'string' || payload.jti.length < 1 || payload.jti.length > 256
+    || hasControls(payload.jti) || !Number.isSafeInteger(payload.exp) || !Number.isSafeInteger(payload.iat)
+    || payload.exp! <= Math.floor(Date.now() / 1000) || payload.exp! > payload.iat! + 600) {
+    throw new SshCaError(401, 'Invalid GitHub OIDC token');
+  }
+  return {
+    jtiHash: createHash('sha256').update(JSON.stringify([GITHUB_ISSUER, payload.jti])).digest('hex'),
+    expiresAt: payload.exp!,
+  };
+}
+
+function verifiedJob(payload: JWTPayload, identity: GithubTokenIdentity): GithubJob {
   const { repository, environment, workflow_ref: workflow, run_id: runId, run_attempt: runAttempt } = payload;
   githubGrantee(repository, environment);
   if (!validWorkflow(workflow, repository)
@@ -67,22 +81,16 @@ function verifiedJob(payload: JWTPayload): GithubJob {
     || payload.sub !== `repo:${repository}:environment:${String(environment).replaceAll(':', '%3A')}`) {
     throw new SshCaError(401, 'Invalid GitHub job identity');
   }
-  if (typeof payload.jti !== 'string' || payload.jti.length < 1 || payload.jti.length > 256
-    || hasControls(payload.jti) || !Number.isSafeInteger(payload.exp) || !Number.isSafeInteger(payload.iat)
-    || payload.exp! <= Math.floor(Date.now() / 1000) || payload.exp! > payload.iat! + 600) {
-    throw new SshCaError(401, 'Invalid GitHub token lifetime or identifier');
-  }
   return {
     repository: repository as string, environment: environment as string, workflow, runId, runAttempt,
     repositoryId: payload.repository_id, repositoryOwnerId: payload.repository_owner_id,
-    jtiHash: createHash('sha256').update(JSON.stringify([GITHUB_ISSUER, payload.jti])).digest('hex'),
-    expiresAt: payload.exp!,
+    ...identity,
   };
 }
 
 /** Only this sanitized error permits an audit before a job grantee is resolved. */
 export class GithubPolicyError extends SshCaError {
-  constructor() { super(401, 'Invalid GitHub OIDC token'); }
+  constructor(public readonly identity: GithubTokenIdentity) { super(401, 'Invalid GitHub OIDC token'); }
 }
 
 /** Anonymous failures must not cause audit preparation, signing or database writes. */
@@ -106,15 +114,23 @@ async function verifyGithubSignature(token: string, keys: CompactVerifyGetKey) {
 /** Fixed issuer/JWKS/audience/algorithm: never trust token-selected URLs or unverified claims. */
 export async function verifyGithubJob(token: string, keys: CompactVerifyGetKey = githubKeys): Promise<GithubJob> {
   const key = await verifyGithubSignature(token, keys);
+  let payload: JWTPayload;
+  let identity: GithubTokenIdentity;
   try {
     // Reuse the resolved key (no second JWKS fetch), retaining all JWT validation rules.
-    const { payload } = await jwtVerify(token, key, {
+    ({ payload } = await jwtVerify(token, key, {
       issuer: GITHUB_ISSUER, audience: SSH_OIDC_AUDIENCE, algorithms: ['RS256'],
       requiredClaims: ['exp', 'iat', 'nbf', 'sub', 'jti'],
       maxTokenAge: '10m', clockTolerance: 5,
-    });
-    return verifiedJob(payload);
+    }));
+    identity = verifiedTokenIdentity(payload);
   } catch {
-    throw new GithubPolicyError();
+    // Expired/not-yet-valid/stale or missing/malformed token IDs never authorize an audit.
+    throw new SshCaError(401, 'Invalid GitHub OIDC token');
+  }
+  try {
+    return verifiedJob(payload, identity);
+  } catch {
+    throw new GithubPolicyError(identity);
   }
 }

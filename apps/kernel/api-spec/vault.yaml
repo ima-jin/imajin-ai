@@ -294,6 +294,12 @@ paths:
         issuer, audience and algorithm verification commit a fixed refusal under
         the node subject with status 401, authentication github-oidc and reason
         invalid-token when a validated job grantee is not yet available.
+        Both GitHub refusal paths store only an issuer-separated jtiHash and
+        permit at most one refusal per jti for all time. A refusal-specific
+        advisory transaction lock and a partial unique hash index serialize
+        lookup/insert; duplicate refusals do not prepare or sign another audit.
+        Session-auth DID refusal auditing is unchanged. Expired, not-yet-valid,
+        stale and missing/malformed-jti tokens return generic 401 with no writes.
         Forged, malformed, empty or wrong-origin OIDC and JWKS/key-fetch failures
         return a generic 401 without audit preparation, signing or database writes.
         Audit failure returns 503 and no certificate.
