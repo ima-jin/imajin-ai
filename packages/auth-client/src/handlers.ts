@@ -37,17 +37,19 @@ function privateRedirect(url: URL) {
 
 /** Begin app sign-in on the app's own origin before visiting kernel consent. */
 export function createLoginHandler(config: ImajinAuthConfig) {
-  return async function GET() {
-    sessionCookieName(config);
-    if (!config.appId || !config.appDid) throw new Error('appId and appDid are required for app login');
-    const state = randomBytes(32).toString('hex');
-    const url = new URL(`${config.authUrl.replace(/\/$/, '')}/auth/authorize`);
-    url.searchParams.set('app_id', config.appId);
-    url.searchParams.set('state', state);
-    if (config.scopes) url.searchParams.set('scopes', config.scopes.join(','));
-    const response = privateRedirect(url);
-    response.cookies.set(stateCookieOptions(config, state, 300));
-    return response;
+  return function GET(): Promise<NextResponse> {
+    return new Promise<NextResponse>((resolve) => {
+      sessionCookieName(config);
+      if (!config.appId || !config.appDid) throw new Error('appId and appDid are required for app login');
+      const state = randomBytes(32).toString('hex');
+      const url = new URL(`${config.authUrl.replace(/\/$/, '')}/auth/authorize`);
+      url.searchParams.set('app_id', config.appId);
+      url.searchParams.set('state', state);
+      if (config.scopes) url.searchParams.set('scopes', config.scopes.join(','));
+      const response = privateRedirect(url);
+      response.cookies.set(stateCookieOptions(config, state, 300));
+      resolve(response);
+    });
   };
 }
 

@@ -20,6 +20,6 @@ export function withState(request: NextRequest, config: SessionConfig) {
 }
 
 export function mockCallbackFetch(profile: unknown) {
-  vi.stubGlobal('fetch', vi.fn(async (url: string) =>
-    Response.json(url.endsWith('/auth/api/apps/token') ? exchangeResult : profile)));
+  vi.stubGlobal('fetch', vi.fn((url: string) =>
+    Promise.resolve(Response.json(url.endsWith('/auth/api/apps/token') ? exchangeResult : profile))));
 }
