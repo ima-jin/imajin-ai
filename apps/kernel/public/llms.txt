@@ -19,6 +19,11 @@ the generated package table in README.md links checked public registry metadata.
 License: Imajin Network License (INL) v1.0, source-available, not MIT.
 
 ## Integration and safety
+- App sign-in begins on the app's createLoginHandler route. Keypair consent
+  POST /api/auth/authorize issues a 60-second single-use code bound to app,
+  authenticated subject, live authorization, callback and state. The app signs
+  its exchange at POST /auth/api/apps/token and uses only the returned subjectDid
+  and attestationId for its session. See /auth/api/spec and auth-client README.
 - Warp briefs: GET/PUT /jin/api/brief-settings (human session, warp-scoped
   owner/admin act-as only), UI /jin/brief-settings. Default full-text stores
   exact outgoing UTF-8 in a private immutable signed media asset. The final

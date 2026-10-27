@@ -24,13 +24,85 @@ const mocks = vi.hoisted(() => {
   const selectMock = vi.fn(() => ({ from: fromMock }));
   const verifySignatureMock = vi.fn();
   const recordUse = vi.fn();
+  const consume = vi.fn();
   const createAppTokenMock = vi.fn().mockResolvedValue('signed.app.jwt');
   // Minting a token must be read-only w.r.t. the consent attestation (#1795):
   // these spies let tests assert the route never reaches for a mutation path.
   const insertMock = vi.fn();
   const updateMock = vi.fn();
   const resolveActiveAppByAudienceMock = vi.fn();
-  return { whereMock, selectMock, verifySignatureMock, createAppTokenMock, insertMock, updateMock, resolveActiveAppByAudienceMock, recordUse };
+  return { whereMock, selectMock, verifySignatureMock, createAppTokenMock, insertMock, updateMock, resolveActiveAppByAudienceMock, recordUse, consume };
+});
+
+describe('kernel-verified single-use code exchange', () => {
+  const code = 'a'.repeat(64);
+  const state = 's'.repeat(64);
+  function codeBody(extra: Record<string, unknown> = {}) {
+    return { ...VALID_BODY, attestationId: undefined, timestamp: new Date().toISOString(), code, state, ...extra };
+  }
+  function consumed(subjectDid = ATTESTATION_ROW.issuerDid) {
+    mocks.consume.mockResolvedValue({ authorization: { attestationId: ATTESTATION_ID, subjectDid } });
+  }
+
+  it('returns the kernel subject and grant after proof and atomic consumption', async () => {
+    nextSelect([REGISTRY_APP_ROW]);
+    nextSelect([ATTESTATION_ROW]);
+    consumed();
+    const body = codeBody();
+    const response = await POST(makeRequest(body) as never);
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      subjectDid: ATTESTATION_ROW.issuerDid, attestationId: ATTESTATION_ID,
+      token: 'signed.app.jwt', scopes: ['profile:read'],
+    });
+    expect(mocks.verifySignatureMock).toHaveBeenCalledWith(
+      `${APP_DID}:${code}:${body.nonce}:${body.timestamp}`, body.signature, REAL_PUBLIC_KEY,
+    );
+    expect(mocks.consume).toHaveBeenCalledWith({ appDid: APP_DID, code, state, callbackUrl: REGISTRY_APP_ROW.callbackUrl });
+    expect(mocks.verifySignatureMock.mock.invocationCallOrder[0]).toBeLessThan(mocks.consume.mock.invocationCallOrder[0]);
+    expect(mocks.createAppTokenMock).toHaveBeenCalledWith(expect.objectContaining({ sub: ATTESTATION_ROW.issuerDid }));
+  });
+
+  it.each(['unissued', 'expired', 'foreign-app', 'callback-changed', 'state-mismatch', 'used'])(
+    'rejects %s code consumption without a token', async failure => {
+      nextSelect([REGISTRY_APP_ROW]);
+      const error = failure === 'used' ? 'code_used' : 'code_invalid';
+      mocks.consume.mockResolvedValue({ error });
+      const response = await POST(makeRequest(codeBody()) as never);
+      expect(response.status).toBe(400);
+      expect(await response.json()).toEqual({ error });
+      expect(mocks.createAppTokenMock).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([
+    { revokedAt: new Date() }, { expiresAt: new Date(0) }, { issuerDid: 'did:imajin:other' },
+  ])('refuses a non-live or mismatched grant', async change => {
+    nextSelect([REGISTRY_APP_ROW]);
+    nextSelect([{ ...ATTESTATION_ROW, ...change }]);
+    consumed();
+    expect((await POST(makeRequest(codeBody()) as never)).status).toBeGreaterThanOrEqual(400);
+    expect(mocks.createAppTokenMock).not.toHaveBeenCalled();
+  });
+
+  it('does not consume a code without valid app proof', async () => {
+    nextSelect([REGISTRY_APP_ROW]);
+    mocks.verifySignatureMock.mockResolvedValue(false);
+    expect((await POST(makeRequest(codeBody()) as never)).status).toBe(401);
+    expect(mocks.consume).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { code: '' }, { code: 'invalid' }, { state: undefined }, { state: '' }, { state: 1 },
+    { state: 's'.repeat(257) }, { attestationId: ATTESTATION_ID }, { principalDid: 'did:imajin:user' },
+    { nonce: 'short' }, { timestamp: 'invalid' }, { timestamp: new Date(0).toISOString() },
+    { appDid: 1 }, { signature: null },
+    { scope: {} }, { aud: [] },
+  ])('refuses malformed or ambiguous code exchanges', async change => {
+    expect((await POST(makeRequest(codeBody(change)) as never)).status).toBeGreaterThanOrEqual(400);
+    expect(mocks.consume).not.toHaveBeenCalled();
+    expect(mocks.createAppTokenMock).not.toHaveBeenCalled();
+  });
 });
 
 describe('successful mint usage recording (#3009)', () => {
@@ -93,6 +165,7 @@ vi.mock('@imajin/config', () => ({ corsHeaders: () => ({}) }));
 vi.mock('@/src/lib/auth/crypto', () => ({ verifySignature: mocks.verifySignatureMock }));
 vi.mock('@/src/lib/auth/jwt', () => ({ createAppToken: mocks.createAppTokenMock }));
 vi.mock('@/src/lib/auth/app-authorization-usage', () => ({ recordAppAuthorizationUse: mocks.recordUse }));
+vi.mock('@/src/lib/auth/app-authorization-code', () => ({ consumeAppAuthorizationCode: mocks.consume }));
 vi.mock('@/src/lib/kernel/app-registry', () => ({
   resolveActiveAppByAudience: mocks.resolveActiveAppByAudienceMock,
   appNotRegisteredResponse: () =>
@@ -112,7 +185,7 @@ const REAL_PUBLIC_KEY = 'a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5
 const SENTINEL_PUBLIC_KEY = 'agent_app_4MbCYrndTWiJjMPe';
 const ATTESTATION_ID = 'att_test123';
 
-const REGISTRY_APP_ROW = { publicKey: REAL_PUBLIC_KEY, status: 'active' };
+const REGISTRY_APP_ROW = { publicKey: REAL_PUBLIC_KEY, status: 'active', callbackUrl: 'https://app.test/callback' };
 const ATTESTATION_ROW = {
   id: ATTESTATION_ID,
   issuerDid: 'did:imajin:user',
@@ -144,6 +217,7 @@ beforeEach(() => {
   mocks.verifySignatureMock.mockResolvedValue(true);
   mocks.createAppTokenMock.mockResolvedValue('signed.app.jwt');
   mocks.recordUse.mockReset().mockResolvedValue(undefined);
+  mocks.consume.mockReset();
   mocks.resolveActiveAppByAudienceMock.mockReset().mockResolvedValue({
     id: 'app_first_party_coffee',
     appDid: 'did:imajin:app-coffee',

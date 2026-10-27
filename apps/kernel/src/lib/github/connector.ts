@@ -220,8 +220,14 @@ export const pollDeviceTokenAndStore = gh.pollDeviceTokenAndStore;
  * the flow discriminator only, never any field of the config.
  */
 export async function readConfigFlow(ownerDid: string): Promise<OAuthFlow | null> {
+  return (await readConfigSetup(ownerDid))?.flow ?? null;
+}
+
+/** Allowlisted display fields only, read through the existing owner/slot vault grant. */
+export async function readConfigSetup(ownerDid: string): Promise<{ flow: OAuthFlow; clientId: string } | null> {
   try {
-    return resolveOAuthFlow(await gh.loadConfig(ownerDid));
+    const config = await gh.loadConfig(ownerDid);
+    return { flow: resolveOAuthFlow(config), clientId: config.clientId };
   } catch (err) {
     // "Not configured" and "sealed but not yet granted" are both "no answer
     // yet" for this purpose; the status route reports those states separately.
