@@ -149,7 +149,7 @@ Regression command (from the monorepo root):
 Repository policy reserves all manifest version bumps for the normal reviewed
 Release workflow. Feature changes do not select or bump package versions.
 
-### 4. Fetch this app's own signing key at boot (#2411)
+### 4. Fetch this app's own signing key at boot (#2411, #3146)
 
 An app provisioned via the kernel's `apps.provision` (see
 `ima-jin/imajin-ai`'s `docs/REGISTRATION.md`) never holds a raw
