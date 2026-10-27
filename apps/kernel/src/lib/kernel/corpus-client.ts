@@ -15,7 +15,6 @@
 import type { CorpusAccessScope } from './corpus-access-claim';
 import { corpusErrorMessage, corpusHttpRequest } from './corpus-http';
 import { forEachSequential } from '../async/sequential';
-import { assertConnectionNotRemoved } from './connector-connection-status';
 import { ConnectionRemovedError } from './connection-slots';
 
 export interface CorpusSourceFreshness {
@@ -132,6 +131,7 @@ export async function fetchCorpusStatus(did: string): Promise<CorpusStatus> {
     const bound = { ...source, ownerDid };
     if (!source.source.startsWith('github:') || !source.credentialRef?.startsWith('github:')) return bound;
     try {
+      const { assertConnectionNotRemoved } = await import('./connector-connection-status');
       await assertConnectionNotRemoved(ownerDid, 'github', source.credentialRef.slice('github:'.length));
     } catch (err) {
       bound.error = err instanceof ConnectionRemovedError ? 'Connection removed. Select another connection explicitly.' : 'Connection status unavailable.';
