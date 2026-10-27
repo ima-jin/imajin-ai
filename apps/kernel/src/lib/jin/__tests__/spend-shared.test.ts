@@ -29,20 +29,19 @@ vi.mock('@/src/lib/github/bug-import', () => ({ BUG_TRACKER_REPO: 'ima-jin/imaji
 import {
   INTERIM_LABEL,
   costPerClosedIssue,
-  defaultInterimDeps,
-  deriveInterimSpend,
+  defaultSpendDeps,
+  deriveSpend,
   groupByIssue,
   issueNumberFromBody,
   issueNumberFromBranch,
   monthStartIso,
   prHintOf,
-  readInterimSpend,
   warpCostOf,
-  type InterimDeps,
-  type InterimIssueCost,
-  type InterimRunCost,
+  type SpendDeps,
+  type SpendIssueCost,
+  type SpendRunCost,
   type MeteredCost,
-} from '../spend-interim-join';
+} from '../spend-shared';
 import type { WarpAgentRun } from '@/src/lib/warp/dispatch';
 
 const OPERATOR = 'did:imajin:operator';
@@ -84,7 +83,7 @@ function prArtifact(url: string | null, branch: string | null) {
   return { artifactType: 'PULL_REQUEST', createdAt: null, data: { ...(url ? { url } : {}), ...(branch ? { branch } : {}) } };
 }
 
-function deps(overrides: Partial<InterimDeps> = {}): InterimDeps {
+function deps(overrides: Partial<SpendDeps> = {}): SpendDeps {
   return {
     listRuns: vi.fn(async () => ({ runs: [], hasNextPage: false })),
     meteredBySession: vi.fn(async () => new Map<string, MeteredCost>()),
@@ -184,7 +183,7 @@ describe('prHintOf', () => {
 });
 
 describe('aggregation', () => {
-  function runCost(over: Partial<InterimRunCost> & { issue?: number }): InterimRunCost {
+  function runCost(over: Partial<SpendRunCost> & { issue?: number }): SpendRunCost {
     return {
       runId: 'r',
       title: null,
@@ -202,7 +201,7 @@ describe('aggregation', () => {
         issueVia: over.issue === undefined ? null : 'branch',
       },
       ...over,
-    } as InterimRunCost;
+    } as SpendRunCost;
   }
 
   it('groups runs by issue, summing each unit separately and never mixing them', () => {
@@ -222,7 +221,7 @@ describe('aggregation', () => {
   });
 
   it('computes cost per closed issue per unit, ignoring open/unknown issues', () => {
-    const issues: InterimIssueCost[] = [
+    const issues: SpendIssueCost[] = [
       { repo: 'o/r', number: 1, state: 'closed', runCount: 1, warpTotal: 4, meteredUsd: 1 },
       { repo: 'o/r', number: 2, state: 'closed', runCount: 1, warpTotal: 2, meteredUsd: null },
       { repo: 'o/r', number: 3, state: 'open', runCount: 1, warpTotal: 100, meteredUsd: 100 },
@@ -243,14 +242,56 @@ describe('aggregation', () => {
   });
 });
 
-describe('deriveInterimSpend', () => {
+describe('deriveSpend', () => {
+  it('excludes registered runs before metering and resolving shared session aliases', async () => {
+    const d = deps({
+      listRuns: vi.fn(async () => ({
+        runs: [
+          run({ runId: 'registered', sessionId: 'shared', artifacts: [prArtifact(null, 'feat/1-signed')] }),
+          run({ runId: 'legacy', sessionId: 'shared', artifacts: [prArtifact(null, 'feat/2-fallback')] }),
+        ],
+        hasNextPage: false,
+      })),
+      meteredBySession: vi.fn(async () => new Map([['shared', { usd: 3, turns: 1 }]])),
+    });
+    const registeredRunIds = vi.fn(async () => new Set(['registered']));
+    const out = await deriveSpend(OPERATOR, d, NOW, { registeredRunIds });
+    expect(registeredRunIds).toHaveBeenCalledWith(['registered', 'legacy']);
+    expect(d.meteredBySession).toHaveBeenCalledWith(OPERATOR, ['legacy', 'shared']);
+    expect(d.readIssueState).toHaveBeenCalledOnce();
+    expect(d.readIssueState).toHaveBeenCalledWith('ima-jin/imajin-ai', 2);
+    expect(out.runs).toHaveLength(1);
+    expect(out.runs[0]).toMatchObject({ runId: 'legacy', metered: { usd: 3, turns: 1 } });
+    expect(out.issues.map((issue) => issue.number)).toEqual([2]);
+  });
+
+  it('does not derive costs when registry membership cannot be checked', async () => {
+    const d = deps({
+      listRuns: vi.fn(async () => ({ runs: [run()], hasNextPage: false })),
+    });
+    await expect(deriveSpend(OPERATOR, d, NOW, {
+      registeredRunIds: async () => { throw new Error('membership unavailable'); },
+    })).rejects.toThrow('membership unavailable');
+    expect(d.meteredBySession).not.toHaveBeenCalled();
+    expect(d.readPullRequest).not.toHaveBeenCalled();
+    expect(d.readIssueState).not.toHaveBeenCalled();
+  });
+
+  it('lets the registry adapter retain all fallback runs before its combined compact slice', async () => {
+    const many = Array.from({ length: 12 }, (_, i) => run({ runId: `r${i}` }));
+    const out = await deriveSpend(OPERATOR, deps({
+      listRuns: vi.fn(async () => ({ runs: many, hasNextPage: true })),
+    }), NOW, { recentLimit: Number.MAX_SAFE_INTEGER });
+    expect(out.runs.map((row) => row.runId)).toEqual(many.map((row) => row.runId));
+    expect(out.runsTruncated).toBe(true);
+  });
   it('leaves shared session/conversation aliases unassigned while exact run IDs win collisions', async () => {
     const runs = [
       run({ runId: 'a', sessionId: 'shared', conversationId: 'a' }),
       run({ runId: 'b', sessionId: 'a', conversationId: 'shared' }),
       run({ runId: 'c', sessionId: 'shared', conversationId: 'unique' }),
     ];
-    const out = await deriveInterimSpend(OPERATOR, deps({
+    const out = await deriveSpend(OPERATOR, deps({
       listRuns: vi.fn(async () => ({ runs, hasNextPage: false })),
       meteredBySession: vi.fn(async () => new Map([
         ['a', { usd: 2, turns: 1 }],
@@ -263,7 +304,7 @@ describe('deriveInterimSpend', () => {
 
   it('counts a repeated run and repeated aliases only once', async () => {
     const repeated = run({ sessionId: 'same', conversationId: 'same', artifacts: [prArtifact(null, 'feat/9-x')] });
-    const out = await deriveInterimSpend(OPERATOR, deps({
+    const out = await deriveSpend(OPERATOR, deps({
       listRuns: vi.fn(async () => ({ runs: [repeated, repeated], hasNextPage: false })),
       meteredBySession: vi.fn(async () => new Map([['same', { usd: 5, turns: 1 }]])),
     }), NOW);
@@ -272,7 +313,7 @@ describe('deriveInterimSpend', () => {
   });
 
   it('keeps mixed known and unknown session costs unknown regardless of order', async () => {
-    const out = await deriveInterimSpend(OPERATOR, deps({
+    const out = await deriveSpend(OPERATOR, deps({
       listRuns: vi.fn(async () => ({
         runs: [run({ runId: 'a', sessionId: 'unknown-a' }), run({ runId: 'b', sessionId: 'known-b' })],
         hasNextPage: false,
@@ -286,7 +327,7 @@ describe('deriveInterimSpend', () => {
     expect(out.runs.every((row) => row.attribution === 'unattributed')).toBe(true);
   });
   it('reports runs unavailable (and invents nothing) when Warp cannot be read', async () => {
-    const out = await deriveInterimSpend(OPERATOR, deps({ listRuns: vi.fn(async () => { throw new Error('no key'); }) }), NOW);
+    const out = await deriveSpend(OPERATOR, deps({ listRuns: vi.fn(async () => { throw new Error('no key'); }) }), NOW);
     expect(out).toMatchObject({ runsAvailable: false, runs: [], issues: [], label: INTERIM_LABEL, windowFrom: '2026-10-01T00:00:00.000Z' });
     expect(out.closedIssueCost.closedCount).toBe(0);
   });
@@ -296,7 +337,7 @@ describe('deriveInterimSpend', () => {
       ['run-a', { usd: 1.25, turns: 3 }],
       ['sess-b', { usd: null, turns: 2 }],
     ]);
-    const out = await deriveInterimSpend(
+    const out = await deriveSpend(
       OPERATOR,
       deps({
         listRuns: vi.fn(async () => ({
@@ -321,7 +362,7 @@ describe('deriveInterimSpend', () => {
   });
 
   it('keeps going when the metered join fails', async () => {
-    const out = await deriveInterimSpend(
+    const out = await deriveSpend(
       OPERATOR,
       deps({
         listRuns: vi.fn(async () => ({ runs: [run({ requestUsage: { inferenceCost: 1, computeCost: null, platformCost: null } })], hasNextPage: false })),
@@ -339,7 +380,7 @@ describe('deriveInterimSpend', () => {
       return null;
     });
     const readIssueState = vi.fn(async (_repo: string, n: number) => (n === 100 || n === 200 ? ('closed' as const) : ('open' as const)));
-    const out = await deriveInterimSpend(
+    const out = await deriveSpend(
       OPERATOR,
       deps({
         listRuns: vi.fn(async () => ({
@@ -373,7 +414,7 @@ describe('deriveInterimSpend', () => {
   });
 
   it('leaves issue state unknown (and cost-per-closed-issue n/a) when GitHub cannot be read', async () => {
-    const out = await deriveInterimSpend(
+    const out = await deriveSpend(
       OPERATOR,
       deps({
         listRuns: vi.fn(async () => ({
@@ -390,7 +431,7 @@ describe('deriveInterimSpend', () => {
 
   it('returns only the most recent runs for the compact list but aggregates over all', async () => {
     const many = Array.from({ length: 12 }, (_, i) => run({ runId: `r${i}`, artifacts: [prArtifact(null, `feat/${i + 1}-x`)] }));
-    const out = await deriveInterimSpend(OPERATOR, deps({ listRuns: vi.fn(async () => ({ runs: many, hasNextPage: false })) }), NOW);
+    const out = await deriveSpend(OPERATOR, deps({ listRuns: vi.fn(async () => ({ runs: many, hasNextPage: false })) }), NOW);
     expect(out.runs).toHaveLength(8);
     expect(out.issues).toHaveLength(12);
   });
@@ -398,7 +439,7 @@ describe('deriveInterimSpend', () => {
   it('stops PR lookups once the per-request GitHub budget is spent', async () => {
     const many = Array.from({ length: 40 }, (_, i) => run({ runId: `r${i}`, statusMessage: { message: `PR #${i + 1}`, errorCode: null, retryable: null } }));
     const readPullRequest = vi.fn(async () => null);
-    await deriveInterimSpend(OPERATOR, deps({ listRuns: vi.fn(async () => ({ runs: many, hasNextPage: false })), readPullRequest }), NOW);
+    await deriveSpend(OPERATOR, deps({ listRuns: vi.fn(async () => ({ runs: many, hasNextPage: false })), readPullRequest }), NOW);
     expect(readPullRequest).toHaveBeenCalledTimes(30);
   });
 });
@@ -406,7 +447,7 @@ describe('deriveInterimSpend', () => {
 describe('default readers', () => {
   it('lists this month\'s runs through the existing Warp reader', async () => {
     mockListAgentRuns.mockResolvedValueOnce({ runs: [run()], hasNextPage: true, nextCursor: 'c' });
-    const page = await defaultInterimDeps(OPERATOR).listRuns(OPERATOR, '2026-10-01T00:00:00.000Z');
+    const page = await defaultSpendDeps(OPERATOR).listRuns(OPERATOR, '2026-10-01T00:00:00.000Z');
     expect(mockListAgentRuns).toHaveBeenCalledWith(OPERATOR, { createdAfter: '2026-10-01T00:00:00.000Z', limit: 100 });
     expect(page.hasNextPage).toBe(true);
     expect(page.runs).toHaveLength(1);
@@ -418,7 +459,7 @@ describe('default readers', () => {
       { sessionId: 's2', usd: null, turns: '1' },
       { sessionId: null, usd: '9', turns: '9' },
     ];
-    const out = await defaultInterimDeps(OPERATOR).meteredBySession(OPERATOR, ['s1', 's2']);
+    const out = await defaultSpendDeps(OPERATOR).meteredBySession(OPERATOR, ['s1', 's2']);
     expect([...out.entries()]).toEqual([
       ['s1', { usd: 1.5, turns: 2 }],
       ['s2', { usd: null, turns: 1 }],
@@ -426,13 +467,13 @@ describe('default readers', () => {
   });
 
   it('does not touch the database with no session ids', async () => {
-    const out = await defaultInterimDeps(OPERATOR).meteredBySession(OPERATOR, []);
+    const out = await defaultSpendDeps(OPERATOR).meteredBySession(OPERATOR, []);
     expect(out.size).toBe(0);
     expect(mockSelect).not.toHaveBeenCalled();
   });
 
   it('reads PR head/body and issue state with the operator\'s own connector, and degrades on error', async () => {
-    const d = defaultInterimDeps(OPERATOR);
+    const d = defaultSpendDeps(OPERATOR);
     mockGetPullRequest.mockResolvedValueOnce({ head: { ref: 'feat/1-x' }, body: 'Closes #1' });
     expect(await d.readPullRequest('o/r', 5)).toEqual({ headRef: 'feat/1-x', body: 'Closes #1' });
     expect(mockGetPullRequest).toHaveBeenCalledWith(OPERATOR, 'o/r', 5);
@@ -449,12 +490,4 @@ describe('default readers', () => {
     expect(await d.readIssueState('o/r', 3)).toBe('unknown');
   });
 
-  it('readInterimSpend wires the default readers end to end', async () => {
-    mockListAgentRuns.mockResolvedValueOnce({ runs: [run({ artifacts: [prArtifact(null, 'feat/9-z')] })], hasNextPage: false, nextCursor: null });
-    mockGetIssue.mockResolvedValueOnce({ state: 'closed' });
-    state.rows = [];
-    const out = await readInterimSpend(OPERATOR);
-    expect(out.runsAvailable).toBe(true);
-    expect(out.issues[0]).toMatchObject({ number: 9, state: 'closed' });
-  });
 });

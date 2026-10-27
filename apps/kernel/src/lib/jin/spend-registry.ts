@@ -1,9 +1,9 @@
 /** Registry-first Spend adapter; legacy Warp derivation is missing-loop only. */
 import {
-  costPerClosedIssue, defaultInterimDeps, deriveInterimSpend, groupByIssue,
+  costPerClosedIssue, defaultSpendDeps, deriveSpend, groupByIssue,
   monthStartIso, RECENT_RUN_COUNT, MAX_GITHUB_LOOKUPS,
-  type InterimDeps, type InterimRunCost, type InterimSpend, type IssueRef, type IssueState,
-} from './spend-interim-join';
+  type SpendDeps, type SpendRunCost, type Spend, type IssueRef, type IssueState,
+} from './spend-shared';
 import {
   readRegistrySpend, registeredRunIds, unregisteredSessionIds, type RegistryRunCost, type RegistrySpend,
 } from '@/src/lib/loops/spend';
@@ -21,7 +21,7 @@ export function githubSubject(ref: unknown, kind: 'issue' | 'pr'): IssueRef | nu
   return Number.isSafeInteger(number) && number > 0 ? { repo: match[1], number } : null;
 }
 
-function registryRun(run: RegistryRunCost): InterimRunCost {
+function registryRun(run: RegistryRunCost): SpendRunCost {
   const issue = githubSubject(run.refs.issue, 'issue');
   const pr = githubSubject(run.refs.pr, 'pr');
   return {
@@ -40,15 +40,15 @@ function registryRun(run: RegistryRunCost): InterimRunCost {
 export interface RegistrySpendDeps {
   readRegistry: typeof readRegistrySpend;
   registered: typeof registeredRunIds;
-  interim: InterimDeps;
+  interim: SpendDeps;
 }
 
-export interface RegistryLaneSpend extends InterimSpend {
+export interface RegistryLaneSpend extends Spend {
   /** PR totals come from explicit signed registry refs, not guessed branches. */
   prs: RegistrySpend['prs'];
 }
 
-async function issueStates(runs: InterimRunCost[], deps: InterimDeps): Promise<Map<string, IssueState>> {
+async function issueStates(runs: SpendRunCost[], deps: SpendDeps): Promise<Map<string, IssueState>> {
   const refs = new Map<string, IssueRef>();
   for (const run of runs) {
     const ref = run.linkage.issue;
@@ -62,7 +62,7 @@ async function issueStates(runs: InterimRunCost[], deps: InterimDeps): Promise<M
 }
 
 /** One per-request budget/cache shared by fallback and registry issue reads. */
-function boundedIssueReader(deps: InterimDeps): InterimDeps['readIssueState'] {
+function boundedIssueReader(deps: SpendDeps): SpendDeps['readIssueState'] {
   const cache = new Map<string, Promise<IssueState>>();
   return (repo, number) => {
     const key = `${repo}#${number}`;
@@ -83,7 +83,7 @@ export async function buildRegistrySpend(
   // Read registry first; never downgrade a DB failure to a heuristic join.
   const registry = await deps.readRegistry(principal, from, to);
   const interim = { ...deps.interim, readIssueState: boundedIssueReader(deps.interim) };
-  const fallback = await deriveInterimSpend(principal, interim, now, {
+  const fallback = await deriveSpend(principal, interim, now, {
     registeredRunIds: (ids) => deps.registered(principal, ids),
     recentLimit: Number.MAX_SAFE_INTEGER,
   });
@@ -105,7 +105,7 @@ export async function buildRegistrySpend(
 }
 
 export function readRegistryLaneSpend(principal: string): Promise<RegistryLaneSpend> {
-  const interim = defaultInterimDeps(principal);
+  const interim = defaultSpendDeps(principal);
   return buildRegistrySpend(principal, {
     readRegistry: readRegistrySpend,
     registered: registeredRunIds,

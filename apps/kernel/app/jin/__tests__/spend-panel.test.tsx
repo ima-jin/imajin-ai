@@ -10,7 +10,7 @@ import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
 import { render, screen, cleanup, waitFor, fireEvent, within } from '@testing-library/react';
 import { SpendPanel, formatUsd, formatWarpUnits } from '../spend-panel';
 import type { SpendLane, ProviderSpend } from '@/src/lib/jin/spend-lane';
-import type { InterimRunCost, InterimSpend } from '@/src/lib/jin/spend-interim-join';
+import type { SpendRunCost, Spend } from '@/src/lib/jin/spend-shared';
 
 function provider(overrides: Partial<ProviderSpend> = {}): ProviderSpend {
   return {
@@ -39,7 +39,7 @@ function lane(overrides: Partial<SpendLane> = {}): SpendLane {
   };
 }
 
-function runCost(overrides: Partial<InterimRunCost> = {}): InterimRunCost {
+function runCost(overrides: Partial<SpendRunCost> = {}): SpendRunCost {
   return {
     runId: 'run-1',
     title: 'Fix the thing',
@@ -53,7 +53,7 @@ function runCost(overrides: Partial<InterimRunCost> = {}): InterimRunCost {
   };
 }
 
-function interim(overrides: Partial<InterimSpend> = {}): InterimSpend {
+function interim(overrides: Partial<Spend> = {}): Spend {
   return {
     label: 'interim · derived from Warp runs + branch names (until #2290)',
     windowFrom: '2026-10-01T00:00:00.000Z',
@@ -69,7 +69,7 @@ function interim(overrides: Partial<InterimSpend> = {}): InterimSpend {
 
 type Payloads = {
   spend?: { isOperator: boolean; spend: SpendLane | null } | 'fail' | 'throw';
-  runs?: { isOperator: boolean; interim: InterimSpend | null } | 'fail' | 'throw';
+  runs?: { isOperator: boolean; interim: Spend | null } | 'fail' | 'throw';
 };
 
 function installFetch({ spend = { isOperator: true, spend: lane() }, runs = { isOperator: true, interim: interim() } }: Payloads = {}) {
