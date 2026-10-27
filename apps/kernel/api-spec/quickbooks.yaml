@@ -81,10 +81,22 @@ paths:
     post:
       operationId: quickbooksDisconnect
       summary: Revoke only the selected connection and its grants
+      description: >-
+        With remove=true, uses the same owner-only removal seam as GitHub:
+        vault config/token tombstones and grant key erasure, retained removed
+        slot history and a signed connector.disconnected attestation.
+        Primary removal is blocked. Bound consumers fail closed.
+      parameters:
+        - name: remove
+          in: query
+          schema: { type: string, enum: ["true"] }
       responses:
         "200": { description: Disconnected; other slots unchanged }
         "400": { description: Invalid slot }
         "401": { description: Not authenticated }
+        "404": { description: Connection not found for the authenticated owner }
+        "409": { description: Primary connection cannot be removed }
+        "503": { description: Removal unavailable; safe to retry }
   /api/scope-manifest:
     parameters:
       - $ref: "#/components/parameters/slot"
