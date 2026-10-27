@@ -12,6 +12,7 @@ import {
 } from './legal-entity-schema';
 import { composeLegalEntity, composeLegalEntityRevocation, parseLegalEntity } from './legal-entity-document';
 
+// Select the newest active legal-entity record when retained history contains duplicates.
 async function findLegalEntityAsset(did: string): Promise<Asset | null> {
   const [asset] = await db.select().from(assets).where(and(
     eq(assets.ownerDid, did),
