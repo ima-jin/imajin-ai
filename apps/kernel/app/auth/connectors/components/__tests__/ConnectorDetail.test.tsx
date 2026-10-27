@@ -13,7 +13,7 @@
  * harness rather than a shared setup file.
  */
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, cleanup, fireEvent, waitFor, within } from '@testing-library/react';
 import { getConnector, type ConnectorEntry } from '@/src/lib/kernel/connector-registry';
 import { ConnectorDetail } from '../ConnectorDetail';
 
@@ -886,6 +886,127 @@ describe('settings save refreshes the connector card status (#1969)', () => {
 });
 
 // ── GitHub device flow (#1391) ────────────────────────────────────────────
+
+describe('GitHub setup instructions', () => {
+  function setupStatus(overrides: StatusBody = {}) {
+    return {
+      manifestAssetId: null, activeScopes: [], validScopes: ['github:read'],
+      configSealed: false, tokenSealed: false, ...overrides,
+    };
+  }
+
+  async function renderSetup(overrides: StatusBody = {}) {
+    const spy = installFetch({ '/github/api/scope-manifest': setupStatus(overrides) });
+    const result = render(<ConnectorDetail entry={entryFor('github')} />);
+    await screen.findByText('github:read');
+    return { ...result, spy };
+  }
+
+  it.each(['device', 'authorization_code'] as const)('shows numbered setup and copies the origin callback for %s', async (flow) => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    vi.stubGlobal('navigator', { clipboard: { writeText } });
+    const { container, spy } = await renderSetup();
+    if (flow === 'authorization_code') {
+      fireEvent.click(screen.getByLabelText(/Manual \(client ID \+ secret \+ callback\)/));
+    }
+
+    const setup = within(screen.getByRole('region', { name: 'GitHub OAuth App setup' }));
+    const steps = setup.getAllByRole('listitem');
+    expect(steps).toHaveLength(4);
+    steps.forEach((step, index) => {
+      expect(within(step).getByRole('heading').textContent).toMatch(new RegExp(`^${index + 1}\\. `));
+    });
+    expect(setup.getByRole('link', { name: 'New OAuth App' }).getAttribute('href'))
+      .toBe('https://github.com/settings/applications/new');
+    const callback = `${window.location.origin}/github/api/callback`;
+    expect(setup.getByText(callback)).toBeDefined();
+    if (flow === 'device') {
+      expect(setup.getByText(/recommended for new users/)).toBeDefined();
+      expect(setup.getByText('Enable Device Flow', { selector: 'strong' })).toBeDefined();
+      expect(setup.getByText(/doesn't use this URL, but GitHub requires it/)).toBeDefined();
+      expect(screen.queryByPlaceholderText('Client Secret')).toBeNull();
+    } else {
+      expect(setup.queryByText('Enable Device Flow', { selector: 'strong' })).toBeNull();
+      expect((screen.getByPlaceholderText('Redirect URI') as HTMLInputElement).value).toBe(callback);
+      expect(setup.getByText(/generate a client secret on its settings page/)).toBeDefined();
+    }
+    const copy = setup.getByRole('button', { name: 'Copy callback URL' }) as HTMLButtonElement;
+    expect(copy.type).toBe('button');
+    expect(copy.tabIndex).toBe(0);
+    expect(copy.className).toContain('focus-visible:outline');
+    copy.focus();
+    expect(document.activeElement).toBe(copy);
+    fireEvent.click(copy);
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith(callback));
+    expect(await setup.findByText('Copied callback URL.')).toBeDefined();
+    expect(setup.getByRole('status').textContent).toBe('Copied callback URL.');
+    expect(spy.mock.calls.every(([, init]) => !(init as RequestInit | undefined)?.method)).toBe(true);
+    expect(container.textContent).not.toMatch(/#\d+|github\.com\/ima-jin\/imajin-ai\/issues/);
+  });
+
+  it('keeps the displayed callback origin-derived when the manual redirect input is edited', async () => {
+    await renderSetup();
+    fireEvent.click(screen.getByLabelText(/Manual \(client ID \+ secret \+ callback\)/));
+    fireEvent.change(screen.getByPlaceholderText('Redirect URI'), { target: { value: 'https://other.test/return' } });
+    expect(screen.getByText(`${window.location.origin}/github/api/callback`)).toBeDefined();
+  });
+
+  it('shows a recovery message instead of claiming success when clipboard access is denied', async () => {
+    const writeText = vi.fn().mockRejectedValue(new Error('denied'));
+    vi.stubGlobal('navigator', { clipboard: { writeText } });
+    await renderSetup();
+    fireEvent.click(screen.getByRole('button', { name: 'Copy callback URL' }));
+    expect(await screen.findByText('Could not copy. Select and copy the callback URL above.')).toBeDefined();
+    expect(screen.queryByText('Copied callback URL.')).toBeNull();
+  });
+
+  it('handles an unavailable clipboard without an unhandled rejection', async () => {
+    vi.stubGlobal('navigator', {});
+    await renderSetup();
+    fireEvent.click(screen.getByRole('button', { name: 'Copy callback URL' }));
+    expect(await screen.findByText(/Could not copy/)).toBeDefined();
+  });
+
+  it.each(['device', 'authorization_code'] as const)('uses the sealed public client ID after a %s connection', async (flow) => {
+    const { container } = await renderSetup({
+      configSealed: true, tokenSealed: true, flow, clientId: 'public-app-id',
+    });
+    const note = within(screen.getByRole('complementary', { name: 'GitHub organization access' }));
+    expect(note.getByRole('heading', { name: "Don't see an org?" })).toBeDefined();
+    expect(note.getByRole('link').getAttribute('href'))
+      .toBe('https://github.com/settings/connections/applications/public-app-id');
+    expect(note.getByText('Organization access')).toBeDefined();
+    expect(note.getByText('Request')).toBeDefined();
+    expect(note.getByText('Settings')).toBeDefined();
+    expect(note.getByText('Third-party Access')).toBeDefined();
+    expect(note.getByText('OAuth app policy')).toBeDefined();
+    expect(note.getByText(/An org owner then approves/)).toBeDefined();
+    expect(container.textContent).not.toMatch(/#\d+/);
+    fireEvent.click(screen.getByRole('button', { name: 'Update' }));
+    fireEvent.change(screen.getByPlaceholderText('OAuth App Client ID'), { target: { value: 'unsaved-app-id' } });
+    expect(note.getByRole('link').getAttribute('href')).toContain('/public-app-id');
+  });
+
+  it('does not show organization access before connecting', async () => {
+    await renderSetup({ configSealed: true, clientId: 'public-app-id' });
+    expect(screen.queryByRole('complementary', { name: 'GitHub organization access' })).toBeNull();
+  });
+
+  it('offers the app list when a legacy or unavailable config has no public client ID', async () => {
+    await renderSetup({ tokenSealed: true, clientId: null });
+    const note = within(screen.getByRole('complementary', { name: 'GitHub organization access' }));
+    expect(note.getByRole('link').getAttribute('href'))
+      .toBe('https://github.com/settings/connections/applications');
+    expect(note.getByRole('link').textContent).toContain('select your app');
+  });
+
+  it('encodes the public client ID as a path segment, never as a destination', async () => {
+    await renderSetup({ tokenSealed: true, clientId: 'public/id?next=elsewhere' });
+    const note = within(screen.getByRole('complementary', { name: 'GitHub organization access' }));
+    expect(note.getByRole('link').getAttribute('href'))
+      .toBe('https://github.com/settings/connections/applications/public%2Fid%3Fnext%3Delsewhere');
+  });
+});
 
 describe('GitHub auth-mode selector (#1391)', () => {
   const STATUS = '/github/api/scope-manifest';

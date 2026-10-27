@@ -202,6 +202,7 @@ import {
   buildAuthorizeUrl,
   exchangeCodeAndStore,
   readConfigFlow,
+  readConfigSetup,
   requestDeviceCode,
   pollDeviceTokenOnce,
   DEFAULT_LIST_LIMIT,
@@ -1365,6 +1366,46 @@ describe('readConfigFlow (#1391)', () => {
     );
 
     expect(await readConfigFlow(OWNER)).toBeNull();
+  });
+});
+
+describe('public GitHub setup projection', () => {
+  it('returns only the flow and public client ID from a sealed authorization-code config', async () => {
+    setConfig();
+    expect(await readConfigSetup(OWNER)).toEqual({ flow: 'authorization_code', clientId: CONFIG.clientId });
+  });
+
+  it('returns the public device client ID without reading a token', async () => {
+    setDeviceConfig();
+    expect(await readConfigSetup(OWNER)).toEqual({ flow: 'device', clientId: DEVICE_CONFIG.clientId });
+    expect(loadMock.mock.calls.map(([field]) => field)).toEqual([configField(OWNER)]);
+  });
+
+  it('does not disclose a client ID without a usable vault grant', async () => {
+    loadMock.mockRejectedValue(new VaultDelegationError('no active grant', {
+      field: configField(OWNER), nodeDid: 'did:imajin:node',
+    }));
+    expect(await readConfigSetup(OWNER)).toBeNull();
+  });
+
+  it('returns no public setup when the config is absent', async () => {
+    setConfig(false);
+    expect(await readConfigSetup(OWNER)).toBeNull();
+  });
+
+  it('does not swallow an unexpected vault failure', async () => {
+    loadMock.mockRejectedValue(new Error('vault unavailable'));
+    await expect(readConfigSetup(OWNER)).rejects.toThrow('vault unavailable');
+  });
+
+  it('reads the selected connection slot rather than another app’s client ID', async () => {
+    loadMock.mockImplementation(async (field: string) => JSON.stringify({
+      clientId: field.endsWith(':work') ? 'work-app-id' : 'primary-app-id', flow: 'device',
+    }));
+    const setup = await withConnectorConnection('github', OWNER, 'work',
+      () => readConfigSetup(OWNER));
+    expect(setup).toEqual({ flow: 'device', clientId: 'work-app-id' });
+    expect(loadMock).toHaveBeenCalledWith(configField(OWNER, 'work'));
   });
 });
 
