@@ -256,14 +256,24 @@ paths:
         Alternatively x-github-oidc-token authenticates a GitHub Actions job:
         RS256 verified against the fixed token.actions.githubusercontent.com
         issuer/JWKS, audience urn:imajin:vault:ssh-cert, exp/iat/nbf/sub/jti,
-        max age 10 minutes. Requires repository, environment, workflow_ref,
+        max age and lifetime 10 minutes. Requires repository, repository_id,
+        repository_owner_id, environment, workflow_ref,
         run_id and run_attempt; subject must bind that repository/environment.
         Workflow must belong to the repository and a heads/tags ref.
-        GitHub grants bind the exact case-sensitive repository + environment.
+        GitHub grants bind repository/owner numeric IDs plus the exact
+        case-sensitive repository + environment, with optional allowedRefs
+        matching full workflow_ref strings exactly (no wildcards).
+        Legacy GitHub grants without IDs fail closed; operator must re-grant.
+        Each issuer-domain-separated jti fingerprint permits one successful
+        issuance across grants/processes/restarts. A Postgres transaction lock
+        serializes replay lookup with the issuance event commit. Only live exp
+        markers in the last 605 seconds are consulted; no separate replay cache
+        accumulates. Immutable signed history remains; failed issuance rolls back.
         OIDC requests MUST OMIT job: it is derived from verified claims.
         Invalid OIDC never falls back to cookie/DID auth. did:github principals
         cannot use cookie/DID auth. Issuance additionally records githubJob
-        (repository, workflow, environment, runId, runAttempt), never the token.
+        (repository, repositoryId, repositoryOwnerId, workflow, environment,
+        runId, runAttempt, jtiHash, expiresAt), never the token or raw jti.
         Acting-for is not substituted for the grantee. Under the CA purpose
         lock the vault rechecks the active CA, operation scope, and live private
         custody grant. The caller provides only its public key, never its seed.
@@ -279,9 +289,12 @@ paths:
         wire key, never key material). Each grant is limited to 10 issuances
         in a rolling 60-second window, counting existing issued events inside
         the signing transaction/lock. Over-budget requests return 429 and no cert.
-        Only authenticated refusals commit vault.ssh-cert.refused with grantee and HTTP status,
-        never raw request bytes. Audit failure returns 503 and no certificate.
-        Anonymous requests return 401 without signing or storing any audit record.
+        Authenticated refusals commit vault.ssh-cert.refused with grantee and
+        HTTP status, never raw request bytes. Invalid/forged OIDC commits a fixed
+        anonymous refusal under the node subject with status 401,
+        authentication github-oidc and reason invalid-token, never unverified claims.
+        Audit failure returns 503 and no certificate.
+        Anonymous requests without OIDC return 401 without storing an audit record.
       security: [{ cookieAuth: [] }, { bearerAuth: [] }, { githubOidc: [] }]
       requestBody:
         required: true
@@ -317,13 +330,17 @@ paths:
                   job: { type: string }
                   githubJob:
                     type: object
-                    required: [repository, workflow, environment, runId, runAttempt]
+                    required: [repository, repositoryId, repositoryOwnerId, workflow, environment, runId, runAttempt, jtiHash, expiresAt]
                     properties:
                       repository: { type: string }
+                      repositoryId: { type: string, pattern: "^[1-9][0-9]{0,19}$" }
+                      repositoryOwnerId: { type: string, pattern: "^[1-9][0-9]{0,19}$" }
                       workflow: { type: string }
                       environment: { type: string }
                       runId: { type: string }
                       runAttempt: { type: string }
+                      jtiHash: { type: string, description: Issuer-domain-separated SHA256 of jti, pattern: "^[a-f0-9]{64}$" }
+                      expiresAt: { type: integer, description: Verified OIDC expiry in Unix seconds }
                   grantee: { type: string }
                   principal: { type: string }
                   host: { type: string }
@@ -348,10 +365,15 @@ paths:
         private key. Grant binds CA, grantee, principals, force-command,
         allowedHosts and expiry. Rotation requires a grant for the new CA.
         Emits signed vault.ssh-cert.grant-issued. No wildcards or empty policy.
-        For GitHub Actions supply repository + environment instead of grantee.
+        For GitHub Actions supply repository + environment + repositoryId +
+        repositoryOwnerId instead of grantee. IDs are positive decimal strings
+        independently confirmed by the operator, compared to verified repository_id
+        and repository_owner_id. Optionally supply allowedRefs (1-64 exact full
+        workflow_ref strings); omitted means environment-policy gating.
         The kernel derives did:github:SHA256(JSON([repository, environment]));
         this deterministic identity is bound by the existing owner signature.
-        Grant response and signed grant-issued event name both GitHub fields.
+        The signed ssh_scope includes the GitHub binding and optional refs.
+        Grant response and signed grant-issued event name all GitHub policy fields.
         Raw did:github grantees and mixed DID/GitHub inputs are refused.
       security: [{ cookieAuth: [] }, { bearerAuth: [] }]
       requestBody:
@@ -368,13 +390,23 @@ paths:
                     anyOf:
                       - required: [repository]
                       - required: [environment]
-                - required: [repository, environment]
+                      - required: [repositoryId]
+                      - required: [repositoryOwnerId]
+                      - required: [allowedRefs]
+                - required: [repository, environment, repositoryId, repositoryOwnerId]
                   not: { required: [grantee] }
               properties:
                 purpose: { $ref: "#/components/schemas/SshCaPurpose" }
                 caId: { type: string }
                 grantee: { type: string, description: Credential DID, not the node custody identity }
                 repository: { type: string, description: Exact case-sensitive owner/repository for GitHub OIDC }
+                repositoryId: { type: string, pattern: "^[1-9][0-9]{0,19}$", description: Immutable GitHub repository_id }
+                repositoryOwnerId: { type: string, pattern: "^[1-9][0-9]{0,19}$", description: Immutable GitHub repository_owner_id }
+                allowedRefs:
+                  type: array
+                  minItems: 1
+                  maxItems: 64
+                  items: { type: string, maxLength: 512, description: Exact full workflow_ref under this repository at refs/heads/ or refs/tags/; no glob }
                 environment: { type: string, minLength: 1, maxLength: 128, description: Exact GitHub job environment; no control characters }
                 principals:
                   type: array

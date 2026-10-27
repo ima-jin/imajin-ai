@@ -1608,6 +1608,11 @@ export function canonicalizeGrantPayload(grant: {
     ...(grant.sshScope ? { sshScope: {
       caId: grant.sshScope.caId, principals: grant.sshScope.principals,
       forceCommand: grant.sshScope.forceCommand, allowedHosts: grant.sshScope.allowedHosts,
+      ...(grant.sshScope.github ? { github: {
+        repository: grant.sshScope.github.repository, repositoryId: grant.sshScope.github.repositoryId,
+        repositoryOwnerId: grant.sshScope.github.repositoryOwnerId, environment: grant.sshScope.github.environment,
+        ...(grant.sshScope.github.allowedRefs === undefined ? {} : { allowedRefs: grant.sshScope.github.allowedRefs }),
+      } } : {}),
     } } : {}),
     wrappedKey: grant.wrappedKey,
     wrappedNonce: grant.wrappedNonce,

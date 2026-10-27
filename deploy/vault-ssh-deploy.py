@@ -161,7 +161,7 @@ def main():
             cleanup()
     except (Exception, KeyboardInterrupt):
         # Never stringify HTTP bodies, tokens, subprocess errors or request objects.
-        print("Vault SSH step failed; credentials discarded.", file=sys.stderr)
+        print("Vault SSH step failed; check runner teardown before reuse.", file=sys.stderr)
         return 1
 
 

@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, it, vi } from 'vitest';
-import { githubGrantee, verifyGithubJob } from '../github-oidc';
+import { githubGrantee, validGithubGrant, verifyGithubJob } from '../github-oidc';
 import { oidcFixture } from './github-oidc-fixture';
 vi.mock('../ssh-ca', () => ({
   SshCaError: class extends Error {
@@ -14,7 +14,9 @@ describe('GitHub SSH certificate identity', () => {
   it('verifies a real signature and extracts only authenticated job claims', async () => {
     expect(await verifyGithubJob(await fixture.token(), fixture.keys)).toEqual({
       repository: 'ima-jin/example', environment: 'production',
+      repositoryId: '123', repositoryOwnerId: '456',
       workflow: 'ima-jin/example/.github/workflows/deploy.yml@refs/heads/main', runId: '42', runAttempt: '1',
+      jtiHash: expect.stringMatching(/^[a-f0-9]{64}$/), expiresAt: expect.any(Number),
     });
     expect(githubGrantee('ima-jin/example', 'production')).not.toBe(githubGrantee('ima-jin/other', 'production'));
     expect(githubGrantee('ima-jin/example', 'production')).not.toBe(githubGrantee('ima-jin/example', 'dev'));
@@ -31,6 +33,11 @@ describe('GitHub SSH certificate identity', () => {
     { iss: 'https://attacker.invalid' }, { aud: 'other-service' },
     { exp: 1 }, { iat: 1 }, { nbf: 9999999999 }, { exp: undefined }, { jti: undefined },
     { iat: undefined }, { nbf: undefined }, { sub: undefined },
+    { jti: '' }, { jti: 'a\nb' }, { jti: 123 }, { jti: 'x'.repeat(257) },
+    { exp: Math.floor(Date.now() / 1000) + 3600 },
+    { repository_id: undefined }, { repository_id: 123 }, { repository_id: '0' },
+    { repository_id: '-1' }, { repository_id: '1'.repeat(21) },
+    { repository_owner_id: undefined }, { repository_owner_id: 456 }, { repository_owner_id: '0' },
     { repository: undefined }, { repository: 'invalid' }, { repository: 1 },
     { repository: `${'x'.repeat(101)}/repo` },
     { environment: undefined }, { environment: '' }, { environment: 1 },
@@ -45,6 +52,23 @@ describe('GitHub SSH certificate identity', () => {
     { run_attempt: undefined }, { run_attempt: '0' }, { run_attempt: 1 },
   ])('refuses invalid authenticated claims %j', async overrides => {
     await expect(verifyGithubJob(await fixture.token(overrides), fixture.keys)).rejects.toMatchObject({ status: 401 });
+  });
+
+  it('keeps exact optional workflow refs and rejects invalid grant ids or ref policies', () => {
+    const binding = { repository: 'ima-jin/example', environment: 'production',
+      repositoryId: '123', repositoryOwnerId: '456' };
+    expect(validGithubGrant(binding)).toBe(true);
+    const workflow = 'ima-jin/example/.github/workflows/deploy.yml@refs/tags/v1';
+    expect(validGithubGrant({ ...binding, allowedRefs: [workflow] })).toBe(true);
+    for (const allowedRefs of [null, 'main', [], [1], Array(65).fill(workflow), ['refs/heads/main'],
+      ['ima-jin/other/.github/workflows/deploy.yml@refs/heads/main'],
+      [workflow + '*'], [workflow + '\n'], ['x'.repeat(513)]]) {
+      expect(validGithubGrant({ ...binding, allowedRefs } as never)).toBe(false);
+    }
+    for (const value of [undefined, null, '', 123, '0', '-1', 'a', '1'.repeat(21)]) {
+      expect(validGithubGrant({ ...binding, repositoryId: value } as never)).toBe(false);
+      expect(validGithubGrant({ ...binding, repositoryOwnerId: value } as never)).toBe(false);
+    }
   });
 
   it('accepts environment colons only with GitHub subject encoding', async () => {

@@ -101,6 +101,9 @@ beforeAll(async () => {
   const migration = readFileSync('migrations/0221_vault_ssh_scope.sql', 'utf8');
   await client.exec(migration);
   await client.exec(migration); // Idempotent on an already-upgraded schema.
+  const replayMigration = readFileSync('migrations/0222_vault_ssh_oidc_replay.sql', 'utf8');
+  await client.exec(replayMigration);
+  await client.exec(replayMigration);
   await client.exec(`
     CREATE UNIQUE INDEX uniq_minted_did ON kernel.vault_minted_keys(did);
     CREATE UNIQUE INDEX uniq_owner_envelope ON kernel.vault_owner_envelopes(field,key_id);
@@ -254,6 +257,7 @@ describe('SSH CA custody and lifecycle (#3063)', () => {
         subject_did: event.subjectDid, type: event.type, context_id: event.contextId,
         context_type: event.contextType, payload: event.payload, issued_at: event.issuedAt.getTime(),
       }), nodeKeys.publicKey)).toBe(true);
+
     }
     expect(events.find(event => event.type === 'vault.ssh-ca.rotated')?.payload).toMatchObject({
       previousCaId: first.caId, caId: second.caId, composedBy: authority().composedBy,
@@ -597,16 +601,71 @@ describe('restricted SSH certificates (#3064)', () => {
     expect((await audits()).filter(row => row.type === 'vault.ssh-cert.issued')).toHaveLength(0);
   });
 
+  it('bounds durable replay to token expiry, across grants, without consuming failed issuance', async () => {
+    const fixture = await oidcFixture();
+    const realVerify = githubOidc.verifyGithubJob;
+    const spy = vi.spyOn(githubOidc, 'verifyGithubJob').mockImplementation(token => realVerify(token, fixture.keys));
+    h.auth = { identity: { id: h.nodeDid } };
+    const createGrant = async (p: string, caId: string) => {
+      const response = await grantRoute(request({
+        purpose: p, caId, repository: 'ima-jin/example', environment: 'production',
+        repositoryId: '123', repositoryOwnerId: '456', principals: ['deploy'],
+        forceCommand: '/bin/deploy', allowedHosts: ['host.example.com'],
+        expiresAt: new Date(Date.now() + 3600_000).toISOString(),
+      }));
+      expect(response.status).toBe(201);
+      return response.json();
+    };
+    const first = await createGrant(purpose, ca.caId);
+    const otherPurpose = `${purpose}-other`;
+    const otherCa = await mintSshCa(otherPurpose, authority());
+    const other = await createGrant(otherPurpose, otherCa.caId);
+    const send = (token: string, p = purpose, caId = ca.caId, id = first.grantId) => {
+      const body = { ...input, purpose: p, caId, grantId: id };
+      delete body.job;
+      return signRoute(new Request('https://kernel.test/api/vault/ssh-ca/sign', {
+        method: 'POST', headers: { 'x-github-oidc-token': token }, body: JSON.stringify(body),
+      }));
+    };
+    try {
+      const token = await fixture.token({ jti: purpose });
+      const failure = vi.spyOn(mechanicalAudit, 'prepareMechanicalAttestation')
+        .mockRejectedValueOnce(new Error('issuance-audit-unavailable'));
+      expect((await send(token)).status).toBe(503);
+      failure.mockRestore();
+      // No optional ref policy: another valid branch remains usable.
+      const branch = await fixture.token({ jti: `${purpose}-branch`,
+        workflow_ref: 'ima-jin/example/.github/workflows/deploy.yml@refs/heads/release' });
+      expect((await send(branch)).status).toBe(201);
+      expect((await send(token)).status).toBe(201);
+      expect((await send(token, otherPurpose, otherCa.caId, other.grantId)).status).toBe(401);
+      const start = Date.now();
+      vi.useFakeTimers({ toFake: ['Date'] });
+      vi.setSystemTime(start + 301_000);
+      expect((await send(token)).status).toBe(401);
+      // The expired marker leaves the active projection, but audit history stays.
+      const renewed = await fixture.token({ jti: purpose });
+      expect((await send(renewed)).status).toBe(201);
+      expect((await audits()).filter(row => row.type === 'vault.ssh-cert.issued')).toHaveLength(3);
+      expect((await send(renewed)).status).toBe(401);
+    } finally { spy.mockRestore(); }
+  });
+
   it('binds GitHub grants to repo/environment and signs verified job identity into issuance history', async () => {
     h.auth = { identity: { id: h.nodeDid } };
     const grantResponse = await grantRoute(request({
       purpose, caId: ca.caId, repository: 'ima-jin/example', environment: 'production',
+      repositoryId: '123', repositoryOwnerId: '456',
+      allowedRefs: ['ima-jin/example/.github/workflows/deploy.yml@refs/heads/main'],
       principals: ['deploy'], forceCommand: '/usr/local/bin/deploy', allowedHosts: ['host.example.com'],
       expiresAt: new Date(Date.now() + 3600_000).toISOString(),
     }));
     expect(grantResponse.status).toBe(201);
     const grant = await grantResponse.json();
-    expect(grant.github).toEqual({ repository: 'ima-jin/example', environment: 'production' });
+    expect(grant.github).toEqual({
+      repository: 'ima-jin/example', environment: 'production', repositoryId: '123', repositoryOwnerId: '456',
+      allowedRefs: ['ima-jin/example/.github/workflows/deploy.yml@refs/heads/main'],
+    });
     const fixture = await oidcFixture();
     const realVerify = githubOidc.verifyGithubJob;
     const spy = vi.spyOn(githubOidc, 'verifyGithubJob').mockImplementation(token => realVerify(token, fixture.keys));
@@ -619,7 +678,9 @@ describe('restricted SSH certificates (#3064)', () => {
     }
     try {
       const valid = await fixture.token();
-      const response = await githubRequest(valid);
+      const attempts = await Promise.all([githubRequest(valid), githubRequest(valid)]);
+      expect(attempts.map(response => response.status).sort()).toEqual([201, 401]);
+      const response = attempts.find(response => response.status === 201)!;
       expect(response.status).toBe(201);
       const result = await response.json();
       expect(result.ttl).toBe(600);
@@ -627,33 +688,86 @@ describe('restricted SSH certificates (#3064)', () => {
       const issued = (await audits()).find(row => row.type === 'vault.ssh-cert.issued')!;
       expect(issued.payload?.githubJob).toEqual({
         repository: 'ima-jin/example', environment: 'production',
+        repositoryId: '123', repositoryOwnerId: '456',
         workflow: 'ima-jin/example/.github/workflows/deploy.yml@refs/heads/main', runId: '42', runAttempt: '1',
+        jtiHash: expect.stringMatching(/^[a-f0-9]{64}$/), expiresAt: expect.any(Number),
       });
       expect(crypto.verifySync(issued.signature, canonicalize({
         subject_did: issued.subjectDid, type: issued.type, context_id: issued.contextId,
         context_type: issued.contextType, payload: issued.payload, issued_at: issued.issuedAt.getTime(),
       }), nodeKeys.publicKey)).toBe(true);
+      // Fresh requests use the database history, not a module-local replay cache.
+      h.db = drizzle(client);
+      expect((await githubRequest(valid)).status).toBe(401);
+      for (const override of [
+        { repository_id: '999' }, { repository_owner_id: '999' },
+        { workflow_ref: 'ima-jin/example/.github/workflows/deploy.yml@refs/heads/other' },
+        { workflow_ref: 'ima-jin/example/.github/workflows/deploy.yml@refs/tags/main' },
+        { workflow_ref: 'ima-jin/example/.github/workflows/other.yml@refs/heads/main' },
+      ]) {
+        expect((await githubRequest(await fixture.token({ jti: JSON.stringify(override), ...override }))).status).toBe(403);
+      }
+      const [stored] = await database.select().from(vaultDelegationGrants)
+        .where(eq(vaultDelegationGrants.id, grant.grantId));
+      const legacyScope = { ...stored.sshScope! };
+      delete legacyScope.github;
+      const legacy = { ...stored, sshScope: legacyScope };
+      await database.update(vaultDelegationGrants).set({
+        sshScope: legacyScope, ownerSignature: crypto.signSync(canonicalizeGrantPayload(legacy), nodeKeys.privateKey),
+      }).where(eq(vaultDelegationGrants.id, grant.grantId));
+      const legacyResponse = await githubRequest(await fixture.token({ jti: 'legacy' }));
+      expect(legacyResponse.status).toBe(403);
+      expect(await legacyResponse.json()).toEqual({ error: 'GitHub grant missing repository ids; operator must re-grant' });
+      // Changing either IDs or the ref list without re-signing cannot add authority.
+      for (const github of [
+        { ...stored.sshScope!.github!, repositoryId: '999' },
+        { ...stored.sshScope!.github!, allowedRefs: undefined },
+      ]) {
+        await database.update(vaultDelegationGrants).set({
+          sshScope: { ...stored.sshScope!, github }, ownerSignature: stored.ownerSignature,
+        }).where(eq(vaultDelegationGrants.id, grant.grantId));
+        expect((await githubRequest(await fixture.token({ jti: 'tampered' }))).status).toBe(403);
+      }
+      await database.update(vaultDelegationGrants).set({
+        sshScope: stored.sshScope, ownerSignature: stored.ownerSignature,
+      }).where(eq(vaultDelegationGrants.id, grant.grantId));
       expect((await githubRequest(await fixture.token({
+        jti: 'wrong-repo',
         repository: 'ima-jin/other', sub: 'repo:ima-jin/other:environment:production',
         workflow_ref: 'ima-jin/other/.github/workflows/deploy.yml@refs/heads/main',
       }))).status).toBe(403);
       expect((await githubRequest(await fixture.token({
-        environment: 'dev', sub: 'repo:ima-jin/example:environment:dev',
+        jti: 'wrong-env', environment: 'dev', sub: 'repo:ima-jin/example:environment:dev',
       }))).status).toBe(403);
       expect((await githubRequest(await (await oidcFixture()).token())).status).toBe(401);
       expect((await githubRequest('', {})).status).toBe(401); // no fallback to node auth
+      const refusals = (await database.select().from(attestations))
+        .filter(row => row.type === 'vault.ssh-cert.refused' && row.payload?.authentication === 'github-oidc');
+      expect(refusals.slice(-2).map(row => row.payload)).toEqual(Array(2).fill({
+        status: 401, authentication: 'github-oidc', reason: 'invalid-token',
+      }));
+      expect(refusals.at(-1)?.subjectDid).toBe(h.nodeDid);
+      const auditFailure = vi.spyOn(mechanicalAudit, 'prepareMechanicalAttestation')
+        .mockRejectedValueOnce(new Error('unsafe-audit-error'));
+      expect((await githubRequest('')).status).toBe(503);
+      auditFailure.mockRestore();
       expect((await githubRequest(valid, { job: 'spoofed' })).status).toBe(400);
       expect((await githubRequest(valid, { privateKey: 'rejected' })).status).toBe(400);
       h.auth = { identity: { id: grant.grantee } };
       expect((await invoke({ ...input, grantId: grant.grantId })).response.status).toBe(401);
       h.auth = { identity: { id: h.nodeDid } };
       await withdrawRoute(request({ purpose, grantId: grant.grantId }));
-      expect((await githubRequest(valid)).status).toBe(403);
+      expect((await githubRequest(await fixture.token({ jti: 'revoked' }))).status).toBe(403);
       expect(JSON.stringify(await audits()).includes(valid), 'OIDC token persisted').toBe(false);
     } finally { spy.mockRestore(); }
   });
 
   it.each([
+    { repository: 'ima-jin/example', environment: 'production', repositoryId: '123' },
+    { repository: 'ima-jin/example', environment: 'production', repositoryOwnerId: '456' },
+    { repository: 'ima-jin/example', environment: 'production', repositoryId: 123, repositoryOwnerId: '456' },
+    { repository: 'ima-jin/example', environment: 'production', repositoryId: '123', repositoryOwnerId: '456', allowedRefs: [] },
+    { repository: 'ima-jin/example', environment: 'production', repositoryId: '123', repositoryOwnerId: '456', allowedRefs: ['refs/heads/main'] },
     { repository: 'bad', environment: 'production' }, { repository: 'ima-jin/example' },
     { environment: 'production' }, { repository: 'ima-jin/example', environment: '' },
     { repository: 'ima-jin/example', environment: 'production', grantee: 'did:imajin:other' },

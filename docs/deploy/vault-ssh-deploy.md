@@ -7,7 +7,9 @@ Host trust deployment/rotation belongs to the host's deployment pipeline.
 ## Provision the public policy
 An authenticated vault operator (the same authority as SSH CA mint) creates a
 grant at `POST /api/vault/ssh-ca/grants`, supplying `purpose`, active `caId`,
-`repository` (for example `ima-jin/example`), `environment` (`production`),
+`repository` (for example `ima-jin/example`), `repositoryId` and
+`repositoryOwnerId` (positive decimal strings from GitHub's `repository_id` and
+`repository_owner_id`), `environment` (`production`),
 `principals` (`["deploy"]`), `forceCommand` (`/usr/local/bin/deploy`),
 `allowedHosts` (`["host.example.com"]`) and `expiresAt` (a future ISO timestamp).
 Do not supply `grantee` with a GitHub grant. The response includes the public
@@ -15,6 +17,15 @@ Do not supply `grantee` with a GitHub grant. The response includes the public
 signed delegation grant binds this identity; no schema or wrapping-key change
 is needed. Names are exact and case-sensitive. Reissue grants after CA rotation.
 Revoke through the existing grants/revoke route; history and attestations remain.
+The operator must independently confirm both GitHub IDs before granting. A
+same-name replacement repository or transferred owner cannot inherit this scope.
+Existing GitHub grants without IDs fail closed with an operator re-grant error:
+revoke and re-grant them with the verified IDs. DID grants are unchanged.
+Optionally supply `allowedRefs`, a nonempty list (maximum 64) of exact full
+`workflow_ref` strings, for example
+`["ima-jin/example/.github/workflows/deploy.yml@refs/heads/main"]`.
+No glob matching is performed; a different filename, branch or tag is refused.
+Omitting the list retains environment-policy gating.
 
 ## Consumer workflow
 Replace `REVIEWED_COMMIT_SHA` with an immutable reviewed commit in this repository.
@@ -51,17 +62,31 @@ jobs:
 The job **must name an environment** and have `id-token: write`. Protect that
 environment with the repository's deployment/reviewer policies and restrict who
 can edit or invoke workflows: the ruled grant boundary is repo + environment,
-not an allowlist of workflow filenames. The kernel verifies GitHub's RS256
+plus immutable repository/owner IDs and the optional workflow-ref allowlist.
+The kernel verifies GitHub's RS256
 signature, fixed issuer/JWKS, audience `urn:imajin:vault:ssh-cert`, temporal
 claims and environment subject, and checks workflow ownership/ref and run
-identity. It records verified `repository`, `workflow` (workflow_ref),
+identity. It records verified `repository`, repository/owner IDs, `workflow` (workflow_ref),
 `environment`, `runId` and `runAttempt` in the signed issuance attestation.
 Caller-provided audit identity is refused. Invalid OIDC cannot fall back to a
 node/session identity. The token is used only in process memory and HTTPS headers.
 No GitHub credential or token is sent as a command-line argument.
+Each token's `jti` can authorize at most one successful issuance, across grants,
+processes and restarts. A transaction-scoped Postgres advisory lock serializes
+the issuer-domain-separated SHA-256 `jti` fingerprint check with the issuance
+attestation commit. No raw `jti` or token is retained. The indexed replay
+projection only consults issuance history from the last 605 seconds whose
+token `exp` is still live (token lifetime is capped at 10 minutes); expired
+entries leave that projection automatically. There is no separate accumulating
+replay cache or replay-table cleanup; immutable signed audit history remains.
+Failed issuance rolls back and does not spend the token. Forged/invalid tokens
+produce a fixed anonymous refusal event without trusting or retaining claims.
 
 ## Runner and cleanup contract
 - Linux, Python 3, GNU `stat` and OpenSSH client (`ssh`/`ssh-keygen`) are required.
+- The example's `vault-ssh-no-swap` is an operator-provisioned **self-hosted**
+  label, not a standard GitHub label. GitHub-hosted `ubuntu-latest` has swap
+  and fails closed; do not substitute it or disable the action's memory guard.
 - `/dev/shm` must be tmpfs and **swap must be disabled**. The action fails closed
   before key generation otherwise; it never falls back to `/tmp` or the checkout.
   Use a dedicated ephemeral runner/container with sufficient tmpfs and no swap;
@@ -76,6 +101,17 @@ No GitHub credential or token is sent as a command-line argument.
   SIGKILL of the entire job cannot execute cleanup: ephemeral runner teardown
   destroys the non-swappable tmpfs. Do not use persistent runners without
   guaranteed job teardown; no software cleanup can survive power loss.
+- Before a persistent self-hosted runner restarts, its operator-owned startup
+  hook must sweep orphaned `/dev/shm/vault-ssh-*` directories **before the runner accepts any job**.
+  Stop all jobs first; use a dedicated runner UID and verify each candidate is
+  an owner-only directory owned by that UID, directly under verified tmpfs,
+  never a symlink. Remove its contents without following links; refuse runner
+  startup if cleanup fails. Never sweep while jobs are running or share that
+  UID/mount with untrusted workloads. Startup cleanup supplements teardown;
+  it cannot run during a crash. Workflow/action wiring is Ryan-owned.
+- Failure output is mode-neutral and does not assert credentials were removed
+  when preparation or cleanup itself failed. Quarantine the runner until
+  teardown/startup cleanup has been confirmed.
 - `known-hosts` must contain independently pinned **public host keys**. The
   action never trusts `ssh-keyscan` or disables host verification. No SSH agent,
   user/system config, password prompt, forwarding or TTY is used.

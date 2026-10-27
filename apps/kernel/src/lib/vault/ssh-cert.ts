@@ -10,7 +10,7 @@ import { encodeSshUserCert, parseSshPublicKey } from './ssh-cert-wire';
 import { parseSignInput, validSshScope, type SshSignInput } from './ssh-cert-policy';
 import type { MintAuthority } from './mint-authority';
 import { SSH_CERT_ISSUANCE_LIMIT, SSH_CERT_ISSUANCE_WINDOW_SECONDS } from './ssh-ca-policy';
-import { githubGrantee, type GithubJob } from './github-oidc';
+import { githubGrantee, validGithubGrant, type GithubGrant, type GithubJob } from './github-oidc';
 
 type Transaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
 export type SshScope = NonNullable<VaultDelegationGrant['sshScope']>;
@@ -41,10 +41,43 @@ async function checkIssuanceBudget(tx: Transaction, grantId: string) {
 export function recordSshRefusal(grantee: string, status: number) {
   return audit(db, 'refused', grantee, { grantee, status });
 }
+/** Fixed anonymous subject: never attribute unverified claims to a repository. */
+export function recordInvalidGithubRefusal() {
+  return audit(db, 'refused', getNodeSigningIdentity().senderDid, {
+    status: 401, authentication: 'github-oidc', reason: 'invalid-token',
+  });
+}
+
+/** No separate accumulating replay store: only unexpired issuance history is consulted. */
+async function checkGithubReplay(tx: Transaction, job: GithubJob) {
+  await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${`vault.ssh-oidc:${job.jtiHash}`}, 0))`);
+  const now = Math.floor(Date.now() / 1000);
+  if (!/^[a-f0-9]{64}$/.test(job.jtiHash) || !Number.isSafeInteger(job.expiresAt)
+    || job.expiresAt <= now || job.expiresAt > now + 605) throw new SshCaError(401, 'Expired GitHub OIDC token');
+  const [used] = await tx.select({ id: attestations.id }).from(attestations).where(and(
+    eq(attestations.type, 'vault.ssh-cert.issued'),
+    eq(sql`${attestations.payload}->'githubJob'->>'jtiHash'`, job.jtiHash),
+    gt(attestations.issuedAt, new Date((now - 605) * 1000)),
+    gt(sql`(${attestations.payload}->'githubJob'->>'expiresAt')::bigint`, now),
+  )).limit(1);
+  if (used) throw new SshCaError(401, 'GitHub OIDC token already used');
+}
+
+function checkGithubBinding(scope: SshScope, job: GithubJob) {
+  const binding = scope.github;
+  if (!binding) throw new SshCaError(403, 'GitHub grant missing repository ids; operator must re-grant');
+  if (!validGithubGrant(binding) || binding.repository !== job.repository || binding.environment !== job.environment
+    || binding.repositoryId !== job.repositoryId || binding.repositoryOwnerId !== job.repositoryOwnerId
+    || (binding.allowedRefs && !binding.allowedRefs.includes(job.workflow))) throw denied();
+}
 
 export function issueSshGrant(purpose: string, grantee: string, scope: SshScope, expiresAt: Date,
-  authority: MintAuthority, github?: Pick<GithubJob, 'repository' | 'environment'>) {
-  if (github && githubGrantee(github.repository, github.environment) !== grantee) throw denied();
+  authority: MintAuthority, github?: GithubGrant) {
+  if (github && (!validGithubGrant(github) || githubGrantee(github.repository, github.environment) !== grantee)) {
+    throw new SshCaError(400, 'GitHub grants require repository ids and valid allowed refs');
+  }
+  if (!github && (grantee.startsWith('did:github:') || scope.github)) throw denied();
+  scope = { ...scope, ...(github ? { github } : {}) };
   if (!validSshScope(scope) || !/^did:[a-z0-9]+:[a-zA-Z0-9._:-]{1,200}$/.test(grantee)
     || !Number.isFinite(expiresAt.getTime()) || expiresAt.getTime() <= Date.now()) {
     throw new SshCaError(400, 'Invalid SSH grant policy');
@@ -97,6 +130,7 @@ export function signSshCert(input: SshSignInput, grantee: string, githubJob?: Gi
   if (grantee.startsWith('did:github:')
     && (!githubJob || githubGrantee(githubJob.repository, githubJob.environment) !== grantee)) throw denied();
   return db.transaction(async tx => {
+    if (githubJob) await checkGithubReplay(tx, githubJob);
     await lockSshCaPurpose(tx, input.purpose);
     const rows = await sshCaRecords(tx, input.purpose);
     await retireSshCas(tx, rows, input.purpose, new Date());
@@ -111,6 +145,8 @@ export function signSshCert(input: SshSignInput, grantee: string, githubJob?: Gi
       || !validSshScope(grant.sshScope)
       || !grant.sshScope.principals.includes(input.principal) || !grant.sshScope.allowedHosts.includes(input.host)
       || !crypto.verifySync(grant.ownerSignature, canonicalizeGrantPayload(grant), node.senderPubkey)) throw denied();
+    if (githubJob) checkGithubBinding(grant.sshScope, githubJob);
+    else if (grant.sshScope.github) throw denied();
     await checkIssuanceBudget(tx, grant.id);
     const principal = grant.sshScope.principals.find(value => value === input.principal)!;
     const [custody] = await tx.select().from(vaultDelegationGrants)
@@ -127,7 +163,8 @@ export function signSshCert(input: SshSignInput, grantee: string, githubJob?: Gi
     const serial = randomBytes(8).readBigUInt64BE().toString();
     const keyId = `ssh-cert:${randomUUID()}`;
     const seed = await _applyDelegationGrant(entry, custody, getNodeXPrivateKey(), node.senderPubkey);
-    if (validBefore <= Math.floor(Date.now() / 1000)) throw denied();
+    if (validBefore <= Math.floor(Date.now() / 1000)
+      || (githubJob && githubJob.expiresAt <= Math.floor(Date.now() / 1000))) throw denied();
     const certificate = encodeSshUserCert({
       publicKey: parseSshPublicKey(input.publicKey)!, caPublicKey: ca.publicKey, caSeed: seed,
       principal, forceCommand: grant.sshScope.forceCommand, serial, keyId,

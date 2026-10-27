@@ -134,6 +134,17 @@ class DeployTests(unittest.TestCase):
         with self.assertRaises(KeyboardInterrupt):
             runner.interrupted(signal.SIGTERM, None)
 
+    def test_failure_message_never_claims_cleanup_succeeded(self):
+        for mode, operation in [("prepare", "prepare"), ("cleanup", "cleanup"), ("deploy", "cleanup")]:
+            with self.subTest(mode=mode), patch.object(sys, "argv", ["runner", mode]), \
+                    patch.object(runner, operation, side_effect=RuntimeError("unsafe-detail")), \
+                    patch.object(runner, "deploy", return_value=0), patch("sys.stderr") as stderr:
+                self.assertEqual(runner.main(), 1)
+                message = "".join(call.args[0] for call in stderr.write.call_args_list)
+                self.assertEqual(message, "Vault SSH step failed; check runner teardown before reuse.\n")
+                self.assertNotIn("discarded", message)
+        self.assertTrue(self.path.exists())
+
     def test_no_disk_fallback_no_swap_and_no_symlink_cleanup(self):
         with patch.object(runner, "ROOT", Path("relative")):
             with self.assertRaises(ValueError):

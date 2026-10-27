@@ -4,8 +4,8 @@ import { sshCaFailure, sshCaJson } from './ssh-ca-route';
 import { SshCaError } from './ssh-ca';
 import { isSshCaPurpose } from './ssh-ca-policy';
 import { objectInput, onlyKeys, parseSignInput } from './ssh-cert-policy';
-import { issueSshGrant, recordSshRefusal, revokeSshGrant, signSshCert, type SshScope } from './ssh-cert';
-import { githubGrantee, verifyGithubJob } from './github-oidc';
+import { issueSshGrant, recordSshRefusal, recordInvalidGithubRefusal, revokeSshGrant, signSshCert, type SshScope } from './ssh-cert';
+import { githubGrantee, verifyGithubJob, type GithubGrant } from './github-oidc';
 
 async function readInput(request: Request) {
   try { return await request.json(); }
@@ -14,9 +14,11 @@ async function readInput(request: Request) {
 
 export async function signSshCertRoute(request: Request) {
   let grantee: string | null = null;
+  let invalidGithub = request.headers.has('x-github-oidc-token');
   try {
     if (request.headers.has('x-github-oidc-token')) {
       const job = await verifyGithubJob(request.headers.get('x-github-oidc-token')!);
+      invalidGithub = false;
       grantee = githubGrantee(job.repository, job.environment);
       const body = objectInput(await readInput(request));
       // The caller cannot substitute audit identity; retain the original route's validation.
@@ -32,7 +34,10 @@ export async function signSshCertRoute(request: Request) {
     const input = parseSignInput(await readInput(request));
     return sshCaJson(await signSshCert(input, grantee), 201);
   } catch (error) {
-    try { if (grantee) await recordSshRefusal(grantee, error instanceof SshCaError ? error.status : 503); }
+    try {
+      if (invalidGithub) await recordInvalidGithubRefusal();
+      else if (grantee) await recordSshRefusal(grantee, error instanceof SshCaError ? error.status : 503);
+    }
     catch { return sshCaFailure(new Error('Audit unavailable')); }
     return sshCaFailure(error);
   }
@@ -44,7 +49,8 @@ export async function sshGrantRoute(request: Request, revoke = false) {
     if (!auth.ok) return auth.response;
     const body = objectInput(await readInput(request));
     onlyKeys(body, revoke ? ['purpose', 'grantId']
-      : ['purpose', 'grantee', 'repository', 'environment', 'caId', 'principals', 'forceCommand', 'allowedHosts', 'expiresAt']);
+      : ['purpose', 'grantee', 'repository', 'repositoryId', 'repositoryOwnerId', 'environment', 'allowedRefs',
+        'caId', 'principals', 'forceCommand', 'allowedHosts', 'expiresAt']);
     if (!isSshCaPurpose(body.purpose)) throw new SshCaError(400, 'Invalid SSH CA purpose');
     if (revoke) {
       if (typeof body.grantId !== 'string' || !/^vdg_[a-zA-Z0-9_-]{1,100}$/.test(body.grantId)) {
@@ -52,7 +58,8 @@ export async function sshGrantRoute(request: Request, revoke = false) {
       }
       return sshCaJson(await revokeSshGrant(body.purpose, body.grantId, auth.authority));
     }
-    const github = body.repository !== undefined || body.environment !== undefined;
+    const github = ['repository', 'repositoryId', 'repositoryOwnerId', 'environment', 'allowedRefs']
+      .some(key => body[key] !== undefined);
     if (github && body.grantee !== undefined) throw new SshCaError(400, 'Choose GitHub identity or DID');
     const grantee = github ? githubGrantee(body.repository, body.environment) : body.grantee;
     if (!github && typeof grantee === 'string' && grantee.startsWith('did:github:')) {
@@ -63,7 +70,10 @@ export async function sshGrantRoute(request: Request, revoke = false) {
     }
     const scope = { caId: body.caId, principals: body.principals, forceCommand: body.forceCommand,
       allowedHosts: body.allowedHosts } as SshScope;
-    const binding = github ? { repository: body.repository as string, environment: body.environment as string } : undefined;
+    const binding = github ? {
+      repository: body.repository, environment: body.environment, repositoryId: body.repositoryId,
+      repositoryOwnerId: body.repositoryOwnerId, ...(body.allowedRefs === undefined ? {} : { allowedRefs: body.allowedRefs }),
+    } as GithubGrant : undefined;
     return sshCaJson(await issueSshGrant(body.purpose, grantee, scope, new Date(body.expiresAt), auth.authority, binding), 201);
   } catch (error) { return sshCaFailure(error); }
 }
