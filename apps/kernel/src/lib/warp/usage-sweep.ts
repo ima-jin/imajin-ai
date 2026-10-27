@@ -14,30 +14,18 @@
 import { getClient } from '@imajin/db';
 import { createLogger } from '@imajin/logger';
 import { forEachSequential } from '../async/sequential';
+import { redactLoopText } from '../loops/output-redaction';
 import { getAgentRun, listAgentRuns } from './dispatch';
 import { recordWarpRunUsage, WARP_INCURRED_SOURCE, WARP_INCURRED_SINCE, type WarpUsageObservation } from '../usage/warp-incurred';
 
 const log = createLogger('kernel:warp:usage-sweep');
 export const WARP_USAGE_SETTLE_MS = 24 * 60 * 60 * 1000;
 
-// Driver errors can include bound values, SQL, URLs or provider response bodies.
-// Only retain value-free diagnostic text; unknown messages remain redacted.
-const SAFE_ERROR_MESSAGES = new Set([
-  'Invalid time value',
-  'Undefined values are not allowed',
-  'Warp lifecycle pagination unavailable',
-]);
-const ARGUMENT_TYPE_MESSAGE = 'The "string" argument must be of type string or an instance of Buffer, TypedArray, or DataView.';
-
 function errorContext(err: unknown) {
-  let errorMessage = '[redacted]';
-  if (err instanceof Error) {
-    if (SAFE_ERROR_MESSAGES.has(err.message)) errorMessage = err.message;
-    else if (err.message.startsWith(`${ARGUMENT_TYPE_MESSAGE} Received`)) {
-      errorMessage = `${ARGUMENT_TYPE_MESSAGE} Received [redacted].`;
-    }
-  }
-  return { errorType: err instanceof Error ? err.name : typeof err, errorMessage };
+  return {
+    errorType: err instanceof Error ? err.name : typeof err,
+    errorMessage: err instanceof Error ? redactLoopText(err.message).slice(0, 300) : '[redacted]',
+  };
 }
 
 function observation(value: unknown): WarpUsageObservation | null {

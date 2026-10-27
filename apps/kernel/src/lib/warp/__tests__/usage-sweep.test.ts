@@ -64,9 +64,9 @@ describe('Warp incurred lifecycle recovery', () => {
   });
 
   it('sanitizes provider/replay failures and continues to other local roots', async () => {
-    sql.mockRejectedValueOnce(new Error('synthetic-private-marker'))
+    sql.mockRejectedValueOnce(new Error('token=synthetic-private-marker'))
       .mockResolvedValueOnce([{ principalDid: OWNER, runId: 'root' }, { principalDid: OWNER, runId: 'other' }]);
-    getRun.mockRejectedValueOnce(new Error('synthetic-private-marker')).mockResolvedValueOnce({ ...root, runId: 'other' });
+    getRun.mockRejectedValueOnce(new Error('token=synthetic-private-marker')).mockResolvedValueOnce({ ...root, runId: 'other' });
     await sweepWarpIncurredUsage();
     expect(getRun).toHaveBeenCalledTimes(2);
     expect(meter).toHaveBeenCalledWith(OWNER, expect.objectContaining({ runId: 'other' }));
@@ -74,9 +74,9 @@ describe('Warp incurred lifecycle recovery', () => {
   });
 
   it('keeps safe error types for replay, root lookup and provider failures', async () => {
-    sql.mockRejectedValueOnce(new TypeError('synthetic-private-marker')).mockRejectedValueOnce('synthetic-private-marker');
+    sql.mockRejectedValueOnce(new TypeError('token=synthetic-private-marker')).mockRejectedValueOnce('synthetic-private-marker');
     await sweepWarpIncurredUsage();
-    expect(log.warn).toHaveBeenCalledWith({ errorType: 'TypeError', errorMessage: '[redacted]' }, 'Warp terminal usage replay unavailable; next sweep will retry');
+    expect(log.warn).toHaveBeenCalledWith({ errorType: 'TypeError', errorMessage: 'token=[REDACTED]' }, 'Warp terminal usage replay unavailable; next sweep will retry');
     expect(log.warn).toHaveBeenCalledWith({ errorType: 'string', errorMessage: '[redacted]' }, 'Warp lifecycle usage roots unavailable; next sweep will retry');
     sql.mockRejectedValueOnce('synthetic-private-marker').mockResolvedValueOnce([{ principalDid: OWNER, runId: 'root' }]);
     getRun.mockRejectedValueOnce('synthetic-private-marker');
@@ -95,18 +95,48 @@ describe('Warp incurred lifecycle recovery', () => {
     expect(strings.join('?')).toContain('terminal.terminal_at >= ?::timestamptz');
   });
 
-  it('retains a serializer diagnostic without logging the received value at both query catch sites', async () => {
-    const message = 'The "string" argument must be of type string or an instance of Buffer, TypedArray, or DataView. Received type string (synthetic-private-marker)';
+  it.each(['replay', 'roots', 'observation'])('keeps an unknown %s diagnostic visible while redacting connection credentials and tokens', async (site) => {
+    const message = 'boom at x: postgres://fixture-user:fixture-password@localhost/fixture token=fixture-token Bearer fixture-bearer';
+    const error = new TypeError(message);
+    if (site === 'replay') sql.mockRejectedValueOnce(error);
+    if (site === 'roots') sql.mockResolvedValueOnce([]).mockRejectedValueOnce(error);
+    if (site === 'observation') {
+      sql.mockResolvedValueOnce([]).mockResolvedValueOnce([{ principalDid: OWNER, runId: 'root' }]);
+      getRun.mockRejectedValueOnce(error);
+    }
+    await sweepWarpIncurredUsage();
+    expect(log.warn).toHaveBeenCalledOnce();
+    expect(log.warn.mock.calls[0][0]).toMatchObject({
+      errorType: 'TypeError',
+      errorMessage: 'boom at x: postgres://[REDACTED]@localhost/fixture token=[REDACTED] Bearer [REDACTED]',
+    });
+    const logged = JSON.stringify(log.warn.mock.calls);
+    for (const credential of ['fixture-user', 'fixture-password', 'fixture-token', 'fixture-bearer']) {
+      expect(logged).not.toContain(credential);
+    }
+  });
+
+  it('preserves an unfamiliar TypeError message at both query catch sites', async () => {
+    sql.mockRejectedValueOnce(new TypeError('boom at x')).mockRejectedValueOnce(new TypeError('boom at x'));
+    await sweepWarpIncurredUsage();
+    expect(log.warn.mock.calls.map(([context]) => context)).toEqual([
+      { errorType: 'TypeError', errorMessage: 'boom at x' },
+      { errorType: 'TypeError', errorMessage: 'boom at x' },
+    ]);
+  });
+
+  it('redacts before truncating diagnostic messages to 300 characters at both query catch sites', async () => {
+    const secret = 'fixture-token-'.repeat(40);
+    const suffix = ' diagnostic'.repeat(40);
+    const message = `boom at x token=${secret}${suffix}`;
     sql.mockRejectedValueOnce(new TypeError(message)).mockRejectedValueOnce(new TypeError(message));
     await sweepWarpIncurredUsage();
-    for (const [context] of log.warn.mock.calls) {
-      expect(context).toEqual({
-        errorType: 'TypeError',
-        errorMessage: 'The "string" argument must be of type string or an instance of Buffer, TypedArray, or DataView. Received [redacted].',
-      });
-    }
     expect(log.warn).toHaveBeenCalledTimes(2);
-    expect(JSON.stringify(log.warn.mock.calls)).not.toContain('synthetic-private-marker');
+    for (const [context] of log.warn.mock.calls) {
+      expect(context.errorMessage).toBe(`boom at x token=[REDACTED]${suffix}`.slice(0, 300));
+      expect(context.errorMessage).toHaveLength(300);
+      expect(context.errorMessage).not.toContain('fixture-token');
+    }
   });
 
   it('retains value-free messages for query and per-root failures', async () => {
@@ -124,11 +154,11 @@ describe('Warp incurred lifecycle recovery', () => {
     );
   });
 
-  it('redacts arbitrary Error messages and does not stringify thrown objects', async () => {
+  it('retains ordinary Error messages and does not stringify thrown objects', async () => {
     const thrown = { toString: vi.fn(() => 'synthetic-private-marker') };
-    sql.mockRejectedValueOnce(new Error('synthetic-private-marker')).mockRejectedValueOnce(thrown);
+    sql.mockRejectedValueOnce(new Error('ordinary diagnostic')).mockRejectedValueOnce(thrown);
     await sweepWarpIncurredUsage();
-    expect(log.warn.mock.calls.map(([context]) => context.errorMessage)).toEqual(['[redacted]', '[redacted]']);
+    expect(log.warn.mock.calls.map(([context]) => context.errorMessage)).toEqual(['ordinary diagnostic', '[redacted]']);
     expect(thrown.toString).not.toHaveBeenCalled();
   });
 
