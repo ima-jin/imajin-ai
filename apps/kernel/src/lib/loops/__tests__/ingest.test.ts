@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 const { mockVerify, mockAuthorize, mockPublish, mockSql, logMock } = vi.hoisted(() => ({
   mockVerify: vi.fn(),
@@ -53,11 +53,15 @@ const REQUEST: LoopIngestRequest = {
   signature: { keyId: 'a'.repeat(64), alg: 'ed25519', sig: 'b'.repeat(128) },
 };
 
+let testClock = 0;
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date('2026-10-27T00:00:00Z').getTime() + testClock++ * 86400000);
   mockAuthorize.mockResolvedValue({ authorized: true });
   mockSql.mockResolvedValue([{ loop_id: 'loop_abc123' }]);
 });
+afterEach(() => vi.useRealTimers());
 
 describe('ingestLoopEvent', () => {
   const stepRequest = (): LoopIngestRequest => ({
@@ -190,6 +194,42 @@ describe('ingestLoopEvent', () => {
 
     const rejectionCall = logMock.warn.mock.calls.find(([, message]) => message === 'loop event publisher not authorized for principal');
     expect(rejectionCall?.[0]).toEqual({ publisherDid: REQUEST.publisherDid, principal: REQUEST.payload.principal });
+  });
+
+  it('warns once per publisher/principal per hour but denies every unauthorized event', async () => {
+    mockVerify.mockResolvedValue({ ok: true });
+    mockAuthorize.mockResolvedValue({ authorized: false, reason: 'no grant' });
+    const denied = async (request = REQUEST) => {
+      expect(await ingestLoopEvent(request)).toMatchObject({ ok: false, status: 403, code: 'loop_publisher_unauthorized' });
+    };
+    await denied();
+    vi.advanceTimersByTime(180000);
+    await denied();
+    await denied({ ...REQUEST, publisherDid: 'did:imajin:other-agent' });
+    await denied({ ...REQUEST, payload: { ...REQUEST.payload, principal: 'did:imajin:other-principal' } });
+    expect(logMock.warn).toHaveBeenCalledTimes(3);
+    vi.advanceTimersByTime(3419999);
+    await denied();
+    expect(logMock.warn).toHaveBeenCalledTimes(3);
+    vi.advanceTimersByTime(1);
+    await denied();
+    expect(logMock.warn).toHaveBeenCalledTimes(4);
+    expect(mockAuthorize).toHaveBeenCalledTimes(6);
+    expect(mockSql).not.toHaveBeenCalled();
+    expect(mockPublish).not.toHaveBeenCalled();
+  });
+
+  it('checks fresh authority on every event and stops warning immediately after the grant is issued', async () => {
+    mockVerify.mockResolvedValue({ ok: true });
+    mockAuthorize.mockResolvedValueOnce({ authorized: false, reason: 'no grant' });
+    expect(await ingestLoopEvent(REQUEST)).toMatchObject({ status: 403 });
+    for (let hour = 0; hour < 24; hour += 1) {
+      vi.advanceTimersByTime(3600000);
+      expect(await ingestLoopEvent(REQUEST)).toEqual({ ok: true });
+    }
+    expect(mockAuthorize).toHaveBeenCalledTimes(25);
+    expect(logMock.warn).toHaveBeenCalledTimes(1);
+    expect(mockPublish).toHaveBeenCalledTimes(24);
   });
 
   it('publishes the verified envelope with issuer=publisherDid, subject=principal, correlationId=loopId', async () => {

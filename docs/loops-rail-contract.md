@@ -313,8 +313,11 @@ only when, one of the following holds:
 Anything else — an unrelated publisher with no self-match, no
 node-witness match, and no matching grant — is rejected with **403** and
 a typed error code (`loop_publisher_unauthorized`) before publishing.
-The rejected `(publisherDid, principal)` pair is logged; the envelope
-payload (summary, refs, etc.) is never logged on this path.
+The rejected `(publisherDid, principal)` pair is logged at most once per
+hour per kernel process (#3134); the envelope payload (summary, refs, etc.)
+is never logged on this path. Suppression affects logging only: every event
+still rechecks the live grant and receives 403 while unauthorized. Restarting
+the process resets this in-memory warning budget.
 
 ## Granting `loops:publish`
 
@@ -324,6 +327,37 @@ the principal (`delegatorDid`) authorizes a specific external agent DID
 (`agentDid`) to hold the `loops:publish` capability, scoped by `audience`
 and a bounded TTL. Revoking the grant (or letting it expire) makes the
 very next `POST /api/loops` call from that publisher fail with 403.
+### Repairing a gateway publisher (#3134)
+
+There is already a granting UI: `/jin` → **Grants** → **Manage capabilities**
+opens `/auth/agents`. No SQL insert or authorization exception is needed.
+Use the gateway plugin's actual signing agent DID, not a gateway URL, node DID,
+or a newly minted identity. Match the principal in its signed event; a grant
+from a human's personal DID does not authorize the same agent for an organization.
+
+The directly authenticated principal (or current organization owner/admin with
+`auth` access, selecting that organization) can use **Grant an existing agent a
+capability** to issue `loops:publish`, or **+ Add capability** on an existing
+grant. Check the displayed delegator, agent, audience and expiry; renew an expired
+lease explicitly. A revoked grant requires a new deliberate issuance. Grant
+history and signed lifecycle attestations remain retained.
+
+For an exact-principal audience rather than the UI's generic first-grant audience,
+the existing authenticated `POST /auth/api/grants` accepts
+`{agentDid, capabilities: ["loops:publish"], audience: {type: "dids", values: [principalDid]}, ttlMs}`.
+The route derives the delegator from the authenticated human/selected organization,
+never a body-supplied delegator. The audience must include that exact principal;
+do not add foreign principals or use a wildcard. Grants are bounded (maximum
+30 days), so record the expiry and renew through the existing control.
+
+After granting, trigger a normal gateway session and subagent turn. In the same
+principal's authenticated `GET /api/loops?kind=openclaw.session` and
+`?kind=openclaw.subagent`, verify each new loop's principal, refs and timestamp
+within a minute. Then observe the gateway DID's authorization-warning count for
+24 hours: it must be zero, not merely throttled. A quiet log alone does not prove
+registration. This requires live operator authority and production observations;
+unit/integration tests and a PR are not evidence that a production grant exists.
+The kernel continues to learn only from signed events, never gateway RPC.
 
 
 ## Registry refs and spend (#2290)
