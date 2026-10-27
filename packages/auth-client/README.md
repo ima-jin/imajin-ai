@@ -1,6 +1,7 @@
 # @ima-jin/auth-client
 
 "Sign in with Imajin" SDK for federated apps. Lightweight JWT session management + ready-made Next.js route handlers.
+App sign-in sessions are bound to a kernel-verified single-use authorization code.
 Standalone apps must forward root sign-in callback parameters before applying login or claim gates.
 
 ## Install
@@ -21,6 +22,7 @@ export const authConfig: ImajinAuthConfig = {
   secret: process.env.SESSION_SECRET!,
   authUrl: process.env.IMAJIN_AUTH_URL!,
   appDid: process.env.IMAJIN_APP_DID!,
+  appId: process.env.IMAJIN_APP_ID!,
   publicUrl: process.env.NEXT_PUBLIC_APP_URL,
   loginRedirect: '/dashboard',
 };
@@ -50,6 +52,11 @@ that app's cookie; app logout clears only that same cookie.
 ### 2. Create route handlers
 
 ```ts
+// app/api/auth/login/route.ts
+import { createLoginHandler } from '@ima-jin/auth-client';
+import { authConfig } from '@/lib/auth-config';
+export const GET = createLoginHandler(authConfig);
+
 // app/api/auth/callback/route.ts
 import { createCallbackHandler } from '@ima-jin/auth-client';
 import { authConfig } from '@/lib/auth-config';
@@ -66,6 +73,30 @@ import { authConfig } from '@/lib/auth-config';
 export const POST = createLogoutHandler(authConfig);
 ```
 
+Point the app/template sign-in button at its own `/api/auth/login` route
+(including the app basePath), not directly at kernel consent. `appId` is the
+registry app ID; `appDid` remains its DID. The login handler creates an
+app-isolated, host-only HttpOnly SameSite=Lax state cookie with a five-minute
+lifetime, then redirects to the kernel's `/auth/authorize` page with that state.
+Route factories remain lazy and do not read runtime configuration during build.
+
+After consent, the kernel redirects to the registered callback with `code`
+and `state`. The code has a 60-second lifetime and is single-use. The callback
+checks and clears its state cookie, loads the app signing identity through
+`loadAppSigningKey()`, and exchanges the code at `/auth/api/apps/token` using
+Ed25519 proof of possession. The session DID and attestation come only from the
+kernel response. Profile fields are display data, not identity authority.
+Failures redirect within the app with `auth_error=authorization_invalid` and
+do not write a session cookie. Callback responses are no-store and
+use `Referrer-Policy: no-referrer`.
+
+For standalone `imajin-app-template` forks, mount both login and callback
+handlers, configure the registry ID/DID plus the full public app URL, keep the
+existing signing-key bootstrap, and forward root callbacks before login gates
+as below. These changes target the auth-client 0.8.28 release; the normal
+Release workflow owns manifest version bumps and publication. Standalone
+repository dependency updates and rollout are separate changes.
+
 ### 3. Check session in server components
 
 ```ts
@@ -79,7 +110,7 @@ if (!user) redirect('/');
 ### Standalone apps: forward the root callback in middleware
 
 The kernel sends sign-in callbacks to the registered app home URL, for example
-`https://jin.imajin.ai/coffee?attestation_id=...&user_did=...`.
+`https://jin.imajin.ai/coffee?code=...&state=...`.
 `forwardAuthCallback` issues a **307** to `/coffee/api/auth/callback` with the
 identical query string. Only the app root (with or without a trailing slash)
 and two nonempty callback parameters qualify; other requests return `null`.
@@ -142,7 +173,7 @@ for production.
 `/dashboard` becomes `/coffee/dashboard`, and all callback `auth_error`
 redirects stay under `/coffee`. Already-prefixed paths are not doubled.
 Absolute URLs retain their destinations. Apps without a basePath keep their
-existing root destinations. No registry or kernel callback changes are needed.
+existing root destinations. Keep the registered callback URL unchanged.
 
 Regression command (from the monorepo root):
 `pnpm exec vitest run packages/auth-client/tests`.

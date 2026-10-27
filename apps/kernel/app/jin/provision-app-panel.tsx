@@ -34,6 +34,7 @@ import {
 } from './provision-app-validation';
 import { useFlashNotice } from './use-flash-notice';
 import SignInAudienceSelect from '../auth/developer/apps/components/SignInAudienceSelect';
+import { useProvisionSiteOwners } from './provision-site-owners';
 
 const POLL_INTERVAL_MS = 5000;
 /** Provision proposals live on the `apps` source — scope the poll to it. */
@@ -96,6 +97,9 @@ const EMPTY_VALUES: ProvisionFormValues = {
   displayName: '',
   template: DEFAULT_APP_TEMPLATE,
   sourceRepo: '',
+  visibility: 'public',
+  domain: '',
+  siteOwnerDid: '',
   signInAudience: 'members',
   attestationTypes: '',
 };
@@ -337,6 +341,7 @@ function ProposalResult({
 
 export function ProvisionAppPanel() {
   const [visible, setVisible] = useState(false);
+  const { groups: siteOwners, loading: ownersLoading, error: ownersError } = useProvisionSiteOwners(visible);
   const [values, setValues] = useState<ProvisionFormValues>(EMPTY_VALUES);
   const [errors, setErrors] = useState<ProvisionFormErrors>({});
   const [busy, setBusy] = useState(false);
@@ -458,7 +463,7 @@ export function ProvisionAppPanel() {
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
-    const found = validateProvisionForm(values);
+    const found = validateProvisionForm(values, siteOwners.map(group => group.groupDid));
     setErrors(found);
     if (hasProvisionErrors(found)) return;
 
@@ -547,6 +552,52 @@ export function ProvisionAppPanel() {
           hint="Optional — comma-separated, each as <slug>/<type>."
           disabled={busy}
         />
+        <label className="block text-xs text-gray-400">
+          <span>Visibility</span>
+          <select
+            value={values.visibility ?? 'public'}
+            onChange={event => setField('visibility')(event.target.value)}
+            disabled={busy}
+            className="block w-full text-xs bg-gray-900 border border-gray-700 rounded px-2 py-1 text-gray-200"
+          >
+            <option value="public">Public</option>
+            <option value="private">Private — owning group only</option>
+          </select>
+        </label>
+        <FieldError id="provision-app-visibility-error" message={errors.visibility} />
+        <TextField
+          label="Domain"
+          value={values.domain ?? ''}
+          onChange={setField('domain')}
+          error={errors.domain}
+          placeholder="dev-gbs.imajin.ai"
+          hint="Optional — a direct imajin.ai subdomain. Defaults to <slug>.imajin.ai."
+          disabled={busy}
+        />
+        <label className="block text-xs text-gray-400">
+          <span>Site owner</span>
+          <select
+            value={values.siteOwnerDid ?? ''}
+            onChange={event => setField('siteOwnerDid')(event.target.value)}
+            disabled={busy || ownersLoading}
+            aria-invalid={errors.siteOwnerDid ? true : undefined}
+            aria-describedby="provision-app-owner-hint provision-app-owner-error"
+            className="block w-full text-xs bg-gray-900 border border-gray-700 rounded px-2 py-1 text-gray-200"
+          >
+            <option value="">Node operator (default)</option>
+            {siteOwners.map(group => (
+              <option key={group.groupDid} value={group.groupDid}>
+                {group.handle ? `@${group.handle} — ` : ''}{group.name ? `${group.name} — ` : ''}{group.groupDid}
+              </option>
+            ))}
+          </select>
+        </label>
+        <p id="provision-app-owner-hint" className="text-xs text-gray-500">
+          Only groups you own or administer are offered, identified by handle and DID.
+          {ownersLoading && ' Loading groups…'}
+          {ownersError && ` ${ownersError}`}
+        </p>
+        <FieldError id="provision-app-owner-error" message={errors.siteOwnerDid} />
         <SignInAudienceSelect id="provision-app-sign-in-audience" value={values.signInAudience ?? 'members'} onChange={setField('signInAudience')} disabled={busy} />
         <FieldError id="provision-app-sign-in-audience-error" message={errors.signInAudience} />
         <button
