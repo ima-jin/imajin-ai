@@ -242,7 +242,7 @@ export function ConnectionSlots({ connectorId, children }: Readonly<{
           </form>
         )}
         {error && <p role="alert" className="break-words text-sm text-red-400">{error}</p>}
-        {notice && <p role="status" className="break-words text-sm text-amber-300">{notice}</p>}
+        {notice && <output className="block break-words text-sm text-amber-300">{notice}</output>}
         {invalidSlot && <p role="alert" className="text-sm text-red-400">Invalid connection slot. Choose a valid connection.</p>}
         {!loading && !selected && !error && <p role="alert" className="text-sm text-red-400">Connection not found. Choose a connection or add one.</p>}
       </section>

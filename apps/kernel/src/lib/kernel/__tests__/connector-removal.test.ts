@@ -112,8 +112,8 @@ describe('per-slot attested removal', () => {
     expect(await database.select().from(attestations)).toHaveLength(0);
   });
 
-  it.each(['primary', '../primary'])('blocks primary or invalid selector %s before any destruction', async slot => {
-    await expect(removeConnectorConnection(owner, 'github', slot, ['github-oauth'])).rejects.toThrow();
+  it.each(['primary', '../primary'])('blocks primary or invalid selector %s before any destruction', slot => {
+    expect(() => removeConnectorConnection(owner, 'github', slot, ['github-oauth'])).toThrow();
     expect(h.destroy).not.toHaveBeenCalled();
   });
 

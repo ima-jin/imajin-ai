@@ -2,6 +2,7 @@ import { and, eq } from 'drizzle-orm';
 import { db, attestations, channelLinks, connectors } from '@/src/db';
 import { prepareMechanicalAttestation } from '@/src/lib/auth/emit-mechanical-attestation';
 import { deleteSecretAndRevokeGrants } from '@/src/lib/vault/delete-secret';
+import { forEachSequential } from '@/src/lib/async/sequential';
 import { connectionSlot, connectionVaultField } from './connection-slots';
 
 export class ConnectionRemovalError extends Error {
@@ -15,7 +16,7 @@ export class ConnectionRemovalError extends Error {
  * a failed vault/signing/write operation must not report a successful removal.
  * Vault destruction uses its own signed tombstone + grant key-erasure API.
  */
-export async function removeConnectorConnection(
+export function removeConnectorConnection(
   ownerDid: string,
   provider: string,
   slot: string,
@@ -38,9 +39,9 @@ export async function removeConnectorConnection(
       subjectDid: ownerDid, type: 'connector.disconnected', contextId: row.id, contextType: provider,
       payload: { ownerDid, connector: provider, slot: selected, action: 'removed', context_id: ownerDid, context_type: provider },
     });
-    for (const prefix of vaultPrefixes) {
+    await forEachSequential(vaultPrefixes, async prefix => {
       await deleteSecretAndRevokeGrants(connectionVaultField(prefix, ownerDid, selected));
-    }
+    });
     const now = new Date();
     // All consumers bound to this provider/owner/slot lose their grants, not
     // just the connector's own app. Other slots and owners remain untouched.
