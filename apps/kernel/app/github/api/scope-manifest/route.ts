@@ -2,7 +2,7 @@
  * GET + POST /github/api/scope-manifest (#1352)
  *
  * Wires the shared scope-manifest route factory for the GitHub connector.
- * GET returns { manifestAssetId, activeScopes, validScopes, configSealed, tokenSealed, flow,
+ * GET returns { manifestAssetId, activeScopes, validScopes, configSealed, tokenSealed, flow, clientId,
  * externalGrantClientCount }. `externalGrantClientCount` (#2308) is a COUNT ONLY of external
  * MCP/OAuth clients holding their own grant of a github:* scope — never the connector's own
  * grant, and never a per-grant listing (that belongs on #2288's Grants lane).
@@ -22,7 +22,7 @@ import {
   countExternalGitHubScopeGrantees,
   VALID_GITHUB_SCOPES,
 } from '@/src/lib/github/scope-manifest';
-import { configField, oauthVaultField, readConfigFlow, vaultField } from '@/src/lib/github/connector';
+import { configField, oauthVaultField, readConfigSetup, vaultField } from '@/src/lib/github/connector';
 import { vaultFieldStatus } from '@/src/lib/vault';
 
 export const { GET, POST, OPTIONS } = createConnectorScopeManifestRoute({
@@ -37,15 +37,13 @@ export const { GET, POST, OPTIONS } = createConnectorScopeManifestRoute({
   // once a usable grant covers the field, so configSealed/tokenSealed stay false
   // while a grant is pending and credentialPending carries the reason why.
   getExtraFields: async (ownerDid) => {
-    const [configStatus, oauthStatus, patStatus, flow, externalGrantClientCount] = await Promise.all([
+    const [configStatus, oauthStatus, patStatus, setup, externalGrantClientCount] = await Promise.all([
       vaultFieldStatus(configField(ownerDid)),
       vaultFieldStatus(oauthVaultField(ownerDid)),
       vaultFieldStatus(vaultField(ownerDid)),
-      // Which BYO path the owner configured (#1391) — the discriminator only,
-      // never a config field, so nothing secret crosses the wire. Null until a
-      // config is sealed and readable, which is exactly when the UI should keep
-      // showing its default (device) mode selector.
-      readConfigFlow(ownerDid).catch(() => null),
+      // Only the flow and public client ID for setup copy. Never return the
+      // config, client secret or token. Pending/unreadable grants remain null.
+      readConfigSetup(ownerDid).catch(() => null),
       // #2308: count of external MCP/OAuth clients (Claude, MCP Inspector, ...)
       // holding their OWN active grant of a github:* scope — never this
       // connector's own scope-manifest grantee. Degrades to 0 (not fatal)
@@ -60,7 +58,8 @@ export const { GET, POST, OPTIONS } = createConnectorScopeManifestRoute({
         configStatus === 'pending-grant' ||
         oauthStatus === 'pending-grant' ||
         patStatus === 'pending-grant',
-      flow,
+      flow: setup?.flow ?? null,
+      clientId: setup?.clientId ?? null,
       externalGrantClientCount,
     };
   },

@@ -37,6 +37,7 @@ import { buildConnectHref, readConnectOutcome } from '@/src/lib/kernel/connect-o
 import { validateStripeCredentialPair, validateStripeWebhookSecret } from '@/src/lib/stripe/credential-pair';
 import { ConnectionSlots, slotRoute, useConnectionSlot, useRefreshConnections } from './ConnectionSlots';
 import { GoogleSetupChecklist } from './GoogleSetupChecklist';
+import { GitHubSetupChecklist, GitHubOrgAccessNote } from './GitHubSetupChecklist';
 import { BillingCredentialSection } from './BillingCredentialSection';
 import type { GoogleSetupView } from '@/src/lib/google/setup-content';
 
@@ -65,6 +66,8 @@ interface OAuthConnectorStatus {
 type GitHubAuthFlow = 'device' | 'authorization_code';
 
 interface GitHubStatus extends OAuthConnectorStatus {
+  /** Public app identifier from this connection's sealed config; never a secret or token. */
+  clientId?: string | null;
   /**
    * Which BYO auth path the sealed config is for (#1391), or null when nothing
    * is sealed yet. Non-secret — the discriminator only.
@@ -895,8 +898,8 @@ function GitHubDeviceConnect({ configSealed, onConnected }: Readonly<{
  *
  * Both options are bring-your-own OAuth App — the choice is only about how the
  * owner's app authorizes, never about whose credential is used. Device is
- * marked recommended because it drops the client secret and the byte-exact
- * callback URL, the two things that make the manual path fail on first try.
+ * marked recommended because it needs no client secret or callback round-trip.
+ * GitHub still requires a callback URL when registering either kind of app.
  */
 function GitHubFlowSelector({ value, onChange }: Readonly<{
   value: GitHubAuthFlow;
@@ -1042,6 +1045,7 @@ function GitHubConnectorCard({ entry }: Readonly<{ entry: ConnectorEntry }>) {
   const [clientId, setClientId] = useState('');
   const [clientSecret, setClientSecret] = useState('');
   const [redirectUri, setRedirectUri] = useState('');
+  const [callbackUrl, setCallbackUrl] = useState('');
   const [configuring, setConfiguring] = useState(false);
   const [configError, setConfigError] = useState<string | null>(null);
   const clientIdRef = useRef<HTMLInputElement>(null);
@@ -1055,7 +1059,9 @@ function GitHubConnectorCard({ entry }: Readonly<{ entry: ConnectorEntry }>) {
 
   // Prefill redirectUri from current origin (only in browser)
   useEffect(() => {
-    setRedirectUri(`${window.location.origin}/github/api/callback`);
+    const callback = `${window.location.origin}/github/api/callback`;
+    setRedirectUri(callback);
+    setCallbackUrl(callback);
   }, []);
 
   // Adopt the flow the owner already sealed, so a returning auth-code user is
@@ -1209,6 +1215,7 @@ function GitHubConnectorCard({ entry }: Readonly<{ entry: ConnectorEntry }>) {
             {!status.configSealed || showConfigure ? (
               <form onSubmit={(e) => { void handleConfigure(e); }} className="space-y-2">
                 <GitHubFlowSelector value={flowMode} onChange={setFlowMode} />
+                <GitHubSetupChecklist key={flowMode} flow={flowMode} callbackUrl={callbackUrl} />
                 <input
                   ref={clientIdRef}
                   type="text"
@@ -1290,6 +1297,7 @@ function GitHubConnectorCard({ entry }: Readonly<{ entry: ConnectorEntry }>) {
               tokenSealed={status.tokenSealed}
               onConnected={refreshStatus}
             />
+            {status.tokenSealed && <GitHubOrgAccessNote clientId={status.clientId} />}
           </div>
 
           {/* ── Step 3: Grant scopes ── */}
