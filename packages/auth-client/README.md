@@ -183,10 +183,36 @@ signing key — in a local keystore file (`IMAJIN_APP_KEYSTORE`, default
 challenge with that persisted bootstrap key instead of spending another
 claim code, so no operator action is needed on an ordinary restart.
 
-`loadAppSigningKey()` throws on any failure (missing config, an
-already-redeemed or expired claim code, an invalid bootstrap signature, a
-revoked grant) rather than degrading silently — a signing key is the app's
-own identity, so a misconfigured deploy should fail loudly at boot. If the
+Await `loadAppSigningKey()` in the server's startup/instrumentation hook
+before serving requests. With an existing keystore, bootstrap fetches retry
+HTTP 5xx and network failures (including connection refused/reset and fetch
+TypeError) using exponential backoff with equal jitter. Every attempt signs
+a new nonce and timestamp; failures are not cached by the loader.
+Defaults: a **120,000ms total budget** including requests, **10,000ms per
+request**, and delay windows starting at **1,000ms**, doubling up to
+**15,000ms** (each actual wait is 50–100% of its window).
+
+Override these with `retry: { maxElapsedMs, requestTimeoutMs, initialDelayMs,
+maxDelayMs }`. Each supplied duration must be a positive integer no larger
+than 2,147,483,647ms. Requests and waits are clipped to the remaining budget;
+stalled fetches/body reads are aborted. On exhaustion the loader logs one
+sanitized diagnostic naming the app and last status/failure, then calls
+**`process.exit(1)`** so pm2 restarts the process rather than leaving it
+online with a rejected instrumentation promise. Tests can inject
+`exit: (code) => { ... }`; if that hook returns, the loader still throws.
+Do not override the fatal hook in production.
+
+HTTP 4xx (including 401/403/404/410) fail immediately with the app DID and
+status, without retries. Missing configuration, malformed success responses,
+and caller cancellation also throw rather than degrading silently.
+Provider response/error text and key material are never included in diagnostics.
+First-boot claim exchanges remain single-shot: automatically replaying a
+one-time claim could consume it without safely persisting its bootstrap key.
+These retries apply only to the existing-keystore bootstrap fetch, not token
+minting, vault loading, or claim semantics.
+
+A signing key is the app's own identity, so a misconfigured deploy should
+fail loudly at boot. If the
 local keystore is ever lost (disk wipe, redeploy to a fresh host), ask the
 kernel operator to re-approve `apps.provision` with `reissueClaim: true`
 for a fresh claim code — redeeming it also revokes the lost keystore's

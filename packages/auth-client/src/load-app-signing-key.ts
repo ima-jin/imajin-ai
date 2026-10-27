@@ -28,9 +28,10 @@
  *    message. Only the narrow-purpose bootstrap keypair ever touches disk.
  *  - Fails loud: unlike `@imajin/auth`'s `loadFromVault` (which lets a
  *    caller degrade gracefully when a credential is optional), a signing
- *    key IS the app's identity — this throws on any failure rather than
- *    returning a sentinel, so a misconfigured deploy fails at boot instead
- *    of silently running unsigned.
+ *    key IS the app's identity — permanent failures throw immediately.
+ *    Transient bootstrap fetch failures retry for a bounded budget, then
+ *    exit non-zero so a supervisor restarts the process instead of leaving
+ *    Next.js online with a rejected instrumentation promise.
  *  - A spent claim code never redeems twice: if the keystore is lost (e.g.
  *    disk wipe) after its bootstrap key was already bound, ask the kernel
  *    operator to re-approve `apps.provision` with `reissueClaim: true` for
@@ -53,6 +54,15 @@ export interface LoadAppSigningKeyOptions {
   hostHint?: string;
   /** Extra fetch options, merged under the defaults. */
   fetchOptions?: RequestInit;
+  /** Bootstrap retry budget including requests (default 120000ms). Claim exchanges are never retried. */
+  retry?: {
+    maxElapsedMs?: number;
+    initialDelayMs?: number;
+    maxDelayMs?: number;
+    requestTimeoutMs?: number;
+  };
+  /** Fatal startup hook (default process.exit). If an injected hook returns, the loader still throws. */
+  exit?: (code: number) => void;
 }
 
 export interface AppSigningKey {
@@ -69,6 +79,11 @@ interface SigningKeyResponseBody {
   privateKey?: unknown;
   publicKey?: unknown;
   error?: unknown;
+}
+class SigningKeyFetchError extends Error {
+  constructor(message: string, readonly transient: boolean) {
+    super(message);
+  }
 }
 
 /** POSTs `body` to `${kernelUrl}${path}` and parses the shared `{ appDid, privateKey, publicKey }` response shape. Throws a value-free, descriptive error on any failure. */
@@ -88,14 +103,17 @@ async function postForSigningKey(
       body: JSON.stringify(body),
     });
   } catch {
-    throw new Error('loadAppSigningKey: could not reach the kernel');
+    throw new SigningKeyFetchError('loadAppSigningKey: could not reach the kernel', true);
   }
 
-  const responseBody = (await res.json().catch(() => null)) as SigningKeyResponseBody | null;
   if (!res.ok) {
     // Provider messages are untrusted and may contain secret material.
-    throw new Error(`loadAppSigningKey: ${failureContext} failed`);
+    throw new SigningKeyFetchError(
+      `loadAppSigningKey: ${failureContext} failed (status ${res.status})`,
+      res.status >= 500 && res.status <= 599,
+    );
   }
+  const responseBody = (await res.json().catch(() => null)) as SigningKeyResponseBody | null;
   if (typeof responseBody?.appDid !== 'string' || typeof responseBody.privateKey !== 'string') {
     throw new TypeError(`loadAppSigningKey: ${failureContext} response was malformed`);
   }
@@ -149,6 +167,78 @@ async function fetchWithBootstrapKey(params: {
   );
 }
 
+type BootstrapFetchParams = Parameters<typeof fetchWithBootstrapKey>[0];
+
+/** Bound even a stalled fetch/body read; abort the underlying request as well. */
+async function fetchBootstrapAttempt(params: BootstrapFetchParams, timeoutMs: number): Promise<AppSigningKey> {
+  const controller = new AbortController();
+  const signal = params.fetchOptions?.signal;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      controller.abort();
+      reject(new SigningKeyFetchError('loadAppSigningKey: bootstrap-key fetch timed out', true));
+    }, timeoutMs);
+  });
+  try {
+    return await Promise.race([
+      fetchWithBootstrapKey({
+        ...params,
+        fetchOptions: {
+          ...params.fetchOptions,
+          signal: signal ? AbortSignal.any([signal, controller.signal]) : controller.signal,
+        },
+      }),
+      timeout,
+    ]);
+  } finally {
+    clearTimeout(timer);
+    controller.abort();
+  }
+}
+
+async function fetchBootstrapWithRetry(
+  params: BootstrapFetchParams,
+  options: LoadAppSigningKeyOptions,
+): Promise<AppSigningKey> {
+  const retry = {
+    maxElapsedMs: 120_000,
+    initialDelayMs: 1_000,
+    maxDelayMs: 15_000,
+    requestTimeoutMs: 10_000,
+    ...options.retry,
+  };
+  for (const value of Object.values(retry)) {
+    if (!Number.isSafeInteger(value) || value < 1 || value > 2_147_483_647) {
+      throw new TypeError('loadAppSigningKey: retry durations must be positive safe timer integers');
+    }
+  }
+  const deadline = Date.now() + retry.maxElapsedMs;
+  let delayMs = Math.min(retry.initialDelayMs, retry.maxDelayMs);
+  let lastFailure = '';
+  while (Date.now() < deadline) {
+    try {
+      return await fetchBootstrapAttempt(params, Math.min(retry.requestTimeoutMs, deadline - Date.now()));
+    } catch (error) {
+      if (!(error instanceof SigningKeyFetchError)) throw error;
+      const message = `${error.message} for app ${params.appDid}`;
+      if (!error.transient || params.fetchOptions?.signal?.aborted) throw new Error(message);
+      lastFailure = message;
+    }
+    const remainingMs = deadline - Date.now();
+    if (remainingMs <= 0) break;
+    // Equal jitter avoids synchronized boots; never sleep beyond the total budget.
+    await new Promise((resolve) => setTimeout(resolve, Math.min(
+      Math.ceil(delayMs * (0.5 + Math.random() * 0.5)), remainingMs,
+    )));
+    delayMs = Math.min(delayMs * 2, retry.maxDelayMs);
+  }
+  const error = new Error(`${lastFailure}; bootstrap retry budget exhausted; exiting with code 1`);
+  console.error(error.message);
+  (options.exit ?? process.exit)(1);
+  throw error;
+}
+
 /**
  * Fetches this app's own vault signing key — via the local bootstrap
  * keystore when one already exists, or via a one-time claim code on first
@@ -169,7 +259,7 @@ export async function loadAppSigningKey(options: LoadAppSigningKeyOptions = {}):
     if (!appDid) {
       throw new Error('loadAppSigningKey: appDid is required once a keystore exists (set IMAJIN_APP_DID or pass { appDid })');
     }
-    return fetchWithBootstrapKey({ kernelUrl, appDid, keystore, fetchOptions: options.fetchOptions });
+    return fetchBootstrapWithRetry({ kernelUrl, appDid, keystore, fetchOptions: options.fetchOptions }, options);
   }
 
   const claimCode = options.claimCode ?? process.env.IMAJIN_APP_CLAIM_CODE;
