@@ -28,7 +28,13 @@ it('documents verified GitHub job auth and mutually exclusive repo/environment g
   expect(sign.description).toContain('urn:imajin:vault:ssh-cert');
   expect(sign.requestBody.content['application/json'].schema.required).not.toContain('job');
   const grant = spec.paths['/api/vault/ssh-ca/grants'].post.requestBody.content['application/json'].schema;
-  expect(grant.oneOf[1].required).toEqual(['repository', 'environment']);
+  expect(grant.oneOf[1].required).toEqual(['repository', 'environment', 'repositoryId', 'repositoryOwnerId']);
+  expect(grant.properties.allowedRefs).toMatchObject({ type: 'array', minItems: 1, maxItems: 64 });
+  expect(sign.description).toContain('operator must re-grant');
+  expect(sign.description).toContain('OIDC policy failures after signature,');
+  expect(sign.description).toContain('without audit preparation, signing or database writes');
+  expect(sign.description).toContain('at most one refusal per jti for all time');
+  expect(sign.description).toContain('missing/malformed-jti tokens return generic 401 with no writes');
   expect(grant.oneOf[1].not.required).toEqual(['grantee']);
 });
 

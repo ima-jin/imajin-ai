@@ -68,6 +68,10 @@ export const vaultDelegationGrants = vaultSchema.table('vault_delegation_grants'
   // with the ordinary grant payload; NULL preserves legacy canonical bytes.
   sshScope: jsonb('ssh_scope').$type<{
     caId: string; principals: string[]; forceCommand: string; allowedHosts: string[];
+    github?: {
+      repository: string; repositoryId: string; repositoryOwnerId: string; environment: string;
+      allowedRefs?: string[];
+    };
   } | null>(),
   // Single-use grants (e.g. a one-shot runner-registration token): the first
   // successful GET of the sealed value via the agent-fetch route consumes the
