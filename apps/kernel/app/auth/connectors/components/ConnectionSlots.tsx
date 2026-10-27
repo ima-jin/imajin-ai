@@ -31,6 +31,28 @@ const PRIMARY: Connection = { slot: 'primary', label: 'Primary', accountEmail: n
 const inputClass = 'w-full min-w-0 rounded-lg border border-white/20 bg-black/30 px-3 py-2 text-sm text-white';
 const buttonClass = 'rounded-lg border border-white/20 px-3 py-2 text-sm text-gray-200 hover:bg-white/10 disabled:opacity-50';
 
+/** Status may include granted corpora too: never count another owner's same-named slot. */
+async function removalDependencies(connectorId: string, slot: string, ownerDid: string | null): Promise<string> {
+  if (connectorId !== 'github') return '';
+  try {
+    if (!ownerDid) throw new Error('Connection owner unavailable');
+    const response = await fetch('/auth/corpus/api/status', { credentials: 'include', cache: 'no-store' });
+    if (!response.ok) throw new Error('Corpus status unavailable');
+    const status = await response.json() as {
+      sources?: { source?: unknown; ownerDid?: string; credentialRef?: string }[];
+    };
+    if (!Array.isArray(status.sources)) throw new Error('Corpus status unavailable');
+    const names = [...new Set(status.sources.filter(source =>
+      source.ownerDid === ownerDid && source.credentialRef === `github:${slot}` && typeof source.source === 'string',
+    ).map(source => source.source as string))].sort((left, right) => left.localeCompare(right, 'en'));
+    const count = `${names.length} corpus ${names.length === 1 ? 'source depends' : 'sources depend'} on this connection`;
+    const list = names.map(name => `- ${name}`).join('\n');
+    return `\n\n${count}.${list ? '\n' + list : ''}`;
+  } catch {
+    throw new Error('Could not load dependent corpus sources. Try again before removing this connection.');
+  }
+}
+
 export function ConnectionSlots({ connectorId, children }: Readonly<{
   connectorId: string;
   children: (slot: string) => ReactNode;
@@ -42,6 +64,7 @@ export function ConnectionSlots({ connectorId, children }: Readonly<{
   try { initial = connectionSlot(requested); } catch { invalidSlot = true; }
   const [slot, setSlot] = useState(initial);
   const [connections, setConnections] = useState<Connection[]>([]);
+  const [ownerDid, setOwnerDid] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
@@ -58,6 +81,7 @@ export function ConnectionSlots({ connectorId, children }: Readonly<{
       if (!response.ok) return;
       const data = await response.json();
       if (Array.isArray(data.connections)) {
+        setOwnerDid(typeof data.ownerDid === 'string' ? data.ownerDid : null);
         const listed: Connection[] = data.connections;
         setConnections(listed.some((c) => c.slot === 'primary') ? listed : [PRIMARY, ...listed]);
       }
@@ -77,6 +101,7 @@ export function ConnectionSlots({ connectorId, children }: Readonly<{
         const data = await response.json();
         if (!response.ok) throw new Error(data.error ?? 'Could not load connections.');
         if (!cancelled) {
+          setOwnerDid(typeof data.ownerDid === 'string' ? data.ownerDid : null);
           const listed: Connection[] = Array.isArray(data.connections) ? data.connections : [];
           setConnections(listed.some((c) => c.slot === 'primary') ? listed : [PRIMARY, ...listed]);
           setError(null);
@@ -136,10 +161,11 @@ export function ConnectionSlots({ connectorId, children }: Readonly<{
 
   async function remove(connection: Connection) {
     if (connection.slot === 'primary' || busy) return;
-    if (!window.confirm(`Remove "${connection.label}" (slot: ${connection.slot})? Its sealed credentials and grants will be destroyed. Consumers bound to it will show "Connection removed". Other connections are not affected.`)) return;
     setBusy(true);
     setError(null);
     try {
+      const dependencies = await removalDependencies(connectorId, connection.slot, ownerDid);
+      if (!window.confirm(`Remove "${connection.label}" (slot: ${connection.slot})? Its sealed credentials and grants will be destroyed. Consumers bound to it will show "Connection removed". Other connections are not affected.${dependencies}`)) return;
       const response = await fetch(`/${encodeURIComponent(connectorId)}/api/disconnect?slot=${encodeURIComponent(connection.slot)}&remove=true`, { method: 'POST' });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error ?? 'Could not remove connection.');

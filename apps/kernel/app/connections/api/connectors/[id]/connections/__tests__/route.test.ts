@@ -67,7 +67,7 @@ describe('connection metadata API', () => {
   it('lists a selectable primary for a legacy owner with no registry metadata', async () => {
     const response = await GET(request(), context());
     expect(response.headers.get('cache-control')).toBe('no-store');
-    expect(await response.json()).toEqual({ connections: [{
+    expect(await response.json()).toEqual({ ownerDid: 'did:owner', connections: [{
       slot: 'primary', label: 'primary', accountEmail: null, connected: false, configured: false, scopes: [],
     }] });
     expect(h.list).toHaveBeenCalledWith('did:owner');

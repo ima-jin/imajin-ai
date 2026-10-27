@@ -495,6 +495,9 @@ paths:
         removed slot history and a signed connector.disconnected attestation.
         Primary removal is blocked. Bound consumers fail closed. Provider-wide
         token revocation is skipped on removal so other slots are unaffected.
+        Delegated agents receive 403 AGENT_APPROVAL_REQUIRED; the owner must
+        re-issue from their own session. Group removal requires current
+        owner/admin membership and unrestricted or google service access.
       parameters:
         - name: remove
           in: query
@@ -512,6 +515,7 @@ paths:
                   connected: { type: boolean, enum: [false] }
         "400": { description: Invalid slot or removal flag }
         "404": { description: Connection not found for the authenticated owner }
+        "403": { description: Owner countersign required for agents, or insufficient current group/service authority }
         "409": { description: Primary connection cannot be removed }
         "503": { description: Removal unavailable; safe to retry }
         "401":

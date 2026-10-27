@@ -219,7 +219,7 @@ beforeEach(() => {
   delete process.env.APP_URL;
   delete process.env.NEXT_PUBLIC_BASE_URL;
   requireAuthMock.mockReset();
-  requireAuthMock.mockResolvedValue({ identity: {} });
+  requireAuthMock.mockResolvedValue({ identity: { id: 'did:imajin:owner', scope: 'actor' } });
   resolveActingDidMock.mockReset();
   resolveActingDidMock.mockReturnValue('did:imajin:owner');
   requireAppAuthMock.mockReset();
@@ -238,7 +238,23 @@ describe('slot removal on the existing disconnect route', () => {
     vaultPrefixes: ['github-config', 'github-oauth', 'github-pat'],
     channel: 'github', connectorDid: 'did:imajin:github-connector', connectorName: 'github', allowSlotRemoval: true,
   });
-  beforeEach(() => vi.mocked(removeConnectorConnection).mockReset().mockResolvedValue({ removed: true, slot: 'work' }));
+  beforeEach(() => {
+    vi.mocked(removeConnectorConnection).mockReset().mockResolvedValue({ removed: true, slot: 'work' });
+    vi.mocked(deleteFromVault).mockClear();
+    vi.mocked(revokeConnectorRegistration).mockClear();
+  });
+
+  it('refuses delegated removal with the registered irreversible policy before any destructive call', async () => {
+    requireAuthMock.mockResolvedValue({ identity: { id: 'did:imajin:agent', scope: 'actor', actingFor: 'did:imajin:owner' } });
+    const request = makeJsonRequest({}, 'https://kernel.test/github/api/disconnect?slot=work&remove=true');
+    const response = await removalHandler()(request);
+    expect(requireAuthMock).toHaveBeenCalledWith(request, { service: 'github' });
+    expect(response.status).toBe(403);
+    expect(await response.json()).toMatchObject({ code: 'AGENT_APPROVAL_REQUIRED', delegateDid: 'did:imajin:agent' });
+    expect(removeConnectorConnection).not.toHaveBeenCalled();
+    expect(deleteFromVault).not.toHaveBeenCalled();
+    expect(revokeConnectorRegistration).not.toHaveBeenCalled();
+  });
 
   it('requires authentication before reading or destroying a slot', async () => {
     requireAuthMock.mockResolvedValue({ error: 'unauthorized', status: 401 });
@@ -250,7 +266,7 @@ describe('slot removal on the existing disconnect route', () => {
     const response = await removalHandler()(makeJsonRequest({ ownerDid: 'did:imajin:victim' },
       'https://kernel.test/github/api/disconnect?slot=work&remove=true&did=did:imajin:victim'));
     expect(response.status).toBe(200);
-    expect(removeConnectorConnection).toHaveBeenCalledWith('did:imajin:owner', 'github', 'work', ['github-config', 'github-oauth', 'github-pat']);
+    expect(removeConnectorConnection).toHaveBeenCalledWith('did:imajin:owner', 'github', 'work', ['github-config', 'github-oauth', 'github-pat'], { id: 'did:imajin:owner', scope: 'actor' });
   });
 
   it.each([

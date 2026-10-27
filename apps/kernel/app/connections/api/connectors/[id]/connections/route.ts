@@ -71,7 +71,7 @@ export async function GET(request: NextRequest, context: Context) {
         scopes,
       };
     }));
-    return NextResponse.json({ connections }, { headers: headers(request) });
+    return NextResponse.json({ ownerDid, connections }, { headers: headers(request) });
   } catch {
     return NextResponse.json({ error: 'Connections unavailable' }, { status: 500, headers: headers(request) });
   }

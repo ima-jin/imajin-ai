@@ -144,6 +144,11 @@ paths:
         PAT fields and erases grant keys. The slot row is retained as removed with
         a signed connector.disconnected attestation; bound consumers fail closed
         with connection_removed. Primary removal is blocked; use disconnect instead.
+        Delegated agents receive 403 AGENT_APPROVAL_REQUIRED; the owner must
+        re-issue from their own session. Group removal requires current
+        owner/admin membership and unrestricted or github service access.
+        The signed removal record includes actorDid, delegateDid, actingFor,
+        authorityBasis and groupRole, never credential material.
       parameters:
         - name: remove
           in: query
@@ -153,6 +158,7 @@ paths:
         "400": { description: Invalid slot }
         "401": { description: Not authenticated }
         "404": { description: Connection not found for the authenticated owner }
+        "403": { description: Owner countersign required for agents, or insufficient current group/service authority }
         "409": { description: Primary connection cannot be removed }
         "503": { description: Removal unavailable; safe to retry }
   /api/scope-manifest:
