@@ -29,7 +29,7 @@ permissions:
   contents: read
 jobs:
   deploy:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, vault-ssh-no-swap]
     environment: production
     permissions:
       contents: read
