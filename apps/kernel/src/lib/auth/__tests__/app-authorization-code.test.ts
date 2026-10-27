@@ -73,4 +73,9 @@ describe('app authorization codes', () => {
   it('returns no authorization for an absent, expired or differently bound code', async () => {
     expect(await consumeAppAuthorizationCode({ ...binding, code: 'opaque' })).toEqual({ error: 'code_invalid' });
   });
+
+  it('replaces issuance provider errors with a value-free diagnostic', async () => {
+    h.values.mockRejectedValueOnce(new Error('provider diagnostics'));
+    await expect(issueAppAuthorizationCode(binding)).rejects.toThrow('App authorization code issuance unavailable');
+  });
 });

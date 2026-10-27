@@ -12,15 +12,17 @@
  *
  * Body: {
  *   appDid: string,
- *   attestationId?: string,  // exactly one of attestationId or principalDid
+ *   code?: string,          // sign-in code; exactly one selector
+ *   state?: string,         // required with code
+ *   attestationId?: string,  // exactly one of code, attestationId or principalDid
  *   principalDid?: string,   // resolve this principal's live grant at mint time
  *   scope?: string,          // optional single scope to narrow to (must be granted)
  *   aud?: string,            // optional target service
  *   nonce: string,           // client-generated, >= 16 chars
  *   timestamp: string,       // ISO; must be within 60s
- *   signature: string        // ed25519 hex over `${appDid}:${attestationId OR principalDid}:${nonce}:${timestamp}`
+ *   signature: string        // ed25519 hex over `${appDid}:${selector}:${nonce}:${timestamp}`
  * }
- * Returns: { token, expiresIn, scopes }
+ * Returns: { token, expiresIn, scopes }; code mode adds subjectDid, attestationId.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -74,6 +76,9 @@ function validateMintRequest(body: Record<string, unknown>) {
   if ([code, principalDid, attestationId].filter(value => value !== undefined).length !== 1) {
     return { error: 'Provide exactly one of code, attestationId or principalDid', status: 400 };
   }
+  if ([scope, aud].some(value => value !== undefined && typeof value !== 'string')) {
+    return { error: 'scope and aud must be strings', status: 400 };
+  }
   if (code !== undefined && (!/^[a-f0-9]{64}$/.test(code) || typeof state !== 'string' || state.length < 32 || state.length > 256)) {
     return { error: 'Invalid code or state', status: 400 };
   }
@@ -92,6 +97,33 @@ function validateMintRequest(body: Record<string, unknown>) {
   };
 }
 
+type MintRequest = Extract<ReturnType<typeof validateMintRequest>, { appDid: string }>;
+
+async function resolveMintAuthorization(mint: MintRequest, app: { name: string; callbackUrl: string }) {
+  let selector = mint.selector;
+  let codeSubject: string | undefined;
+  if (mint.code !== undefined) {
+    const exchange = await consumeAppAuthorizationCode({
+      appDid: mint.appDid, code: mint.code, state: mint.state!, callbackUrl: app.callbackUrl,
+    });
+    if ('error' in exchange) return { error: exchange.error, status: 400 };
+    selector = exchange.authorization.attestationId;
+    codeSubject = exchange.authorization.subjectDid;
+  }
+  const att = await resolveAuthorization(mint.appDid, selector, mint.byPrincipal).catch(() => {
+    throw new Error('App authorization lookup unavailable');
+  });
+  if (!att && mint.byPrincipal) {
+    return { error: `Re-grant ${app.name} on /jin → Grants`, code: 'no_live_grant', status: 403 };
+  }
+  if (!att) return { error: 'Authorization not found', status: 404 };
+  if (att.revokedAt) return { error: 'Authorization has been revoked', status: 403 };
+  if (mint.code !== undefined && (!isLiveAppAuthorization(att) || att.issuerDid !== codeSubject)) {
+    return { error: 'code_invalid', status: 400 };
+  }
+  return { att };
+}
+
 export async function POST(request: NextRequest) {
   const cors = { ...corsHeaders(request), 'Cache-Control': 'no-store' };
 
@@ -105,7 +137,7 @@ export async function POST(request: NextRequest) {
   if ('error' in mint) {
     return NextResponse.json({ error: mint.error }, { status: mint.status, headers: cors });
   }
-  const { appDid, selector, byPrincipal, code, state, scope, aud, nonce, timestamp, signature } = mint;
+  const { appDid, selector, code, scope, aud, nonce, timestamp, signature } = mint;
 
   // Proof of possession: app must sign with its own key. Resolve the public
   // key from registry.apps — the source of truth for developer app keys
@@ -148,35 +180,14 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Invalid proof-of-possession signature' }, { status: 401, headers: cors });
   }
 
-  // Validate the user's authorization attestation (same checks as /apps/validate)
-  let grantSelector = selector;
-  let codeSubject: string | undefined;
-  if (code !== undefined) {
-    const exchange = await consumeAppAuthorizationCode({ appDid, code, state: state!, callbackUrl: app.callbackUrl });
-    if ('error' in exchange) {
-      return NextResponse.json({ error: exchange.error }, { status: 400, headers: cors });
-    }
-    grantSelector = exchange.authorization.attestationId;
-    codeSubject = exchange.authorization.subjectDid;
-  }
-  const att = await resolveAuthorization(appDid, grantSelector, byPrincipal);
-
-  if (!att && byPrincipal) {
+  const authorization = await resolveMintAuthorization(mint, app);
+  if ('error' in authorization) {
     return NextResponse.json(
-      { code: 'no_live_grant', error: `Re-grant ${app.name} on /jin → Grants` },
-      { status: 403, headers: cors }
+      { error: authorization.error, ...(authorization.code ? { code: authorization.code } : {}) },
+      { status: authorization.status, headers: cors },
     );
   }
-
-  if (!att) {
-    return NextResponse.json({ error: 'Authorization not found' }, { status: 404, headers: cors });
-  }
-  if (att.revokedAt) {
-    return NextResponse.json({ error: 'Authorization has been revoked' }, { status: 403, headers: cors });
-  }
-  if (code !== undefined && (!isLiveAppAuthorization(att) || att.issuerDid !== codeSubject)) {
-    return NextResponse.json({ error: 'code_invalid' }, { status: 400, headers: cors });
-  }
+  const { att } = authorization;
   if (!await canConsentToApp(app, att.issuerDid)) {
     return NextResponse.json({ error: PRIVATE_APP_CONSENT_ERROR }, { status: 403, headers: cors });
   }

@@ -14,6 +14,8 @@ describe('forwardAuthCallback', () => {
     const req = new NextRequest(`http://localhost:3000${path}${query}`);
     const response = forwardAuthCallback(req, { publicUrl });
     expect(response?.status).toBe(307);
+    expect(response?.headers.get('cache-control')).toBe('no-store');
+    expect(response?.headers.get('referrer-policy')).toBe('no-referrer');
     expect(response?.headers.get('location')).toBe(`${publicUrl}/api/auth/callback${query}`);
     expect(req.nextUrl.pathname).toBe(path);
     expect(req.nextUrl.search).toBe(query);

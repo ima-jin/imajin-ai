@@ -2,6 +2,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vites
 import { PGlite } from '@electric-sql/pglite';
 import { drizzle, type PgliteDatabase } from 'drizzle-orm/pglite';
 import { NextRequest } from 'next/server';
+import { readFileSync } from 'node:fs';
 
 const h = vi.hoisted(() => ({
   database: undefined as PgliteDatabase | undefined,
@@ -20,8 +21,9 @@ vi.mock('@/src/db', async () => {
   const auth = await import('@/src/db/schemas/auth');
   const registry = await import('@/src/db/schemas/registry');
   const oauth = await import('@/src/db/schemas/oauth');
+  const codes = await import('@/src/db/schemas/app-authorization-codes');
   return {
-    ...auth, ...registry, ...oauth,
+    ...auth, ...registry, ...oauth, ...codes,
     db: {
       select: (...args: Parameters<PgliteDatabase['select']>) => {
         const query = h.database!.select(...args);
@@ -70,8 +72,10 @@ let client: PGlite;
 beforeAll(async () => {
   client = new PGlite();
   h.database = drizzle(client);
+  await client.exec('CREATE SCHEMA IF NOT EXISTS auth');
+  await client.exec(readFileSync('migrations/0222_app_authorization_codes.sql', 'utf8'));
   await client.exec(`
-    CREATE SCHEMA auth;
+    CREATE SCHEMA IF NOT EXISTS auth;
     CREATE SCHEMA registry;
     CREATE TABLE auth.identities (id text PRIMARY KEY, scope text);
     CREATE TABLE auth.identity_members (identity_did text, member_did text, removed_at timestamptz);
@@ -119,7 +123,7 @@ afterAll(() => { vi.unstubAllEnvs(); });
 
 const lanes = [
   { name: 'keypair', handler: keypairConsent, path: '/api/auth/authorize', success: 201,
-    body: { appId: 'app_test', scopes: ['media:read'] } },
+    body: { appId: 'app_test', scopes: ['media:read'], state: 's'.repeat(64) } },
   { name: 'oauth', handler: oauthConsent, path: '/oauth/authorize', success: 200,
     body: { client_id: 'app_test', redirect_uri: 'https://app.example.test/callback',
       scope: 'media:read', code_challenge: 'challenge', code_challenge_method: 'S256' } },

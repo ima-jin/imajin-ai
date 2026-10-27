@@ -16,9 +16,13 @@ interface CodeBinding {
 
 export async function issueAppAuthorizationCode(binding: CodeBinding): Promise<string> {
   const code = randomBytes(32).toString('hex');
-  await db.insert(appAuthorizationCodes).values({
-    ...binding, codeHash: hashCode(code), expiresAt: new Date(Date.now() + 60_000),
-  });
+  try {
+    await db.insert(appAuthorizationCodes).values({
+      ...binding, codeHash: hashCode(code), expiresAt: new Date(Date.now() + 60_000),
+    });
+  } catch {
+    throw new Error('App authorization code issuance unavailable');
+  }
   return code;
 }
 

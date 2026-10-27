@@ -38,8 +38,7 @@ describe('kernel-verified single-use code exchange', () => {
   const code = 'a'.repeat(64);
   const state = 's'.repeat(64);
   function codeBody(extra: Record<string, unknown> = {}) {
-    const { attestationId: _unused, ...proof } = VALID_BODY;
-    return { ...proof, timestamp: new Date().toISOString(), code, state, ...extra };
+    return { ...VALID_BODY, attestationId: undefined, timestamp: new Date().toISOString(), code, state, ...extra };
   }
   function consumed(subjectDid = ATTESTATION_ROW.issuerDid) {
     mocks.consume.mockResolvedValue({ authorization: { attestationId: ATTESTATION_ID, subjectDid } });
@@ -98,6 +97,7 @@ describe('kernel-verified single-use code exchange', () => {
     { state: 's'.repeat(257) }, { attestationId: ATTESTATION_ID }, { principalDid: 'did:imajin:user' },
     { nonce: 'short' }, { timestamp: 'invalid' }, { timestamp: new Date(0).toISOString() },
     { appDid: 1 }, { signature: null },
+    { scope: {} }, { aud: [] },
   ])('refuses malformed or ambiguous code exchanges', async change => {
     expect((await POST(makeRequest(codeBody(change)) as never)).status).toBeGreaterThanOrEqual(400);
     expect(mocks.consume).not.toHaveBeenCalled();

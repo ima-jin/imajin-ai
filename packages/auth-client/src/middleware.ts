@@ -26,5 +26,8 @@ export function forwardAuthCallback(
 
   const callback = appRedirectUrl('/api/auth/callback', req, options);
   callback.search = req.nextUrl.search;
-  return NextResponse.redirect(callback, 307);
+  const response = NextResponse.redirect(callback, 307);
+  response.headers.set('Cache-Control', 'no-store');
+  response.headers.set('Referrer-Policy', 'no-referrer');
+  return response;
 }

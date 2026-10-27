@@ -607,6 +607,8 @@ components:
       description: Shape returned by every app-token mint endpoint (#1069).
       properties:
         token: { type: string, description: "Short-lived EdDSA-signed app token" }
+        subjectDid: { type: string, description: "Kernel-verified subject; present only for sign-in code exchange" }
+        attestationId: { type: string, description: "Kernel-verified authorization; present only for sign-in code exchange" }
         expiresIn: { type: integer, example: 600, description: "Seconds until expiry" }
         scopes:
           type: array
@@ -625,6 +627,48 @@ components:
         error_description: { type: string, example: "This app is not registered with the kernel, or its registration has been revoked." }
 
 paths:
+  /api/auth/authorize:
+    servers:
+      - url: /
+        description: Kernel origin (this route is outside the /auth prefix)
+    post:
+      tags: [auth]
+      operationId: authorizeKeypairApp
+      summary: Consent to a registered keypair app and issue a single-use sign-in code
+      description: |
+        The keypair consent lane, called by /auth/authorize. Uses the authenticated
+        session subject and the registry callback URL. Issues a 256-bit random code,
+        stores its SHA-256 hash bound to app DID, subject DID, live app.authorized
+        attestation, callback URL and state, and returns the registered callback
+        redirect with code and state. TTL is 60 seconds. Responses are no-store.
+        The OAuth/MCP consent lane remains POST /oauth/authorize.
+      security: [{ cookieAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [appId, scopes, state]
+              properties:
+                appId: { type: string, minLength: 1 }
+                scopes: { type: array, items: { type: string } }
+                state: { type: string, minLength: 32, maxLength: 256 }
+      responses:
+        "201":
+          description: Kernel-issued code and state redirect
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [redirect]
+                properties:
+                  redirect: { type: string, format: uri }
+        "400": { description: Invalid JSON, app ID, scope selection or state }
+        "401": { description: Session required }
+        "403": { description: App inactive or consent not permitted }
+        "404": { description: App not found }
+        "500": { description: Authorization unavailable }
   /api/bank-details:
     description: |
       Human session only, with canonical auth-scoped act-as. Group callers must
@@ -2129,7 +2173,15 @@ paths:
         `${appDid}:${principalDid}:${nonce}:${timestamp}`. The kernel resolves that
         principal's single live (not revoked, not expired) `app.authorized` grant
         for this app at mint time. Re-consent on /jin replaces the grant without
-        a client change. Supply exactly one of the two selectors.
+        a client change.
+
+        For app sign-in, send `code` and `state` instead of either grant selector
+        and sign `${appDid}:${code}:${nonce}:${timestamp}`. Codes are kernel-issued,
+        SHA-256 hashed at rest, valid for 60 seconds and consumed atomically once.
+        The signing app, state and current registered callback must match the code.
+        The linked authorization must still be live and belong to the bound subject.
+        This mode additionally returns `subjectDid` and `attestationId`; apps use
+        these values for session identity. Supply exactly one of the three selectors.
 
         `nonce` must be at least 16 characters (client-generated); `timestamp` must be an
         ISO-8601 string within 60s of server time (replay-window bound). The app's public
@@ -2146,26 +2198,30 @@ paths:
               required: [appDid, nonce, timestamp, signature]
               oneOf:
                 - required: [attestationId]
-                  not: { required: [principalDid] }
+                  not: { anyOf: [{ required: [principalDid] }, { required: [code] }] }
                 - required: [principalDid]
-                  not: { required: [attestationId] }
+                  not: { anyOf: [{ required: [attestationId] }, { required: [code] }] }
+                - required: [code, state]
+                  not: { anyOf: [{ required: [attestationId] }, { required: [principalDid] }] }
               properties:
                 appDid: { type: string, description: "The app's registered DID" }
+                code: { type: string, pattern: "^[a-f0-9]{64}$", description: "Kernel-issued single-use sign-in code" }
+                state: { type: string, minLength: 32, maxLength: 256, description: "State bound to the issued code" }
                 attestationId: { type: string, minLength: 1, description: "The user's app.authorized attestation for this app (legacy by-ID path)" }
                 principalDid: { type: string, minLength: 1, description: "The consenting principal whose live app.authorized grant is resolved at mint time" }
                 scope: { type: string, description: "Optional single scope to narrow to (must already be granted)" }
                 aud: { type: string, description: "Optional target service" }
                 nonce: { type: string, minLength: 16, description: "Client-generated, >= 16 chars" }
                 timestamp: { type: string, format: date-time, description: "Must be within 60s of server time" }
-                signature: { type: string, description: "Ed25519 hex signature over `${appDid}:${attestationId}:${nonce}:${timestamp}` or, by principal, `${appDid}:${principalDid}:${nonce}:${timestamp}`" }
+                signature: { type: string, description: "Ed25519 hex signature over `${appDid}:${selector}:${nonce}:${timestamp}`, where selector is code, attestationId or principalDid" }
       responses:
         "200":
-          description: App token minted
+          description: App token minted; code exchange additionally returns subjectDid and attestationId
           content:
             application/json:
               schema: { $ref: "#/components/schemas/AppTokenMintResult" }
         "400":
-          description: Missing required field, invalid or ambiguous grant selector, or nonce shorter than 16 chars
+          description: Missing field, invalid or ambiguous selector, short nonce, code_invalid (unissued, expired or binding mismatch), or code_used (already consumed)
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
