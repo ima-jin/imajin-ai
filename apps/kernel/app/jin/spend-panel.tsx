@@ -265,7 +265,7 @@ function isAbortError(err: unknown): boolean {
 export function SpendPanel() {
   const [isOperator, setIsOperator] = useState(false);
   const [spend, setSpend] = useState<SpendLane | null>(null);
-  const [interim, setRunSpend] = useState<Spend | null>(null);
+  const [runSpend, setRunSpend] = useState<Spend | null>(null);
   const [error, setError] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
@@ -332,7 +332,7 @@ export function SpendPanel() {
 
       {error && <div className="mb-3 px-3 py-2 rounded text-xs font-medium bg-red-900/40 text-red-300">{error}</div>}
       {spend && <ProviderBlock spend={spend} />}
-      {interim && <RunSpendBlock interim={interim} />}
+      {runSpend && <RunSpendBlock interim={runSpend} />}
     </section>
   );
 }
