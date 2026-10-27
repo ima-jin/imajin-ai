@@ -1,6 +1,7 @@
 # @ima-jin/auth-client
 
 "Sign in with Imajin" SDK for federated apps. Lightweight JWT session management + ready-made Next.js route handlers.
+App sign-in sessions are bound to a kernel-verified single-use authorization code.
 Standalone apps must forward root sign-in callback parameters before applying login or claim gates.
 
 ## Install
