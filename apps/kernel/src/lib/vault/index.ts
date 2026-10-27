@@ -1241,7 +1241,7 @@ export async function revokeStaticSecretGrant(
  *
  * Returns the number of grants revoked.
  */
-export async function revokeVaultDelegationGrantsForConnector(
+export function revokeVaultDelegationGrantsForConnector(
   connectorId: string,
   ownerDid: string,
   options?: { attest: boolean },
