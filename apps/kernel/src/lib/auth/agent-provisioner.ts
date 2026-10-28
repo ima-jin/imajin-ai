@@ -118,7 +118,7 @@ function envelopeInputFromRow(row: Pick<AgentProvisionRow, 'agentDid' | 'serving
         provider: model.provider,
         via: model.via,
       },
-      purpose: `Provisioned via the envelope provisioner (#1933) for ${row.servingDid}.`,
+      purpose: `Agent provisioned for ${row.servingDid}.`,
     },
   };
 }

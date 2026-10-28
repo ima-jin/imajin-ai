@@ -163,13 +163,13 @@ const dispatchTool: McpTool = {
       conversation_id: {
         type: 'string',
         description:
-          'Optional conversation id to continue (#1939) — Warp resumes from where a prior ' +
+          'Optional conversation id to continue — Warp resumes from where a prior ' +
           'run under this conversation left off',
       },
       parent_run_id: {
         type: 'string',
         description:
-          'Optional parent run id for an orchestration hierarchy (#1939). The parent run ' +
+          'Optional parent run id for an orchestration hierarchy. The parent run ' +
           'must exist and be visible to your own sealed key.',
       },
       model_id: {
@@ -196,7 +196,7 @@ const dispatchTool: McpTool = {
         type: 'object',
         description:
           'Retrieve evidence from your own corpus and prepend it to the prompt before dispatch ' +
-          '(#2021). Always searches your own corpus — there is no way to name a different DID here. ' +
+          'Always searches your own corpus — there is no way to name a different DID here. ' +
           'A search failure (corpus unreachable, unknown ref, access-claim rejection) fails the ' +
           'whole dispatch rather than silently proceeding without the requested context.',
         properties: {
@@ -204,7 +204,7 @@ const dispatchTool: McpTool = {
           query: { type: 'string', description: 'Required search query text.' },
           ref: {
             type: 'string',
-            description: 'Optional: pin to a previously-ingested git sha for source (#1921).',
+            description: 'Optional: pin to a previously-ingested git sha for source.',
           },
           limit: { type: 'number', description: 'Optional, 1–20. Defaults to 8.' },
           max_chars: { type: 'number', description: 'Optional cap on the retrieved block. Defaults to 6000.' },
@@ -374,7 +374,7 @@ const listRunsTool: McpTool = {
       ancestor_run_id: {
         type: 'string',
         description:
-          'Optional run id (#1939) — lists every run spawned, directly or transitively, ' +
+          'Optional run id — lists every run spawned, directly or transitively, ' +
           "from this ancestor's parentRunId lineage",
       },
     },
@@ -465,7 +465,7 @@ const sendFollowupTool: McpTool = {
     'correction instead of cancel-and-redispatch. Returns { runId, accepted: true }: ' +
     'acceptance is not application, so observe the effect with warp_get_run. ' +
     'Delivered with your own sealed key, so you can only talk to your own runs. ' +
-    'A run that has already ended is refused unless resume is set (#1939) — pass ' +
+    'A run that has already ended is refused unless resume is set — pass ' +
     'resume: true to continue it via Warp\'s cloud-to-cloud handoff. ' +
     'Requires an active warp:dispatch grant and a key sealed via warp_seal_key.',
   inputSchema: {
@@ -490,7 +490,7 @@ const sendFollowupTool: McpTool = {
       resume: {
         type: 'boolean',
         description:
-          'Continue a run that has already ended, via cloud-to-cloud handoff (#1939). ' +
+          'Continue a run that has already ended, via cloud-to-cloud handoff. ' +
           'Defaults to false — a terminal run is refused unless this is explicitly true.',
       },
     },

@@ -383,7 +383,7 @@ export function evaluateKeyRotationPreflight(input: KeyRotationPreflightInput): 
   if (newKey) {
     const devKey = crypto.getPublicKey(crypto.bytesToHex(sha256(new TextEncoder().encode(DEV_FALLBACK_SIGNING_SEED))));
     if (newKey.publicKey === devKey) {
-      errors.push('new key is the publicly-known dev fallback key (#1520) — generate a fresh one');
+      errors.push('new key is the publicly-known dev fallback key — generate a fresh one');
     }
   }
 

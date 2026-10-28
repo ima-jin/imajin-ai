@@ -135,6 +135,15 @@ describe('value-moving class — settle, settle/confirm, .fair split edits', () 
 });
 
 describe('value-moving class — settle (buyer-initiated)', () => {
+  it('rejects unsupported rails in plain product language without reading or writing rows', async () => {
+    const res = await settle(makeRequest('POST', { scheme: 'fiat' }), { params });
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({
+      error: 'Only mjnx-direct settlement is supported on this node.', scheme: 'fiat',
+    });
+    expect(mockSelect).not.toHaveBeenCalled();
+    expect(mockInsert).not.toHaveBeenCalled();
+  });
   it('POST settle refuses a delegate and writes no settlement row', async () => {
     // settle validates the body and loads a priced .fair manifest BEFORE auth
     // (receipts are buyer-bound), so give it one to get as far as the gate.

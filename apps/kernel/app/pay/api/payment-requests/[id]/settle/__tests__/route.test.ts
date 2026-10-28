@@ -63,6 +63,9 @@ describe('POST /pay/api/payment-requests/:id/settle', () => {
     for (const method of ['stripe', 'mjnx', undefined]) {
       const res = await callSettle({ method });
       expect(res.status).toBe(400);
+      expect(await res.json()).toEqual({
+        error: "method must be 'manual' or 'emt' — 'stripe'/'mjnx' settlement is handled via checkout",
+      });
     }
     expect(mocks.settlePaymentRequestManual).not.toHaveBeenCalled();
     expect(mocks.settlePaymentRequestEmt).not.toHaveBeenCalled();

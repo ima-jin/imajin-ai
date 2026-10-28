@@ -85,7 +85,7 @@ export function resolveVaultPath(): string {
   if (process.env.NODE_ENV === 'production') {
     throw new Error(
       'VAULT_PATH is required in production: refusing to fall back to the shared default vault file ' +
-      `(${DEFAULT_VAULT_PATH}). Dev and prod must never read/write the same vault (#2357 — a dev process ` +
+      `(${DEFAULT_VAULT_PATH}). Dev and prod must never read/write the same vault (a dev process ` +
       'could otherwise read and re-seal prod-sealed material). Set VAULT_PATH to a per-environment path ' +
       "(e.g. ~/.imajin/vault.prod.json) in this process's environment.",
     );

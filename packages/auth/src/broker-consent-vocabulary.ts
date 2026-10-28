@@ -288,7 +288,7 @@ export const BROKER_PURPOSE_VOCABULARY = [
   {
     purpose: 'agent.reach',
     label: 'Agent reach',
-    description: 'Per-principal agent endpoint (#2251): a foreign agent, acting for its own principal, asks whether this principal is open to being contacted about a declared topic. Answers only a boolean — never the underlying topic list.',
+    description: 'Per-principal agent endpoint: a foreign agent, acting for its own principal, asks whether this principal is open to being contacted about a declared topic. Answers only a boolean — never the underlying topic list.',
     allowedFields: ['contact_topics'],
     status: 'canonical',
   },
