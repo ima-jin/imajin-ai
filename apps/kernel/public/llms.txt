@@ -73,6 +73,10 @@ License: Imajin Network License (INL) v1.0, source-available, not MIT.
   authenticated subject, live authorization, callback and state. The app signs
   its exchange at POST /auth/api/apps/token and uses only the returned subjectDid
   and attestationId for its session. See /auth/api/spec and auth-client README.
+- Internal GET /api/cron/app-authorization-code-cleanup requires the vault cron
+  bearer, not a session or app token. Every ten minutes it deletes only
+  auth.app_authorization_codes past one hour from consumption (or expiry when
+  unconsumed), returning {ok:true,deleted}. Live codes and grace-boundary rows stay.
 - Warp briefs: GET/PUT /jin/api/brief-settings (human session, warp-scoped
   owner/admin act-as only), UI /jin/brief-settings. Default full-text stores
   exact outgoing UTF-8 in a private immutable signed media asset. The final
@@ -211,7 +215,7 @@ are omitted from the implemented reference and reported in the #2028 run-log.
 - /vault/api/spec — imajin vault — apps/kernel/api-spec/vault.yaml
 - corpus:/spec — imajin corpus — apps/corpus/api-spec/openapi.yaml
 
-## Complete App Router inventory (671 handlers)
+## Complete App Router inventory (672 handlers)
 
 - GET /.well-known/agent.json — apps/kernel/app/.well-known/agent.json/route.ts
 - GET, OPTIONS /.well-known/agent/{id} — apps/kernel/app/.well-known/agent/[id]/route.ts
@@ -294,6 +298,7 @@ are omitted from the implemented reference and reported in the #2028 run-log.
 - POST /api/bugs/{id}/import — apps/kernel/app/api/bugs/[id]/import/route.ts
 - GET /api/bugs/admin — apps/kernel/app/api/bugs/admin/route.ts
 - POST /api/client-errors — apps/kernel/app/api/client-errors/route.ts
+- GET /api/cron/app-authorization-code-cleanup — apps/kernel/app/api/cron/app-authorization-code-cleanup/route.ts
 - GET /api/cron/attestation-cleanup — apps/kernel/app/api/cron/attestation-cleanup/route.ts
 - GET /api/cron/claim-stub-expiry — apps/kernel/app/api/cron/claim-stub-expiry/route.ts
 - GET /api/cron/domain-recheck — apps/kernel/app/api/cron/domain-recheck/route.ts
