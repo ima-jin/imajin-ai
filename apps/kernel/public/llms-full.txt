@@ -32,6 +32,14 @@ License: Imajin Network License (INL) v1.0, source-available, not MIT.
   Admission is per process: 20/member/minute, 60/app/minute and 4 calls in flight;
   429/503 admission refusals write nothing permanent. No transaction spans Postman I/O.
   Signed audit follows the exchange; reconnect tombstones the prior sealed field.
+- MCP cycle_status and cycle_run require cycle:run plus the live connector grant.
+  Both return the caller's registry horizon {depth,targetDepth:12,deficit,zones:
+  {tail,middle,near,head,past},noStepsPublished}; belowDepth:{deficit} is present
+  only below target. cycle_run captures this before starting phases.
+  No published steps returns depth 0 and "No horizon steps published yet", not
+  an error; a drained horizon is distinct. No cycle yet returns correlationId:null
+  and state:not_started. Explicit foreign/non-cycle ids remain not_found.
+  Contracts: /jin/api/spec x-mcp-tools and MCP tools/list. No harness reads or refill.
 - App sign-in begins on the app's createLoginHandler route. Keypair consent
   POST /api/auth/authorize issues a 60-second single-use code bound to app,
   authenticated subject, live authorization, callback and state. The app signs

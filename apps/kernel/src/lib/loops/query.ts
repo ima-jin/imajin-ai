@@ -32,6 +32,18 @@ export async function getLastStepEventAt(principal: string): Promise<string | nu
   return at == null ? null : new Date(at).toISOString();
 }
 
+/** Loops with signed step activity for this principal, including already-exited steps. */
+export async function getStepLoopIds(principal: string): Promise<string[]> {
+  const sql = getClient();
+  const rows = (await sql`
+    SELECT DISTINCT loop_id
+    FROM kernel.loop_events
+    WHERE principal = ${principal} AND type = ANY(${STEP_EVENT_TYPES}::text[])
+    ORDER BY loop_id
+  `) as unknown as Array<{ loop_id: string }>;
+  return rows.map(row => row.loop_id);
+}
+
 export interface ListLoopsFilters {
   principal: string;
   state?: string | null;
