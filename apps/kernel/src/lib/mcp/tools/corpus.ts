@@ -106,7 +106,7 @@ const searchTool: McpTool = {
       ref: {
         type: 'string',
         description:
-          'Pin results to a previously-ingested git sha for "source" (#1921), for reproducible retrieval. Requires "source".',
+          'Pin results to a previously-ingested git sha for "source", for reproducible retrieval. Requires "source".',
       },
     },
     required: ['query'],

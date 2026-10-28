@@ -546,6 +546,9 @@ jobs:
       - name: No stripe_id guard
         run: node scripts/ci-guard-no-stripe-id.mjs
 
+      - name: No issue references in product copy
+        run: node scripts/ci-guard-no-issue-refs-in-copy.mjs
+
   sonarcloud:
     name: SonarCloud
     # A skipped JOB resolves this exact required context successfully without

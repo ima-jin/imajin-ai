@@ -88,7 +88,7 @@ function TurnRow({ row }: Readonly<{ row: TurnUsageRow }>) {
       <td className="px-4 py-2 text-xs text-gray-300 text-right whitespace-nowrap">{formatCost(row.cost.total)}</td>
       <td
         className="px-4 py-2 text-xs text-gray-300 text-right whitespace-nowrap"
-        title="Signed tool-call evidence attestations committed for this turn (#1978)"
+        title="Signed tool-call evidence attestations committed for this turn"
       >
         {(row.evidenceCount ?? 0).toLocaleString()}
       </td>

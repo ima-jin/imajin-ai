@@ -75,6 +75,8 @@ describe('POST /oauth/register — open DCR (#1878)', () => {
     expect(body.token_endpoint_auth_method).toBe('none');
     expect(mockDbInsert).toHaveBeenCalledOnce();
     const insertedRow = mockDbInsertValues.mock.calls[0][0] as Record<string, unknown>;
+    expect(insertedRow.description).toBe('Registered MCP connector');
+    expect(insertedRow.description).not.toMatch(/#\d+/);
     expect(insertedRow.callbackUrl).toBe('https://www.typingmind.com/api/mcp/oauth/callback');
     // #1990: DCR registers as third_party and records the FULL redirect-uri
     // origin set, not just callbackUrl's single origin.

@@ -125,6 +125,14 @@ afterEach(() => {
 });
 
 describe('org delegator context (#2997)', () => {
+  it('keeps explanatory copy and tooltips free of issue references', async () => {
+    await renderAgentsPage([agent({ grants: [] })]);
+    fireEvent.click(screen.getByRole('button', { name: '+ Provision Agent' }));
+    expect(document.body.textContent).not.toMatch(/#\d{3,5}/);
+    for (const element of document.querySelectorAll('[title]')) {
+      expect(element.getAttribute('title')).not.toMatch(/#\d{3,5}/);
+    }
+  });
   const orgDid = `did:imajin:org-${'a'.repeat(64)}`;
   const actorDid = 'did:imajin:human-owner';
 
