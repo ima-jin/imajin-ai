@@ -13,6 +13,10 @@ describe('Runs command discovery (#2404 / plugin #77)', () => {
     expect(operation.parameters).toEqual([
       { name: 'loopId', in: 'path', required: true, schema: { type: 'string' } },
     ]);
+    const prepare = spec.paths['/api/runs/{loopId}/commands'].post.requestBody.content['application/json'].schema.oneOf[0];
+    const command = spec.components.schemas.SessionCommand;
+    expect(prepare.properties.type.enum).toEqual(command.properties.type.enum);
+    expect(command.properties.payload.description).toContain('12 KiB');
     const choices = operation.requestBody.content['application/json'].schema.oneOf;
     expect(choices[0].required).toEqual(['action', 'type', 'payload']);
     expect(choices[0].properties.action.const).toBe('prepare');
@@ -25,10 +29,11 @@ describe('Runs command discovery (#2404 / plugin #77)', () => {
   it('pins the complete two-signature frame without harness addressing fields', () => {
     const command = spec.components.schemas.SessionCommand;
     expect(command.required).toEqual([
-      'type', 'commandId', 'to', 'principal', 'issuer', 'issuedAt', 'expiresAt', 'payload', 'signature',
+      'type', 'commandId', 'to', 'principal', 'issuer', 'issuedAt', 'payload', 'signature',
     ]);
     expect(command.properties.type.enum).toEqual([
       'session.send', 'session.abort', 'session.spawn', 'session.approve', 'session.deny',
+      'session.archive', 'session.reset', 'session.label', 'session.history',
     ]);
     expect(command.properties.signature).toEqual({ $ref: '#/components/schemas/SessionCommandSignature' });
     expect(command.properties.countersignature).toEqual(command.properties.signature);

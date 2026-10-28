@@ -244,21 +244,21 @@ components:
       type: object
       description: >-
         Plugin #77 command frame. Kernel grant and principal wish both sign
-        canonicalize({type,commandId,to,principal,issuer,issuedAt,expiresAt,payload}).
+        canonicalize({type,commandId,to,principal,issuer,issuedAt,expiresAt:expiresAt??null,payload}).
         Prepare returns the grant; dispatch requires the full countersignature.
         Payload is strictly allowlisted per command and never contains harness keys.
-      required: [type, commandId, to, principal, issuer, issuedAt, expiresAt, payload, signature]
+      required: [type, commandId, to, principal, issuer, issuedAt, payload, signature]
       additionalProperties: false
       properties:
         type:
           type: string
-          enum: [session.send, session.abort, session.spawn, session.approve, session.deny]
+          enum: [session.send, session.abort, session.spawn, session.approve, session.deny, session.archive, session.reset, session.label, session.history]
         commandId: { type: string }
         to: { type: string, description: "Verified owning agent DID, never a gateway address." }
         principal: { type: string }
         issuer: { type: string }
         issuedAt: { type: string, format: date-time }
-        expiresAt: { type: string, format: date-time }
+        expiresAt: { type: [string, "null"], format: date-time, description: "Defaults to issuedAt plus five minutes; prepare emits an explicit expiry." }
         payload:
           type: object
           description: >-
@@ -266,6 +266,12 @@ components:
             spawn: {parentLoopId,task,label?,agentId?,group?,model?};
             approve/deny: {loopId,approvalId,kind?}. Target must match the
             route loop. Approval dispatch uses the existing decision route only.
+            Archive/reset/history: {loopId}; label: {loopId,label}, nonblank
+            and at most 256 characters. Extra fields are rejected.
+            Reset can return signed missing_scope; scopes are never widened.
+            History publishes redacted typed loop.progress output through the
+            existing events path: at most 20 recent entries, 80 blocks,
+            12 KiB per output. Archive retains history and records.
           additionalProperties: { type: string }
         signature: { $ref: "#/components/schemas/SessionCommandSignature" }
         countersignature: { $ref: "#/components/schemas/SessionCommandSignature" }
@@ -1421,7 +1427,7 @@ paths:
                     action: { type: string, const: prepare }
                     type:
                       type: string
-                      enum: [session.send, session.abort, session.spawn, session.approve, session.deny]
+                      enum: [session.send, session.abort, session.spawn, session.approve, session.deny, session.archive, session.reset, session.label, session.history]
                     payload: { type: object, additionalProperties: { type: string } }
                 - type: object
                   additionalProperties: false

@@ -4,6 +4,16 @@ import type { LoopEventJson } from '@/src/lib/loops/serialize';
 import { runLoop } from './runs-fixture';
 
 describe('Runs lane ordering', () => {
+  it('hides archived roots and descendants from active rows without mutating retained history', () => {
+    const loops = [
+      runLoop({ loopId: 'root', kind: 'openclaw.session' }),
+      runLoop({ loopId: 'archived-child', parentLoopId: 'root', kind: 'custom', state: 'archived' }),
+      runLoop({ loopId: 'archived', state: 'archived', finishedAt: new Date().toISOString(), lastSeenAt: new Date().toISOString() }),
+    ];
+    expect(visibleRuns(loops).map(loop => loop.loopId)).toEqual(['root']);
+    expect(loops).toHaveLength(3);
+    expect(loops[2].state).toBe('archived');
+  });
   it('recognizes arbitrary blocked states from lifecycle and never flags finished loops', () => {
     expect(isBlockedLoop(runLoop({ lastEventType: 'loop.blocked', state: 'awaiting_review' }))).toBe(false);
     expect(isBlockedLoop(runLoop({ kind: 'custom', lastEventType: 'loop.blocked', state: 'awaiting_review' }))).toBe(true);

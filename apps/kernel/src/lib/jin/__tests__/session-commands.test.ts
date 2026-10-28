@@ -26,6 +26,8 @@ const agentKey = crypto.generateKeypair();
 const principalKey = crypto.generateKeypair();
 const kernelKey = crypto.generateKeypair();
 const registry = new Map<string, string>();
+const lifecycleTypes = ['session.archive', 'session.reset', 'session.label', 'session.history'] as const;
+const lifecyclePayload = (type: SessionCommandType) => type === 'session.label' ? { loopId, label: 'Operator label' } : { loopId };
 function tagged(executor: Pick<PGlite, 'query'>) {
   return async (strings: TemplateStringsArray, ...values: unknown[]) => {
     const query = strings.reduce((value, part, index) => value + (index ? `$${index}` : '') + part, '');
@@ -96,6 +98,60 @@ beforeEach(async () => {
 });
 
 describe('secure session command grant and wish', () => {
+  it.each([undefined, null])('canonicalizes absent expiry %s to null and enforces the default TTL', async expiresAt => {
+    const original = await signCommand('session.history', { loopId });
+    const frame = { ...original, expiresAt };
+    const canonical = canonicalize(sessionCommandBody(frame));
+    expect(JSON.parse(canonical).expiresAt).toBeNull();
+    frame.signature.sig = crypto.signSync(canonical, kernelKey.privateKey);
+    frame.countersignature.sig = crypto.signSync(canonical, principalKey.privateKey);
+    await expect(verifySessionCommand(loopId, principal, frame)).resolves.toEqual(frame);
+    frame.issuedAt = new Date(Date.now() - 301_000).toISOString();
+    await expect(verifySessionCommand(loopId, principal, frame)).rejects.toThrow('time window');
+  });
+  it.each(lifecycleTypes)('emits exact signed %s and rejects replay, foreign identities, expired and altered commands', async type => {
+    const payload = lifecyclePayload(type);
+    const frame = await signCommand(type, payload);
+    expect(frame.payload).toEqual(payload);
+    expect(frame.to).toBe(agent);
+    const body = canonicalize(sessionCommandBody(frame));
+    expect(crypto.verifySync(frame.signature.sig, body, kernelKey.publicKey)).toBe(true);
+    expect(crypto.verifySync(frame.countersignature.sig, body, principalKey.publicKey)).toBe(true);
+    for (const field of ['to', 'principal', 'issuer']) {
+      await expect(dispatchSessionCommand(loopId, principal, { ...frame, [field]: 'did:imajin:foreign' })).rejects.toThrow('identity mismatch');
+    }
+    await expect(dispatchSessionCommand(loopId, principal, { ...frame, expiresAt: new Date(Date.now() - 1).toISOString() })).rejects.toThrow('time window');
+    await expect(dispatchSessionCommand(loopId, principal, { ...frame, issuedAt: new Date(Date.now() + 600_000).toISOString() })).rejects.toThrow('time window');
+    await expect(dispatchSessionCommand(loopId, principal, { ...frame, countersignature: undefined })).rejects.toThrow('wish');
+    await expect(dispatchSessionCommand(loopId, principal, { ...frame, signature: { ...frame.signature, keyId: agentKey.publicKey } })).rejects.toThrow('kernel grant');
+    await expect(dispatchSessionCommand(loopId, principal, { ...frame, payload: { ...payload, loopId: 'foreign' } })).rejects.toThrow('address this run');
+    mocks.service.mockResolvedValueOnce([]);
+    await expect(dispatchSessionCommand(loopId, principal, frame)).rejects.toThrow('no longer serves');
+    expect(fetch).not.toHaveBeenCalled();
+    await dispatchSessionCommand(loopId, principal, frame);
+    expect(JSON.parse(String(vi.mocked(fetch).mock.calls[0][1]?.body)).command).toEqual(frame);
+    await expect(dispatchSessionCommand(loopId, principal, frame)).rejects.toThrow('already consumed');
+    expect(fetch).toHaveBeenCalledOnce();
+  });
+  it.each(lifecycleTypes)('rejects extra fields and invalid loop identifiers on %s before signing and at dispatch', async type => {
+    for (const field of ['sessionKey', 'parentSessionKey', 'key', 'expectedSessionId', 'approvalId', 'arbitrary']) {
+      const payload = { ...lifecyclePayload(type), [field]: 'forbidden' };
+      await expect(prepareSessionCommand(loopId, principal, type, payload)).rejects.toThrow();
+      const frame = await signCommand(type, lifecyclePayload(type));
+      await expect(dispatchSessionCommand(loopId, principal, { ...frame, payload })).rejects.toThrow();
+    }
+    for (const invalid of ['', 'has space', '\u0000', 'x'.repeat(513), null, 5]) {
+      expect(() => parseSessionCommandPayload(type, { ...lifecyclePayload(type), loopId: invalid })).toThrow();
+    }
+    expect(fetch).not.toHaveBeenCalled();
+  });
+  it('accepts the exact label bound without trimming the signed payload and rejects missing/blank/long/non-string labels', () => {
+    for (const label of ['', ' \n\t', 'x'.repeat(257), null, undefined, 5]) {
+      expect(() => parseSessionCommandPayload('session.label', { loopId, label })).toThrow();
+    }
+    const label = ` ${'x'.repeat(254)} `;
+    expect(parseSessionCommandPayload('session.label', { loopId, label })).toEqual({ loopId, label });
+  });
   it('signs only the documented full body and durably claims one own-agent dispatch', async () => {
     const frame = await signCommand();
     expect(Object.keys(sessionCommandBody(frame)).sort()).toEqual(['commandId', 'expiresAt', 'issuedAt', 'issuer', 'payload', 'principal', 'to', 'type']);
@@ -252,6 +308,23 @@ describe('originating agent proof', () => {
 });
 
 describe('signed socket bindings and outcomes', () => {
+  it.each(lifecycleTypes)('records %s completion or explicit scope refusal, retaining the command and event history', async type => {
+    const command = await signCommand(type, lifecyclePayload(type));
+    await dispatchSessionCommand(loopId, principal, command);
+    const result = type === 'session.reset' ? outcome(command, {
+      eventType: 'loop.session.reset.failed', outcome: 'failed', reason: 'missing_scope',
+      detail: 'Reset requires operator.admin; plugin scopes unchanged.',
+    }) : outcome(command);
+    await expect(ingestSessionCommandFrame('did:imajin:foreign', result)).rejects.toThrow('Socket publisher');
+    await expect(ingestSessionCommandFrame(agent, outcome(command, { payloadHash: '0'.repeat(64) }))).rejects.toThrow('not correlated');
+    const forged = { ...result, attestation: { ...result.attestation, signature: '0'.repeat(128) } };
+    await expect(ingestSessionCommandFrame(agent, forged)).rejects.toThrow('Invalid current');
+    await ingestSessionCommandFrame(agent, result);
+    expect((await getSessionEvent('result', command.commandId, principal))?.payload.attestation).toEqual(result.attestation);
+    expect(await getSessionEvent('command', command.commandId, principal)).not.toBeNull();
+    expect((await pg.query(`SELECT loop_id FROM kernel.loops WHERE loop_id=$1`, [loopId])).rows).toHaveLength(1);
+    expect((await pg.query(`SELECT id FROM kernel.loop_events WHERE type='loop.started'`)).rows).toHaveLength(1);
+  });
   it('persists verified binding, deduplicates reconnects and revalidates current keys', async () => {
     const frame = binding();
     expect(await ingestSessionCommandFrame(agent, frame)).toEqual({ accepted: true, duplicate: false });

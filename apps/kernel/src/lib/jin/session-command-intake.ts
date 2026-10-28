@@ -143,7 +143,7 @@ export async function ingestSessionCommandFrame(socketDid: string, raw: unknown)
   if (Object.keys(extra).length) throw new SessionCommandError('Unexpected session event fields');
   const attestation = sessionAttestationSchema.parse(envelope);
   if (type === 'loop.approval.bound') return ingestBinding(socketDid, attestation);
-  if (typeof type !== 'string' || !/^loop\.session\.(send|abort|spawn|approve|deny)\.(completed|failed)$/.test(type)) {
+  if (typeof type !== 'string' || !/^loop\.session\.(send|abort|spawn|approve|deny|archive|reset|label|history)\.(completed|failed)$/.test(type)) {
     throw new SessionCommandError('Unsupported session event');
   }
   return ingestOutcome(socketDid, type, attestation);
