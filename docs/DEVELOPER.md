@@ -198,7 +198,8 @@ collision warns on both threads without preventing commands.
 
 `POST /jin/api/runs/{loopId}/commands` prepares a short-lived command with
 `action: "prepare"`, `type: "session.send" | "session.abort" | "session.spawn"`
-and a bounded `payload`. The target is `payload.loopId` (send/stop) or
+or `session.archive|reset|label|history` and a bounded `payload`.
+The target is `payload.loopId` (send/stop/lifecycle) or
 `payload.parentLoopId` (spawn); spawn also accepts task, label, group and model.
 The server resolves the verified originating agent, not a client-selected DID.
 After signing the complete prepared command in the browser, the operator
@@ -226,7 +227,7 @@ fall back to that legacy rail.
 Command correlation, signed bindings and outcomes reuse `kernel.loop_events`;
 this feature needs no new schema. A socket send means only delivery attempted.
 The UI waits for the correlated agent-signed
-`loop.session.{send,approve,deny,abort,spawn}.{completed,failed}` observation.
+`loop.session.{send,approve,deny,abort,spawn,archive,reset,label,history}.{completed,failed}` observation.
 The kernel verifies the authenticated socket DID, current agent key, principal,
 command ID, command type and payload hash before recording an outcome. Spawn
 lineage is accepted only from the signed child/parent attestation.
@@ -238,6 +239,25 @@ handoff; the agent signature is still independently required. Outbound commands
 use the local `/chat/api/internal/session-command` transport, deliberately
 separate from notification fan-out and its delegated recipients. Neither
 internal endpoint is a harness RPC or a public command bypass.
+
+Opening an active, commandable thread sends one full-body-signed
+`session.history` wish. Only the plugin reads its local history: at most
+20 recent entries, 80 redacted text/tool-call/tool-result output blocks and
+12 KiB per output, delivered through the existing signed `loop.progress`
+path. Stored history remains readable when signing or delivery is unavailable.
+Session controls send exactly `{loopId}` for archive/reset/history or
+`{loopId,label}` for label (nonblank, at most 256 characters). Unknown payload
+fields are refused both before signing and at dispatch. Prepare emits an
+explicit five-minute expiry; omitted/null expiry is canonicalized as null
+for both signatures and uses the same default TTL at verification.
+
+Archive hides only a signed `archived` lifecycle projection from active
+Threads; the loaded Archived run history disclosure reopens its retained
+events. Neither delivery nor a button click mutates a registry projection.
+Labels arrive through signed inventory updates, never an optimistic rename.
+Reset displays the plugin's signed `missing_scope` refusal with its command ID
+and issuer in History. No plugin scopes, local session references, transcript
+access, or Gateway client are added.
 
 The wire fixtures follow
 [plugin #77](https://github.com/ima-jin/openclaw-imajin-plugin/issues/77) and

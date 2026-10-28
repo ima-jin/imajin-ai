@@ -45,7 +45,7 @@ export async function prepareSignedSessionCommand(
     throw new Error('Prepared command does not match your request.');
   }
   const { type: commandType, commandId, to, principal, issuer, issuedAt, expiresAt } = command;
-  const body = { type: commandType, commandId, to, principal, issuer, issuedAt, expiresAt, payload: command.payload };
+  const body = { type: commandType, commandId, to, principal, issuer, issuedAt, expiresAt: expiresAt ?? null, payload: command.payload };
   const ed = await import('@noble/ed25519');
   const sig = await ed.signAsync(new TextEncoder().encode(canonicalCommandJson(body)), privateKey);
   const signature = Array.from(sig, (byte) => byte.toString(16).padStart(2, '0')).join('');
