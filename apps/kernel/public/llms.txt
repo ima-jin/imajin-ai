@@ -19,6 +19,27 @@ the generated package table in README.md links checked public registry metadata.
 License: Imajin Network License (INL) v1.0, source-available, not MIT.
 
 ## Integration and safety
+- App-hosted upstreams: PUT /connections/api/upstreams declares {upstreams:[{id,
+  origin,credentialHeader,credentialPrefix,paths:[{path,methods}]}]} on the caller's
+  existing registry app. App-service token + connectors:upstream:read + live operator
+  approval required. GET with appDid/upstreamId lets a personal member review it.
+  POST /connections/api/upstreams/connection takes {appDid,upstreamId,origin,secret,
+  orgContextDid?} in the member's own human session; origin must match the declaration.
+  GET status uses appDid/upstreamId query; DELETE takes those selectors in JSON,
+  retaining revoked rows and vault tombstones even after app/declaration withdrawal.
+  Existing OAuth consent grants connectors:upstream:read, optionally :write, per app.
+  POST /connections/api/upstreams/call takes {memberDid,upstreamId,path,method,body?,
+  reason?} as the app service, never a caller-selected app DID. GET/HEAD use read;
+  every other method needs explicit :write in token, live operator ceiling AND
+  member's app grant, plus reason member-request|app-workflow|scheduled-task.
+  Exact declared paths/methods only, HTTPS public egress pinned at connect, no redirects.
+  Kernel-only key injection; {status,body} response, no upstream headers/stream/errors,
+  2 MiB response and 16 KiB request limits. Credential echoes are refused.
+  Destination/header/prefix changes require member reconnection. Every valid service
+  call attempt is signed against member/app/org with reason/outcome, never request body.
+  Shared authorizeMemberConnection gates both this path and personal Postman MCP;
+  #3167 extends it for org-admin suspension. No UI or suspension-management API here.
+  See /connections/api/spec for the full contract and custody/deadline semantics.
 - Personal Postman MCP: GET/POST/DELETE /connections/api/external-mcp/postman
   requires the member's own human session, never org act-as or app lifecycle access.
   POST seals a write-only secret plus optional orgContextDid; DELETE revokes custody

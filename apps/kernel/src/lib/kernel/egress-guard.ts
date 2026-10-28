@@ -420,7 +420,7 @@ function findDenial(
  * one address is denied unless every resolved address is allowed; the first
  * allowed address is the one returned for pinning.
  */
-export async function checkEgressTarget(rawUrl: string): Promise<EgressCheckResult> {
+export async function checkEgressTarget(rawUrl: string, options: { allowPrivate?: boolean } = {}): Promise<EgressCheckResult> {
   const parsed = parseTarget(rawUrl);
   if (!parsed.ok) return parsed.value;
   const { hostname, port, url } = parsed.value;
@@ -438,7 +438,7 @@ export async function checkEgressTarget(rawUrl: string): Promise<EgressCheckResu
     return deny('dns_resolution_failed', `'${hostname}' resolved to no addresses`);
   }
 
-  const allowlist = loadAllowlistEntries(process.env[PRIVATE_ALLOWLIST_ENV_VAR]);
+  const allowlist = loadAllowlistEntries(options.allowPrivate === false ? undefined : process.env[PRIVATE_ALLOWLIST_ENV_VAR]);
   const denial = findDenial(addresses, hostname, port, allowlist);
   if (denial) return denial;
 

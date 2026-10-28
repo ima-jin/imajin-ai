@@ -283,6 +283,9 @@ export const SCOPE_VOCABULARY = [
   { scope: 'connectors:read-status', connector: null, label: 'Read your connector connection status' },
   // App services also need live member consent and operator approval on every call.
   { scope: 'connectors:mcp:read', connector: null, label: 'Read collections, saved requests and environments through your personal external MCP connection' },
+  // Service use requires live operator approval AND the member's per-app consent.
+  { scope: 'connectors:upstream:read', connector: null, label: 'Read declared upstream APIs using your kernel-held personal connection' },
+  { scope: 'connectors:upstream:write', connector: null, label: 'Mutate declared upstream APIs using your kernel-held personal connection' },
   // #1799: powers the per-connector usage rollup (attestations + signed connector
   // actions, scoped to the connector's registered scope(s)) — distinct from
   // connectors:read-status, which only ever answers connected/not-connected.

@@ -50,6 +50,8 @@ export const connectors = connectorsSchema.table('connectors', {
   sealedKeyField: text('sealed_key_field'),
   /** Attribution context only; never transfers ownership of a member's key. */
   orgContextDid: text('org_context_did'),
+  /** Digest of the member-approved app/upstream destination and injection shape. */
+  upstreamBinding: text('upstream_binding'),
   /**
    * Snapshot of the scopes granted on this connector, refreshed whenever the
    * owner publishes a scope-manifest. `auth.channel_links` stays authoritative:
