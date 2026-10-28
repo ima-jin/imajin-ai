@@ -107,11 +107,17 @@ describe('real Runs components on exact-contract fixture transport', () => {
       await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
       expect(await within(session).findByText('Operator-labelled session')).toBeDefined();
       fireEvent.click(screen.getByRole('button', { name: 'Sign & reset' }));
+      expect(screen.getByRole('heading', { name: 'Confirm reset: Operator-labelled session' })).toBeDefined();
+      expect(fixture.proofs).toHaveLength(2);
+      fireEvent.click(screen.getByRole('button', { name: 'Confirm reset' }));
       await vi.waitFor(() => expect(fixture.proofs).toHaveLength(3));
       await act(async () => { await vi.advanceTimersByTimeAsync(3000); });
       expect(await screen.findByText('Signed outcome: failed · missing_scope')).toBeDefined();
       expect(screen.getByText('loop.session.reset.failed')).toBeDefined();
       fireEvent.click(screen.getByRole('button', { name: 'Sign & archive' }));
+      expect(screen.getByRole('heading', { name: 'Confirm archive: Operator-labelled session' })).toBeDefined();
+      expect(fixture.proofs).toHaveLength(3);
+      fireEvent.click(screen.getByRole('button', { name: 'Confirm archive' }));
       await screen.findByText('Delivered · awaiting signed agent outcome');
       expect(screen.getAllByTestId('run-card')).toHaveLength(2);
       await vi.waitFor(() => expect(fixture.proofs).toHaveLength(4));

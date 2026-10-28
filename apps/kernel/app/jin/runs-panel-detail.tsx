@@ -82,7 +82,7 @@ export function RunsPanelDetail({ loopId, onSelect, onDenied, client }: Readonly
         ))}
       </dl>
       <RunComposer key={loopId} loopId={loopId} events={detail.events} disabled={!commandAvailable || !!detail.loop.finishedAt} onDispatched={refreshDetail} client={client} />
-      <RunSessionControls key={`session-${loopId}`} loopId={loopId} events={detail.events} disabled={!commandAvailable || !!detail.loop.finishedAt} onDispatched={refreshDetail} client={client} />
+      <RunSessionControls key={`session-${loopId}`} loopId={loopId} sessionName={detail.loop.summary} events={detail.events} disabled={!commandAvailable || !!detail.loop.finishedAt} onDispatched={refreshDetail} client={client} />
       <div>
         <h4 className="font-semibold text-gray-200">Lineage</h4>
         {detail.loop.parentLoopId && (
