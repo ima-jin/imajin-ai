@@ -72,7 +72,8 @@ import {
   isCyclePhaseName,
   type CyclePhaseName,
 } from '../../loops/cycle';
-import { getLoopWithHistory, listLoopsPage } from '../../loops/query';
+import { getLastStepEventAt, getLoopWithHistory, listLoopsPage } from '../../loops/query';
+import { projectHorizon } from '../../loops/horizon';
 import type { LoopEventJson } from '../../loops/serialize';
 import { getOperatorDid } from '../../notify/operator-approvals';
 import { listApprovalsForOperator } from '../../notify/operator-approvals-service';
@@ -80,6 +81,41 @@ import { emitDecisionCard, DECISION_APPROVAL_SOURCE } from '../../decisions/emit
 import { forEachSequential } from '../../async/sequential';
 
 const CYCLE_SCOPE = 'cycle:run';
+const HORIZON_DESCRIPTION =
+  'Returns horizon: { depth, targetDepth: 12, deficit, zones: { tail, middle, near, head, past }, ' +
+  'noStepsPublished, message? } from all your registry loops, excluding done/exited steps. ' +
+  'Below target includes belowDepth: { deficit }. noStepsPublished means no signed step event exists; ' +
+  'message is "No horizon steps published yet" then, not an error. ';
+
+/** Same loop resolution as Runs: principal-scoped pages, then each loop's canonical projection. */
+async function readCallerHorizon(principal: string) {
+  const empty = projectHorizon([], '', principal);
+  let depth = empty.depth;
+  const zones = { tail: 0, middle: 0, near: 0, head: 0, past: 0 };
+  let cursor: string | null = null;
+  do {
+    const page = await listLoopsPage({ principal, limit: 200, cursor });
+    await forEachSequential(page.loops, async (loop) => {
+      const history = await getLoopWithHistory(loop.loopId, principal);
+      if (!history) return;
+      depth += history.horizon.depth;
+      for (const step of history.horizon.steps) {
+        if (step.zone !== 'done') zones[step.zone]++;
+      }
+    });
+    cursor = page.nextCursor;
+  } while (cursor !== null);
+
+  const deficit = Math.max(0, empty.targetDepth - depth);
+  const noStepsPublished = (await getLastStepEventAt(principal)) === null;
+  return {
+    horizon: {
+      depth, targetDepth: empty.targetDepth, deficit, zones, noStepsPublished,
+      ...(noStepsPublished ? { message: 'No horizon steps published yet' } : {}),
+    },
+    ...(deficit > 0 ? { belowDepth: { deficit } } : {}),
+  };
+}
 
 // ── Argument parsing ─────────────────────────────────────────────────────────
 
@@ -238,7 +274,8 @@ const cycleRunTool: McpTool = {
   description:
     'Start your sprint cycle: registers a cycle loop on your own behalf and walks its five fixed phases ' +
     '(merge-sweep, hot-issue-raise, brief+provision, review-rounds, report — default: all five). ' +
-    'Returns { correlationId }; read progress with cycle_status. dry_run (default false) previews each ' +
+    'Returns correlationId and the caller horizon captured before starting the run or its merge sweep. ' +
+    HORIZON_DESCRIPTION + 'Read progress with cycle_status. dry_run (default false) previews each ' +
     'phase as a DecisionCard instead of enacting it. The underlying phase engine is not wired up yet ' +
     '(#2316 shipped the MCP tool surface only), so every phase is currently recorded as skipped on the ' +
     "cycle's own rail — nothing merges, files, or dispatches until that follow-up lands. Requires an " +
@@ -280,6 +317,7 @@ const cycleRunTool: McpTool = {
     const dryRun = args.dry_run === true;
     const plannedPhases = phasesResult.value;
 
+    const horizon = await readCallerHorizon(ctx.did);
     const started = await startCycle({ principal: ctx.did, trigger: 'mcp', plannedPhases });
     if (!started.ok) throw new Error(`cycle_run failed to start: ${started.error}`);
     const { correlationId } = started;
@@ -299,7 +337,7 @@ const cycleRunTool: McpTool = {
       cardIds,
     });
 
-    return json({ correlationId });
+    return json({ correlationId, ...horizon });
   },
 };
 
@@ -364,7 +402,8 @@ const cycleStatusTool: McpTool = {
     'Read your sprint cycle: current phase, per-phase status, linked children (Warp runs, reviews), and ' +
     'open DecisionCard ids. Omit correlation_id to read your own most recently active cycle. Only resolves ' +
     'cycles you started — a correlation_id belonging to a different principal, or naming a non-cycle loop, ' +
-    'is reported as not-found. Requires an active cycle:run grant on the Imajin MCP connector.',
+    'is reported as not-found. With no cycle yet, returns correlationId: null and state: not_started. ' +
+    HORIZON_DESCRIPTION + 'Requires an active cycle:run grant on the Imajin MCP connector.',
   inputSchema: {
     type: 'object',
     properties: {
@@ -380,7 +419,7 @@ const cycleStatusTool: McpTool = {
 
     const correlationId = str(args, 'correlation_id') ?? (await mostRecentCycleId(ctx.did));
     if (correlationId === undefined) {
-      throw new Error('not_found: you have no cycles yet — call cycle_run first');
+      return json({ correlationId: null, state: 'not_started', ...await readCallerHorizon(ctx.did) });
     }
 
     const history = await getLoopWithHistory(correlationId, ctx.did);
@@ -399,6 +438,7 @@ const cycleStatusTool: McpTool = {
       phases: derivePhaseStatuses(history.events),
       children: deriveChildren(history.events),
       openCardIds,
+      ...await readCallerHorizon(ctx.did),
     });
   },
 };
