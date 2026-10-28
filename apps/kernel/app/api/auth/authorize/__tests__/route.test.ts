@@ -1,4 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { parse } from 'yaml';
 
 const h = vi.hoisted(() => ({
   where: vi.fn(),
@@ -57,6 +59,32 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllEnvs());
 
 describe('POST /api/auth/authorize — shared consent seam (#3008)', () => {
+  it.each([
+    ['missing', undefined],
+    ['null', null],
+    ['empty', ''],
+    ['blank', '   '],
+    ['malformed', 'https://[invalid'],
+    ['relative', '/callback'],
+  ])('rejects a %s registry callback before any consent effects (#3162)', async (_name, callbackUrl) => {
+    h.where.mockResolvedValue([{ ...APP, callbackUrl }]);
+    const response = await POST(request());
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ error: 'invalid_app_callback' });
+    expect(h.upsert).not.toHaveBeenCalled();
+    expect(h.promote).not.toHaveBeenCalled();
+    expect(h.membership).not.toHaveBeenCalled();
+    expect(h.issue).not.toHaveBeenCalled();
+  });
+
+  it('documents the invalid callback response in the authorize operation (#3162)', () => {
+    const spec = parse(readFileSync('apps/kernel/api-spec/auth.yaml', 'utf8'));
+    const badRequest = spec.paths['/api/auth/authorize'].post.responses['400'];
+    expect(badRequest.description).toContain('missing or invalid');
+    expect(badRequest.content['application/json'].examples.invalidAppCallback.value)
+      .toEqual({ error: 'invalid_app_callback' });
+  });
+
   it('delegates validated scopes and returns the helper string ID', async () => {
     h.validate.mockReturnValue({ valid: ['profile:read'], invalid: [] });
     const response = await POST(request({ appId: APP.id, scopes: ['input-normalized-by-validator'] }));

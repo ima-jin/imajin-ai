@@ -6,6 +6,7 @@
  *
  * Body: { appId, scopes, state }
  * Returns: { redirect } containing a short-lived code and the supplied state.
+ * Invalid app callbacks must be rejected before consent is persisted (#3162).
  * #3008: consent must converge to one live grant per (principal, app).
  *
  * Re-consent (#3008): identical scope sets reuse the newest live grant;
@@ -95,6 +96,12 @@ export const POST = withLogger('kernel', async (request: NextRequest) => {
   if (disallowed.length > 0) {
     return NextResponse.json({ error: `Scopes not registered by app: ${disallowed.join(', ')}` }, { status: 400 });
   }
+  let redirect: URL;
+  try {
+    redirect = new URL(app.callbackUrl);
+  } catch {
+    return NextResponse.json({ error: 'invalid_app_callback' }, { status: 400 });
+  }
 
   const privateKey = process.env.AUTH_PRIVATE_KEY;
   if (!privateKey) {
@@ -126,7 +133,6 @@ export const POST = withLogger('kernel', async (request: NextRequest) => {
     appDid: app.appDid, subjectDid: identity.id, attestationId,
     callbackUrl: app.callbackUrl, state,
   });
-  const redirect = new URL(app.callbackUrl);
   redirect.searchParams.delete('attestation_id');
   redirect.searchParams.delete('user_did');
   redirect.searchParams.set('code', code);
