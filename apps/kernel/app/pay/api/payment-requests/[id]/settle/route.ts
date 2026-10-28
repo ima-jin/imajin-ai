@@ -8,7 +8,7 @@
  *    as a card payment. Idempotent: a replay is a 200 no-op
  *    (`settled: false`); a request already settled another way is a 409.
  *
- * `stripe`/`mjnx` methods are handled via checkout (#2209) — not accepted here.
+ * `stripe`/`mjnx` methods are handled via checkout — not accepted here.
  * The issuer check is enforced in the service, never trusted to the client.
  */
 import { NextRequest, NextResponse } from 'next/server';
@@ -51,7 +51,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
   if (body.method !== 'manual' && body.method !== 'emt') {
     return NextResponse.json(
-      { error: "method must be 'manual' or 'emt' — 'stripe'/'mjnx' settlement is handled via checkout (#2209)" },
+      { error: "method must be 'manual' or 'emt' — 'stripe'/'mjnx' settlement is handled via checkout" },
       { status: 400, headers: cors },
     );
   }

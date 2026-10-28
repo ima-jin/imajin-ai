@@ -185,7 +185,7 @@ describe('AppSecretsPanel', () => {
     await screen.findByText('Created');
     for (const label of ['Created', 'Provisioned', 'Claimed', 'Last seen']) {
       const line = screen.getByText(label, { exact: true }).parentElement!;
-      expect(line.textContent).toContain('unknown (pre-#3006 row)');
+      expect(line.textContent).toContain('unknown (legacy record)');
       expect(line.querySelector('time')).toBeNull();
     }
   });
@@ -207,7 +207,7 @@ describe('AppSecretsPanel', () => {
     const panel = await screen.findByTestId('app-secrets-panel');
     expect(within(panel).getByText(/not claimed yet/)).toBeDefined();
     const expiry = within(panel).getByText(new RegExp(`Claim code ${state}`));
-    expect(expiry.textContent).toContain(claimExpiresAt ?? 'unknown (pre-#3006 row)');
+    expect(expiry.textContent).toContain(claimExpiresAt ?? 'unknown (legacy record)');
     expect(expiry.querySelector('time')?.dateTime ?? null).toBe(claimExpiresAt);
     expect(within(panel).queryAllByRole('button')).toHaveLength(0);
     expect(within(panel).queryByLabelText('New value for DATABASE_URL')).toBeNull();

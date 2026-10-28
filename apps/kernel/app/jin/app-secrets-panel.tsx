@@ -21,7 +21,7 @@ interface AppSecretCard {
   secrets: AppDeclaredSecretStatus[];
 }
 
-const UNKNOWN_PROVENANCE = 'unknown (pre-#3006 row)';
+const UNKNOWN_PROVENANCE = 'unknown (legacy record)';
 function claimLabel(app: AppSecretCard): string {
   if (app.claimed) return 'claimed';
   return app.provisionFailed ? 'provision failed' : 'awaiting claim';

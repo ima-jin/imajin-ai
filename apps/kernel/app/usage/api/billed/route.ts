@@ -83,7 +83,7 @@ function validateBilledBody(body: BilledRequestBody): { value: ValidatedBilledBo
     return { error: 'currency must be a 3-letter uppercase ISO 4217 code (e.g. USD)' };
   }
   if (body.currency !== SUPPORTED_CURRENCY) {
-    return { error: "currency must be 'USD' — other currencies are rejected until #1950 (packages/money FX) lands" };
+    return { error: "currency must be 'USD' — other currencies are not supported" };
   }
 
   if (typeof body.amountMinor !== 'number' || !Number.isInteger(body.amountMinor) || body.amountMinor < 0) {

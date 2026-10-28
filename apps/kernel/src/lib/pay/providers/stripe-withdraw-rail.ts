@@ -39,7 +39,7 @@ export class StripeWithdrawRail implements WithdrawRail {
     // A caller that reserved funds then reaches here releases the reservation
     // (`executeWithdrawal` releases on a rail throw), so nothing is stranded.
     await getNodeStripeClient();
-    throw new Error(`StripeWithdrawRail.execute: intent ${intent.id} refused — Stripe withdrawals are retired (#2757); use the EMT withdrawal request`);
+    throw new Error(`StripeWithdrawRail.execute: intent ${intent.id} refused — Stripe withdrawals are retired; use the EMT withdrawal request`);
   }
 
   async list({ since }: ListTransfersParams): Promise<RailTransfer[]> {

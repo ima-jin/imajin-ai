@@ -321,6 +321,10 @@ beforeEach(() => {
 });
 
 describe('runAppProvision — verified domain issuance', () => {
+  it('stores a plain events description for the consent card', async () => {
+    expect((await runAppProvision({ slug: 'events', displayName: 'events' })).status).toBe('succeeded');
+    expect([...registryAppsStore.values()][0].description).toBe('events');
+  });
   it.each([undefined, 'members', 'anyone'] as const)('persists audience %s without a follow-up owner PATCH', async signInAudience => {
     expect((await runAppProvision({ slug: 'gbs', displayName: 'GBS', visibility: 'private', signInAudience })).status).toBe('succeeded');
     expect([...registryAppsStore.values()][0]).toMatchObject({ visibility: 'private', signInAudience: signInAudience ?? 'members' });
