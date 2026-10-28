@@ -664,7 +664,22 @@ paths:
                 required: [redirect]
                 properties:
                   redirect: { type: string, format: uri }
-        "400": { description: Invalid JSON, app ID, scope selection or state }
+        "400":
+          description: |
+            Invalid JSON, app ID, scope selection or state; invalid_app_callback
+            when the registered callback URL is missing or invalid (not an
+            absolute URL). No consent grant or sign-in code is issued, and the
+            stored callback URL is never echoed in the error.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [error]
+                properties:
+                  error: { type: string }
+              examples:
+                invalidAppCallback:
+                  value: { error: invalid_app_callback }
         "401": { description: Session required }
         "403": { description: App inactive or consent not permitted }
         "404": { description: App not found }
