@@ -40,6 +40,20 @@ it('discovers all app upstream routes and documents separate read/write authorit
   expect(spec.paths['/api/upstreams/connection'].post.requestBody.content['application/json'].schema.properties.secret.writeOnly).toBe(true);
   expect(spec.paths['/api/upstreams'].put.requestBody.content['application/json'].schema.properties.upstreams.items.$ref)
     .toBe('#/components/schemas/AppUpstream');
+  for (const [verb, status] of [['get', '200'], ['post', '201']]) {
+    expect(spec.paths['/api/upstreams/connection'][verb].responses[status].content['application/json'].schema.$ref)
+      .toBe('#/components/schemas/AppUpstreamConnection');
+  }
+  expect(spec.components.schemas.AppUpstreamConnection.required).toContain('permissions');
+  expect(spec.components.schemas.AppUpstreamConnection.properties.permissions.items.example).toBe('GET /me');
+  expect(spec.paths['/api/upstreams/call'].post.description).toContain('Successful calls are recorded');
+  for (const file of ['llms.txt', 'llms-full.txt']) {
+    const text = readFileSync(resolve(kernelRoot, 'public', file), 'utf8');
+    expect(text).toContain('Successful calls are');
+    expect(text).toContain('refusals write nothing permanent');
+    expect(text).toContain('permissions such as ["GET /me"]');
+    expect(text).not.toContain('call attempt is signed');
+  }
 });
 it('registers explicit app consent without self-grantable service authority and mechanical audit types', () => {
   expect(scopeEntry('connectors:mcp:read')?.connector).toBeNull();

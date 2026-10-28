@@ -63,6 +63,22 @@ components:
       properties:
         appDid: { type: string }
         upstreamId: { type: string, pattern: '^[a-z][a-z0-9-]{0,63}$' }
+    AppUpstreamConnection:
+      type: object
+      additionalProperties: false
+      required: [provider, connected, orgContextDid, permissions]
+      properties:
+        provider: { type: string }
+        connected: { type: boolean }
+        orgContextDid: { type: [string, "null"] }
+        permissions:
+          type: array
+          uniqueItems: true
+          items: { type: string, example: "GET /me" }
+          description: >-
+            Sorted plain-text METHOD /path list for the current declaration, shown
+            to the member at this API-only connect step. When connected=false this
+            is a review list, not evidence that the member approved the changed list.
     ConnectorConnection:
       type: object
       required: [slot, label, accountEmail, connected]
@@ -159,7 +175,9 @@ paths:
         Verified app DID only, no body override. Extends registry.apps.upstreams;
         grants neither member consent nor key access. [] withdraws declarations.
         Old/new declarations are atomically node-attested. Origin/header/prefix
-        changes invalidate member destination bindings until explicit reconnection.
+        and canonical path/method pairs are bound to the member connection.
+        Any addition, change or removal invalidates it until explicit reconnection;
+        reordering or repeating equivalent pairs does not.
         Request body limit 16 KiB. No rows deleted.
       security:
         - appServiceAuth: []
@@ -195,7 +213,11 @@ paths:
         - { name: appDid, in: query, required: true, schema: { type: string } }
         - { name: upstreamId, in: query, required: true, schema: { type: string } }
       responses:
-        "200": { description: "provider, connected and nullable orgContextDid only; no-store" }
+        "200":
+          description: "Non-secret status plus current plain-text permissions; no-store"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AppUpstreamConnection" }
         "400": { description: Invalid selector }
         "401": { description: Personal session required }
         "403": { description: App or declaration unavailable }
@@ -209,7 +231,11 @@ paths:
         Explicit origin must match the declaration. Reuses private external-mcp-key
         sealing with member subject and kernel-only custody; generic vault fetch,
         export and renewal cannot disclose it. Stores destination/header/prefix
-        binding, optional org_context_did and signed lifecycle history. Tier 0 only.
+        and canonical path/method binding, optional org_context_did and signed
+        lifecycle history. Any path/method addition or removal requires reconnecting;
+        ordering alone does not. Earlier destination-only bindings require one reconnect.
+        This connect step is API-only: connect/status responses return a sorted,
+        deduplicated permissions list such as ["GET /me"] for member review. Tier 0 only.
         Connecting grants no app authority: use existing OAuth consent for
         connectors:upstream:read and optionally connectors:upstream:write.
       security:
@@ -229,7 +255,11 @@ paths:
                 secret: { type: string, writeOnly: true, minLength: 1, maxLength: 4096, pattern: '^[!-~]+$' }
                 orgContextDid: { type: string }
       responses:
-        "201": { description: "provider, connected=true, orgContextDid; never key material" }
+        "201":
+          description: "connected=true and the plain-text approved permissions; never key material"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AppUpstreamConnection" }
         "400": { description: Invalid input or unsafe metadata }
         "401": { description: Personal session required }
         "403": { description: Not a personal human or active org member, or declaration unavailable }

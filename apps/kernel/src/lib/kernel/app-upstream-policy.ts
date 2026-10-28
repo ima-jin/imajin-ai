@@ -48,9 +48,15 @@ export function parseUpstream<T>(schema: z.ZodType<T>, raw: unknown): T {
 export function upstreamProvider(appDid: string, upstreamId: string) {
   return `app-upstream:${appDid}:${upstreamId}`;
 }
+/** Canonical set of exact permissions, also the member-facing plain-text list. */
+export function upstreamPermissions(target: Pick<AppUpstream, 'paths'>): string[] {
+  const pairs = target.paths.flatMap(entry => entry.methods.map(verb => `${verb} ${entry.path}`));
+  return [...new Set(pairs)].sort((left, right) => left < right ? -1 : Number(left > right));
+}
 export function upstreamBinding(appDid: string, target: AppUpstream) {
   return createHash('sha256').update(JSON.stringify([
     appDid, target.id, target.origin, target.credentialHeader, target.credentialPrefix,
+    upstreamPermissions(target),
   ])).digest('hex');
 }
 export function assertDeclaredCall(target: AppUpstream, call: AppUpstreamCall) {

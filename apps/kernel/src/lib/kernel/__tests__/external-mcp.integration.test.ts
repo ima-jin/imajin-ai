@@ -214,6 +214,7 @@ beforeEach(async () => {
     if (message.method === 'notifications/initialized') return new Response(null, { status: 202 });
     return rpcResponse(2, { content: [{ type: 'text', text: 'Bedrock collection' }] });
   });
+
 });
 afterEach(async () => {
   const rows = await Promise.all(tables.map(table => database.select().from(table)));
@@ -492,16 +493,26 @@ function upstreamCall(extra: Record<string, unknown> = {}) {
   return { memberDid: member, upstreamId: 'catalog', path: '/items', method: 'GET', ...extra };
 }
 function selector() { return { appDid, upstreamId: 'catalog' }; }
-async function installUpstream(write = false, tagged = true, grant = true) {
+async function installUpstream(write = false, tagged = true, grant = true, target = declaration()) {
   await installApp(true, grant);
   const scopes = [UPSTREAM_READ_SCOPE, ...(write ? [UPSTREAM_WRITE_SCOPE] : [])];
   await database.update(registryApps).set({ approvedServiceScopes: scopes }).where(eq(registryApps.appDid, appDid));
   await database.update(channelLinks).set({ scopes }).where(eq(channelLinks.did, member));
   h.app!.scopes = scopes;
-  expect((await call(DECLARE, 'PUT', { upstreams: [declaration()] }, serviceHeaders)).status).toBe(200);
-  expect((await call(CONNECT_UPSTREAM, 'POST', {
+  expect((await call(DECLARE, 'PUT', { upstreams: [target] }, serviceHeaders)).status).toBe(200);
+  const connected = await call(CONNECT_UPSTREAM, 'POST', {
     ...selector(), origin: upstreamOrigin, secret: fakeSecret(), ...(tagged ? { orgContextDid: org } : {}),
-  })).status).toBe(201);
+  });
+  expect(connected.status).toBe(201);
+  return connected;
+}
+async function readUpstreamStatus() {
+  const query = new URLSearchParams(selector()).toString();
+  const response = await CONNECTION_STATUS(new NextRequest(`https://kernel.test/connections/api/upstreams/connection?${query}`));
+  expect(response.status).toBe(200);
+  const result = await response.json();
+  h.outputs.push(result);
+  return result;
 }
 async function expectUpstreamRefused(status: number, input: unknown = upstreamCall()) {
   const before = await permanentState();
@@ -647,8 +658,7 @@ describe('registered app service → declared external API', () => {
     expect(h.upstream).not.toHaveBeenCalled();
   });
   it('refuses a declared path with an undeclared HTTP method without writing an audit', async () => {
-    await installUpstream(true);
-    await call(DECLARE, 'PUT', { upstreams: [{ ...declaration(), paths: [{ path: '/items', methods: ['GET'] }] }] }, serviceHeaders);
+    await installUpstream(true, true, true, { ...declaration(), paths: [{ path: '/items', methods: ['GET'] }] });
     await expectUpstreamRefused(403, upstreamCall({ method: 'POST', reason: 'app-workflow' }));
     expect(h.upstream).not.toHaveBeenCalled();
   });
@@ -726,6 +736,7 @@ describe('registered app service → declared external API', () => {
   });
   it('rejects stale member approval of the destination and malformed, oversized or injected bodies', async () => {
     await installUpstream();
+    const before = await permanentState();
     expect((await call(CONNECT_UPSTREAM, 'POST', {
       ...selector(), origin: 'https://different.example', secret: fakeSecret(),
     })).status).toBe(409);
@@ -733,5 +744,48 @@ describe('registered app service → declared external API', () => {
     expect((await call(UPSTREAM, 'POST', undefined, serviceHeaders)).status).toBe(400);
     expect((await call(UPSTREAM, 'POST', { body: 'x'.repeat(17000) }, serviceHeaders)).status).toBe(413);
     expect((await call(DECLARE, 'PUT', { upstreams: [declaration()], appDid: org }, serviceHeaders)).status).toBe(400);
+    expect(h.upstream).not.toHaveBeenCalled();
+    expect(await permanentState()).toBe(before);
+  });
+  const approvedPaths = [
+    { path: '/items', methods: ['GET', 'HEAD'] }, { path: '/me', methods: ['GET'] },
+  ];
+  it.each([
+    ['changed-path', [{ path: '/other', methods: ['GET', 'HEAD'] }, approvedPaths[1]]],
+    ['added-path', [...approvedPaths, { path: '/other', methods: ['GET'] }]],
+    ['added-method', [{ path: '/items', methods: ['GET', 'HEAD', 'DELETE'] }, approvedPaths[1]]],
+    ['removed-path', [approvedPaths[0]]],
+    ['removed-method', [{ path: '/items', methods: ['GET'] }, approvedPaths[1]]],
+  ] as const)('invalidates %s before unseal or audit until the member reconnects', async (_name, paths) => {
+    await installUpstream(true, true, true, { ...declaration(), paths: structuredClone(approvedPaths) });
+    expect((await readUpstreamStatus()).connected).toBe(true);
+    expect((await call(UPSTREAM, 'POST', upstreamCall(), serviceHeaders)).status).toBe(200);
+    expect((await call(DECLARE, 'PUT', { upstreams: [{ ...declaration(), paths }] }, serviceHeaders)).status).toBe(200);
+    expect((await readUpstreamStatus()).connected).toBe(false);
+    const readKey = vi.spyOn(vaultService, 'get');
+    try {
+      const refused = await expectUpstreamRefused(403);
+      expect(refused.body).toEqual({ error: 'No active personal external MCP connection or grant' });
+      expect(readKey).not.toHaveBeenCalled();
+    } finally { readKey.mockRestore(); }
+    expect((await call(CONNECT_UPSTREAM, 'POST', {
+      ...selector(), origin: upstreamOrigin, secret: fakeSecret(), orgContextDid: org,
+    })).status).toBe(201);
+    expect((await readUpstreamStatus()).connected).toBe(true);
+    expect((await call(UPSTREAM, 'POST', upstreamCall({ path: paths[0].path }), serviceHeaders)).status).toBe(200);
+  });
+  it.each(['unchanged', 'reordered'])('keeps an %s declaration connected and returns the plain-text approval list', async kind => {
+    const connected = await installUpstream(false, true, true, { ...declaration(), paths: structuredClone(approvedPaths) });
+    const permissions = ['GET /items', 'GET /me', 'HEAD /items'];
+    expect(connected.body.permissions).toEqual(permissions);
+    expect(await readUpstreamStatus()).toMatchObject({ connected: true, permissions });
+    const paths = kind === 'unchanged' ? approvedPaths : [
+      approvedPaths[1], { path: '/items', methods: ['HEAD', 'GET'] },
+    ];
+    expect((await call(DECLARE, 'PUT', { upstreams: [{ ...declaration(), paths }] }, serviceHeaders)).status).toBe(200);
+    expect(await readUpstreamStatus()).toMatchObject({ connected: true, permissions });
+    const before = await database.select().from(attestations);
+    expect((await call(UPSTREAM, 'POST', upstreamCall(), serviceHeaders)).status).toBe(200);
+    expect(await database.select().from(attestations)).toHaveLength(before.length + 1);
   });
 });

@@ -6,7 +6,7 @@ import { connectExternalMcp, disconnectExternalMcp, externalMcpStatus } from './
 import { ExternalMcpError } from './external-mcp-policy';
 import { appConnectionTarget, declareAppUpstreams, invokeAppUpstream, resolveAppUpstream } from './app-upstream';
 import {
-  parseUpstream, upstreamCallInput, upstreamConnectionInput, upstreamProvider, upstreamSelector,
+  parseUpstream, upstreamCallInput, upstreamConnectionInput, upstreamPermissions, upstreamProvider, upstreamSelector,
   UPSTREAM_READ_SCOPE,
 } from './app-upstream-policy';
 
@@ -24,9 +24,10 @@ async function personalConnection(request: NextRequest) {
     const input = parseUpstream(upstreamConnectionInput, raw);
     const target = await resolveAppUpstream(input.appDid, input.upstreamId);
     if (input.origin !== target.origin) throw new ExternalMcpError(409, 'Upstream destination changed; review before connecting');
-    return connectExternalMcp(memberDid, {
+    const connected = await connectExternalMcp(memberDid, {
       secret: input.secret, ...(input.orgContextDid ? { orgContextDid: input.orgContextDid } : {}),
     }, appConnectionTarget(input.appDid, target), input.appDid);
+    return { ...connected, permissions: upstreamPermissions(target) };
   }
   const input = parseUpstream(upstreamSelector, raw);
   // Personal revoke must work even after the app or its declaration was removed.
@@ -36,7 +37,8 @@ async function personalConnection(request: NextRequest) {
     }, input.appDid);
   }
   const target = await resolveAppUpstream(input.appDid, input.upstreamId);
-  return externalMcpStatus(memberDid, appConnectionTarget(input.appDid, target));
+  const status = await externalMcpStatus(memberDid, appConnectionTarget(input.appDid, target));
+  return { ...status, permissions: upstreamPermissions(target) };
 }
 export async function appUpstreamRoute(request: NextRequest, kind: 'declarations' | 'connection' | 'call') {
   const headers = { ...corsHeaders(request), 'Cache-Control': 'no-store' };

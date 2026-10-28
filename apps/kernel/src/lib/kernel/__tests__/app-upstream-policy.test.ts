@@ -1,7 +1,7 @@
 import { expect, it } from 'vitest';
 import {
   assertDeclaredCall, parseUpstream, upstreamBinding, upstreamCallInput, upstreamConnectionInput,
-  upstreamDeclarations, UPSTREAM_READ_SCOPE, UPSTREAM_WRITE_SCOPE,
+  upstreamDeclarations, upstreamPermissions, UPSTREAM_READ_SCOPE, UPSTREAM_WRITE_SCOPE,
 } from '../app-upstream-policy';
 import { isServiceEligibleScope, scopeEntry } from '@imajin/auth/scope-vocabulary';
 
@@ -53,4 +53,36 @@ it.each([
   expect(upstreamConnectionInput.safeParse({
     appDid: 'did:imajin:app', upstreamId: 'catalog', origin: 'https://api.example', secret: 'FAKE_NOT_VALID', ...extra,
   }).success).toBe(false);
+});
+
+const approvedPaths = [
+  { path: '/items', methods: ['GET', 'HEAD'] }, { path: '/me', methods: ['GET'] },
+];
+function boundTarget(paths = approvedPaths) {
+  return parseUpstream(upstreamDeclarations, { upstreams: [{ ...input(), paths }] }).upstreams[0];
+}
+it.each([
+  { paths: [{ path: '/other', methods: ['GET', 'HEAD'] }, approvedPaths[1]] },
+  { paths: [{ path: '/items', methods: ['GET', 'HEAD', 'DELETE'] }, approvedPaths[1]] },
+  { paths: [...approvedPaths, { path: '/other', methods: ['GET'] }] },
+  { paths: [approvedPaths[0]] },
+  { paths: [{ path: '/items', methods: ['GET'] }, approvedPaths[1]] },
+])('invalidates path or method additions, changes and removals %#', ({ paths }) => {
+  expect(upstreamBinding('did:imajin:app', boundTarget(paths)))
+    .not.toBe(upstreamBinding('did:imajin:app', boundTarget()));
+});
+it('canonicalizes path/method ordering, repeated pairs and grouping without mutating declarations', () => {
+  const original = boundTarget();
+  const before = structuredClone(original);
+  const reordered = boundTarget([
+    approvedPaths[1], { path: '/items', methods: ['HEAD', 'GET'] },
+  ]);
+  const regrouped = boundTarget([
+    { path: '/items', methods: ['HEAD', 'HEAD'] }, approvedPaths[1], { path: '/items', methods: ['GET'] },
+  ]);
+  expect(upstreamPermissions(original)).toEqual(['GET /items', 'GET /me', 'HEAD /items']);
+  for (const equivalent of [original, reordered, regrouped]) {
+    expect(upstreamBinding('did:imajin:app', equivalent)).toBe(upstreamBinding('did:imajin:app', original));
+  }
+  expect(original).toEqual(before);
 });

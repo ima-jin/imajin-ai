@@ -25,6 +25,9 @@ License: Imajin Network License (INL) v1.0, source-available, not MIT.
   approval required. GET with appDid/upstreamId lets a personal member review it.
   POST /connections/api/upstreams/connection takes {appDid,upstreamId,origin,secret,
   orgContextDid?} in the member's own human session; origin must match the declaration.
+  This connect step is API-only: connect/status responses include sorted plain-text
+  permissions such as ["GET /me"]. When disconnected, this is the current review list,
+  not proof that the member approved it.
   GET status uses appDid/upstreamId query; DELETE takes those selectors in JSON,
   retaining revoked rows and vault tombstones even after app/declaration withdrawal.
   Existing OAuth consent grants connectors:upstream:read, optionally :write, per app.
@@ -35,7 +38,9 @@ License: Imajin Network License (INL) v1.0, source-available, not MIT.
   Exact declared paths/methods only, HTTPS public egress pinned at connect, no redirects.
   Kernel-only key injection; {status,body} response, no upstream headers/stream/errors,
   2 MiB response and 16 KiB request limits. Credential echoes are refused.
-  Destination/header/prefix changes require member reconnection. Successful calls are
+  Destination/header/prefix and canonical path/method pairs are member-bound.
+  Adding, changing or removing a path/method requires reconnecting; reordering does not.
+  Earlier destination-only bindings also require one reconnect. Successful calls are
   recorded against member/app/org with signed reason/outcome metadata, never request body.
   Authorized upstream failures are recorded too; refusals write nothing permanent.
   Admission limits run before any database read.

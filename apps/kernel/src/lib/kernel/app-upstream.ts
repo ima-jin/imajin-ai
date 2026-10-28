@@ -46,10 +46,11 @@ export async function invokeAppUpstream(caller: ExternalMcpCaller & { scopes?: r
   const release = reserveExternalMcpCall(caller.memberDid, appDid);
   try {
     const target = await resolveAppUpstream(appDid, call.upstreamId);
-    assertDeclaredCall(target, call);
     const scope = ['GET', 'HEAD'].includes(call.method) ? UPSTREAM_READ_SCOPE : UPSTREAM_WRITE_SCOPE;
     if (!caller.scopes?.includes(scope)) throw connectionUnavailable();
-    const context = await authorizeExternalMcp(caller, appConnectionTarget(appDid, target, scope));
+    const context = await authorizeExternalMcp(
+      caller, appConnectionTarget(appDid, target, scope), () => assertDeclaredCall(target, call),
+    );
     let result;
     try {
       result = { value: await forwardAppUpstream(target, call, context.credential) };

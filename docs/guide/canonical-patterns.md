@@ -85,6 +85,11 @@ Admission limits run before any database read. Successful calls are recorded wit
 signed member/app/org metadata, as are authorized upstream failures; refusals
 make no upstream call and write nothing permanent. Never audit an app-selected
 member until the call has passed authorization and reached the upstream transport.
+Member bindings include the canonical set of declared path/method pairs: additions,
+changes and removals require reconnecting, while reordering does not. Earlier
+destination-only bindings require one reconnect. The API-only connect/status
+responses include a sorted plain-text `permissions` list (for example `GET /me`);
+with `connected: false` it is the current review list, not previously granted consent.
 See `/connections/api/spec` for exact declarations, destination binding and separate
 read/write grants; neither app registration nor org membership is member consent.
 

@@ -100,10 +100,14 @@ export function disconnectExternalMcp(memberDid: string, target: MemberConnectio
 
 
 /** Short custody snapshot, serialized with connect/disconnect only until unseal. */
-export function authorizeExternalMcp(caller: ExternalMcpCaller, target: MemberConnectionTarget = POSTMAN_CONNECTION) {
+export function authorizeExternalMcp(
+  caller: ExternalMcpCaller, target: MemberConnectionTarget = POSTMAN_CONNECTION, validateCall?: () => void,
+) {
   return db.transaction(async tx => {
     await lockMember(tx, caller.memberDid);
     const row = await authorizeMemberConnection(tx, caller, target);
+    // A changed member binding is refused generically before request policy or unseal.
+    validateCall?.();
     if (!row.sealedKeyField || !isExternalMcpField(row.sealedKeyField)) throw unavailable();
     const node = getNodeSigningIdentity();
     const [custody] = await tx.select().from(vaultDelegationGrants).where(and(
