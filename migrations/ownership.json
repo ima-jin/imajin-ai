@@ -21,13 +21,13 @@
     "kernel.org_connection_suspensions": {
       "owner": "kernel",
       "schema": "kernel",
-      "firstMigration": "0227_org_connection_suspensions.sql",
+      "firstMigration": "0228_org_connection_suspensions.sql",
       "notes": "Retained org/member connection and org/provider suspension authority."
     },
     "kernel.org_connection_events": {
       "owner": "kernel",
       "schema": "kernel",
-      "firstMigration": "0227_org_connection_suspensions.sql",
+      "firstMigration": "0228_org_connection_suspensions.sql",
       "notes": "Append-only signed suspend/resume history; no credentials."
     },
     "auth.app_authorization_codes": {

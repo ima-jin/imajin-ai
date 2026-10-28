@@ -180,7 +180,7 @@ beforeAll(async () => {
   const upstreamMigration = readFileSync('migrations/0226_app_upstreams.sql', 'utf8');
   await client.exec(upstreamMigration);
   await client.exec(upstreamMigration);
-  const suspensionMigration = readFileSync('migrations/0227_org_connection_suspensions.sql', 'utf8');
+  const suspensionMigration = readFileSync('migrations/0228_org_connection_suspensions.sql', 'utf8');
   await client.exec(suspensionMigration);
   await client.exec(suspensionMigration);
 });
@@ -612,7 +612,7 @@ describe('org-admin suspension (#3167)', () => {
     await asAdmin();
     expect((await change({ provider: row.provider })).status).toBe(200);
     const events = await orgEvents();
-    const migration = readFileSync('migrations/0227_org_connection_suspensions.sql', 'utf8');
+    const migration = readFileSync('migrations/0228_org_connection_suspensions.sql', 'utf8');
     await client.exec(migration);
     expect(await orgEvents()).toEqual(events);
     const get = vi.spyOn(vaultService, 'get');
