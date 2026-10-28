@@ -5,10 +5,11 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { parse } from 'yaml';
-import { ALLOWLIST, validateAllowlist } from '../ci-guard-harness-boundary.mjs';
+import { ALLOWLIST, KINDS, validateAllowlist } from '../ci-guard-harness-boundary.mjs';
 
 const SCRIPT = fileURLToPath(new URL('../ci-guard-harness-boundary.mjs', import.meta.url));
 const SOURCE = 'apps/kernel/src/lib/fixture.ts';
+const FORBIDDEN_IMPORT = "import 'openclaw';";
 
 function fixture(content, file = SOURCE) {
   const root = mkdtempSync(join(tmpdir(), 'harness-boundary-'));
@@ -31,39 +32,45 @@ function runGuard(root, args = []) {
 }
 
 const FORBIDDEN = [
-  ['static import', "import { Client } from 'openclaw';", 'package-import'],
-  ['multiline import', "import {\n Client\n} from '@openclaw/client';", 'package-import'],
-  ['side-effect import', "import 'openclaw/register';", 'package-import'],
-  ['re-export', "export { Client } from '@imajin/gateway-client';", 'package-import'],
-  ['dynamic import', "await import('@openclaw/sdk');", 'package-import'],
-  ['require', "const c = require('gateway-client');", 'package-import'],
-  ['import equals', "import c = require('@gateway/client');", 'package-import'],
-  ['HTTP invoke', "await fetch('/tools/invoke', { method: 'POST' });", 'gateway-surface'],
-  ['URL with line-comment characters', "await fetch('http://localhost:18789/tools/invoke');", 'gateway-surface'],
-  ['template HTTP invoke', 'await fetch(`${base}/tools/invoke`);', 'gateway-surface'],
-  ['session RPC', "await rpc('sessions_history', { sessionKey });", 'gateway-rpc'],
-  ['session RPC in payload', "await rpc({ method: 'sessions_list' });", 'gateway-rpc'],
-  ['direct session call', 'await sessions_send(args);', 'gateway-rpc'],
-  ['chat RPC', "await rpc('chat.history');", 'gateway-rpc'],
-  ['chat method', 'await client.chat.history(args);', 'gateway-rpc'],
-  ['computed chat method', "await client['chat']['history'](args);", 'gateway-rpc'],
-  ['gateway method', "await gatewayClient.request('status');", 'gateway-rpc'],
-  ['gateway hostname', "await fetch('https://gateway.internal/status');", 'gateway-surface'],
-  ['OpenClaw hostname', "const socket = new WebSocket('ws://openclaw:9000');", 'gateway-surface'],
-  ['gateway port', "await fetch('http://127.0.0.1:18789/status');", 'gateway-surface'],
-  ['numeric gateway port', "connect({ host: 'localhost', port: 18789 });", 'gateway-surface'],
-  ['secondary gateway port', "connect({ port: 18790 });", 'gateway-surface'],
-  ['transcript file', "await readFile('/home/agent/.openclaw/agents/main/sessions/id.jsonl');", 'harness-store'],
-  ['Windows transcript', String.raw`readFile('C:\\Users\\agent\\.openclaw\\agents\\main\\sessions\\id.jsonl');`, 'harness-store'],
-  ['legacy store', "readFile('/home/agent/.clawdbot/sessions.json');", 'harness-store'],
-  ['session index', "readFile(join(root, 'sessions.json'));", 'harness-store'],
-  ['session JSONL', "readFile('/agents/main/sessions/id.jsonl');", 'harness-store'],
-  ['session store path', "readFile('/data/session-store/index.json');", 'harness-store'],
-  ['transcript path', "readFile('/data/transcripts/id.jsonl');", 'harness-store'],
-  ['transcript read', 'await readTranscript(sessionKey);', 'harness-read'],
-  ['transcript client', 'await client.getTranscript(sessionKey);', 'harness-read'],
-  ['session store reader', 'await loadSessionStore();', 'harness-read'],
-  ['session store method', 'await sessionStore.get(key);', 'harness-read'],
+  ['static import', "import { Client } from 'openclaw';", KINDS.PACKAGE],
+  ['multiline import', "import {\n Client\n} from '@openclaw/client';", KINDS.PACKAGE],
+  ['side-effect import', "import 'openclaw/register';", KINDS.PACKAGE],
+  ['re-export', "export { Client } from '@imajin/gateway-client';", KINDS.PACKAGE],
+  ['dynamic import', "await import('@openclaw/sdk');", KINDS.PACKAGE],
+  ['require', "const c = require('gateway-client');", KINDS.PACKAGE],
+  ['import equals', "import c = require('@gateway/client');", KINDS.PACKAGE],
+  ['scoped gateway package', "import c from '@imajin/gateway';", KINDS.PACKAGE],
+  ['gateway SDK', "import c from 'gateway-sdk';", KINDS.PACKAGE],
+  ['HTTP invoke', "await fetch('/tools/invoke', { method: 'POST' });", KINDS.SURFACE],
+  ['URL with line-comment characters', "await fetch('http://localhost:18789/tools/invoke');", KINDS.SURFACE],
+  ['template HTTP invoke', 'await fetch(`${base}/tools/invoke`);', KINDS.SURFACE],
+  ['session RPC', "await rpc('sessions_history', { sessionKey });", KINDS.RPC],
+  ['session RPC in payload', "await rpc({ method: 'sessions_list' });", KINDS.RPC],
+  ['direct session call', 'await sessions_send(args);', KINDS.RPC],
+  ['chat RPC', "await rpc('chat.history');", KINDS.RPC],
+  ['chat method', 'await client.chat.history(args);', KINDS.RPC],
+  ['computed chat method', "await client['chat']['history'](args);", KINDS.RPC],
+  ['gateway method', "await gatewayClient.request('status');", KINDS.RPC],
+  ['gateway hostname', "await fetch('https://gateway.internal/status');", KINDS.SURFACE],
+  ['OpenClaw hostname', "const socket = new WebSocket('ws://openclaw:9000');", KINDS.SURFACE],
+  ['gateway port', "await fetch('http://127.0.0.1:18789/status');", KINDS.SURFACE],
+  ['gateway URL from environment', 'await fetch(process.env.OPENCLAW_GATEWAY_URL);', KINDS.SURFACE],
+  ['gateway host from environment', 'connect({ host: process.env.GATEWAY_HOST });', KINDS.SURFACE],
+  ['gateway port from environment', 'connect({ port: process.env.GATEWAY_PORT });', KINDS.SURFACE],
+  ['numeric gateway port', "connect({ host: 'localhost', port: 18789 });", KINDS.SURFACE],
+  ['secondary gateway port', "connect({ port: 18790 });", KINDS.SURFACE],
+  ['transcript file', "await readFile('/home/agent/.openclaw/agents/main/sessions/id.jsonl');", KINDS.STORE],
+  ['Windows transcript', String.raw`readFile('C:\\Users\\agent\\.openclaw\\agents\\main\\sessions\\id.jsonl');`, KINDS.STORE],
+  ['legacy store', "readFile('/home/agent/.clawdbot/sessions.json');", KINDS.STORE],
+  ['session index', "readFile(join(root, 'sessions.json'));", KINDS.STORE],
+  ['session JSONL', "readFile('/agents/main/sessions/id.jsonl');", KINDS.STORE],
+  ['template session JSONL', 'readFile(`${root}/sessions/${id}.jsonl`);', KINDS.STORE],
+  ['session store path', "readFile('/data/session-store/index.json');", KINDS.STORE],
+  ['transcript path', "readFile('/data/transcripts/id.jsonl');", KINDS.STORE],
+  ['transcript read', 'await readTranscript(sessionKey);', KINDS.READ],
+  ['transcript client', 'await client.getTranscript(sessionKey);', KINDS.READ],
+  ['session store reader', 'await loadSessionStore();', KINDS.READ],
+  ['session store method', 'await sessionStore.get(key);', KINDS.READ],
 ];
 
 describe('ci-guard-harness-boundary', () => {
@@ -92,11 +99,11 @@ describe('ci-guard-harness-boundary', () => {
 
   it.each(['src', 'app'])('scans the kernel %s tree', (tree) => {
     const file = `apps/kernel/${tree}/nested/route.tsx`;
-    expect(runGuard(fixture("import 'openclaw';", file)).status).toBe(1);
+    expect(runGuard(fixture(FORBIDDEN_IMPORT, file)).status).toBe(1);
   });
 
   it.each(['js', 'jsx', 'mjs', 'cjs', 'mts', 'cts', 'ts', 'tsx'])('scans .%s source', (extension) => {
-    expect(runGuard(fixture("import 'openclaw';", `apps/kernel/src/client.${extension}`)).status).toBe(1);
+    expect(runGuard(fixture(FORBIDDEN_IMPORT, `apps/kernel/src/client.${extension}`)).status).toBe(1);
   });
 
   it.each([
@@ -109,7 +116,7 @@ describe('ci-guard-harness-boundary', () => {
     'apps/other/src/client.ts',
     'packages/plugin/src/client.ts',
   ])('excludes %s', (file) => {
-    expect(runGuard(fixture("import 'openclaw';", file)).status).toBe(0);
+    expect(runGuard(fixture(FORBIDDEN_IMPORT, file)).status).toBe(0);
   });
 
   it('passes on the current kernel without runtime changes', () => {
@@ -135,7 +142,7 @@ describe('ci-guard-harness-boundary', () => {
   });
 
   it.each(ALLOWLIST)('allows only the recorded detection in $file ($value)', (entry) => {
-    const content = entry.kind === 'harness-read' ? `${entry.value}();` : `fetch('${entry.value}');`;
+    const content = entry.kind === KINDS.READ ? `${entry.value}();` : `fetch('${entry.value}');`;
     const root = fixture(content, entry.file);
     expect(runGuard(root).status).toBe(0);
     const listed = runGuard(root, ['--list']);
@@ -145,16 +152,15 @@ describe('ci-guard-harness-boundary', () => {
     }]);
     writeSource(root, entry.file, `${content}\nfetch('/tools/invoke');`);
     expect(runGuard(root).status).toBe(1);
-    writeSource(root, SOURCE, content);
-    expect(runGuard(root).status).toBe(1);
+    expect(runGuard(fixture(content)).status).toBe(1);
   });
 
   it('reports all violations with accurate lines through comments and multiline imports', () => {
     const result = runGuard(fixture("// comment\n/* block\n */\nimport {\nClient\n} from 'openclaw';\nrpc('sessions_list');"), ['--list']);
     expect(result.status).toBe(0);
     expect(JSON.parse(result.stdout)).toEqual([
-      { file: SOURCE, line: 4, kind: 'package-import', value: 'openclaw' },
-      { file: SOURCE, line: 7, kind: 'gateway-rpc', value: 'sessions_list' },
+      { file: SOURCE, line: 4, kind: KINDS.PACKAGE, value: 'openclaw' },
+      { file: SOURCE, line: 7, kind: KINDS.RPC, value: 'sessions_list' },
     ]);
   });
 

@@ -24,33 +24,40 @@ const SCAN_ROOTS = ['apps/kernel/src', 'apps/kernel/app'];
 const EXTENSIONS = new Set(['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs', '.mts', '.cts']);
 const EXCLUDED_DIRS = new Set(['__tests__', 'tests', 'node_modules', '.next', 'dist', 'build', 'coverage']);
 const TEST_FILE = /\.(test|spec)\.[cm]?[jt]sx?$/;
+export const KINDS = Object.freeze({
+  PACKAGE: 'package-import',
+  RPC: 'gateway-rpc',
+  SURFACE: 'gateway-surface',
+  STORE: 'harness-store',
+  READ: 'harness-read',
+});
 
 // Exact (file, kind, value) exceptions only, never a whole directory/file.
 // Ratchet: remove an entry when its legacy path goes away; do not add new calls.
 export const ALLOWLIST = [
   {
     file: 'apps/kernel/app/warp/api/runs/[runId]/transcript/route.ts',
-    kind: 'harness-read', value: 'getAgentRunTranscript',
+    kind: KINDS.READ, value: 'getAgentRunTranscript',
     reason: 'Pre-existing #1639 caller-key-authenticated Warp diagnosis route; runtime migration is outside #3150.',
   },
   {
     file: 'apps/kernel/src/lib/mcp/tools/warp.ts',
-    kind: 'harness-read', value: 'getAgentRunTranscript',
+    kind: KINDS.READ, value: 'getAgentRunTranscript',
     reason: 'Pre-existing #1639 warp_get_transcript tool uses the caller sealed key; runtime migration is outside #3150.',
   },
   {
     file: 'apps/kernel/src/lib/warp/dispatch.ts',
-    kind: 'harness-store', value: '/transcript',
+    kind: KINDS.STORE, value: '/transcript',
     reason: 'Pre-existing #1639 Warp transcript HTTP client backs the authorized diagnosis route/tool.',
   },
   {
     file: 'apps/kernel/src/lib/warp/dispatch.ts',
-    kind: 'harness-read', value: 'readTranscript',
+    kind: KINDS.READ, value: 'readTranscript',
     reason: 'Pre-existing #1639 bounded response reader for the same Warp diagnosis client.',
   },
   {
     file: 'apps/kernel/src/lib/google/meet.ts',
-    kind: 'harness-store', value: '/transcripts',
+    kind: KINDS.STORE, value: '/conferenceRecords/${value}/transcripts',
     reason: 'Google Meet conference transcript connector reads meeting content, not a harness transcript/session store.',
   },
 ];
@@ -87,7 +94,10 @@ function listSourceFiles(dir) {
 }
 
 function literalText(node) {
-  if (ts.isStringLiteralLike(node) || ts.isTemplateHead(node) || ts.isTemplateTail(node) || ts.isTemplateMiddle(node)) {
+  if (ts.isTemplateExpression(node)) {
+    return node.head.text + node.templateSpans.map((span) => `\${value}${span.literal.text}`).join('');
+  }
+  if (ts.isStringLiteralLike(node)) {
     return node.text;
   }
   return null;
@@ -102,7 +112,7 @@ function memberName(node) {
 
 function forbiddenPackage(value) {
   const segments = value.toLowerCase().split('/');
-  return segments.some((segment) => segment.includes('openclaw') || segment.includes('gateway-client') || segment === '@gateway');
+  return segments.some((segment) => segment.includes('openclaw') || segment.includes('gateway-client') || segment.includes('gateway-sdk') || segment === 'gateway' || segment === '@gateway');
 }
 
 function moduleSpecifier(node) {
@@ -122,24 +132,24 @@ function rpcName(value) {
 
 function literalKind(value) {
   const normalized = value.replaceAll('\\', '/');
-  if (normalized.includes('/tools/invoke')) return 'gateway-surface';
-  if (/^wss?:\/\/gateway\b/i.test(value) || /^https?:\/\/gateway\b/i.test(value)) return 'gateway-surface';
-  if (/^https?:\/\/openclaw\b/i.test(value) || /^wss?:\/\/openclaw\b/i.test(value)) return 'gateway-surface';
-  if (/(?:^|:)18789\b/.test(value) || /(?:^|:)18790\b/.test(value)) return 'gateway-surface';
-  if (normalized.includes('.openclaw/') || normalized.includes('.clawdbot/')) return 'harness-store';
-  if (/(?:^|\/)sessions\.json\b/.test(normalized)) return 'harness-store';
-  if (/(?:^|\/)sessions\/.*\.jsonl\b/.test(normalized)) return 'harness-store';
-  if (/\/(?:transcripts?|session-store)(?:\/|$)/i.test(normalized)) return 'harness-store';
+  if (normalized.includes('/tools/invoke')) return KINDS.SURFACE;
+  if (/^wss?:\/\/gateway\b/i.test(value) || /^https?:\/\/gateway\b/i.test(value)) return KINDS.SURFACE;
+  if (/^https?:\/\/openclaw\b/i.test(value) || /^wss?:\/\/openclaw\b/i.test(value)) return KINDS.SURFACE;
+  if (/(?:^|:)18789\b/.test(value) || /(?:^|:)18790\b/.test(value)) return KINDS.SURFACE;
+  if (normalized.includes('.openclaw/') || normalized.includes('.clawdbot/')) return KINDS.STORE;
+  if (/(?:^|\/)sessions\.json\b/.test(normalized)) return KINDS.STORE;
+  if (/(?:^|\/)sessions\/.*\.jsonl\b/.test(normalized)) return KINDS.STORE;
+  if (/\/(?:transcripts?|session-store)(?:\/|$)/i.test(normalized)) return KINDS.STORE;
   return null;
 }
 
 function callKind(name) {
   const last = name.split('.').at(-1);
-  if (rpcName(last) || name.endsWith('chat.history')) return 'gateway-rpc';
-  if (/^(?:read|get|load).*Transcript/i.test(last)) return 'harness-read';
-  if (/^(?:read|get|load).*SessionStore/i.test(last)) return 'harness-read';
-  if (name.endsWith('sessionStore.get') || name.endsWith('sessionStore.read')) return 'harness-read';
-  if (/^(?:gateway|gatewayClient|openclaw)\./i.test(name)) return 'gateway-rpc';
+  if (rpcName(last) || name.endsWith('chat.history')) return KINDS.RPC;
+  if (/^(?:read|get|load).*Transcript/i.test(last)) return KINDS.READ;
+  if (/^(?:read|get|load).*SessionStore/i.test(last)) return KINDS.READ;
+  if (name.endsWith('sessionStore.get') || name.endsWith('sessionStore.read')) return KINDS.READ;
+  if (/^(?:gateway|gatewayClient|openclaw)\./i.test(name)) return KINDS.RPC;
   return null;
 }
 
@@ -154,7 +164,7 @@ function scanFile(filePath) {
   function visit(node) {
     const specifier = moduleSpecifier(node);
     const imported = specifier && literalText(specifier);
-    if (imported && forbiddenPackage(imported)) add(node, 'package-import', imported);
+    if (imported && forbiddenPackage(imported)) add(node, KINDS.PACKAGE, imported);
 
     if (ts.isCallExpression(node)) {
       const name = memberName(node.expression);
@@ -165,9 +175,12 @@ function scanFile(filePath) {
     const value = literalText(node);
     const kind = value && literalKind(value);
     if (kind) add(node, kind, value);
-    if (value && rpcName(value)) add(node, 'gateway-rpc', value);
+    if (value && rpcName(value)) add(node, KINDS.RPC, value);
     if (ts.isNumericLiteral(node) && ['18789', '18790'].includes(node.text)) {
-      add(node, 'gateway-surface', node.text);
+      add(node, KINDS.SURFACE, node.text);
+    }
+    if (ts.isIdentifier(node) && /^(?:OPENCLAW_)?GATEWAY_(?:URL|HOST|PORT)$/.test(node.text)) {
+      add(node, KINDS.SURFACE, node.text);
     }
     ts.forEachChild(node, visit);
   }
