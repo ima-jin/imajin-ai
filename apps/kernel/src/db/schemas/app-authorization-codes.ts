@@ -1,7 +1,8 @@
-import { text, timestamp } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
+import { index, text, timestamp } from 'drizzle-orm/pg-core';
 import { authSchema } from './auth';
 
-/** Retained single-use sign-in records; plaintext codes never enter storage. */
+/** Single-use sign-in records retained through a short grace window; hashes only. */
 export const appAuthorizationCodes = authSchema.table('app_authorization_codes', {
   codeHash: text('code_hash').primaryKey(),
   appDid: text('app_did').notNull(),
@@ -12,4 +13,7 @@ export const appAuthorizationCodes = authSchema.table('app_authorization_codes',
   expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
   consumedAt: timestamp('consumed_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-});
+}, (table) => [
+  index('idx_app_authorization_codes_retention')
+    .on(sql`coalesce(${table.consumedAt}, ${table.expiresAt})`),
+]);

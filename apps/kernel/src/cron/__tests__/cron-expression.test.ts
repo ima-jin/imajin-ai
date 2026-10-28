@@ -106,6 +106,7 @@ describe('kernel manifest', () => {
       'withdrawal-reconcile': '*/15 * * * *',
       'attestation-cleanup': '0 0 * * *',
       'event-subscription-cleanup': '0 1 * * *',
+      'app-authorization-code-cleanup': '*/10 * * * *',
       'claim-stub-expiry': '0 0 * * *',
       'warp-run-watch': '*/10 * * * *',
       'usage-rollup': '0 2 * * *',
