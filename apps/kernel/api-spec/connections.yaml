@@ -276,9 +276,12 @@ paths:
         Kernel injects the key, buffers at most 2 MiB, refuses credential echoes and
         strips all upstream headers. No raw provider exceptions or streams returned.
         Connect timeout and body deadline each 30 seconds. Existing shared member/app
-        quotas and concurrency cap apply. Admitted calls, permission refusals and
-        upstream failures are node-attested with memberDid, appDid, orgContextDid,
+        quotas and concurrency cap apply before any database read. Successful calls
+        are recorded, as are authorized upstream failures, with node-signed memberDid,
+        appDid, orgContextDid,
         upstream ID, method, outcome and reason; never body, arguments or credential.
+        Admission, validation and permission refusals write nothing permanent and
+        make no upstream call.
         Invalid/authentication-rejected requests cannot invoke or impersonate a member.
       security:
         - appServiceAuth: []

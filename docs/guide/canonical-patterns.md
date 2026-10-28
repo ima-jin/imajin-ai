@@ -81,6 +81,10 @@ Never grant the app a raw upstream credential. Both this path and personal MCP u
 for live member consent, connection state and org standing. #3167 extends that
 single gate for org-admin suspension; do not fork checks into routes.
 The outbound transport shares credential injection and echo refusal with MCP.
+Admission limits run before any database read. Successful calls are recorded with
+signed member/app/org metadata, as are authorized upstream failures; refusals
+make no upstream call and write nothing permanent. Never audit an app-selected
+member until the call has passed authorization and reached the upstream transport.
 See `/connections/api/spec` for exact declarations, destination binding and separate
 read/write grants; neither app registration nor org membership is member consent.
 

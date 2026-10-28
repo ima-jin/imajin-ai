@@ -14,7 +14,7 @@ const h = vi.hoisted(() => ({
   vault: { version: 1, entries: [] } as VaultFile, authError: false, appError: false,
   app: null as null | { appDid: string; userDid: string; isServiceToken: boolean; scopes: string[] },
   fetch: vi.fn(), upstream: vi.fn(), saveError: false, outputs: [] as unknown[], secrets: [] as string[],
-  openTransactions: 0, transactionsStarted: 0,
+  openTransactions: 0, transactionsStarted: 0, selectReads: 0,
 }));
 vi.mock('@/src/db', async () => {
   const auth = await import('@/src/db/schemas/auth');
@@ -26,6 +26,9 @@ vi.mock('@/src/db', async () => {
     db: new Proxy({}, { get: (_target, property) => {
       const database = h.db as Record<PropertyKey, unknown>;
       const value = database[property];
+      if (property === 'select' && typeof value === 'function') {
+        return (...args: unknown[]) => { h.selectReads++; return value.apply(database, args); };
+      }
       if (property === 'transaction' && typeof value === 'function') {
         return async (work: (tx: unknown) => Promise<unknown>) => {
           let started = false;
@@ -190,7 +193,7 @@ beforeEach(async () => {
   h.identity = { id: member, scope: 'actor', subtype: 'human' };
   h.app = null; h.authError = false; h.appError = false; h.saveError = false;
   h.outputs = []; h.secrets = [];
-  h.openTransactions = 0; h.transactionsStarted = 0;
+  h.openTransactions = 0; h.transactionsStarted = 0; h.selectReads = 0;
   h.publish.mockResolvedValue(undefined);
   h.upstream.mockImplementation(async () => {
     expect(h.openTransactions).toBe(0);
@@ -489,8 +492,8 @@ function upstreamCall(extra: Record<string, unknown> = {}) {
   return { memberDid: member, upstreamId: 'catalog', path: '/items', method: 'GET', ...extra };
 }
 function selector() { return { appDid, upstreamId: 'catalog' }; }
-async function installUpstream(write = false, tagged = true) {
-  await installApp();
+async function installUpstream(write = false, tagged = true, grant = true) {
+  await installApp(true, grant);
   const scopes = [UPSTREAM_READ_SCOPE, ...(write ? [UPSTREAM_WRITE_SCOPE] : [])];
   await database.update(registryApps).set({ approvedServiceScopes: scopes }).where(eq(registryApps.appDid, appDid));
   await database.update(channelLinks).set({ scopes }).where(eq(channelLinks.did, member));
@@ -500,7 +503,63 @@ async function installUpstream(write = false, tagged = true) {
     ...selector(), origin: upstreamOrigin, secret: fakeSecret(), ...(tagged ? { orgContextDid: org } : {}),
   })).status).toBe(201);
 }
+async function expectUpstreamRefused(status: number, input: unknown = upstreamCall()) {
+  const before = await permanentState();
+  const upstreamCalls = h.upstream.mock.calls.length;
+  const result = await call(UPSTREAM, 'POST', input, serviceHeaders);
+  expect(result.status).toBe(status);
+  expect(h.upstream).toHaveBeenCalledTimes(upstreamCalls);
+  expect(await permanentState()).toBe(before);
+  return result;
+}
 describe('registered app service → declared external API', () => {
+  it('rate-limits before any database read or transaction and writes no refusal audit', async () => {
+    await installUpstream();
+    for (let i = 0; i < EXTERNAL_MCP_MEMBER_LIMIT; i++) {
+      expect((await call(UPSTREAM, 'POST', upstreamCall(), serviceHeaders)).status).toBe(200);
+    }
+    const reads = h.selectReads;
+    const transactions = h.transactionsStarted;
+    await expectUpstreamRefused(429);
+    expect(h.selectReads).toBe(reads);
+    expect(h.transactionsStarted).toBe(transactions);
+  });
+  it('caps in-flight app calls before DB access, releases capacity, and holds no transaction across I/O', async () => {
+    await installUpstream();
+    let unblock!: () => void;
+    const gate = new Promise<void>(resolve => { unblock = resolve; });
+    h.upstream.mockImplementation(async () => {
+      expect(h.openTransactions).toBe(0);
+      await gate;
+      return Response.json({ items: [] });
+    });
+    const pending = Array.from({ length: EXTERNAL_MCP_IN_FLIGHT_LIMIT }, () => call(UPSTREAM, 'POST', upstreamCall(), serviceHeaders));
+    try {
+      await vi.waitFor(() => expect(h.upstream).toHaveBeenCalledTimes(EXTERNAL_MCP_IN_FLIGHT_LIMIT));
+      const reads = h.selectReads;
+      const transactions = h.transactionsStarted;
+      await expectUpstreamRefused(503);
+      expect(h.selectReads).toBe(reads);
+      expect(h.transactionsStarted).toBe(transactions);
+    } finally { unblock(); }
+    expect((await Promise.all(pending)).every(result => result.status === 200)).toBe(true);
+    expect((await call(UPSTREAM, 'POST', upstreamCall(), serviceHeaders)).status).toBe(200);
+  });
+  it('does not let an operator-approved app create audit records for a member who never consented', async () => {
+    await installUpstream(false, true, false);
+    await expectUpstreamRefused(403);
+  });
+  it('refuses a different active, operator-approved app without writing against the selected member', async () => {
+    await installUpstream();
+    const otherAppDid = `did:imajin:otherapp${sequence}`;
+    await database.insert(registryApps).values({
+      id: `other_${sequence}`, appDid: otherAppDid, name: 'Other app', ownerDid: org,
+      publicKey: keys.publicKey, callbackUrl: 'https://other.test/callback',
+      approvedServiceScopes: [UPSTREAM_READ_SCOPE], upstreams: [declaration()],
+    });
+    h.app!.appDid = otherAppDid;
+    await expectUpstreamRefused(403);
+  });
   it('injects only inside the kernel, preserves upstream status/body but no headers, and signs member/app/org audit', async () => {
     await installUpstream();
     h.upstream.mockResolvedValue(new Response('{"items":[1]}', { status: 201, headers: {
@@ -516,6 +575,7 @@ describe('registered app service → declared external API', () => {
       method: 'GET', body: undefined, headers: { 'X-API-Key': h.secrets[0], 'Content-Type': 'application/json' },
     }, { connector: 'app-upstream', timeoutMs: 30_000, allowPrivate: false });
     const logs = await database.select().from(attestations).where(eq(attestations.subjectDid, member));
+    expect(logs.filter(row => (row.payload as { action: string }).action === 'call')).toHaveLength(1);
     expect(logs.at(-1)?.payload).toMatchObject({
       memberDid: member, appDid, orgContextDid: org, action: 'call', method: 'GET', reason: null, outcome: 'returned',
     });
@@ -533,12 +593,12 @@ describe('registered app service → declared external API', () => {
     await installUpstream();
     h.app!.scopes = [UPSTREAM_READ_SCOPE, UPSTREAM_WRITE_SCOPE];
     const input = upstreamCall({ method, reason: 'member-request', body: '{"action":"fixture"}' });
-    expect((await call(UPSTREAM, 'POST', input, serviceHeaders)).status).toBe(403);
+    await expectUpstreamRefused(403, input);
     await database.update(registryApps).set({ approvedServiceScopes: [UPSTREAM_READ_SCOPE, UPSTREAM_WRITE_SCOPE] }).where(eq(registryApps.appDid, appDid));
-    expect((await call(UPSTREAM, 'POST', input, serviceHeaders)).status).toBe(403);
+    await expectUpstreamRefused(403, input);
     await database.update(channelLinks).set({ scopes: [UPSTREAM_READ_SCOPE, UPSTREAM_WRITE_SCOPE] }).where(eq(channelLinks.did, member));
     h.app!.scopes = [UPSTREAM_READ_SCOPE];
-    expect((await call(UPSTREAM, 'POST', input, serviceHeaders)).status).toBe(403);
+    await expectUpstreamRefused(403, input);
     h.app!.scopes = [UPSTREAM_READ_SCOPE, UPSTREAM_WRITE_SCOPE];
     expect((await call(UPSTREAM, 'POST', input, serviceHeaders)).status).toBe(200);
     const logs = await database.select().from(attestations).where(eq(attestations.subjectDid, member));
@@ -549,7 +609,7 @@ describe('registered app service → declared external API', () => {
     await installUpstream();
     expect((await call(UPSTREAM, 'POST', upstreamCall(), serviceHeaders)).status).toBe(200);
     expect((await call(DISCONNECT_UPSTREAM, 'DELETE', selector())).status).toBe(200);
-    expect((await call(UPSTREAM, 'POST', upstreamCall(), serviceHeaders)).status).toBe(403);
+    await expectUpstreamRefused(403);
     expect(h.upstream).toHaveBeenCalledTimes(1);
     expect((await call(CONNECT_UPSTREAM, 'POST', {
       ...selector(), origin: upstreamOrigin, secret: fakeSecret(), orgContextDid: org,
@@ -562,7 +622,7 @@ describe('registered app service → declared external API', () => {
     expect((await call(UPSTREAM, 'POST', upstreamCall(), serviceHeaders)).status).toBe(200);
     await database.update(connectors).set(status === 'expired' ? { expiresAt: new Date(0) } : { status })
       .where(eq(connectors.ownerDid, member));
-    expect((await call(UPSTREAM, 'POST', upstreamCall(), serviceHeaders)).status).toBe(403);
+    await expectUpstreamRefused(403);
     expect(h.upstream).toHaveBeenCalledTimes(1);
   });
   it.each(['removed-member', 'suspended-org', 'suspended-member', 'revoked-consent', 'missing-scope', 'revoked-custody', 'expired-custody', 'inactive-app', 'revoked-app', 'no-operator-approval'])(
@@ -578,27 +638,25 @@ describe('registered app service → declared external API', () => {
       if (boundary === 'inactive-app') await database.update(registryApps).set({ status: 'revoked' }).where(eq(registryApps.appDid, appDid));
       if (boundary === 'revoked-app') await database.update(registryApps).set({ revokedAt: new Date() }).where(eq(registryApps.appDid, appDid));
       if (boundary === 'no-operator-approval') await database.update(registryApps).set({ approvedServiceScopes: [] }).where(eq(registryApps.appDid, appDid));
-      expect((await call(UPSTREAM, 'POST', upstreamCall(), serviceHeaders)).status).toBe(403);
+      await expectUpstreamRefused(403);
       expect(h.upstream).toHaveBeenCalledTimes(1);
     });
   it.each([{ path: '/other' }, { path: '/items', method: 'TRACE' }, { upstreamId: 'unknown' }])('refuses undeclared target %j', async extra => {
     await installUpstream();
-    expect([400, 403]).toContain((await call(UPSTREAM, 'POST', upstreamCall(extra), serviceHeaders)).status);
+    await expectUpstreamRefused(extra.method === 'TRACE' ? 400 : 403, upstreamCall(extra));
     expect(h.upstream).not.toHaveBeenCalled();
   });
-  it('refuses a declared path with an undeclared HTTP method and logs the refusal', async () => {
+  it('refuses a declared path with an undeclared HTTP method without writing an audit', async () => {
     await installUpstream(true);
     await call(DECLARE, 'PUT', { upstreams: [{ ...declaration(), paths: [{ path: '/items', methods: ['GET'] }] }] }, serviceHeaders);
-    expect((await call(UPSTREAM, 'POST', upstreamCall({ method: 'POST', reason: 'app-workflow' }), serviceHeaders)).status).toBe(403);
-    const logs = await database.select().from(attestations).where(eq(attestations.subjectDid, member));
-    expect(logs.at(-1)?.payload).toMatchObject({ outcome: 'refused', appDid, orgContextDid: org });
+    await expectUpstreamRefused(403, upstreamCall({ method: 'POST', reason: 'app-workflow' }));
     expect(h.upstream).not.toHaveBeenCalled();
   });
   it('binds custody to the member-approved destination and injection shape, not the current app declaration', async () => {
     await installUpstream();
     for (const changed of [{ origin: 'https://different.example' }, { credentialHeader: 'Authorization' }, { credentialPrefix: 'Bearer ' }]) {
       await call(DECLARE, 'PUT', { upstreams: [{ ...declaration(), ...changed }] }, serviceHeaders);
-      expect((await call(UPSTREAM, 'POST', upstreamCall(), serviceHeaders)).status).toBe(403);
+      await expectUpstreamRefused(403);
     }
     expect(h.upstream).not.toHaveBeenCalled();
   });
@@ -609,40 +667,46 @@ describe('registered app service → declared external API', () => {
     const [row] = await database.select().from(connectors).where(eq(connectors.ownerDid, member));
     expect(row.status).toBe('revoked');
     expect((await vaultService.getHistory(row.sealedKeyField!))[0].deleted).toBe(true);
-    expect((await call(UPSTREAM, 'POST', upstreamCall(), serviceHeaders)).status).toBe(403);
+    await expectUpstreamRefused(403);
   });
   it.each(['raw', 'base64', 'escaped', 'exception'])('never releases %s credential echoes or provider exceptions', async encoding => {
     await installUpstream();
+    const before = await database.select().from(attestations);
     const secret = h.secrets[0];
     if (encoding === 'exception') h.upstream.mockRejectedValue(new Error(secret));
     else h.upstream.mockResolvedValue(Response.json({
       echo: encoding === 'base64' ? Buffer.from(secret).toString('base64') : encoding === 'escaped' ? JSON.stringify(secret) : secret,
     }));
     expect((await call(UPSTREAM, 'POST', upstreamCall(), serviceHeaders)).status).toBe(502);
+    const after = await database.select().from(attestations);
+    expect(after).toHaveLength(before.length + 1);
+    expect(after.at(-1)?.payload).toMatchObject({
+      action: 'call', outcome: 'upstream-failed', appDid, memberDid: member, orgContextDid: org,
+    });
     // afterEach additionally asserts every persisted row, app response, bus event and log is credential-free.
   });
   it('rejects a wrong member, another app, delegated token, and unauthenticated service', async () => {
     await installUpstream();
-    expect((await call(UPSTREAM, 'POST', upstreamCall({ memberDid: org }), serviceHeaders)).status).toBe(403);
+    await expectUpstreamRefused(403, upstreamCall({ memberDid: org }));
     h.app!.appDid = 'did:imajin:anotherapp';
-    expect((await call(UPSTREAM, 'POST', upstreamCall(), serviceHeaders)).status).toBe(403);
+    await expectUpstreamRefused(403);
     h.app!.appDid = appDid; h.app!.isServiceToken = false;
-    expect((await call(UPSTREAM, 'POST', upstreamCall(), serviceHeaders)).status).toBe(403);
+    await expectUpstreamRefused(403);
     expect((await call(DECLARE, 'PUT', { upstreams: [] }, serviceHeaders)).status).toBe(403);
     h.appError = true;
-    expect((await call(UPSTREAM, 'POST', upstreamCall(), serviceHeaders)).status).toBe(403);
+    await expectUpstreamRefused(403);
     expect(h.upstream).not.toHaveBeenCalled();
     await expect(invokeAppUpstream({ memberDid: org, appDid, serviceToken: true }, upstreamCall())).rejects.toThrow();
     await expect(invokeAppUpstream({ memberDid: member }, upstreamCall())).rejects.toThrow();
   });
   it('refuses mutation without a reason; keeps declarations on the authenticated app row with history', async () => {
     await installUpstream(true);
-    expect((await call(UPSTREAM, 'POST', upstreamCall({ method: 'POST' }), serviceHeaders)).status).toBe(400);
+    await expectUpstreamRefused(400, upstreamCall({ method: 'POST' }));
     expect(h.upstream).not.toHaveBeenCalled();
     const logs = await database.select().from(attestations).where(eq(attestations.subjectDid, appDid));
     expect(logs[0].payload).toMatchObject({ action: 'upstreams-declared', appDid, upstreams: [declaration()] });
     await call(DECLARE, 'PUT', { upstreams: [] }, serviceHeaders);
-    expect((await call(UPSTREAM, 'POST', upstreamCall(), serviceHeaders)).status).toBe(403);
+    await expectUpstreamRefused(403);
     const [app] = await database.select().from(registryApps).where(eq(registryApps.appDid, appDid));
     expect(app.upstreams).toEqual([]);
     expect(await database.select().from(connectors).where(eq(connectors.provider, upstreamProvider(appDid, 'catalog')))).toHaveLength(1);

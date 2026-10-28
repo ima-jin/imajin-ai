@@ -6,7 +6,7 @@ import { ExternalMcpError } from './external-mcp-policy';
 import { forwardAppUpstream } from './external-mcp-transport';
 import { reserveExternalMcpCall } from './external-mcp-limits';
 import {
-  connectionUnavailable, findMemberConnection, requireConnectionApp, type ExternalMcpCaller,
+  connectionUnavailable, requireConnectionApp, type ExternalMcpCaller,
 } from './member-connection-gate';
 import {
   assertDeclaredCall, parseUpstream, upstreamBinding, upstreamCallInput, upstreamDeclarations,
@@ -43,29 +43,28 @@ export async function invokeAppUpstream(caller: ExternalMcpCaller & { scopes?: r
   if (!caller.appDid || !caller.serviceToken || caller.memberDid !== call.memberDid) throw connectionUnavailable();
   const appDid = caller.appDid;
   const provider = upstreamProvider(appDid, call.upstreamId);
-  const row = await findMemberConnection(db, caller.memberDid, provider);
-  let outcome = 'refused';
-  let release: (() => void) | undefined;
+  const release = reserveExternalMcpCall(caller.memberDid, appDid);
   try {
-    release = reserveExternalMcpCall(caller.memberDid, appDid);
     const target = await resolveAppUpstream(appDid, call.upstreamId);
     assertDeclaredCall(target, call);
     const scope = ['GET', 'HEAD'].includes(call.method) ? UPSTREAM_READ_SCOPE : UPSTREAM_WRITE_SCOPE;
     if (!caller.scopes?.includes(scope)) throw connectionUnavailable();
     const context = await authorizeExternalMcp(caller, appConnectionTarget(appDid, target, scope));
+    let result;
     try {
-      const value = await forwardAppUpstream(target, call, context.credential);
-      outcome = 'returned';
-      return value;
+      result = { value: await forwardAppUpstream(target, call, context.credential) };
     } catch {
-      outcome = 'upstream-failed';
-      throw new ExternalMcpError(502, 'External MCP upstream unavailable');
+      result = { error: true as const };
     } finally { context.credential = ''; }
-  } finally {
-    release?.();
-    // Metadata only: not path/body/query/header/provider output, and no raw reason text.
-    await db.transaction(tx => auditMemberConnection(tx, caller.memberDid, row?.orgContextDid ?? null, 'call', {
-      appDid, upstreamId: call.upstreamId, method: call.method, reason: call.reason ?? null, outcome,
+    // Only authorized upstream exchanges are recorded; refusals persist nothing.
+    // Metadata only: not path/body/query/header/provider output or raw reason text.
+    await db.transaction(tx => auditMemberConnection(tx, caller.memberDid, context.orgContextDid, 'call', {
+      appDid, upstreamId: call.upstreamId, method: call.method, reason: call.reason ?? null,
+      outcome: 'value' in result ? 'returned' : 'upstream-failed',
     }, provider));
+    if ('error' in result) throw new ExternalMcpError(502, 'External MCP upstream unavailable');
+    return result.value;
+  } finally {
+    release();
   }
 }
