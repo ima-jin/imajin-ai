@@ -72,13 +72,13 @@ import {
   isCyclePhaseName,
   type CyclePhaseName,
 } from '../../loops/cycle';
-import { getLastStepEventAt, getLoopWithHistory, listLoopsPage } from '../../loops/query';
+import { getStepLoopIds, getLoopWithHistory, listLoopsPage } from '../../loops/query';
 import { projectHorizon } from '../../loops/horizon';
 import type { LoopEventJson } from '../../loops/serialize';
 import { getOperatorDid } from '../../notify/operator-approvals';
 import { listApprovalsForOperator } from '../../notify/operator-approvals-service';
 import { emitDecisionCard, DECISION_APPROVAL_SOURCE } from '../../decisions/emit';
-import { forEachPage, forEachSequential, mapWithConcurrency } from '../../async/sequential';
+import { forEachSequential, mapWithConcurrency } from '../../async/sequential';
 
 const CYCLE_SCOPE = 'cycle:run';
 const HORIZON_DESCRIPTION =
@@ -87,31 +87,23 @@ const HORIZON_DESCRIPTION =
   'Below target includes belowDepth: { deficit }. noStepsPublished means no signed step event exists; ' +
   'message is "No horizon steps published yet" then, not an error. ';
 
-/** Same loop resolution as Runs: principal-scoped pages, then each loop's canonical projection. */
+/** Read canonical projections only for the principal's loops that have signed step activity. */
 async function readCallerHorizon(principal: string) {
   const empty = projectHorizon([], '', principal);
   let depth = empty.depth;
   const zones = { tail: 0, middle: 0, near: 0, head: 0, past: 0 };
-  await forEachPage(
-    async (cursor) => {
-      const page = await listLoopsPage({ principal, limit: 200, cursor: cursor ?? null });
-      const histories = await mapWithConcurrency(page.loops, 6, loop => getLoopWithHistory(loop.loopId, principal));
-      return { ...page, histories };
-    },
-    page => page.nextCursor ?? undefined,
-    (page) => {
-      for (const history of page.histories) {
-        if (!history) continue;
-        depth += history.horizon.depth;
-        for (const step of history.horizon.steps) {
-          if (step.zone !== 'done') zones[step.zone]++;
-        }
-      }
-    },
-  );
+  const loopIds = await getStepLoopIds(principal);
+  const histories = await mapWithConcurrency(loopIds, 6, loopId => getLoopWithHistory(loopId, principal));
+  for (const history of histories) {
+    if (!history) continue;
+    depth += history.horizon.depth;
+    for (const step of history.horizon.steps) {
+      if (step.zone !== 'done') zones[step.zone]++;
+    }
+  }
 
   const deficit = Math.max(0, empty.targetDepth - depth);
-  const noStepsPublished = (await getLastStepEventAt(principal)) === null;
+  const noStepsPublished = loopIds.length === 0;
   return {
     horizon: {
       depth, targetDepth: empty.targetDepth, deficit, zones, noStepsPublished,

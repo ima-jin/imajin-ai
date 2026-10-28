@@ -23,6 +23,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { McpContent, McpToolContext } from '../types';
 import { projectHorizon, type HorizonLease } from '../../loops/horizon';
 import type { LoopEventJson } from '../../loops/serialize';
+import { STEP_EVENT_TYPES } from '../../loops/step-types';
 import {
   CODE_STEP, STEP_ISSUE_UPDATE, STEP_READY, STEP_NOW, stepEvent,
 } from '../../loops/__tests__/horizon-fixtures';
@@ -62,10 +63,12 @@ vi.mock('../../loops/cycle', () => {
 const mockGetLoopWithHistory = vi.hoisted(() => vi.fn());
 const mockListLoopsPage = vi.hoisted(() => vi.fn());
 const mockGetLastStepEventAt = vi.hoisted(() => vi.fn());
+const mockGetStepLoopIds = vi.hoisted(() => vi.fn());
 vi.mock('../../loops/query', () => ({
   getLoopWithHistory: mockGetLoopWithHistory,
   listLoopsPage: mockListLoopsPage,
   getLastStepEventAt: mockGetLastStepEventAt,
+  getStepLoopIds: mockGetStepLoopIds,
 }));
 
 const mockEmitDecisionCard = vi.hoisted(() => vi.fn());
@@ -138,6 +141,7 @@ beforeEach(() => {
   mockStartCycle.mockResolvedValue({ ok: true, correlationId: 'cycle_abc' });
   mockGetLoopWithHistory.mockResolvedValue(null);
   mockGetLastStepEventAt.mockResolvedValue(null);
+  mockGetStepLoopIds.mockResolvedValue([]);
   mockListLoopsPage.mockResolvedValue({ loops: [], hasNextPage: false, nextCursor: null });
 });
 
@@ -164,14 +168,15 @@ describe('cycle tool registration', () => {
 describe('caller horizon (#2882)', () => {
   const alice = 'did:imajin:alice';
   const bob = 'did:imajin:bob';
+  const supportedStepTypes = new Set<string>(STEP_EVENT_TYPES);
   let events: LoopEventJson[];
   let leases: HorizonLease[];
 
-  function publish(principal: string, loopId: string, stepId: string, updates: Record<string, unknown> = {}) {
+  function publish(principal: string, loopId: string, stepId: string, updates: Record<string, unknown> = {}, issuer = principal) {
     const queued = stepEvent('step.queued', events.length, { step: structuredClone(CODE_STEP) }, stepId);
     const updated = stepEvent('step.updated', events.length + 1, { update: updates }, stepId);
     for (const event of [queued, updated]) {
-      events.push({ ...event, loopId, principal, issuer: principal });
+      events.push({ ...event, loopId, principal, issuer });
     }
   }
 
@@ -185,11 +190,9 @@ describe('caller horizon (#2882)', () => {
   beforeEach(() => {
     events = [];
     leases = [];
-    mockListLoopsPage.mockImplementation(async ({ principal, kind }) => ({
-      loops: kind ? [] : [...new Set(events.filter(e => e.principal === principal).map(e => e.loopId))]
-        .map(loopId => ({ loopId })),
-      hasNextPage: false, nextCursor: null,
-    }));
+    mockGetStepLoopIds.mockImplementation(async principal =>
+      [...new Set(events.filter(e => e.principal === principal && supportedStepTypes.has(e.type))
+        .map(e => e.loopId))]);
     mockGetLoopWithHistory.mockImplementation(async (loopId, principal) => {
       const owned = events.filter(e => e.loopId === loopId && e.principal === principal);
       if (owned.length === 0) return null;
@@ -198,8 +201,6 @@ describe('caller horizon (#2882)', () => {
         horizon: projectHorizon(owned, loopId, principal, STEP_NOW, false, leases),
       };
     });
-    mockGetLastStepEventAt.mockImplementation(async principal =>
-      events.find(e => e.principal === principal)?.occurredAt ?? null);
   });
 
   it.each(['cycle_status', 'cycle_run'])('%s returns all five zone counts, excluding exited steps', async name => {
@@ -236,12 +237,23 @@ describe('caller horizon (#2882)', () => {
       noStepsPublished: true, message: 'No horizon steps published yet',
     });
     expect(out.belowDepth).toEqual({ deficit: 12 });
+    expect(mockGetStepLoopIds.mock.calls).toEqual([[alice]]);
+    expect(mockGetLoopWithHistory).not.toHaveBeenCalled();
+    expect(mockGetLastStepEventAt).not.toHaveBeenCalled();
 
-    mockGetLastStepEventAt.mockResolvedValueOnce(new Date(STEP_NOW).toISOString());
+    publish(alice, 'horizon-alice', 'done', STEP_ISSUE_UPDATE);
+    observe('done', 'closed', { kind: 'issue_closed', issue: STEP_ISSUE_UPDATE.issue.ref });
+    observe('done', 'released', {
+      kind: 'release_contains', repository: CODE_STEP.repository, issue: STEP_ISSUE_UPDATE.issue.ref,
+      mergeCommit: 'a'.repeat(40), tag: 'v1.0.0',
+    });
+    observe('done', 'prod', { kind: 'deployed', repository: CODE_STEP.repository, tag: 'v1.0.0', environment: 'prod' });
     const drained = parseResult(await call(name, {}, ctxFor(alice)));
     expect(drained.horizon.noStepsPublished).toBe(false);
     expect(drained.horizon).not.toHaveProperty('message');
     expect(drained.horizon.depth).toBe(0);
+    expect(mockGetLoopWithHistory).toHaveBeenCalledWith('horizon-alice', alice);
+    expect(mockGetLastStepEventAt).not.toHaveBeenCalled();
   });
 
   it.each([12, 13])('omits belowDepth at depth %i and never returns a negative deficit', async depth => {
@@ -263,8 +275,8 @@ describe('caller horizon (#2882)', () => {
     const out = parseResult(await call('cycle_run', {}, ctxFor(alice)));
     expect(out.horizon.depth).toBe(1);
     expect(out.horizon.zones.near).toBe(1);
-    expect(mockGetLastStepEventAt).toHaveBeenCalledTimes(1);
-    expect(mockGetLastStepEventAt.mock.invocationCallOrder[0])
+    expect(mockGetStepLoopIds.mock.calls).toEqual([[alice]]);
+    expect(mockGetLoopWithHistory.mock.invocationCallOrder[0])
       .toBeLessThan(mockStartCycle.mock.invocationCallOrder[0]);
     expect(mockStartCycle.mock.invocationCallOrder[0]).toBeLessThan(mockCyclePhase.mock.invocationCallOrder[0]);
     const status = parseResult(await call('cycle_status', {}, ctxFor(alice)));
@@ -279,34 +291,71 @@ describe('caller horizon (#2882)', () => {
     expect(a.horizon.zones).toEqual({ tail: 1, middle: 0, near: 0, head: 0, past: 0 });
     expect(b.horizon.zones).toEqual({ tail: 0, middle: 1, near: 0, head: 0, past: 0 });
     expect(mockGetLoopWithHistory).not.toHaveBeenCalledWith('horizon-bob', alice);
-    expect(mockGetLastStepEventAt).toHaveBeenCalledWith(alice);
-    expect(mockGetLastStepEventAt).toHaveBeenCalledWith(bob);
+    expect(mockGetStepLoopIds).toHaveBeenCalledWith(alice);
+    expect(mockGetStepLoopIds).toHaveBeenCalledWith(bob);
     await expect(call('cycle_status', { correlation_id: 'horizon-bob' }, ctxFor(alice))).rejects.toThrow(/not_found/);
   });
 
-  it('continues through registry pages including non-cycle loops, without applying repo scope', async () => {
+  it('includes step-bearing non-cycle loops without applying repo scope or walking registry pages', async () => {
     publish(alice, 'older-loop', 'older');
     publish(alice, 'newer-loop', 'newer');
-    mockListLoopsPage.mockResolvedValueOnce({
-      loops: [{ loopId: 'newer-loop' }, { loopId: 'unavailable' }], nextCursor: 'older', hasNextPage: true,
-    }).mockResolvedValueOnce({ loops: [{ loopId: 'older-loop' }], nextCursor: null, hasNextPage: false });
+    mockGetStepLoopIds.mockResolvedValueOnce(['older-loop', 'newer-loop', 'unavailable']);
+    mockGetLoopWithHistory.mockResolvedValueOnce({
+      loop: { loopId: 'older-loop', principal: alice, kind: 'warp.run' },
+      horizon: projectHorizon(events, 'older-loop', alice, STEP_NOW),
+    });
     const out = parseResult(await call('cycle_run', { scope: { repo: 'another/repo' } }, ctxFor(alice)));
     expect(out.horizon.depth).toBe(2);
-    expect(mockListLoopsPage).toHaveBeenNthCalledWith(1, { principal: alice, limit: 200, cursor: null });
-    expect(mockListLoopsPage).toHaveBeenNthCalledWith(2, { principal: alice, limit: 200, cursor: 'older' });
+    expect(mockGetStepLoopIds.mock.calls).toEqual([[alice]]);
+    expect(mockListLoopsPage).not.toHaveBeenCalled();
+    expect(mockGetLastStepEventAt).not.toHaveBeenCalled();
+  });
+
+  it.each(['cycle_status', 'cycle_run'])('%s never loads a loop that has no step events for its horizon', async name => {
+    publish(alice, 'horizon-alice', 'next');
+    events.push({
+      ...stepEvent('step.progress', events.length), type: 'loop.progress',
+      loopId: 'cycle-without-steps', principal: alice, issuer: alice,
+    });
+    const out = parseResult(await call(name, {}, ctxFor(alice)));
+    expect(out.horizon.depth).toBe(1);
+    expect(mockGetLoopWithHistory.mock.calls).toEqual([['horizon-alice', alice]]);
+    expect(mockGetLoopWithHistory).not.toHaveBeenCalledWith('cycle-without-steps', alice);
+    expect(mockGetStepLoopIds.mock.calls).toEqual([[alice]]);
+    expect(mockGetLastStepEventAt).not.toHaveBeenCalled();
+  });
+
+  it.each(['cycle_status', 'cycle_run'])('%s counts the owner’s steps published by a different harness DID', async name => {
+    const harness = 'did:imajin:harness';
+    publish(alice, 'horizon-alice', 'harness-step', STEP_ISSUE_UPDATE, harness);
+    publish(bob, 'horizon-bob', 'foreign-step', {}, harness);
+    const out = parseResult(await call(name, { principal: harness }, ctxFor(alice)));
+    expect(out.horizon.zones).toEqual({ tail: 0, middle: 1, near: 0, head: 0, past: 0 });
+    expect(Object.keys(out.horizon).sort()).toEqual(['depth', 'targetDepth', 'deficit', 'zones', 'noStepsPublished'].sort());
+    expect(JSON.stringify(out.horizon)).not.toContain('harness-step');
+    expect(mockGetStepLoopIds.mock.calls).toEqual([[alice]]);
+    expect(mockGetLoopWithHistory.mock.calls).toEqual([['horizon-alice', alice]]);
   });
 
   it.each(['cycle_status', 'cycle_run'])('%s fails closed before reading the horizon when the live grant is revoked', async name => {
     mockRequireMcpGrant.mockRejectedValueOnce(new Error('grant revoked'));
     await expect(call(name, {}, ctxFor(alice))).rejects.toThrow('grant revoked');
     expect(mockListLoopsPage).not.toHaveBeenCalled();
+    expect(mockGetStepLoopIds).not.toHaveBeenCalled();
     expect(mockGetLastStepEventAt).not.toHaveBeenCalled();
     expect(mockGetLoopWithHistory).not.toHaveBeenCalled();
   });
 
   it('does not turn a registry outage into an empty horizon or start a cycle', async () => {
-    mockListLoopsPage.mockRejectedValueOnce(new Error('registry unavailable'));
+    mockGetStepLoopIds.mockRejectedValueOnce(new Error('registry unavailable'));
     await expect(call('cycle_run', {}, ctxFor(alice))).rejects.toThrow('registry unavailable');
+    expect(mockStartCycle).not.toHaveBeenCalled();
+  });
+
+  it('does not start a cycle or return a false empty horizon when history loading fails', async () => {
+    publish(alice, 'horizon-alice', 'next');
+    mockGetLoopWithHistory.mockRejectedValueOnce(new Error('history unavailable'));
+    await expect(call('cycle_run', {}, ctxFor(alice))).rejects.toThrow('history unavailable');
     expect(mockStartCycle).not.toHaveBeenCalled();
   });
 
