@@ -41,7 +41,8 @@ describe('JinPage', () => {
     const card = {
       proposalId: 'restart-personal', source: 'system-agent', kind: 'system-agent:restart',
       summary: 'Personal gateway restart', status: 'pending', keysTouched: [],
-      detail: null, decision: null, createdAt: '2026-10-21T00:00:00Z',
+      // This scenario tests switching/approval, not expiry of a week-old card.
+      detail: null, decision: null, createdAt: new Date().toISOString(),
     };
     let pending = 0;
     let approved = false;
