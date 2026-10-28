@@ -99,6 +99,157 @@ tags:
     description: imajin connections service
 
 paths:
+  /api/external-mcp/postman:
+    get:
+      tags: [connections]
+      operationId: externalMcpPostmanStatus
+      summary: Read your personal Postman connection status without unsealing
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: provider=postman, connected boolean and nullable orgContextDid only; no-store
+        "401":
+          description: Personal member session required
+        "403":
+          description: Organization act-as and agent/delegated sessions refused
+        "503":
+          description: Connection store unavailable
+    post:
+      tags: [connections]
+      operationId: connectExternalMcpPostman
+      summary: Seal your own Postman API key for kernel-only outbound use
+      description: >-
+        Personal human member session only; no app or org act-as lifecycle authority.
+        The optional org tag requires active membership and is attribution, not key ownership.
+        Fixed official target https://mcp.postman.com/mcp; URLs and headers are not configurable.
+        Tier 0 node-delegated custody, not zero custody. Tier 1 returns 409 before writing.
+        Each save uses an immutable private vault field with member subject and kernel grantee,
+        revokes prior custody and records node-signed connector.external-mcp history.
+        After the new seal is written, reconnect writes a signed tombstone for the old field.
+        Body limit 16 KiB; never echo parser/driver/provider messages or credentials.
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [secret]
+              properties:
+                secret: { type: string, writeOnly: true, minLength: 1, maxLength: 4096, pattern: '^[!-~]+$' }
+                orgContextDid: { type: string, maxLength: 256, pattern: '^did:[a-z0-9]+:[a-zA-Z0-9._:-]+$' }
+      responses:
+        "201":
+          description: provider=postman, connected=true, orgContextDid only; no-store
+        "400":
+          description: Invalid input; unknown properties refused
+        "401":
+          description: Personal member session required
+        "403":
+          description: Not a personal member or no active org membership
+        "409":
+          description: Kernel vault custody required
+        "413":
+          description: Request exceeds 16 KiB
+        "503":
+          description: Signing, vault or persistence unavailable
+    delete:
+      tags: [connections]
+      operationId: disconnectExternalMcpPostman
+      summary: Revoke custody and write a signed vault tombstone, retaining history
+      description: >-
+        Same member-only lifecycle gate. Serializes against connects and short custody snapshots.
+        An already-admitted outbound call may finish after disconnect; new calls are refused.
+        Erases wrapped grant material, marks the connection revoked and records
+        a node-signed lifecycle attestation. No database rows are deleted.
+        No connection is an idempotent success. Org removal does not prevent personal disconnect.
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: disconnected=true; no-store
+        "401":
+          description: Personal member session required
+        "403":
+          description: Not a personal human member
+        "503":
+          description: Signing, vault or persistence unavailable
+  /api/external-mcp/postman/rpc:
+    post:
+      tags: [connections]
+      operationId: invokeExternalMcpPostman
+      summary: List or call allowlisted read-only Postman MCP tools through the kernel
+      description: >-
+        JSON-RPC-shaped kernel invocation facade, not a transparent MCP server:
+        accepts tools/list and tools/call only. The kernel handles a fresh upstream
+        initialize/initialized handshake for each invocation and keeps session IDs private.
+        Injects the current member credential as Authorization Bearer on every outbound hop.
+        Redirects disabled, 30s total deadline, 2 MiB response budget; JSON and SSE supported.
+        No upstream headers, errors or credential echoes are returned; upstream failure is generic 502.
+        Exact allowlist: getWorkspaces, getWorkspace, getCollections, getCollection,
+        getCollectionRequest, getEnvironments, getEnvironment. Arguments are validated
+        against reviewed per-tool schemas; no URLs, headers or protocol metadata accepted.
+        Write, unknown and live-request tools (including runCollection) are refused with 403,
+        regardless of upstream readOnlyHint. tools/list filters out nonallowlisted tools.
+        Personal human session may use its own connection. Registered app callers need
+        connectors:mcp:read plus the member's live OAuth app consent on every call.
+        An app-service token also needs current operator approval of this service scope
+        and supplies memberDid; a delegated app cannot select a different userDid.
+        No session fallback after app-auth refusal. Connection, custody, member identity,
+        app registration, tagged org identity and current org membership are checked each call.
+        Admission uses the existing in-memory sliding-window limiter: 20 calls per member
+        and 60 calls per app in 60 seconds, plus a process-wide cap of 4 in-flight calls.
+        Limits are per process (not a distributed quota); restart resets the in-memory budgets.
+        Limit refusal is generic 429, capacity refusal generic 503; neither starts a database
+        transaction, calls Postman or writes an attestation/row. Capacity is released on every exit.
+        Authorization and unseal run in one short transaction, then the outbound exchange runs
+        with no database transaction or lock held. A second short transaction records each
+        admitted attempt (including successful use) as a signed member/org/app/method/tool event;
+        no arguments, RPC IDs, credential or provider error is stored.
+        Org controls and org-wide revocation remain separate work.
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [jsonrpc, id, method]
+              properties:
+                jsonrpc: { type: string, const: "2.0" }
+                id: { oneOf: [{ type: string, maxLength: 128 }, { type: integer }] }
+                memberDid: { type: string, maxLength: 256, description: "Required for app-service, otherwise must match authenticated member." }
+                method: { type: string, enum: [tools/list, tools/call] }
+                params:
+                  type: object
+                  additionalProperties: false
+                  properties:
+                    name: { type: string, maxLength: 128 }
+                    arguments: { type: object }
+                    cursor: { type: string, maxLength: 1024, description: "tools/list pagination only" }
+      responses:
+        "200":
+          description: JSON-RPC 2.0 id and sanitized result; no-store
+        "400":
+          description: Invalid RPC envelope, arguments or selector
+        "401":
+          description: Authentication required
+        "403":
+          description: Tool refused or no current member/app/custody authorization
+        "413":
+          description: Request exceeds 16 KiB
+        "429":
+          description: Generic per-member or per-app rate limit refusal; nothing permanent written
+        "502":
+          description: Generic upstream failure, including credential echo refusal
+        "503":
+          description: In-flight capacity exhausted (nothing permanent written), or authorization, signing or custody unavailable
   /api/apps/pods:
     get:
       tags: [connections]

@@ -281,6 +281,8 @@ export const SCOPE_VOCABULARY = [
   // Operator approval AND resource-owner authority are checked live; never self-granted.
   { scope: 'onboard:send', connector: null, label: 'Ask the node to email onboarding links for your app-owned orders' },
   { scope: 'connectors:read-status', connector: null, label: 'Read your connector connection status' },
+  // App services also need live member consent and operator approval on every call.
+  { scope: 'connectors:mcp:read', connector: null, label: 'Read collections, saved requests and environments through your personal external MCP connection' },
   // #1799: powers the per-connector usage rollup (attestations + signed connector
   // actions, scoped to the connector's registered scope(s)) — distinct from
   // connectors:read-status, which only ever answers connected/not-connected.

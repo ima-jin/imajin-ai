@@ -19,6 +19,19 @@ the generated package table in README.md links checked public registry metadata.
 License: Imajin Network License (INL) v1.0, source-available, not MIT.
 
 ## Integration and safety
+- Personal Postman MCP: GET/POST/DELETE /connections/api/external-mcp/postman
+  requires the member's own human session, never org act-as or app lifecycle access.
+  POST seals a write-only secret plus optional orgContextDid; DELETE revokes custody
+  and writes a signed vault tombstone, retaining history. Tier 0 only; no generic fetch/export.
+  POST /connections/api/external-mcp/postman/rpc accepts tools/list or tools/call.
+  Apps need connectors:mcp:read, live member consent and active registration;
+  app-service calls also need operator scope approval and memberDid. Tagged org
+  standing is checked each call. The kernel injects credentials only to the fixed
+  official Postman target; only reviewed saved-data reads are allowed, no writes
+  or runCollection/live requests. See /connections/api/spec. No UI or org controls implied.
+  Admission is per process: 20/member/minute, 60/app/minute and 4 calls in flight;
+  429/503 admission refusals write nothing permanent. No transaction spans Postman I/O.
+  Signed audit follows the exchange; reconnect tombstones the prior sealed field.
 - MCP cycle_status and cycle_run require cycle:run plus the live connector grant.
   Both return the caller's registry horizon {depth,targetDepth:12,deficit,zones:
   {tail,middle,near,head,past},noStepsPublished}; belowDepth:{deficit} is present
