@@ -29,8 +29,8 @@ components:
       bearerFormat: app-service+jwt
       description: >-
         Existing POST /auth/api/apps/token/service credential. Requires
-        connections:read in the token and current operator-approved service
-        scopes of an active registry app. Not a session or delegated app token.
+        the operation's documented scope in the token and current operator-approved
+        service scopes of an active registry app. Not a session or delegated app token.
   schemas:
     AppUpstream:
       type: object

@@ -204,7 +204,7 @@ are omitted from the implemented reference and reported in the #2028 run-log.
 - /vault/api/spec — imajin vault — apps/kernel/api-spec/vault.yaml
 - corpus:/spec — imajin corpus — apps/corpus/api-spec/openapi.yaml
 
-## Complete App Router inventory (668 handlers)
+## Complete App Router inventory (671 handlers)
 
 - GET /.well-known/agent.json — apps/kernel/app/.well-known/agent.json/route.ts
 - GET, OPTIONS /.well-known/agent/{id} — apps/kernel/app/.well-known/agent/[id]/route.ts
@@ -574,6 +574,9 @@ are omitted from the implemented reference and reported in the #2028 run-log.
 - GET /connections/api/spec — apps/kernel/app/connections/api/spec/route.ts
 - GET, OPTIONS, POST /connections/api/telemetry — apps/kernel/app/connections/api/telemetry/route.ts
 - GET /connections/api/trust/distance — apps/kernel/app/connections/api/trust/distance/route.ts
+- GET, OPTIONS, PUT /connections/api/upstreams — apps/kernel/app/connections/api/upstreams/route.ts
+- OPTIONS, POST /connections/api/upstreams/call — apps/kernel/app/connections/api/upstreams/call/route.ts
+- DELETE, GET, OPTIONS, POST /connections/api/upstreams/connection — apps/kernel/app/connections/api/upstreams/connection/route.ts
 - GET, OPTIONS, POST /consent/api/requests — apps/kernel/app/consent/api/requests/route.ts
 - GET, OPTIONS /consent/api/requests/{requestId} — apps/kernel/app/consent/api/requests/[requestId]/route.ts
 - OPTIONS, POST /consent/api/requests/{requestId}/decision — apps/kernel/app/consent/api/requests/[requestId]/decision/route.ts

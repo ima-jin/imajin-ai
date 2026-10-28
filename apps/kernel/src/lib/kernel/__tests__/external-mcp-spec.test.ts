@@ -26,6 +26,21 @@ it('discovers the member-held external MCP routes through the existing connectio
     expect(readFileSync(resolve(kernelRoot, 'public', file), 'utf8')).toContain('/connections/api/external-mcp/postman/rpc');
   }
 });
+it('discovers all app upstream routes and documents separate read/write authority', async () => {
+  vi.spyOn(process, 'cwd').mockReturnValue(kernelRoot);
+  const spec = parse(await (await GET()).text());
+  for (const route of ['/api/upstreams', '/api/upstreams/connection', '/api/upstreams/call']) {
+    expect(spec.paths[route]).toBeDefined();
+    expect(listApiSpecs().find(item => item.service === 'connections')?.paths).toContain(route);
+    for (const file of ['llms.txt', 'llms-full.txt']) {
+      expect(readFileSync(resolve(kernelRoot, 'public', file), 'utf8')).toContain(`/connections${route}`);
+    }
+  }
+  expect(spec.paths['/api/upstreams/call'].post.description).toContain('connectors:upstream:write');
+  expect(spec.paths['/api/upstreams/connection'].post.requestBody.content['application/json'].schema.properties.secret.writeOnly).toBe(true);
+  expect(spec.paths['/api/upstreams'].put.requestBody.content['application/json'].schema.properties.upstreams.items.$ref)
+    .toBe('#/components/schemas/AppUpstream');
+});
 it('registers explicit app consent without self-grantable service authority and mechanical audit types', () => {
   expect(scopeEntry('connectors:mcp:read')?.connector).toBeNull();
   expect(isServiceEligibleScope('connectors:mcp:read')).toBe(false);
