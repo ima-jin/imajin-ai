@@ -105,7 +105,7 @@ describe('Runs horizon observations', () => {
     const fetcher = vi.fn().mockResolvedValue(response({ isOperator: true, lastStepEventAt: null }));
     vi.stubGlobal('fetch', fetcher);
     const { container } = mount([]);
-    await screen.findByText("No horizon steps published yet · the harness horizon sync (#2881) hasn't reported · last step never");
+    await screen.findByText("No horizon steps published yet · the agent has not reported its horizon · last step never");
     expect(screen.getByLabelText('Horizon depth').textContent).toBe('0 / 12');
     expect(within(screen.getByRole('region', { name: 'Runs horizon' })).queryAllByRole('region')).toHaveLength(0);
     expect(screen.queryByText(/Below target/)).toBeNull();

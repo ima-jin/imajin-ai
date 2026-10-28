@@ -41,7 +41,7 @@ import { mapWithConcurrency } from '@/src/lib/async/sequential';
 const log = createLogger('kernel:jin:spend-interim');
 
 /** Shown in the UI next to every number this module derives. */
-export const INTERIM_LABEL = 'interim · derived from Warp runs + branch names (until #2290)';
+export const INTERIM_LABEL = 'interim · derived from Warp runs + branch names (estimated)';
 
 /** Max runs read for the month, and max GitHub lookups per request. */
 const RUN_LIMIT = 100;

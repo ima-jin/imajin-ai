@@ -468,7 +468,7 @@ function ProvisionPanel({
           <button
             type="button"
             onClick={() => onRetrace(provision.id)}
-            title="Walk this provision's record backwards to the originating signed intent (imajin-ai#1962)"
+            title="Walk this provision's record backwards to the originating signed intent"
             className="text-xs px-2 py-1 border border-gray-700 text-gray-300 rounded hover:border-amber-600 hover:text-amber-400 transition"
           >
             Retrace
@@ -574,7 +574,7 @@ function ProvisionWizard({
     <div className="bg-[#0a0a0a] border border-gray-800 rounded-2xl p-8 space-y-5">
       <h2 className="text-lg font-semibold text-white">Provision new agent</h2>
       <p className="text-gray-400 text-sm">
-        Mints an agent DID, issues minimal grants, and assembles an RFC-31 envelope (imajin-ai#1933).
+        Mints an agent DID, issues minimal grants, and assembles an RFC-31 envelope.
       </p>
 
       <div>
@@ -598,7 +598,7 @@ function ProvisionWizard({
             NanoClaw
           </button>
           <button type="button" onClick={() => setHarness('openclaw')}
-            title="OpenClaw envelope renderer (imajin-ai#2186) — configures the Imajin channel plugin against the agent DID + kernel URL"
+            title="OpenClaw envelope renderer — configures the Imajin channel plugin against the agent DID + kernel URL"
             className={`px-3 py-1.5 rounded-lg text-sm border transition ${harness === 'openclaw' ? 'border-amber-500 text-amber-400 bg-amber-900/10' : 'border-gray-700 text-gray-400'}`}>
             OpenClaw
           </button>
@@ -1430,7 +1430,7 @@ export default function AgentsPage() {
                         {agent.role === 'connected' && (
                           <span
                             className="px-1.5 py-0.5 text-xs rounded border border-sky-800 text-sky-300 bg-sky-950/30"
-                            title="This agent knocked and was accepted (#1883), but holds no delegation grant yet. Appearing here implies no authority — issue a scoped grant below to grant its first capability."
+                            title="This agent knocked and was accepted, but holds no delegation grant yet. Appearing here implies no authority — issue a scoped grant below to grant its first capability."
                           >
                             connected — no capabilities granted
                           </span>
@@ -1439,7 +1439,7 @@ export default function AgentsPage() {
                           <span
                             key={p.id}
                             className={`px-1.5 py-0.5 text-xs rounded border capitalize ${PROVISION_STATUS_STYLES[p.status] ?? PROVISION_STATUS_STYLES.pending}`}
-                            title={`Provisioned via imajin-ai#1933 — ${p.harness}, ${p.placement}`}
+                            title={`Provisioned agent — ${p.harness}, ${p.placement}`}
                           >
                             {p.harness} · {p.placement} · {provisionStatusLabel(p.status)}
                           </span>

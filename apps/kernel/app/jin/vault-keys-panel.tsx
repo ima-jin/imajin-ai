@@ -372,7 +372,7 @@ function ClaimPendingServiceStub() {
   return (
     <div className="rounded-lg border border-dashed border-gray-800 p-3 text-xs text-gray-600">
       <span className="font-medium text-gray-500">Claim pending service</span>
-      <span className="ml-2">— waiting on the claim/pairing follow-up (#2243)</span>
+      <span className="ml-2">— service pairing is not available yet</span>
       <button type="button" disabled className="ml-3 px-2 py-0.5 rounded bg-gray-800 text-gray-600 cursor-not-allowed">
         Claim
       </button>

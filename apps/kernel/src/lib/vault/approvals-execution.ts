@@ -252,7 +252,7 @@ async function executeRevoke(card: OperatorApprovalCard, nodeDid: string, author
  * once that follow-up lands.
  */
 function executeClaim(): Promise<VaultExecutionResult> {
-  return Promise.resolve({ ok: false, error: 'vault:claim execution is stubbed pending #2243' });
+  return Promise.resolve({ ok: false, error: 'Service pairing is not available yet' });
 }
 
 /**

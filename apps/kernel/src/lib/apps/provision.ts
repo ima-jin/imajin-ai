@@ -495,7 +495,7 @@ async function registerApp(params: {
       id,
       ownerDid: params.ownerDid,
       name: navMetadata.name ?? displayName,
-      description: `${displayName} (provisioned via apps.provision #2375)`,
+      description: displayName,
       appDid,
       publicKey,
       // Explicit operator-approved hosts use the app's own auth callback.
