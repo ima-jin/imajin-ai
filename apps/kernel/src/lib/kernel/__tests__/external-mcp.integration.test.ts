@@ -14,6 +14,7 @@ const h = vi.hoisted(() => ({
   vault: { version: 1, entries: [] } as VaultFile, authError: false, appError: false,
   app: null as null | { appDid: string; userDid: string; isServiceToken: boolean; scopes: string[] },
   fetch: vi.fn(), saveError: false, outputs: [] as unknown[], secrets: [] as string[],
+  openTransactions: 0, transactionsStarted: 0,
 }));
 vi.mock('@/src/db', async () => {
   const auth = await import('@/src/db/schemas/auth');
@@ -25,6 +26,21 @@ vi.mock('@/src/db', async () => {
     db: new Proxy({}, { get: (_target, property) => {
       const database = h.db as Record<PropertyKey, unknown>;
       const value = database[property];
+      if (property === 'transaction' && typeof value === 'function') {
+        return async (work: (tx: unknown) => Promise<unknown>) => {
+          let started = false;
+          try {
+            return await value.call(database, (tx: unknown) => {
+              started = true;
+              h.transactionsStarted++;
+              h.openTransactions++;
+              return work(tx);
+            });
+          } finally {
+            if (started) h.openTransactions--;
+          }
+        };
+      }
       return typeof value === 'function' ? value.bind(database) : value;
     } }),
   };
@@ -56,11 +72,12 @@ import { connectors } from '@/src/db/schemas/connectors';
 import { vaultDelegationGrants, vaultOwnerEnvelopes, vaultGrantRequests } from '@/src/db/schemas/vault';
 import { canonicalize, crypto, generateKeypair, requireAuth, requireAppAuth } from '@imajin/auth';
 import { _resetSealingCache, getNodeSigningIdentity } from '@/src/lib/vault/sealing';
-import { fetchGrantSecret, loadAndUnseal, loadAndUnsealByGrantee, listRenewableGrants } from '@/src/lib/vault';
+import { fetchGrantSecret, loadAndUnseal, loadAndUnsealByGrantee, listRenewableGrants, vaultService } from '@/src/lib/vault';
 import { connectExternalMcp, disconnectExternalMcp, invokeExternalMcp } from '../external-mcp';
 import { parseExternalMcpCall, POSTMAN_MCP_URL, EXTERNAL_MCP_SCOPE } from '../external-mcp-policy';
 import { GET, POST, DELETE, OPTIONS } from '@/app/connections/api/external-mcp/postman/route';
 import { POST as RPC, OPTIONS as RPC_OPTIONS } from '@/app/connections/api/external-mcp/postman/rpc/route';
+import { EXTERNAL_MCP_APP_LIMIT, EXTERNAL_MCP_IN_FLIGHT_LIMIT, EXTERNAL_MCP_MEMBER_LIMIT } from '../external-mcp-limits';
 
 const tables = [identities, identityMembers, attestations, channelLinks, registryApps, connectors,
   vaultDelegationGrants, vaultOwnerEnvelopes, vaultGrantRequests];
@@ -83,6 +100,20 @@ function tableSql(table: PgTable) {
     return `"${column.name}" ${column.getSQLType()}${column.primary ? ' PRIMARY KEY' : ''}${column.notNull ? ' NOT NULL' : ''}${fallback}`;
   });
   return `CREATE TABLE "${config.schema}"."${config.name}" (${fields.join(',')})`;
+}
+async function permanentState() {
+  return JSON.stringify([await Promise.all(tables.map(table => database.select().from(table))), h.vault]);
+}
+async function expectAdmissionRefused(status: number, headers: Record<string, string> = {}, input = rpcCall()) {
+  const before = await permanentState();
+  const fetches = h.fetch.mock.calls.length;
+  const transactions = h.transactionsStarted;
+  const result = await call(RPC, 'POST', input, headers);
+  expect(result.status).toBe(status);
+  expect(h.fetch).toHaveBeenCalledTimes(fetches);
+  expect(h.transactionsStarted).toBe(transactions);
+  expect(await permanentState()).toBe(before);
+  return result;
 }
 function fakeSecret() {
   const value = `FAKE_MCP_CREDENTIAL_NOT_VALID_${sequence}`;
@@ -131,7 +162,7 @@ beforeAll(async () => {
   database = drizzle(client);
   h.db = database;
   // Real additive migration twice: no data/history deletion and no renumbered baseline.
-  const migration = readFileSync('migrations/0224_external_mcp_org_context.sql', 'utf8');
+  const migration = readFileSync('migrations/0225_external_mcp_org_context.sql', 'utf8');
   await client.exec(migration);
   await client.exec(migration);
 });
@@ -149,6 +180,7 @@ beforeEach(async () => {
   h.identity = { id: member, scope: 'actor', subtype: 'human' };
   h.app = null; h.authError = false; h.appError = false; h.saveError = false;
   h.outputs = []; h.secrets = [];
+  h.openTransactions = 0; h.transactionsStarted = 0;
   h.publish.mockResolvedValue(undefined);
   await database.insert(identities).values([
     { id: member, publicKey: keys.publicKey, scope: 'actor' },
@@ -159,6 +191,7 @@ beforeEach(async () => {
   });
   vi.stubGlobal('fetch', h.fetch);
   h.fetch.mockImplementation(async (_url, options) => {
+    expect(h.openTransactions).toBe(0);
     const message = JSON.parse(options.body);
     if (message.method === 'initialize') return rpcResponse(1, { protocolVersion: '2025-06-18', capabilities: {} });
     if (message.method === 'notifications/initialized') return new Response(null, { status: 202 });
@@ -174,6 +207,104 @@ afterEach(async () => {
 afterAll(async () => { await client.close(); vi.unstubAllEnvs(); _resetSealingCache(); });
 
 describe('personal external MCP: real SQL, signatures and vault crypto', () => {
+  it('returns 429 over the member limit without upstream, transactions or permanent writes, then recovers', async () => {
+    await connect();
+    for (let i = 0; i < EXTERNAL_MCP_MEMBER_LIMIT; i++) {
+      expect((await call(RPC, 'POST', rpcCall())).status).toBe(200);
+    }
+    expect((await expectAdmissionRefused(429)).body).toEqual({ error: 'External MCP rate limit exceeded' });
+    const now = Date.now();
+    vi.spyOn(Date, 'now').mockReturnValue(now + 60_001);
+    try { expect((await call(RPC, 'POST', rpcCall())).status).toBe(200); }
+    finally { vi.mocked(Date.now).mockRestore(); }
+  });
+  it('aggregates the app limit across consenting members with no permanent writes on 429', async () => {
+    await connect(); await installApp();
+    const headers = { authorization: 'Bearer FAKE_APP_TOKEN' };
+    const initialMember = member;
+    for (let i = 0; i <= EXTERNAL_MCP_APP_LIMIT / EXTERNAL_MCP_MEMBER_LIMIT; i++) {
+      const target = i === 0 ? initialMember : `did:imajin:appquota${sequence}m${i}`;
+      if (i > 0) {
+        await database.insert(identities).values({ id: target, publicKey: keys.publicKey, scope: 'actor' });
+        h.identity = { id: target, scope: 'actor', subtype: 'human' };
+        expect((await connect(false)).status).toBe(201);
+        await database.insert(channelLinks).values({
+          id: `quota_${sequence}_${i}`, channel: 'app', channelUid: target, did: target, appDid,
+          status: 'active', scopes: [EXTERNAL_MCP_SCOPE],
+        });
+      }
+      const input = { ...rpcCall(), memberDid: target };
+      if (i === EXTERNAL_MCP_APP_LIMIT / EXTERNAL_MCP_MEMBER_LIMIT) {
+        expect((await expectAdmissionRefused(429, headers, input)).body).toEqual({ error: 'External MCP rate limit exceeded' });
+      } else {
+        for (let j = 0; j < EXTERNAL_MCP_MEMBER_LIMIT; j++) {
+          expect((await call(RPC, 'POST', input, headers)).status).toBe(200);
+        }
+      }
+    }
+    expect(h.fetch).toHaveBeenCalledTimes(EXTERNAL_MCP_APP_LIMIT * 3);
+  });
+  it('caps global in-flight calls at 4 with no writes on 503 and releases capacity after upstream failure', async () => {
+    await connect();
+    let unblock!: () => void;
+    const gate = new Promise<void>(resolve => { unblock = resolve; });
+    h.fetch.mockImplementation(async () => {
+      await gate;
+      throw new Error('Synthetic upstream failure');
+    });
+    const pending = Array.from({ length: EXTERNAL_MCP_IN_FLIGHT_LIMIT }, () => call(RPC, 'POST', rpcCall()));
+    try {
+      await vi.waitFor(() => expect(h.fetch).toHaveBeenCalledTimes(EXTERNAL_MCP_IN_FLIGHT_LIMIT));
+      expect(h.openTransactions).toBe(0);
+      expect((await expectAdmissionRefused(503)).body).toEqual({ error: 'External MCP capacity unavailable' });
+    } finally {
+      unblock();
+      expect((await Promise.all(pending)).every(result => result.status === 502)).toBe(true);
+    }
+    const next = await call(RPC, 'POST', rpcCall());
+    expect(next.status).toBe(502);
+    expect(h.fetch).toHaveBeenCalledTimes(EXTERNAL_MCP_IN_FLIGHT_LIMIT + 1);
+  });
+  it('disconnect completes while an admitted network call is pending and rejects subsequent calls', async () => {
+    await connect();
+    let unblock!: () => void;
+    const gate = new Promise<void>(resolve => { unblock = resolve; });
+    h.fetch.mockImplementation(async (_url, options) => {
+      expect(h.openTransactions).toBe(0);
+      await gate;
+      const message = JSON.parse(options.body);
+      if (message.method === 'initialize') return rpcResponse(1, { protocolVersion: '2025-06-18' });
+      if (message.method === 'notifications/initialized') return new Response(null, { status: 202 });
+      return rpcResponse(2, { content: [] });
+    });
+    const pending = call(RPC, 'POST', rpcCall());
+    try {
+      await vi.waitFor(() => expect(h.fetch).toHaveBeenCalledTimes(1));
+      expect((await call(DELETE, 'DELETE')).status).toBe(200);
+      expect((await call(RPC, 'POST', rpcCall())).status).toBe(403);
+      expect(h.fetch).toHaveBeenCalledTimes(1);
+    } finally {
+      unblock();
+      expect((await pending).status).toBe(200);
+    }
+  });
+  it('reconnect leaves only the new readable sealed key and tombstones the old field with retained grant history', async () => {
+    await connect();
+    const [before] = await database.select().from(connectors).where(eq(connectors.ownerDid, member));
+    expect((await connect()).status).toBe(201);
+    const [after] = await database.select().from(connectors).where(eq(connectors.id, before.id));
+    expect(after.sealedKeyField).not.toBe(before.sealedKeyField);
+    expect(await vaultService.get(before.sealedKeyField!)).toBeUndefined();
+    expect(await vaultService.get(after.sealedKeyField!)).toBeDefined();
+    const activeFields = (await vaultService.list()).filter(entry => entry.field.endsWith(`:${member}`));
+    expect(activeFields.map(entry => entry.field)).toEqual([after.sealedKeyField]);
+    const history = await vaultService.getHistory(before.sealedKeyField!);
+    expect(history[0]).toMatchObject({ deleted: true, previousCid: history[1].cid });
+    const [retired] = await database.select().from(vaultDelegationGrants)
+      .where(eq(vaultDelegationGrants.field, before.sealedKeyField!));
+    expect(retired).toMatchObject({ status: 'revoked', wrappedKey: '', wrappedNonce: '' });
+    expect((await call(RPC, 'POST', rpcCall())).status).toBe(200);
+  });
   it('connects under member custody, injects on every hop, and logs member/org without key or arguments', async () => {
     expect((await connect()).status).toBe(201);
     const status = await call(GET);

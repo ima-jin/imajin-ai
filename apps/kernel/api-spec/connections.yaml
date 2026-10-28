@@ -125,7 +125,8 @@ paths:
         Fixed official target https://mcp.postman.com/mcp; URLs and headers are not configurable.
         Tier 0 node-delegated custody, not zero custody. Tier 1 returns 409 before writing.
         Each save uses an immutable private vault field with member subject and kernel grantee,
-        revokes prior custody and atomically records node-signed connector.external-mcp history.
+        revokes prior custody and records node-signed connector.external-mcp history.
+        After the new seal is written, reconnect writes a signed tombstone for the old field.
         Body limit 16 KiB; never echo parser/driver/provider messages or credentials.
       security:
         - cookieAuth: []
@@ -160,7 +161,8 @@ paths:
       operationId: disconnectExternalMcpPostman
       summary: Revoke custody and write a signed vault tombstone, retaining history
       description: >-
-        Same member-only lifecycle gate. Serializes against calls and connects.
+        Same member-only lifecycle gate. Serializes against connects and short custody snapshots.
+        An already-admitted outbound call may finish after disconnect; new calls are refused.
         Erases wrapped grant material, marks the connection revoked and records
         a node-signed lifecycle attestation. No database rows are deleted.
         No connection is an idempotent success. Org removal does not prevent personal disconnect.
@@ -198,7 +200,14 @@ paths:
         and supplies memberDid; a delegated app cannot select a different userDid.
         No session fallback after app-auth refusal. Connection, custody, member identity,
         app registration, tagged org identity and current org membership are checked each call.
-        Each proxied attempt records a node-signed member/org/app/method/tool event;
+        Admission uses the existing in-memory sliding-window limiter: 20 calls per member
+        and 60 calls per app in 60 seconds, plus a process-wide cap of 4 in-flight calls.
+        Limits are per process (not a distributed quota); restart resets the in-memory budgets.
+        Limit refusal is generic 429, capacity refusal generic 503; neither starts a database
+        transaction, calls Postman or writes an attestation/row. Capacity is released on every exit.
+        Authorization and unseal run in one short transaction, then the outbound exchange runs
+        with no database transaction or lock held. A second short transaction records each
+        admitted attempt (including successful use) as a signed member/org/app/method/tool event;
         no arguments, RPC IDs, credential or provider error is stored.
         Org controls and org-wide revocation remain separate work.
       security:
@@ -235,10 +244,12 @@ paths:
           description: Tool refused or no current member/app/custody authorization
         "413":
           description: Request exceeds 16 KiB
+        "429":
+          description: Generic per-member or per-app rate limit refusal; nothing permanent written
         "502":
           description: Generic upstream failure, including credential echo refusal
         "503":
-          description: Authorization, signing or custody unavailable
+          description: In-flight capacity exhausted (nothing permanent written), or authorization, signing or custody unavailable
   /api/apps/pods:
     get:
       tags: [connections]

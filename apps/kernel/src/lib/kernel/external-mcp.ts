@@ -11,6 +11,7 @@ import { connectorRegistryId } from './connector-registry-store';
 import { generateId } from './id';
 import { connectInput, EXTERNAL_MCP_SCOPE, ExternalMcpError, parseExternalMcpCall, POSTMAN_PROVIDER, type ExternalMcpCall } from './external-mcp-policy';
 import { forwardPostmanCall } from './external-mcp-transport';
+import { reserveExternalMcpCall } from './external-mcp-limits';
 
 type Transaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
 export interface ExternalMcpCaller { memberDid: string; appDid?: string; serviceToken?: boolean }
@@ -89,10 +90,10 @@ export function connectExternalMcp(memberDid: string, raw: unknown) {
     });
     await audit(tx, memberDid, orgContextDid ?? null, 'connected');
     await vaultService.set(sealed.entry);
+    if (previous?.sealedKeyField) await deleteFromVault(previous.sealedKeyField);
     return { provider: 'postman', connected: true, orgContextDid: orgContextDid ?? null };
   });
 }
-
 /** Revoke + signed tombstone, retaining registry, grants and attestation history. */
 export function disconnectExternalMcp(memberDid: string) {
   return db.transaction(async tx => {
@@ -123,9 +124,8 @@ async function authorizeCaller(tx: Transaction, caller: ExternalMcpCaller) {
   if (!Array.isArray(grant?.scopes) || !grant.scopes.includes(EXTERNAL_MCP_SCOPE)) throw unavailable();
 }
 
-/** Hold the same member lock through outbound use; disconnect cannot race unseal. */
-export function invokeExternalMcp(caller: ExternalMcpCaller, call: ExternalMcpCall) {
-  call = parseExternalMcpCall(call);
+/** Short custody snapshot, serialized with connect/disconnect only until unseal. */
+function authorizeExternalMcp(caller: ExternalMcpCaller) {
   return db.transaction(async tx => {
     await lockMember(tx, caller.memberDid);
     await authorizeCaller(tx, caller);
@@ -144,12 +144,26 @@ export function invokeExternalMcp(caller: ExternalMcpCaller, call: ExternalMcpCa
     }
     const credential = await _applyDelegationGrant(entry, custody, getNodeXPrivateKey(), node.senderPubkey);
     if (!live(custody)) throw unavailable();
-    // Record the attempt before sending, never arguments, RPC IDs, or provider messages.
-    await audit(tx, caller.memberDid, row.orgContextDid, 'call', {
-      appDid: caller.appDid ?? null, method: call.method, tool: call.params?.name ?? null,
-    });
-    // Return an error value so upstream failure doesn't roll back the attempt audit.
-    try { return { value: await forwardPostmanCall(call, credential) }; }
-    catch { return { error: 'External MCP upstream unavailable' as const }; }
+    return { credential, orgContextDid: row.orgContextDid };
   });
+}
+
+/** No DB transaction or lock spans network I/O. Already-admitted calls may finish after disconnect. */
+export async function invokeExternalMcp(caller: ExternalMcpCaller, call: ExternalMcpCall) {
+  call = parseExternalMcpCall(call);
+  const release = reserveExternalMcpCall(caller.memberDid, caller.appDid);
+  try {
+    const context = await authorizeExternalMcp(caller);
+    let result;
+    try { result = { value: await forwardPostmanCall(call, context.credential) }; }
+    catch { result = { error: 'External MCP upstream unavailable' as const }; }
+    finally { context.credential = ''; }
+    // A second short transaction records the admitted attempt, never provider bytes or arguments.
+    await db.transaction(tx => audit(tx, caller.memberDid, context.orgContextDid, 'call', {
+      appDid: caller.appDid ?? null, method: call.method, tool: call.params?.name ?? null,
+    }));
+    return result;
+  } finally {
+    release();
+  }
 }
