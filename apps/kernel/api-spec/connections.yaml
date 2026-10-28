@@ -29,9 +29,56 @@ components:
       bearerFormat: app-service+jwt
       description: >-
         Existing POST /auth/api/apps/token/service credential. Requires
-        connections:read in the token and current operator-approved service
-        scopes of an active registry app. Not a session or delegated app token.
+        the operation's documented scope in the token and current operator-approved
+        service scopes of an active registry app. Not a session or delegated app token.
   schemas:
+    AppUpstream:
+      type: object
+      additionalProperties: false
+      required: [id, origin, paths]
+      properties:
+        id: { type: string, pattern: '^[a-z][a-z0-9-]{0,63}$' }
+        origin: { type: string, description: "Exact HTTPS origin only, without userinfo." }
+        credentialHeader: { type: string, enum: [Authorization, X-API-Key], default: Authorization }
+        credentialPrefix: { type: string, enum: ["Bearer ", ""], default: "Bearer " }
+        paths:
+          type: array
+          minItems: 1
+          maxItems: 64
+          items:
+            type: object
+            additionalProperties: false
+            required: [path, methods]
+            properties:
+              path: { type: string, maxLength: 1024, description: "Exact canonical path; no query, fragment, escapes, traversal or double slashes." }
+              methods:
+                type: array
+                minItems: 1
+                maxItems: 7
+                items: { type: string, enum: [GET, HEAD, POST, PUT, PATCH, DELETE, OPTIONS] }
+    AppUpstreamSelector:
+      type: object
+      additionalProperties: false
+      required: [appDid, upstreamId]
+      properties:
+        appDid: { type: string }
+        upstreamId: { type: string, pattern: '^[a-z][a-z0-9-]{0,63}$' }
+    AppUpstreamConnection:
+      type: object
+      additionalProperties: false
+      required: [provider, connected, orgContextDid, permissions]
+      properties:
+        provider: { type: string }
+        connected: { type: boolean }
+        orgContextDid: { type: [string, "null"] }
+        permissions:
+          type: array
+          uniqueItems: true
+          items: { type: string, example: "GET /me" }
+          description: >-
+            Sorted plain-text METHOD /path list for the current declaration, shown
+            to the member at this API-only connect step. When connected=false this
+            is a review list, not evidence that the member approved the changed list.
     ConnectorConnection:
       type: object
       required: [slot, label, accountEmail, connected]
@@ -99,6 +146,208 @@ tags:
     description: imajin connections service
 
 paths:
+  /api/upstreams:
+    get:
+      tags: [connections]
+      operationId: getAppUpstreamDeclaration
+      summary: Review an app's destination before connecting a personal credential
+      security:
+        - cookieAuth: []
+      parameters:
+        - { name: appDid, in: query, required: true, schema: { type: string } }
+        - { name: upstreamId, in: query, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: Non-secret declaration; personal human session only, no-store
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AppUpstream" }
+        "400": { description: Invalid selector }
+        "401": { description: Personal session required }
+        "403": { description: App inactive, not operator-approved, or upstream absent }
+        "503": { description: Store unavailable }
+    put:
+      tags: [connections]
+      operationId: declareAppUpstreams
+      summary: Replace the authenticated registered app's upstream declarations
+      description: >-
+        App-service+jwt with connectors:upstream:read and live operator approval.
+        Verified app DID only, no body override. Extends registry.apps.upstreams;
+        grants neither member consent nor key access. [] withdraws declarations.
+        Old/new declarations are atomically node-attested. Origin/header/prefix
+        and canonical path/method pairs are bound to the member connection.
+        Any addition, change or removal invalidates it until explicit reconnection;
+        reordering or repeating equivalent pairs does not.
+        Request body limit 16 KiB. No rows deleted.
+      security:
+        - appServiceAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [upstreams]
+              properties:
+                upstreams:
+                  type: array
+                  maxItems: 16
+                  description: Unique IDs within the app.
+                  items: { $ref: "#/components/schemas/AppUpstream" }
+      responses:
+        "200": { description: Declarations saved without credentials }
+        "400": { description: Invalid or duplicate declarations }
+        "401": { description: Scoped app authentication required }
+        "403": { description: Not an active operator-approved app service }
+        "413": { description: Body exceeds 16 KiB }
+        "503": { description: Signing or store unavailable }
+  /api/upstreams/connection:
+    get:
+      tags: [connections]
+      operationId: getPersonalAppUpstreamConnection
+      summary: Read your destination-bound status without unsealing
+      security:
+        - cookieAuth: []
+      parameters:
+        - { name: appDid, in: query, required: true, schema: { type: string } }
+        - { name: upstreamId, in: query, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: "Non-secret status plus current plain-text permissions; no-store"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AppUpstreamConnection" }
+        "400": { description: Invalid selector }
+        "401": { description: Personal session required }
+        "403": { description: App or declaration unavailable }
+        "503": { description: Store unavailable }
+    post:
+      tags: [connections]
+      operationId: connectPersonalAppUpstream
+      summary: Seal a member-owned key for one reviewed app upstream
+      description: >-
+        Personal human session only, never app/agent/org act-as lifecycle.
+        Explicit origin must match the declaration. Reuses private external-mcp-key
+        sealing with member subject and kernel-only custody; generic vault fetch,
+        export and renewal cannot disclose it. Stores destination/header/prefix
+        and canonical path/method binding, optional org_context_did and signed
+        lifecycle history. Any path/method addition or removal requires reconnecting;
+        ordering alone does not. Earlier destination-only bindings require one reconnect.
+        This connect step is API-only: connect/status responses return a sorted,
+        deduplicated permissions list such as ["GET /me"] for member review. Tier 0 only.
+        Connecting grants no app authority: use existing OAuth consent for
+        connectors:upstream:read and optionally connectors:upstream:write.
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [appDid, upstreamId, origin, secret]
+              properties:
+                appDid: { type: string }
+                upstreamId: { type: string, pattern: '^[a-z][a-z0-9-]{0,63}$' }
+                origin: { type: string }
+                secret: { type: string, writeOnly: true, minLength: 1, maxLength: 4096, pattern: '^[!-~]+$' }
+                orgContextDid: { type: string }
+      responses:
+        "201":
+          description: "connected=true and the plain-text approved permissions; never key material"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AppUpstreamConnection" }
+        "400": { description: Invalid input or unsafe metadata }
+        "401": { description: Personal session required }
+        "403": { description: Not a personal human or active org member, or declaration unavailable }
+        "409": { description: Destination changed or Tier 1 unsupported }
+        "413": { description: Body exceeds 16 KiB }
+        "503": { description: Signing or vault/store unavailable }
+    delete:
+      tags: [connections]
+      operationId: disconnectPersonalAppUpstream
+      summary: Revoke your connection, retaining signed tombstones and history
+      description: >-
+        Personal human only. Works after app/declaration removal. No rows deleted.
+        The next call fails; already-admitted calls may finish under the existing
+        member MCP snapshot contract. Idempotent when no connection exists.
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AppUpstreamSelector" }
+      responses:
+        "200": { description: disconnected=true }
+        "400": { description: Invalid selector }
+        "401": { description: Personal session required }
+        "403": { description: Not a personal human }
+        "413": { description: Body exceeds 16 KiB }
+        "503": { description: Signing or vault/store unavailable }
+  /api/upstreams/call:
+    post:
+      tags: [connections]
+      operationId: invokeAppUpstream
+      summary: Call a declared API on behalf of a member with kernel credential injection
+      description: >-
+        App-service+jwt as its registered DID, connectors:upstream:read in token and
+        live operator ceiling. Every call checks member per-app OAuth consent, active
+        connection/custody, destination binding, member/org standing and active org
+        membership through authorizeMemberConnection, shared with member MCP
+        (the #3167 suspension hook). GET/HEAD are reads; all other methods require
+        connectors:upstream:write in token, operator ceiling AND live member grant,
+        plus a reason code. No automatic writes. Exact declared paths/methods only;
+        no URL, header, query or app DID override. HTTPS public egress with DNS connect
+        pinning; local-inference private allowlist never applies. Redirects refused.
+        Kernel injects the key, buffers at most 2 MiB, refuses credential echoes and
+        strips all upstream headers. No raw provider exceptions or streams returned.
+        Connect timeout and body deadline each 30 seconds. Existing shared member/app
+        quotas and concurrency cap apply before any database read. Successful calls
+        are recorded, as are authorized upstream failures, with node-signed memberDid,
+        appDid, orgContextDid,
+        upstream ID, method, outcome and reason; never body, arguments or credential.
+        Admission, validation and permission refusals write nothing permanent and
+        make no upstream call.
+        Invalid/authentication-rejected requests cannot invoke or impersonate a member.
+      security:
+        - appServiceAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [memberDid, upstreamId, path, method]
+              properties:
+                memberDid: { type: string }
+                upstreamId: { type: string, pattern: '^[a-z][a-z0-9-]{0,63}$' }
+                path: { type: string, maxLength: 1024 }
+                method: { type: string, enum: [GET, HEAD, POST, PUT, PATCH, DELETE, OPTIONS] }
+                body: { type: string, maxLength: 12000, description: "JSON text; forbidden for GET/HEAD." }
+                reason: { type: string, enum: [member-request, app-workflow, scheduled-task], description: "Required for non-GET/HEAD; codes only, not free text." }
+      responses:
+        "200":
+          description: Upstream status and bounded text body only; no-store
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, body]
+                properties:
+                  status: { type: integer }
+                  body: { type: string }
+        "400": { description: Invalid input or missing mutation reason }
+        "401": { description: Scoped app authentication required }
+        "403": { description: Grant, standing, custody, destination or declaration refused }
+        "413": { description: Body exceeds 16 KiB }
+        "429": { description: Member or app rate exceeded }
+        "502": { description: Generic upstream failure, redirect, oversized body or credential echo }
+        "503": { description: Capacity or signing/vault/store unavailable }
   /api/external-mcp/postman:
     get:
       tags: [connections]

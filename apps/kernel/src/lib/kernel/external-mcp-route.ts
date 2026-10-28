@@ -4,7 +4,7 @@ import { corsHeaders } from './cors';
 import { connectExternalMcp, disconnectExternalMcp, externalMcpStatus, invokeExternalMcp, type ExternalMcpCaller } from './external-mcp';
 import { EXTERNAL_MCP_SCOPE, ExternalMcpError, memberDidSchema, parseExternalMcpCall } from './external-mcp-policy';
 
-async function personalMember(request: NextRequest): Promise<ExternalMcpCaller> {
+export async function personalMember(request: NextRequest): Promise<ExternalMcpCaller> {
   const auth = await requireAuth(request, { sessionOnly: true, service: 'connections' });
   if ('error' in auth) throw new ExternalMcpError(auth.status, 'Member session required');
   const identity = auth.identity;
@@ -30,7 +30,7 @@ async function invocationCaller(request: NextRequest, selected?: string): Promis
 }
 
 /** Bound untrusted input without ever echoing a parser error or submitted value. */
-async function body(request: NextRequest): Promise<unknown> {
+export async function externalConnectionBody(request: NextRequest): Promise<unknown> {
   const reader = request.body?.getReader();
   if (!reader) throw new ExternalMcpError(400, 'JSON body required');
   const chunks: Uint8Array[] = [];
@@ -49,7 +49,7 @@ async function body(request: NextRequest): Promise<unknown> {
 }
 
 async function handleInvocation(request: NextRequest, headers: Record<string, string>) {
-  const raw = await body(request);
+  const raw = await externalConnectionBody(request);
   // Authentication precedes tool-policy errors; the selector alone grants nothing.
   const selected = raw && typeof raw === 'object' && 'memberDid' in raw ? raw.memberDid : undefined;
   if (selected !== undefined && !memberDidSchema.safeParse(selected).success) {
@@ -69,7 +69,7 @@ export async function externalMcpRoute(request: NextRequest, rpc = false) {
     const { memberDid } = await personalMember(request);
     if (request.method === 'GET') return NextResponse.json(await externalMcpStatus(memberDid), { headers });
     if (request.method === 'DELETE') return NextResponse.json(await disconnectExternalMcp(memberDid), { headers });
-    return NextResponse.json(await connectExternalMcp(memberDid, await body(request)), { status: 201, headers });
+    return NextResponse.json(await connectExternalMcp(memberDid, await externalConnectionBody(request)), { status: 201, headers });
   } catch (error) {
     // Only our fixed errors leave the kernel; no cause, driver, vault or provider error.
     const status = error instanceof ExternalMcpError ? error.status : 503;

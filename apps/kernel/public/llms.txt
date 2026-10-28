@@ -19,6 +19,34 @@ the generated package table in README.md links checked public registry metadata.
 License: Imajin Network License (INL) v1.0, source-available, not MIT.
 
 ## Integration and safety
+- App-hosted upstreams: PUT /connections/api/upstreams declares {upstreams:[{id,
+  origin,credentialHeader,credentialPrefix,paths:[{path,methods}]}]} on the caller's
+  existing registry app. App-service token + connectors:upstream:read + live operator
+  approval required. GET with appDid/upstreamId lets a personal member review it.
+  POST /connections/api/upstreams/connection takes {appDid,upstreamId,origin,secret,
+  orgContextDid?} in the member's own human session; origin must match the declaration.
+  This connect step is API-only: connect/status responses include sorted plain-text
+  permissions such as ["GET /me"]. When disconnected, this is the current review list,
+  not proof that the member approved it.
+  GET status uses appDid/upstreamId query; DELETE takes those selectors in JSON,
+  retaining revoked rows and vault tombstones even after app/declaration withdrawal.
+  Existing OAuth consent grants connectors:upstream:read, optionally :write, per app.
+  POST /connections/api/upstreams/call takes {memberDid,upstreamId,path,method,body?,
+  reason?} as the app service, never a caller-selected app DID. GET/HEAD use read;
+  every other method needs explicit :write in token, live operator ceiling AND
+  member's app grant, plus reason member-request|app-workflow|scheduled-task.
+  Exact declared paths/methods only, HTTPS public egress pinned at connect, no redirects.
+  Kernel-only key injection; {status,body} response, no upstream headers/stream/errors,
+  2 MiB response and 16 KiB request limits. Credential echoes are refused.
+  Destination/header/prefix and canonical path/method pairs are member-bound.
+  Adding, changing or removing a path/method requires reconnecting; reordering does not.
+  Earlier destination-only bindings also require one reconnect. Successful calls are
+  recorded against member/app/org with signed reason/outcome metadata, never request body.
+  Authorized upstream failures are recorded too; refusals write nothing permanent.
+  Admission limits run before any database read.
+  Shared authorizeMemberConnection gates both this path and personal Postman MCP;
+  #3167 extends it for org-admin suspension. No UI or suspension-management API here.
+  See /connections/api/spec for the full contract and custody/deadline semantics.
 - Personal Postman MCP: GET/POST/DELETE /connections/api/external-mcp/postman
   requires the member's own human session, never org act-as or app lifecycle access.
   POST seals a write-only secret plus optional orgContextDid; DELETE revokes custody
@@ -183,7 +211,7 @@ are omitted from the implemented reference and reported in the #2028 run-log.
 - /vault/api/spec — imajin vault — apps/kernel/api-spec/vault.yaml
 - corpus:/spec — imajin corpus — apps/corpus/api-spec/openapi.yaml
 
-## Complete App Router inventory (668 handlers)
+## Complete App Router inventory (671 handlers)
 
 - GET /.well-known/agent.json — apps/kernel/app/.well-known/agent.json/route.ts
 - GET, OPTIONS /.well-known/agent/{id} — apps/kernel/app/.well-known/agent/[id]/route.ts
@@ -553,6 +581,9 @@ are omitted from the implemented reference and reported in the #2028 run-log.
 - GET /connections/api/spec — apps/kernel/app/connections/api/spec/route.ts
 - GET, OPTIONS, POST /connections/api/telemetry — apps/kernel/app/connections/api/telemetry/route.ts
 - GET /connections/api/trust/distance — apps/kernel/app/connections/api/trust/distance/route.ts
+- GET, OPTIONS, PUT /connections/api/upstreams — apps/kernel/app/connections/api/upstreams/route.ts
+- OPTIONS, POST /connections/api/upstreams/call — apps/kernel/app/connections/api/upstreams/call/route.ts
+- DELETE, GET, OPTIONS, POST /connections/api/upstreams/connection — apps/kernel/app/connections/api/upstreams/connection/route.ts
 - GET, OPTIONS, POST /consent/api/requests — apps/kernel/app/consent/api/requests/route.ts
 - GET, OPTIONS /consent/api/requests/{requestId} — apps/kernel/app/consent/api/requests/[requestId]/route.ts
 - OPTIONS, POST /consent/api/requests/{requestId}/decision — apps/kernel/app/consent/api/requests/[requestId]/decision/route.ts

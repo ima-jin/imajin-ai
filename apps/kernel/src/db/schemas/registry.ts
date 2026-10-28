@@ -320,6 +320,11 @@ export const registryApps = registrySchema.table('apps', {
   /** Completed the one-time template join; a candidate may have a template but not be joined. */
   joined: boolean('joined').notNull().default(false),
   requestedScopes: jsonb('requested_scopes').$type<string[]>().default([]),
+  /** App-declared outbound targets; member custody is separately destination-bound. */
+  upstreams: jsonb('upstreams').$type<Array<{
+    id: string; origin: string; credentialHeader: string; credentialPrefix: string;
+    paths: Array<{ path: string; methods: string[] }>;
+  }>>().notNull().default(sql`'[]'::jsonb`),
   /** App self-secret recipes approved on /jin (#2799); never secret values. */
   secrets: jsonb('secrets').$type<Array<{ name: string; kind: 'random-32B' | 'random-64B' | 'operator-supplied' }>>().notNull().default(sql`'[]'::jsonb`),
   status: text('status').notNull().default('active'),   // 'active' | 'revoked'

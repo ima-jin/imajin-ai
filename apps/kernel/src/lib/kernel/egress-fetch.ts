@@ -46,6 +46,8 @@ export interface EgressSafeFetchOptions {
   /** Name used in timeout/unavailable error messages, e.g. `'local'`. */
   connector: string;
   timeoutMs: number;
+  /** App upstreams must never inherit the local-inference private LAN opt-in. */
+  allowPrivate?: boolean;
   /**
    * The address validated (and pinned) at `baseUrl` save time. When given,
    * NO fresh DNS resolution happens here — this is the "host pin after
@@ -115,7 +117,7 @@ export async function egressSafeFetch(
     ip = opts.pinnedIp;
     family = isIPv6(opts.pinnedIp) ? 6 : 4;
   } else {
-    const check = await checkEgressTarget(rawUrl);
+    const check = await checkEgressTarget(rawUrl, { allowPrivate: opts.allowPrivate });
     if (!check.ok) {
       throw new EgressDeniedError(check.reason, check.message);
     }

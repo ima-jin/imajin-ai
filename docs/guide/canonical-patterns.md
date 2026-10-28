@@ -73,6 +73,25 @@ for its current implementation. External apps use published SDKs and the
 or direct SQL against another service's tables.
 
 ## Connector lifecycle and app-facing invocation
+For app-hosted connectors, use `/connections/api/upstreams` to declare targets on
+the existing app registration, `/connections/api/upstreams/connection` for personal
+member custody, and `/connections/api/upstreams/call` for app-service invocation.
+Never grant the app a raw upstream credential. Both this path and personal MCP use
+`authorizeMemberConnection` in `apps/kernel/src/lib/kernel/member-connection-gate.ts`
+for live member consent, connection state and org standing. #3167 extends that
+single gate for org-admin suspension; do not fork checks into routes.
+The outbound transport shares credential injection and echo refusal with MCP.
+Admission limits run before any database read. Successful calls are recorded with
+signed member/app/org metadata, as are authorized upstream failures; refusals
+make no upstream call and write nothing permanent. Never audit an app-selected
+member until the call has passed authorization and reached the upstream transport.
+Member bindings include the canonical set of declared path/method pairs: additions,
+changes and removals require reconnecting, while reordering does not. Earlier
+destination-only bindings require one reconnect. The API-only connect/status
+responses include a sorted plain-text `permissions` list (for example `GET /me`);
+with `connected: false` it is the current review list, not previously granted consent.
+See `/connections/api/spec` for exact declarations, destination binding and separate
+read/write grants; neither app registration nor org membership is member consent.
 
 Apps witness and invoke; profiles own connector lifecycle. A vertical app must not implement connector selection, OAuth, token-paste, token storage, or credential refresh. The user connects a provider on their Imajin profile once, then apps call kernel app-auth routes with the user's consent.
 

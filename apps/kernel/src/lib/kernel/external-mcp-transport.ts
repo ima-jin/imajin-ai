@@ -1,15 +1,44 @@
 import {
   allowedPostmanTool, ExternalMcpError, POSTMAN_MCP_URL, type ExternalMcpCall,
 } from './external-mcp-policy';
+import { egressSafeFetch } from './egress-fetch';
+import type { AppUpstream, AppUpstreamCall } from './app-upstream-policy';
 
 const MAX_RESPONSE_BYTES = 2 * 1024 * 1024;
 const upstreamFailure = () => new ExternalMcpError(502, 'External MCP upstream unavailable');
 
 /** Refuse echoes in keys, nested values, JSON-escaped text, URLs and base64. */
-function containsCredential(value: unknown, credential: string): boolean {
+export function containsCredential(value: unknown, credential: string): boolean {
   const serialized = JSON.stringify(value);
   return [credential, JSON.stringify(credential).slice(1, -1), encodeURIComponent(credential),
-    Buffer.from(credential).toString('base64')].some(form => serialized.includes(form));
+    Buffer.from(credential).toString('base64'), Buffer.from(credential).toString('base64url')]
+    .some(form => serialized.includes(form));
+}
+/** The same injection primitive for fixed MCP and registered-app passthrough. */
+function credentialHeaders(credential: string, header = 'Authorization', prefix = 'Bearer ') {
+  return { [header]: `${prefix}${credential}`, 'Content-Type': 'application/json' };
+}
+
+/** No raw stream, upstream header, redirect or provider exception reaches the app. */
+export async function forwardAppUpstream(target: AppUpstream, call: AppUpstreamCall, credential: string) {
+  try {
+    const response = await egressSafeFetch(`${target.origin}${call.path}`, {
+      method: call.method, body: call.body,
+      headers: credentialHeaders(credential, target.credentialHeader, target.credentialPrefix),
+    }, { connector: 'app-upstream', timeoutMs: 30_000, allowPrivate: false });
+    if (response.status >= 300 && response.status < 400) {
+      await response.body?.cancel();
+      throw upstreamFailure();
+    }
+    const body = call.method === 'HEAD' || response.status === 204 ? '' : await readBounded(response, -1, false);
+    const result = { status: response.status, body };
+    let decoded: unknown = null;
+    try { decoded = JSON.parse(body); } catch { /* Non-JSON upstream bodies remain bounded text. */ }
+    if (containsCredential(result, credential) || containsCredential(decoded, credential)) throw upstreamFailure();
+    return result;
+  } catch {
+    throw upstreamFailure();
+  }
 }
 function sseMessages(text: string): unknown[] {
   // Only complete SSE events; a split JSON record is not a malformed response.
@@ -23,12 +52,14 @@ function isMatchingMessage(value: unknown, id: number): boolean {
   return !!value && typeof value === 'object' && 'id' in value && value.id === id;
 }
 
-async function readBounded(response: Response, id: number): Promise<string> {
+async function readBounded(response: Response, id: number, parseSse = true): Promise<string> {
   if (!response.body) throw upstreamFailure();
   const reader = response.body.getReader();
   const chunks: Uint8Array[] = [];
   let size = 0;
-  const sse = response.headers.get('content-type')?.includes('text/event-stream');
+  const sse = parseSse && response.headers.get('content-type')?.includes('text/event-stream');
+  let timedOut = false;
+  const timer = setTimeout(() => { timedOut = true; void reader.cancel(); }, 30_000);
   try {
     while (true) {
       const { done, value } = await reader.read();
@@ -38,8 +69,10 @@ async function readBounded(response: Response, id: number): Promise<string> {
       chunks.push(value);
       if (sse && sseMessages(Buffer.concat(chunks).toString('utf8')).some(message => isMatchingMessage(message, id))) break;
     }
+    if (timedOut) throw upstreamFailure();
     return Buffer.concat(chunks).toString('utf8');
   } finally {
+    clearTimeout(timer);
     await reader.cancel();
   }
 }
@@ -62,7 +95,7 @@ export async function forwardPostmanCall(call: ExternalMcpCall, credential: stri
   try {
     const signal = AbortSignal.timeout(30_000);
     const headers: Record<string, string> = {
-      Authorization: `Bearer ${credential}`, 'Content-Type': 'application/json',
+      ...credentialHeaders(credential),
       Accept: 'application/json, text/event-stream',
     };
     const send = (message: unknown) => fetch(POSTMAN_MCP_URL, {
