@@ -78,7 +78,7 @@ import type { LoopEventJson } from '../../loops/serialize';
 import { getOperatorDid } from '../../notify/operator-approvals';
 import { listApprovalsForOperator } from '../../notify/operator-approvals-service';
 import { emitDecisionCard, DECISION_APPROVAL_SOURCE } from '../../decisions/emit';
-import { forEachSequential } from '../../async/sequential';
+import { forEachPage, forEachSequential, mapWithConcurrency } from '../../async/sequential';
 
 const CYCLE_SCOPE = 'cycle:run';
 const HORIZON_DESCRIPTION =
@@ -92,19 +92,23 @@ async function readCallerHorizon(principal: string) {
   const empty = projectHorizon([], '', principal);
   let depth = empty.depth;
   const zones = { tail: 0, middle: 0, near: 0, head: 0, past: 0 };
-  let cursor: string | null = null;
-  do {
-    const page = await listLoopsPage({ principal, limit: 200, cursor });
-    await forEachSequential(page.loops, async (loop) => {
-      const history = await getLoopWithHistory(loop.loopId, principal);
-      if (!history) return;
-      depth += history.horizon.depth;
-      for (const step of history.horizon.steps) {
-        if (step.zone !== 'done') zones[step.zone]++;
+  await forEachPage(
+    async (cursor) => {
+      const page = await listLoopsPage({ principal, limit: 200, cursor: cursor ?? null });
+      const histories = await mapWithConcurrency(page.loops, 6, loop => getLoopWithHistory(loop.loopId, principal));
+      return { ...page, histories };
+    },
+    page => page.nextCursor ?? undefined,
+    (page) => {
+      for (const history of page.histories) {
+        if (!history) continue;
+        depth += history.horizon.depth;
+        for (const step of history.horizon.steps) {
+          if (step.zone !== 'done') zones[step.zone]++;
+        }
       }
-    });
-    cursor = page.nextCursor;
-  } while (cursor !== null);
+    },
+  );
 
   const deficit = Math.max(0, empty.targetDepth - depth);
   const noStepsPublished = (await getLastStepEventAt(principal)) === null;
