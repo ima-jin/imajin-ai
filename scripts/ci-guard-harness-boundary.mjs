@@ -136,10 +136,11 @@ function literalKind(value) {
   if (/^wss?:\/\/gateway\b/i.test(value) || /^https?:\/\/gateway\b/i.test(value)) return KINDS.SURFACE;
   if (/^https?:\/\/openclaw\b/i.test(value) || /^wss?:\/\/openclaw\b/i.test(value)) return KINDS.SURFACE;
   if (/(?:^|:)18789\b/.test(value) || /(?:^|:)18790\b/.test(value)) return KINDS.SURFACE;
+  if (normalized === '.openclaw' || normalized === '.clawdbot') return KINDS.STORE;
   if (normalized.includes('.openclaw/') || normalized.includes('.clawdbot/')) return KINDS.STORE;
   if (/(?:^|\/)sessions\.json\b/.test(normalized)) return KINDS.STORE;
   if (/(?:^|\/)sessions\/.*\.jsonl\b/.test(normalized)) return KINDS.STORE;
-  if (/\/(?:transcripts?|session-store)(?:\/|$)/i.test(normalized)) return KINDS.STORE;
+  if (normalized.includes('/') && /(?:^|\/)(?:transcripts?|session-store)(?:\/|$)/i.test(normalized)) return KINDS.STORE;
   return null;
 }
 

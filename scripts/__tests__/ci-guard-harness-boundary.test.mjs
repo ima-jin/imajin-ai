@@ -67,6 +67,9 @@ const FORBIDDEN = [
   ['template session JSONL', 'readFile(`${root}/sessions/${id}.jsonl`);', KINDS.STORE],
   ['session store path', "readFile('/data/session-store/index.json');", KINDS.STORE],
   ['transcript path', "readFile('/data/transcripts/id.jsonl');", KINDS.STORE],
+  ['relative transcript path', "readFile('transcripts/id.jsonl');", KINDS.STORE],
+  ['joined harness directory', "readFile(join(home, '.openclaw', 'agents', id));", KINDS.STORE],
+  ['joined legacy directory', "readFile(join(home, '.clawdbot', 'sessions.json'));", KINDS.STORE],
   ['transcript read', 'await readTranscript(sessionKey);', KINDS.READ],
   ['transcript client', 'await client.getTranscript(sessionKey);', KINDS.READ],
   ['session store reader', 'await loadSessionStore();', KINDS.READ],
@@ -128,8 +131,8 @@ describe('ci-guard-harness-boundary', () => {
   });
 
   it('has a nonempty one-line reason for every exact allowlist entry', () => {
-    expect(ALLOWLIST.length).toBeGreaterThan(0);
     expect(validateAllowlist(ALLOWLIST).size).toBe(ALLOWLIST.length);
+    expect(validateAllowlist([]).size).toBe(0);
   });
 
   it.each(['', '   ', 'reason\nwith newline'])('rejects invalid exception reason %j', (reason) => {
