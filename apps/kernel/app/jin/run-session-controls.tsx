@@ -53,7 +53,7 @@ export function RunSessionControls({ loopId, events, disabled, onDispatched, cli
 
   return <div className="min-w-0 space-y-2 border border-gray-700 p-3" data-testid="run-session-controls">
     <h4 className="text-sm text-gray-100">Session controls</h4>
-    <label className="block">Session label
+    <label className="block"><span>Session label</span>
       <input aria-label="Session label" value={label} maxLength={256} onChange={event => setLabel(event.target.value)}
         className="block min-h-11 w-full min-w-0 bg-gray-900 p-2" />
     </label>
