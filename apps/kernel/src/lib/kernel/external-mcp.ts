@@ -36,7 +36,7 @@ async function checkStanding(tx: Pick<Transaction, 'select'>, memberDid: string,
   await activeIdentity(tx, memberDid);
   if (!orgDid) return;
   await activeIdentity(tx, orgDid);
-  if (!await isActiveGroupMember(orgDid, memberDid)) throw unavailable();
+  if (!await isActiveGroupMember(orgDid, memberDid, tx)) throw unavailable();
 }
 async function audit(tx: Pick<Transaction, 'insert'>, memberDid: string, orgContextDid: string | null,
   action: 'connected' | 'disconnected' | 'call', extra: Record<string, unknown> = {}) {
@@ -143,7 +143,7 @@ export function invokeExternalMcp(caller: ExternalMcpCaller, call: ExternalMcpCa
     }
     const credential = await _applyDelegationGrant(entry, custody, getNodeXPrivateKey(), node.senderPubkey);
     if (!live(custody)) throw unavailable();
-    // Persist the attempt BEFORE sending, never arguments, caller IDs, or provider messages.
+    // Record the attempt before sending, never arguments, RPC IDs, or provider messages.
     await audit(tx, caller.memberDid, row.orgContextDid, 'call', {
       appDid: caller.appDid ?? null, method: call.method, tool: call.params?.name ?? null,
     });

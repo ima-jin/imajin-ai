@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-export const EXTERNAL_MCP_SCOPE = 'external-mcp:read';
+export const EXTERNAL_MCP_SCOPE = 'connectors:mcp:read';
 export const POSTMAN_PROVIDER = 'external-mcp-postman';
 // A reviewed target, never a caller-controlled URL, header, or redirect.
 export const POSTMAN_MCP_URL = 'https://mcp.postman.com/mcp';

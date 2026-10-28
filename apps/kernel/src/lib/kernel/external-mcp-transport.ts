@@ -11,12 +11,24 @@ function containsCredential(value: unknown, credential: string): boolean {
   return [credential, JSON.stringify(credential).slice(1, -1), encodeURIComponent(credential),
     Buffer.from(credential).toString('base64')].some(form => serialized.includes(form));
 }
+function sseMessages(text: string): unknown[] {
+  // Only complete SSE events; a split JSON record is not a malformed response.
+  const events = text.replaceAll('\r\n', '\n').split('\n\n');
+  events.pop();
+  return events.filter(event => event.split('\n').some(line => line.startsWith('data:')))
+    .map(event => JSON.parse(event.split('\n').filter(line => line.startsWith('data:'))
+      .map(line => line.slice(5).trimStart()).join('\n')));
+}
+function isMatchingMessage(value: unknown, id: number): boolean {
+  return !!value && typeof value === 'object' && 'id' in value && value.id === id;
+}
 
-async function readBounded(response: Response): Promise<string> {
+async function readBounded(response: Response, id: number): Promise<string> {
   if (!response.body) throw upstreamFailure();
   const reader = response.body.getReader();
   const chunks: Uint8Array[] = [];
   let size = 0;
+  const sse = response.headers.get('content-type')?.includes('text/event-stream');
   try {
     while (true) {
       const { done, value } = await reader.read();
@@ -24,6 +36,7 @@ async function readBounded(response: Response): Promise<string> {
       size += value.byteLength;
       if (size > MAX_RESPONSE_BYTES) throw upstreamFailure();
       chunks.push(value);
+      if (sse && sseMessages(Buffer.concat(chunks).toString('utf8')).some(message => isMatchingMessage(message, id))) break;
     }
     return Buffer.concat(chunks).toString('utf8');
   } finally {
@@ -33,14 +46,11 @@ async function readBounded(response: Response): Promise<string> {
 
 /** Streamable HTTP may return either JSON or SSE; neither is streamed to callers. */
 async function readRpc(response: Response, id: number) {
-  const text = await readBounded(response);
+  const text = await readBounded(response, id);
   const messages: unknown[] = response.headers.get('content-type')?.includes('text/event-stream')
-    ? text.replaceAll('\r\n', '\n').split('\n\n').filter(event => event.includes('data:'))
-      .map(event => JSON.parse(event.split('\n').filter(line => line.startsWith('data:'))
-        .map(line => line.slice(5).trimStart()).join('\n')))
+    ? sseMessages(text)
     : [JSON.parse(text)];
-  const message = messages.find(value => value && typeof value === 'object'
-    && 'id' in value && value.id === id) as { jsonrpc?: string; result?: unknown; error?: unknown } | undefined;
+  const message = messages.find(value => isMatchingMessage(value, id)) as { jsonrpc?: string; result?: unknown; error?: unknown } | undefined;
   if (message?.jsonrpc !== '2.0' || message.error || !message.result || typeof message.result !== 'object') {
     throw upstreamFailure();
   }
@@ -80,7 +90,9 @@ export async function forwardPostmanCall(call: ExternalMcpCall, credential: stri
       if (!Array.isArray(result.tools)) throw upstreamFailure();
       result.tools = result.tools.filter(tool => tool && typeof tool.name === 'string' && allowedPostmanTool(tool.name));
     }
-    return { jsonrpc: '2.0', id: call.id, result };
+    const envelope = { jsonrpc: '2.0', id: call.id, result };
+    if (containsCredential(envelope, credential)) throw upstreamFailure();
+    return envelope;
   } catch {
     // Neither provider messages nor thrown fetch errors are safe to log/return.
     throw upstreamFailure();

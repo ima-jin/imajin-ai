@@ -48,22 +48,24 @@ async function body(request: NextRequest): Promise<unknown> {
   } finally { await reader.cancel(); }
 }
 
+async function handleInvocation(request: NextRequest, headers: Record<string, string>) {
+  const raw = await body(request);
+  // Authentication precedes tool-policy errors; the selector alone grants nothing.
+  const selected = raw && typeof raw === 'object' && 'memberDid' in raw ? raw.memberDid : undefined;
+  if (selected !== undefined && !memberDidSchema.safeParse(selected).success) {
+    throw new ExternalMcpError(400, 'Invalid member selector');
+  }
+  const caller = await invocationCaller(request, selected as string | undefined);
+  const call = parseExternalMcpCall(raw);
+  const result = await invokeExternalMcp(caller, call);
+  return 'value' in result ? NextResponse.json(result.value, { headers })
+    : NextResponse.json({ error: result.error }, { status: 502, headers });
+}
+
 export async function externalMcpRoute(request: NextRequest, rpc = false) {
   const headers = { ...corsHeaders(request), 'Cache-Control': 'no-store' };
   try {
-    if (rpc) {
-      const raw = await body(request);
-      // Authentication precedes tool-policy errors; the selector alone grants nothing.
-      const selected = raw && typeof raw === 'object' && 'memberDid' in raw ? raw.memberDid : undefined;
-      if (selected !== undefined && !memberDidSchema.safeParse(selected).success) {
-        throw new ExternalMcpError(400, 'Invalid member selector');
-      }
-      const caller = await invocationCaller(request, selected as string | undefined);
-      const call = parseExternalMcpCall(raw);
-      const result = await invokeExternalMcp(caller, call);
-      return 'value' in result ? NextResponse.json(result.value, { headers })
-        : NextResponse.json({ error: result.error }, { status: 502, headers });
-    }
+    if (rpc) return await handleInvocation(request, headers);
     const { memberDid } = await personalMember(request);
     if (request.method === 'GET') return NextResponse.json(await externalMcpStatus(memberDid), { headers });
     if (request.method === 'DELETE') return NextResponse.json(await disconnectExternalMcp(memberDid), { headers });
