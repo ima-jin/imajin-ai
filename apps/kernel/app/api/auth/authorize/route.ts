@@ -6,6 +6,7 @@
  *
  * Body: { appId, scopes, state }
  * Returns: { redirect } containing a short-lived code and the supplied state.
+ * Invalid app callbacks must be rejected before consent is persisted (#3162).
  * #3008: consent must converge to one live grant per (principal, app).
  *
  * Re-consent (#3008): identical scope sets reuse the newest live grant;
