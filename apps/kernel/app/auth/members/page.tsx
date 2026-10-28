@@ -3,6 +3,7 @@ import { getEffectiveDid } from '@/app/auth/lib/get-effective-did';
 import { eq, and, isNull } from 'drizzle-orm';
 import { redirect } from 'next/navigation';
 import IdentityMembersPanel from '../components/IdentityMembersPanel';
+import OrgConnectionsPanel from '../components/OrgConnectionsPanel';
 
 export default async function MembersPage() {
   const { sessionDid, effectiveDid } = await getEffectiveDid();
@@ -48,5 +49,8 @@ export default async function MembersPage() {
     );
   }
 
-  return <IdentityMembersPanel groupDid={did} scope={identity.scope} />;
+  return <>
+    <IdentityMembersPanel groupDid={did} scope={identity.scope} />
+    <OrgConnectionsPanel groupDid={did} />
+  </>;
 }
