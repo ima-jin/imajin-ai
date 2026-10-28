@@ -303,7 +303,7 @@ describe('claim pending service stub (#2243)', () => {
     installFetch({});
     render(<VaultKeysPanel />);
 
-    expect(await screen.findByText(/claim\/pairing follow-up/)).toBeDefined();
+    expect(await screen.findByText(/service pairing is not available yet/)).toBeDefined();
     const claimButton = screen.getByRole('button', { name: 'Claim' }) as HTMLButtonElement;
     expect(claimButton.disabled).toBe(true);
   });

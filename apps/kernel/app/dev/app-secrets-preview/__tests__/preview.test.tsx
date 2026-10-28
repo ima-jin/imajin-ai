@@ -24,7 +24,7 @@ describe('App secrets development preview', () => {
     expect(screen.getAllByText('Last seen')).toHaveLength(9);
     expect(await screen.findByRole('region', { name: 'Registered apps' })).toBeDefined();
     expect(screen.getByText('provision failed')).toBeDefined();
-    expect(screen.getAllByText('unknown (pre-#3006 row)').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('unknown (legacy record)').length).toBeGreaterThan(0);
     expect(screen.getByText(/Claim code expired/).textContent).toContain('2020-01-02T03:04:05Z');
     fireEvent.click(screen.getByRole('button', { name: 'Reissue claim code' }));
     expect(screen.getByText(/reissue reached the existing provision control/)).toBeDefined();

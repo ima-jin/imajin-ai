@@ -136,7 +136,7 @@ function envelopeInputFor(provision: ProvisionRecord): ContextEnvelopeInput {
       scopes: provision.scopes,
       busRoutes: [{ eventType: 'chat.message.received', description: 'Inbound DM dispatch to the runtime.' }],
       brain: { placement: 'hosted', provider: provision.model.provider, via: provision.model.via },
-      purpose: `Provisioned via the envelope provisioner (#1933/#2186) for ${provision.servingDid}.`,
+      purpose: `Agent provisioned for ${provision.servingDid}.`,
     },
   };
 }

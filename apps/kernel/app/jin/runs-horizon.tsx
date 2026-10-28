@@ -96,7 +96,7 @@ export function RunsHorizon({ loopIds, onDenied, onSelect, client = browserSessi
     {error && <p role="alert" className="text-xs text-amber-200">{error}</p>}
     {observedEmpty && <p className="break-words text-xs text-gray-400">
       {lastStepEventAt === null
-        ? <>No horizon steps published yet · the harness horizon sync (#2881) hasn't reported · last step never</>
+        ? <>No horizon steps published yet · the agent has not reported its horizon · last step never</>
         : <>{hasMore ? 'No horizon steps in loaded runs' : 'Horizon drained'} · last step <time dateTime={lastStepEventAt}>{lastStepEventAt}</time></>}
     </p>}
     {!loading && !error && items.length > 0 && depth < 12 && <p className="text-xs text-amber-200">Below target · {12 - depth} more steps to reach 12. The horizon is not full yet.</p>}

@@ -202,7 +202,7 @@ function parseScopeArg(args: Record<string, unknown>): ParseResult<CycleRunScope
 
 /** Fixed reason recorded on every stub phase transition, so a `loops_get`/`cycle_status` reader — human or agent — sees WHY nothing happened rather than guessing at a silent skip. */
 const PHASE_RUNNER_NOT_IMPLEMENTED =
-  'phase runner not implemented yet — #2316 shipped only the cycle_run/cycle_status MCP tool surface; ' +
+  'phase runner not implemented yet — only the cycle_run/cycle_status tools are available; ' +
   'wiring merge-sweep/hot-issue-raise/brief+provision/review-rounds/report is tracked as follow-up work';
 
 /**
@@ -249,11 +249,11 @@ async function runCyclePhaseStub(
           consequence: 'Track wiring this phase up as its own tracked issue.',
         },
       ],
-      rec: { letter: 'a', why: 'Nothing can be enacted until the phase runner exists (#2316 shipped the MCP tool surface only).' },
+      rec: { letter: 'a', why: 'Nothing can be enacted until the phase runner exists.' },
       evidence: {
         authority: {
           canActWithoutHuman: false,
-          rule: 'phase-runner stub — always requires a human decision until a real engine is wired up (#2316)',
+          rule: 'phase-runner stub — always requires a human decision until a real engine is wired up',
         },
       },
     });
@@ -280,7 +280,7 @@ const cycleRunTool: McpTool = {
     Returns correlationId and the caller horizon captured before starting the run or its merge sweep.
     ${HORIZON_DESCRIPTION}Read progress with cycle_status. dry_run (default false) previews each
     phase as a DecisionCard instead of enacting it. The underlying phase engine is not wired up yet
-    (#2316 shipped the MCP tool surface only), so every phase is currently recorded as skipped on the
+    and every phase is currently recorded as skipped on the
     cycle's own rail — nothing merges, files, or dispatches until that follow-up lands. Requires an
     active cycle:run grant on the Imajin MCP connector.`,
   inputSchema: {

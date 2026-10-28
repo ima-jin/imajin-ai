@@ -37,7 +37,7 @@ export default definePluginEntry({
   id: "reflex-guard",
   name: "Reflex Guard",
   description:
-    "Post-turn instruction-check guard (imajin-ai#1252): a deterministic " +
+    "Post-turn instruction-check guard: a deterministic " +
     "outbound sealed-term guard on message_sending/before_dispatch (Layer 1), " +
     "plus a scaffolded fuzzy reflex pass on before_agent_finalize (Layer 2, off by default).",
 

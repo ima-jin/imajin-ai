@@ -55,7 +55,7 @@ function runCost(overrides: Partial<SpendRunCost> = {}): SpendRunCost {
 
 function interim(overrides: Partial<Spend> = {}): Spend {
   return {
-    label: 'interim · derived from Warp runs + branch names (until #2290)',
+    label: 'interim · derived from Warp runs + branch names (estimated)',
     windowFrom: '2026-10-01T00:00:00.000Z',
     runsAvailable: true,
     runsTruncated: false,
@@ -235,7 +235,8 @@ describe('SpendPanel interim block', () => {
     render(<SpendPanel />);
 
     expect((await screen.findByTestId('spend-interim-label')).textContent).toContain('interim');
-    expect(screen.getByTestId('spend-interim-label').textContent).toContain('#2290');
+    expect(screen.getByTestId('spend-interim-label').textContent).toContain('(estimated)');
+    expect(screen.getByTestId('spend-interim-label').textContent).not.toMatch(/#\d+/);
     const closed = screen.getByTestId('spend-closed-issue-cost').textContent ?? '';
     expect(closed).toContain('$0.5000 metered');
     expect(closed).toContain('3.00 units Warp-reported');
