@@ -3,6 +3,16 @@ Horizon bridge ruling #2931: issue-ref-only bindings and publisher-scoped envelo
 Horizon step entries extend this signed rail under #2878; #2879 binds claims to
 the existing surface leases. Runs rendering remains separate (#2880).
 Horizon steps retain their declaring publisher's DID (#3151).
+The kernel consumes signed publisher facts, never gateway RPC, harness transcripts
+or session stores (#3150). This boundary is CI-enforced by
+`scripts/ci-guard-harness-boundary.mjs` in the `ci-guards` job: production source
+under `apps/kernel/src/**` and `apps/kernel/app/**` cannot import OpenClaw/gateway
+clients, address gateway RPC/HTTP surfaces, or read harness transcripts/session
+stores. Opaque signed event data such as `refs.sessionKey` and
+`meet.transcript.available` remains allowed. Legacy exceptions are keyed to the
+exact file, detection kind and value in the guard, each with a one-line reason;
+they are a shrinking ratchet, not permission for new harness calls.
+This guard is a static tripwire, not a proof: boundary review is still required for concatenated strings such as `'/tools/' + 'invoke'` or `'sessions' + '_send'`, `import(variable)`, renamed destructured imports such as `{ sessions_send: send }`, `spawn`/`execSync` of `openclaw`, and `OPENCLAW_GATEWAY_TOKEN`, none of which it detects.
 ## Horizon steps (#2878, parent #2313 decision a)
 
 Publish `step.queued|updated|claimed|started|progress|blocked|finished|observed|attested`

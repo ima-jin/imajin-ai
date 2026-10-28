@@ -529,6 +529,8 @@ jobs:
       # remaining violations so it lands green — see migrations/OWNERSHIP.md.
       - name: Cross-schema query guard
         run: node scripts/ci-guard-cross-schema-reads.mjs
+      - name: Kernel harness-boundary guard
+        run: node scripts/ci-guard-harness-boundary.mjs
 
       # Stripe SDK import scope guard (#2172 design amendment): the withdraw
       # rail adapter interface exists so the withdraw/reconciliation path
