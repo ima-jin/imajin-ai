@@ -13,10 +13,11 @@ import {
   upstreamProvider, UPSTREAM_READ_SCOPE, UPSTREAM_WRITE_SCOPE, type AppUpstream,
 } from './app-upstream-policy';
 
-export async function declareAppUpstreams(appDid: string, raw: unknown) {
+export function declareAppUpstreams(appDid: string, raw: unknown) {
   const { upstreams } = parseUpstream(upstreamDeclarations, raw);
+  const lockKey = `app-upstreams:${appDid}`;
   return db.transaction(async tx => {
-    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${`app-upstreams:${appDid}`}, 0))`);
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))`);
     const app = await requireConnectionApp(tx, appDid, UPSTREAM_READ_SCOPE, true);
     await tx.update(registryApps).set({ upstreams, updatedAt: new Date() }).where(eq(registryApps.id, app.id));
     await tx.insert(attestations).values(await prepareMechanicalAttestation({

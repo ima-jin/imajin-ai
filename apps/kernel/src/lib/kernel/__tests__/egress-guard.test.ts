@@ -17,6 +17,10 @@ describe('checkEgressTarget', () => {
     lookupMock.mockReset();
     delete process.env[PRIVATE_ALLOWLIST_ENV_VAR];
   });
+
+  afterEach(() => {
+    delete process.env[PRIVATE_ALLOWLIST_ENV_VAR];
+  });
   it('app upstreams cannot inherit the local inference private allowlist', async () => {
     process.env[PRIVATE_ALLOWLIST_ENV_VAR] = '*';
     mockResolves([{ address: '10.1.2.3', family: 4 }]);
@@ -24,9 +28,6 @@ describe('checkEgressTarget', () => {
       .toMatchObject({ ok: false, reason: 'private' });
   });
 
-  afterEach(() => {
-    delete process.env[PRIVATE_ALLOWLIST_ENV_VAR];
-  });
 
   it('denies non-http(s) schemes', async () => {
     const result = await checkEgressTarget('file:///etc/passwd');
