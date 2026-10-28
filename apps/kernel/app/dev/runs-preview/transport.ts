@@ -44,7 +44,7 @@ function fixtureLoop(loopId: string, kind: string, parentLoopId: string | null =
 
 function commandBody(command: SessionCommandBody): SessionCommandBody {
   const { type, commandId, to, principal: owner, issuer: grantIssuer, issuedAt, expiresAt, payload } = command;
-  return { type, commandId, to, principal: owner, issuer: grantIssuer, issuedAt, expiresAt, payload };
+  return { type, commandId, to, principal: owner, issuer: grantIssuer, issuedAt, expiresAt: expiresAt ?? null, payload };
 }
 
 function fixtureOutputs(): (LoopOutput | StoredLoopOutput)[] {
@@ -69,6 +69,26 @@ function fixtureApproval(proposalId: string, approvalId: string): OperatorApprov
     createdAt: new Date().toISOString(), sessionBinding: { loopId: 'fixture-session', principalDid: principal, agentDid: agent, approvalId } };
 }
 
+function applyLifecycleFixture(command: SessionCommandFrame, loopId: string, at: string, loops: LoopJson[], events: LoopEventJson[]) {
+  const target = loops.find(loop => loop.loopId === loopId);
+  if (target && command.type === 'session.label') target.summary = command.payload.label;
+  if (target && command.type === 'session.archive') {
+    target.state = 'archived';
+    target.finishedAt = at;
+    target.lastEventType = 'loop.finished';
+    target.lastSeenAt = at;
+  }
+  if (command.type !== 'session.history') return;
+  const outputs: LoopOutput[] = [
+    { kind: 'text', text: 'Recent redacted history from signed session.history', role: 'assistant' },
+    { kind: 'tool_call', callId: 'history-call', name: 'inspect', args: { credential: '[redacted]' } },
+    { kind: 'tool_result', callId: 'history-call', result: { passed: true } },
+  ];
+  for (const [index, output] of outputs.entries()) events.push({
+    id: `history-${command.commandId}-${index}`, loopId, type: 'loop.progress', issuer: agent, principal,
+    payload: { output }, occurredAt: at, createdAt: at,
+  });
+}
 /** Local fixture only. All API calls are intercepted; production code and auth are unchanged. */
 export async function createRunsPreviewTransport(horizonState = 'active', blockers?: string) {
   if (process.env.NODE_ENV !== 'development') throw new Error('Development fixture only');
@@ -107,12 +127,14 @@ export async function createRunsPreviewTransport(horizonState = 'active', blocke
   });
   async function outcome(command: SessionCommandFrame, parent: string) {
     const spawn = command.type === 'session.spawn';
+    const failed = command.type === 'session.reset';
     const loopId = spawn ? `fixture-child-${command.commandId}` : parent;
-    const eventType = `loop.${command.type}.completed`;
+    const eventType = `loop.${command.type}.${failed ? 'failed' : 'completed'}`;
     const payloadHash = ed.etc.bytesToHex(new Uint8Array(await crypto.subtle.digest('SHA-256', encode(command.payload))));
-    const payload = { eventType, commandId: command.commandId, command: command.type, outcome: 'completed',
+    const payload = { eventType, commandId: command.commandId, command: command.type, outcome: failed ? 'failed' : 'completed',
       principal, issuer, agentDid: agent, payloadHash, at: new Date().toISOString(), loopId,
-      parentLoopId: spawn ? parent : null, ...(spawn ? { childLoopId: loopId } : {}) };
+      parentLoopId: spawn ? parent : null, ...(spawn ? { childLoopId: loopId } : {}),
+      ...(failed ? { reason: 'missing_scope', detail: 'Reset requires operator.admin; plugin scopes unchanged.' } : {}) };
     const native = approvals.find((card) => card.sessionBinding?.approvalId === command.payload.approvalId);
     if (native) Object.assign(payload, { approvalId: native.sessionBinding!.approvalId, approvalKind: 'exec' });
     const unsigned = { from: agent, type: 'agent', timestamp: Date.now(), payload };
@@ -122,6 +144,7 @@ export async function createRunsPreviewTransport(horizonState = 'active', blocke
     events.push({ id: `outcome-${command.commandId}`, loopId: parent, type: eventType, issuer: agent, principal, payload,
       occurredAt: payload.at, createdAt: payload.at });
     if (spawn) loops.push(fixtureLoop(loopId, 'openclaw.subagent', parent));
+    applyLifecycleFixture(command, parent, payload.at, loops, events);
     if (command.type === 'session.send') horizon.observeClaim(command.payload.message);
     if (native) native.sessionOutcome = { commandId: command.commandId, outcome: 'completed', at: payload.at };
   }
@@ -180,7 +203,7 @@ export async function createRunsPreviewTransport(horizonState = 'active', blocke
     if (!loop) return json({ error: 'Not found' }, 404);
     return json({ isOperator: true, detail: { loop, events: events.filter((event) => event.loopId === loopId),
       horizon: loopId === 'fixture-session' && horizonState === 'active' ? horizon.read() : { steps: [], depth: 0, targetDepth: 12 } },
-      commandTarget: { available: loop.kind !== 'warp.run', agentDid: agent } });
+      commandTarget: { available: loop.kind !== 'warp.run' && !loop.finishedAt, agentDid: agent } });
   };
   return { fetcher, proofs, bindingProofs, agentPublicKey: ed.etc.bytesToHex(agentPublic),
     dispose: () => {

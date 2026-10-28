@@ -8,6 +8,10 @@ const approval = { approvalId: identifier.optional() };
 const payloads = {
   'session.send': z.object({ loopId: identifier, message: text, agentId: identifier.optional(), ...approval }).strict(),
   'session.abort': z.object({ loopId: identifier, runId: identifier.optional(), ...approval }).strict(),
+  'session.archive': z.object({ loopId: identifier }).strict(),
+  'session.reset': z.object({ loopId: identifier }).strict(),
+  'session.label': z.object({ loopId: identifier, label: z.string().max(256).refine(value => value.trim().length > 0) }).strict(),
+  'session.history': z.object({ loopId: identifier }).strict(),
   'session.spawn': z.object({
     task: text, parentLoopId: identifier.optional(), label: z.string().min(1).max(256).optional(),
     agentId: identifier.optional(), group: identifier.optional(), model: identifier.optional(), ...approval,
@@ -17,7 +21,10 @@ const payloads = {
 };
 
 export type SessionCommandType = keyof typeof payloads;
-export const sessionCommandTypeSchema = z.enum(['session.send', 'session.abort', 'session.spawn', 'session.approve', 'session.deny']);
+export const sessionCommandTypeSchema = z.enum([
+  'session.send', 'session.abort', 'session.spawn', 'session.approve', 'session.deny',
+  'session.archive', 'session.reset', 'session.label', 'session.history',
+]);
 export const sessionCommandSignatureSchema = z.object({
   keyId: z.string().regex(/^[a-f0-9]{64}$/i), alg: z.literal('ed25519'), sig: z.string().regex(/^[a-f0-9]{128}$/i),
 }).strict();
@@ -29,7 +36,7 @@ export interface SessionCommandBody {
   principal: string;
   issuer: string;
   issuedAt: string;
-  expiresAt: string;
+  expiresAt?: string | null;
   payload: Record<string, string>;
 }
 export interface SessionCommandFrame extends SessionCommandBody {
@@ -38,7 +45,7 @@ export interface SessionCommandFrame extends SessionCommandBody {
 }
 export const sessionCommandFrameSchema = z.object({
   type: sessionCommandTypeSchema, commandId: identifier, to: did, principal: did, issuer: did,
-  issuedAt: z.string().datetime(), expiresAt: z.string().datetime(),
+  issuedAt: z.string().datetime(), expiresAt: z.string().datetime().nullable().optional(),
   payload: z.record(z.string(), z.string()),
   signature: sessionCommandSignatureSchema, countersignature: sessionCommandSignatureSchema.optional(),
 }).strict();
@@ -50,7 +57,7 @@ export type SessionBinding = z.infer<typeof sessionBindingSchema>;
 /** Both grant and wish cover these exact fields, never either signature. */
 export function sessionCommandBody(frame: SessionCommandBody): SessionCommandBody {
   const { type, commandId, to, principal, issuer, issuedAt, expiresAt, payload } = frame;
-  return { type, commandId, to, principal, issuer, issuedAt, expiresAt, payload };
+  return { type, commandId, to, principal, issuer, issuedAt, expiresAt: expiresAt ?? null, payload };
 }
 
 export function parseSessionCommandPayload(type: SessionCommandType, payload: unknown): Record<string, string> {

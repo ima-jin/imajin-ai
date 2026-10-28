@@ -8,19 +8,20 @@ export function isBlockedLoop(loop: LoopJson): boolean {
 /** Active/recent session and Warp threads plus their loaded descendant context. */
 export function visibleRuns(loops: LoopJson[], now = Date.now()): LoopJson[] {
   const recent = now - 7 * 24 * 60 * 60 * 1000;
-  const ids = new Set(loops.filter((loop) =>
+  const available = loops.filter(loop => loop.state.toLowerCase() !== 'archived');
+  const ids = new Set(available.filter((loop) =>
     ['openclaw.session', 'openclaw.subagent', 'warp.run'].includes(loop.kind)
     && (!loop.finishedAt || Date.parse(loop.lastSeenAt) >= recent)).map((loop) => loop.loopId));
   let changed = true;
   while (changed) {
     changed = false;
-    for (const loop of loops) {
+    for (const loop of available) {
       if (ids.has(loop.loopId) || !loop.parentLoopId || !ids.has(loop.parentLoopId)) continue;
       ids.add(loop.loopId);
       changed = true;
     }
   }
-  return loops.filter((loop) => ids.has(loop.loopId));
+  return available.filter((loop) => ids.has(loop.loopId));
 }
 
 /** Blockers precede other rows, newest first within each group; never mutate registry pages. */

@@ -11,6 +11,16 @@ export function commandOutcome(commandId: string, events: LoopEventJson[]): 'com
   if (!event) return null;
   return event.type.endsWith('.completed') ? 'completed' : 'failed';
 }
+export function SessionCommandReceipt({ receipt, events }: Readonly<{
+  receipt: { commandId: string; delivered: boolean | null }; events: LoopEventJson[];
+}>) {
+  const outcome = commandOutcome(receipt.commandId, events);
+  const failure = events.find(event => event.payload.commandId === receipt.commandId && event.type.endsWith('.failed'));
+  const reason = typeof failure?.payload.reason === 'string' ? failure.payload.reason : null;
+  return <output className="block" data-failure-reason={reason ?? undefined}>
+    {receiptLabel(receipt, outcome)}{reason && ` · ${reason}`}
+  </output>;
+}
 
 export function storedCommandReceipt(events: LoopEventJson[]): { commandId: string; delivered: boolean | null } | null {
   const queued = events.findLast((event) => event.type === 'loop.command.queued' && typeof event.payload.commandId === 'string');
@@ -38,7 +48,6 @@ export function RunComposer({ loopId, events, disabled, onDispatched, client = b
   const [receipt, setReceipt] = useState<{ commandId: string; delivered: boolean } | null>(null);
   const [error, setError] = useState('');
   const currentReceipt = receipt ?? storedCommandReceipt(events);
-  const outcome = currentReceipt ? commandOutcome(currentReceipt.commandId, events) : null;
   async function send(type: SessionCommandType, payload: Record<string, unknown>) {
     setBusy(true);
     setError('');
@@ -72,7 +81,7 @@ export function RunComposer({ loopId, events, disabled, onDispatched, client = b
       </div>
     </details>
     {busy && <output className="block">Preparing your signed wish…</output>}
-    {currentReceipt && <output className="block">{receiptLabel(currentReceipt, outcome)}</output>}
+    {currentReceipt && <SessionCommandReceipt receipt={currentReceipt} events={events} />}
     {error && <p role="alert" className="break-words text-red-300">{error}</p>}
   </div>;
 }
