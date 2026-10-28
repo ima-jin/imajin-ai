@@ -46,6 +46,12 @@ export const GROUP_KEY_NAMESPACE = 'vault-group-key';
 export const SSH_CA_NAMESPACE = 'vault-ssh-ca';
 /** Financial fields are released only through the bank-details disclosure rail. */
 export const BANK_DETAILS_NAMESPACE = 'bank-details';
+/** Member credentials are usable only by the kernel's outbound MCP transport. */
+export const EXTERNAL_MCP_NAMESPACE = 'external-mcp-key';
+
+export function isExternalMcpField(field: string): boolean {
+  return vaultFieldNamespace(field) === EXTERNAL_MCP_NAMESPACE;
+}
 
 export function isBankDetailsField(field: string): boolean {
   return vaultFieldNamespace(field) === BANK_DETAILS_NAMESPACE;
@@ -57,7 +63,7 @@ export function isSshCaField(field: string): boolean {
 
 /** Fields whose plaintext and lifecycle belong exclusively to an in-process rail. */
 export function isPrivateCustodyField(field: string): boolean {
-  return isGroupKeyField(field) || isSshCaField(field) || isBankDetailsField(field);
+  return isGroupKeyField(field) || isSshCaField(field) || isBankDetailsField(field) || isExternalMcpField(field);
 }
 
 export function isGroupKeyField(field: string): boolean {

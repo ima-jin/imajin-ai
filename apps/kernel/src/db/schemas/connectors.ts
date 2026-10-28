@@ -48,6 +48,8 @@ export const connectors = connectorsSchema.table('connectors', {
    * only — never key material.
    */
   sealedKeyField: text('sealed_key_field'),
+  /** Attribution context only; never transfers ownership of a member's key. */
+  orgContextDid: text('org_context_did'),
   /**
    * Snapshot of the scopes granted on this connector, refreshed whenever the
    * owner publishes a scope-manifest. `auth.channel_links` stays authoritative:
