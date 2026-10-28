@@ -30,6 +30,26 @@ servers:
   - url: http://localhost:3000/{service}
     description: local development
 
+x-mcp-tools:
+  cycle_status:
+    scope: cycle:run
+    description: >-
+      Current caller horizon, aggregated across every principal-scoped registry
+      loop page using getLoopWithHistory/projectHorizon, as in the Runs lane.
+      Omitted correlation_id selects the latest cycle; no cycle returns
+      correlationId null and state not_started with the horizon, not an error.
+      Explicit unknown, foreign or non-cycle correlation_id remains not_found.
+      Requires both the token scope and active connector grant.
+    responseSchema: { $ref: "#/components/schemas/CycleHorizonReadout" }
+  cycle_run:
+    scope: cycle:run
+    description: >-
+      Returns correlationId plus the same horizon captured before startCycle
+      and before the merge sweep, including dry_run. Repo scope does not narrow
+      the caller horizon. No refill, sharpening or new phase actions are added.
+      Requires both the token scope and active connector grant.
+    responseSchema: { $ref: "#/components/schemas/CycleHorizonReadout" }
+
 tags:
   - name: jin
     description: /jin kernel dashboard — operator approvals
@@ -56,6 +76,48 @@ components:
       in: header
       name: x-internal-key
   schemas:
+    CycleHorizonReadout:
+      type: object
+      required: [correlationId, horizon]
+      properties:
+        correlationId: { type: [string, "null"], description: "Null only for cycle_status before the first cycle." }
+        horizon: { $ref: "#/components/schemas/CycleHorizonSummary" }
+        belowDepth:
+          type: object
+          description: "Present exactly when horizon.depth < horizon.targetDepth."
+          required: [deficit]
+          additionalProperties: false
+          properties:
+            deficit: { type: integer, minimum: 1 }
+    CycleHorizonSummary:
+      type: object
+      required: [depth, targetDepth, deficit, zones, noStepsPublished]
+      additionalProperties: false
+      description: >-
+        Read-only summary of canonical registry projections, never harness state.
+        Done/exited steps do not count; past steps with open exit conditions do.
+        Deficit is max(0, targetDepth - depth). A drained horizon is not the same
+        as never published: noStepsPublished uses the principal's last signed
+        step event, including exited history, matching the Runs lane (#3010).
+      properties:
+        depth: { type: integer, minimum: 0 }
+        targetDepth: { type: integer, const: 12 }
+        deficit: { type: integer, minimum: 0 }
+        zones:
+          type: object
+          required: [tail, middle, near, head, past]
+          additionalProperties: false
+          properties:
+            tail: { type: integer, minimum: 0 }
+            middle: { type: integer, minimum: 0 }
+            near: { type: integer, minimum: 0 }
+            head: { type: integer, minimum: 0 }
+            past: { type: integer, minimum: 0 }
+        noStepsPublished: { type: boolean }
+        message:
+          type: string
+          const: "No horizon steps published yet"
+          description: "Present only when noStepsPublished is true; a non-error empty registry."
     RegistryProvenancePoint:
       type: object
       required: [at, by]

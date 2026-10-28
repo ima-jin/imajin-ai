@@ -21,7 +21,7 @@ const { calls, fakeSql, resolveWith, resolveUsing } = vi.hoisted(() => {
 
 vi.mock('@imajin/db', () => ({ getClient: () => fakeSql }));
 
-import { listLoops, listLoopsPage, getLoopWithHistory, getLastStepEventAt } from '../query';
+import { listLoops, listLoopsPage, getLoopWithHistory, getLastStepEventAt, getStepLoopIds } from '../query';
 import { STEP_EVENT_TYPES } from '../step-types';
 import { CODE_STEP } from './horizon-fixtures';
 
@@ -48,6 +48,56 @@ function rawLoopRow(overrides: Record<string, unknown> = {}) {
 
 beforeEach(() => {
   calls.length = 0;
+});
+describe('getStepLoopIds', () => {
+  it('selects distinct loop ids with the same principal and supported-step predicate as last activity', async () => {
+    resolveWith([{ loop_id: 'horizon' }, { loop_id: 'session' }]);
+    expect(await getStepLoopIds(PRINCIPAL)).toEqual(['horizon', 'session']);
+    expect(calls).toHaveLength(1);
+    expect(calls[0].text.replaceAll(/\s+/g, ' ').trim()).toBe(
+      'SELECT DISTINCT loop_id FROM kernel.loop_events WHERE principal = ? AND type = ANY( ? ::text[]) ORDER BY loop_id',
+    );
+    expect(calls[0].values).toEqual([PRINCIPAL, STEP_EVENT_TYPES]);
+    expect(calls[0].values[1]).toBe(STEP_EVENT_TYPES);
+    resolveWith([{ last_step_event_at: null }]);
+    await getLastStepEventAt(PRINCIPAL);
+    expect(calls[1].values).toEqual(calls[0].values);
+  });
+
+  it('returns an empty list from one query when no step events exist', async () => {
+    resolveWith([]);
+    expect(await getStepLoopIds(PRINCIPAL)).toEqual([]);
+    expect(calls).toHaveLength(1);
+  });
+
+  it('deduplicates step-bearing loops and excludes foreign principals and non-step events in PostgreSQL', async () => {
+    const db = new PGlite();
+    try {
+      await db.exec(`
+        CREATE SCHEMA kernel;
+        CREATE TABLE kernel.loop_events (loop_id text, principal text, issuer text, type text);
+        INSERT INTO kernel.loop_events VALUES
+          ('horizon', 'did:imajin:ryan', 'did:imajin:harness', 'step.queued'),
+          ('horizon', 'did:imajin:ryan', 'did:imajin:harness', 'step.updated'),
+          ('drained-session', 'did:imajin:ryan', 'did:imajin:another-harness', 'step.finished'),
+          ('cycle-without-steps', 'did:imajin:ryan', 'did:imajin:ryan', 'loop.started'),
+          ('unsupported', 'did:imajin:ryan', 'did:imajin:ryan', 'step.unsupported'),
+          ('foreign', 'did:imajin:other', 'did:imajin:ryan', 'step.queued');
+      `);
+      const execute = async ({ text, values }: { text: string; values: unknown[] }) => {
+        let index = 0;
+        return (await db.query(text.replaceAll('?', () => `$${++index}`), values)).rows;
+      };
+      resolveUsing(execute);
+      expect(await getStepLoopIds(PRINCIPAL)).toEqual(['drained-session', 'horizon']);
+      resolveUsing(execute);
+      expect(await getStepLoopIds('did:imajin:other')).toEqual(['foreign']);
+      resolveUsing(execute);
+      expect(await getStepLoopIds("did:imajin:nobody' OR true --")).toEqual([]);
+    } finally {
+      await db.close();
+    }
+  });
 });
 describe('getLastStepEventAt', () => {
   it('uses one principal-scoped max with exactly the supported step types as an array parameter', async () => {
