@@ -186,7 +186,7 @@ describe('personal external MCP: real SQL, signatures and vault crypto', () => {
     for (const [url, options] of h.fetch.mock.calls) {
       expect(url).toBe(POSTMAN_MCP_URL);
       expect(options).toMatchObject({ redirect: 'error', cache: 'no-store' });
-      expect(options.headers.Authorization === `Bearer ${h.secrets[0]}`).toBe(true);
+      expect(options.headers.Authorization).toBe(`Bearer ${h.secrets[0]}`);
       expect(options.body.includes(h.secrets[0])).toBe(false);
     }
     const [row] = await database.select().from(connectors).where(eq(connectors.ownerDid, member));
@@ -329,7 +329,7 @@ describe('personal external MCP: real SQL, signatures and vault crypto', () => {
   it('enforces policy even when a kernel caller skips the route validator', async () => {
     await expect(async () => invokeExternalMcp({ memberDid: member }, rpcCall('runCollection') as never)).rejects.toThrow('Tool refused');
     expect(parseExternalMcpCall(rpcCall()).params?.name).toBe('getCollections');
-    await expect(connectExternalMcp(member, { secret: 'fake', orgContextDid: 'did:imajin:fake' })).rejects.toThrow('Invalid organization');
+    expect(() => connectExternalMcp(member, { secret: 'fake', orgContextDid: 'did:imajin:fake' })).toThrow('Invalid organization');
     await disconnectExternalMcp(member);
   });
 });

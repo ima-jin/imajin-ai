@@ -19,7 +19,8 @@ const live = (row: { status: string; expiresAt: Date | null; revokedAt: Date | n
   row.status === 'active' && !row.revokedAt && (!row.expiresAt || row.expiresAt.getTime() > Date.now());
 
 async function lockMember(tx: Transaction, did: string) {
-  await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${`external-mcp:${did}`}, 0))`);
+  const lockKey = `external-mcp:${did}`;
+  await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))`);
 }
 async function connection(tx: Pick<Transaction, 'select'>, did: string) {
   const [row] = await tx.select().from(connectors).where(and(
@@ -60,7 +61,7 @@ export async function externalMcpStatus(memberDid: string) {
 }
 
 /** Immutable fields prevent a failed commit from destroying a prior working seal. */
-export async function connectExternalMcp(memberDid: string, raw: unknown) {
+export function connectExternalMcp(memberDid: string, raw: unknown) {
   const parsed = connectInput.safeParse(raw);
   if (!parsed.success) throw new ExternalMcpError(400, 'Invalid connection input');
   const { secret, orgContextDid } = parsed.data;
