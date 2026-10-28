@@ -20,7 +20,7 @@ export default function OrgConnectionsPanel({ groupDid }: Readonly<{ groupDid: s
       const response = await fetch(endpoint, { cache: 'no-store' });
       if (!response.ok) throw new Error(response.status === 403 ? '403: Organization admin access required.' : 'Unable to load organization connections.');
       setData(await response.json());
-    } catch (err) { setError(err instanceof Error ? err.message : 'Unable to load connections.'); }
+    } catch (err) { setData(null); setError(err instanceof Error ? err.message : 'Unable to load connections.'); }
   }, []);
   useEffect(() => { setData(null); setError(''); void load(); }, [groupDid, load]);
 
@@ -48,14 +48,14 @@ export default function OrgConnectionsPanel({ groupDid }: Readonly<{ groupDid: s
     <h2 className="font-mono text-lg text-zinc-100">External connections</h2>
     <p className="text-sm text-zinc-400">Suspend org-tagged calls only. Members keep their keys and personal use. Service suspensions also cover future connections. Resuming a service does not clear individual suspensions.</p>
     {error && <p role="alert" className="text-sm text-red-400">{error}</p>}
-    <label className="block text-sm text-zinc-300">Reason (required; never enter credentials)
+    <label className="block text-sm text-zinc-300"><span>Reason (required; never enter credentials)</span>
       <input value={reason} onChange={event => setReason(event.target.value)} maxLength={500}
         className="mt-1 block w-full border border-zinc-700 bg-zinc-900 p-2" />
     </label>
     {!data && !error && <p className="text-sm text-zinc-500">Loading connections…</p>}
     {data && <>
       <div className="flex flex-wrap items-end gap-2">
-        <label className="text-sm text-zinc-300">Service
+        <label className="text-sm text-zinc-300"><span>Service</span>
           <select className="ml-2 border border-zinc-700 bg-zinc-900 p-2" value={selectedProvider} onChange={event => setProvider(event.target.value)}>
             {services.map(value => <option key={value} value={value}>{value}</option>)}
           </select>

@@ -580,14 +580,20 @@ describe('org-admin suspension (#3167)', () => {
 
   it('membership removal persists suspensions, actor/reason and logs; re-add/reconnect does not resume', async () => {
     await connect(); await installUpstream();
+    await database.insert(connectors).values({
+      id: `personal_${sequence}`, ownerDid: member, provider: 'personal-fixture', slot: 'primary',
+      channel: 'fixture', connectorDid: h.nodeDid, orgContextDid: null,
+    });
     await asAdmin('owner');
     await removeGroupController(org, { id: admin() }, member);
     const events = await orgEvents();
     expect(events).toHaveLength(2);
     expect(events.every(event => event.actorDid === admin() && event.memberDid === member
       && event.reason === 'Organization membership removed')).toBe(true);
-    const rows = await database.select().from(connectors).where(eq(connectors.ownerDid, member));
+    const rows = (await database.select().from(connectors).where(eq(connectors.ownerDid, member)))
+      .filter(row => row.orgContextDid === org);
     expect(rows.every(row => row.orgSuspendedAt)).toBe(true);
+    expect((await connectionRow('personal-fixture')).orgSuspendedAt).toBeNull();
     await database.update(identityMembers).set({ removedAt: null }).where(eq(identityMembers.memberDid, member));
     asMember();
     expect((await connect()).status).toBe(201);
@@ -599,6 +605,24 @@ describe('org-admin suspension (#3167)', () => {
     expect((await call(RPC, 'POST', rpcCall())).status).toBe(200);
     expect((await call(UPSTREAM, 'POST', upstreamCall(), serviceHeaders)).status).toBe(200);
     expect(await orgEvents()).toHaveLength(4);
+  });
+  it('suspends and resumes an app-upstream service before vault access and retains policy/history on replayed migration', async () => {
+    await installUpstream();
+    const row = await connectionRow();
+    await asAdmin();
+    expect((await change({ provider: row.provider })).status).toBe(200);
+    const events = await orgEvents();
+    const migration = readFileSync('migrations/0227_org_connection_suspensions.sql', 'utf8');
+    await client.exec(migration);
+    expect(await orgEvents()).toEqual(events);
+    const get = vi.spyOn(vaultService, 'get');
+    await expectUpstreamRefused(403);
+    expect(get).not.toHaveBeenCalled();
+    get.mockRestore();
+    expect((await change({ provider: row.provider }, 'resume')).status).toBe(200);
+    asMember();
+    expect((await call(UPSTREAM, 'POST', upstreamCall(), serviceHeaders)).status).toBe(200);
+    expect(await orgEvents()).toHaveLength(2);
   });
 
   it('isolates org policies and rejects personal/foreign connection targets without leaking custody metadata', async () => {

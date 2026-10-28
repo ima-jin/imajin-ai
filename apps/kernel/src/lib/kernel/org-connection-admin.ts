@@ -88,9 +88,9 @@ export async function suspendRemovedMember(tx: ConnectionTransaction, orgDid: st
   const rows = await tx.select().from(connectors).where(and(
     eq(connectors.orgContextDid, orgDid), eq(connectors.ownerDid, memberDid),
   ));
-  for (const row of rows) await recordSuspension(tx, orgDid, actorDid, {
+  await Promise.all(rows.map(row => recordSuspension(tx, orgDid, actorDid, {
     action: 'suspend', reason: 'Organization membership removed', connectionId: row.id,
-  }, row);
+  }, row)));
 }
 
 /** Admin metadata allowlist: never return fields, bindings, credentials or provider bodies. */

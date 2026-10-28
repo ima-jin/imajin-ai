@@ -2,6 +2,10 @@
 
 import { useEffect, useState } from 'react';
 import OrgConnectionsPanel, { type OrgConnectionsData } from '@/app/auth/components/OrgConnectionsPanel';
+function requestUrl(input: RequestInfo | URL) {
+  if (typeof input === 'string') return input;
+  return input instanceof URL ? input.href : input.url;
+}
 
 /** Fixture transport only. Never creates sessions or bypasses a production route. */
 export default function OrgConnectionsPreview() {
@@ -15,10 +19,11 @@ export default function OrgConnectionsPreview() {
       suspensions: [], events: [],
     };
     window.fetch = async (input, init) => {
-      if (String(input) !== '/auth/api/org-connections') return original(input, init);
+      if (requestUrl(input) !== '/auth/api/org-connections') return original(input, init);
       if (nonAdmin) return Response.json({ error: 'Forbidden fixture' }, { status: 403 });
       if (init?.method === 'POST') {
-        const body = JSON.parse(String(init.body));
+        if (typeof init.body !== 'string') return Response.json({ error: 'Invalid fixture input' }, { status: 400 });
+        const body = JSON.parse(init.body);
         const memberDid = body.connectionId ? 'did:imajin:fixture-member' : '';
         const slot = memberDid ? 'primary' : '';
         const existing = data.suspensions.find(row => row.memberDid === memberDid);
