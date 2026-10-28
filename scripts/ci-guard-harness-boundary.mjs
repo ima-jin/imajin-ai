@@ -22,7 +22,7 @@ import ts from 'typescript';
 const ROOT = resolve(process.env.CI_GUARD_WORKDIR ?? join(dirname(fileURLToPath(import.meta.url)), '..'));
 const SCAN_ROOTS = ['apps/kernel/src', 'apps/kernel/app'];
 const EXTENSIONS = new Set(['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs', '.mts', '.cts']);
-const EXCLUDED_DIRS = new Set(['__tests__', 'tests', 'node_modules', '.next', 'dist', 'build', 'coverage']);
+const EXCLUDED_DIRS = new Set(['__tests__', 'node_modules', '.next']);
 const TEST_FILE = /\.(test|spec)\.[cm]?[jt]sx?$/;
 export const KINDS = Object.freeze({
   PACKAGE: 'package-import',

@@ -108,14 +108,26 @@ describe('ci-guard-harness-boundary', () => {
   it.each(['js', 'jsx', 'mjs', 'cjs', 'mts', 'cts', 'ts', 'tsx'])('scans .%s source', (extension) => {
     expect(runGuard(fixture(FORBIDDEN_IMPORT, `apps/kernel/src/client.${extension}`)).status).toBe(1);
   });
+  it.each([
+    'apps/kernel/app/build/x/route.ts',
+    'apps/kernel/src/lib/tests/hidden.ts',
+    'apps/kernel/app/tests/fixture.ts',
+    'apps/kernel/src/dist/client.js',
+    'apps/kernel/src/lib/build/client.ts',
+    'apps/kernel/src/coverage/client.ts',
+  ])('scans production source in %s and reports file:line', (file) => {
+    const result = runGuard(fixture('// production source\n\nclient.sessions_send();', file));
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(`${file}:3: ${KINDS.RPC} (client.sessions_send)`);
+  });
 
   it.each([
     'apps/kernel/src/__tests__/helper.ts',
-    'apps/kernel/app/tests/fixture.ts',
+    'apps/kernel/src/lib/node_modules/client.js',
+    'apps/kernel/app/build/.next/client.ts',
     'apps/kernel/src/client.test.ts',
     'apps/kernel/app/client.spec.tsx',
     'apps/kernel/src/client.test.mjs',
-    'apps/kernel/src/dist/client.js',
     'apps/other/src/client.ts',
     'packages/plugin/src/client.ts',
   ])('excludes %s', (file) => {
@@ -183,5 +195,12 @@ describe('ci-guard-harness-boundary', () => {
     expect(contract).toContain('scripts/ci-guard-harness-boundary.mjs');
     expect(contract).toContain('refs.sessionKey');
     expect(contract).toContain('meet.transcript.available');
+    expect(contract).toContain('static tripwire, not a proof');
+    for (const limitation of [
+      "'/tools/' + 'invoke'", "'sessions' + '_send'", 'import(variable)',
+      '{ sessions_send: send }', '`spawn`/`execSync` of `openclaw`', 'OPENCLAW_GATEWAY_TOKEN',
+    ]) {
+      expect(contract).toContain(limitation);
+    }
   });
 });

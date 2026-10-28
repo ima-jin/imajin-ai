@@ -12,6 +12,7 @@ stores. Opaque signed event data such as `refs.sessionKey` and
 `meet.transcript.available` remains allowed. Legacy exceptions are keyed to the
 exact file, detection kind and value in the guard, each with a one-line reason;
 they are a shrinking ratchet, not permission for new harness calls.
+This guard is a static tripwire, not a proof: boundary review is still required for concatenated strings such as `'/tools/' + 'invoke'` or `'sessions' + '_send'`, `import(variable)`, renamed destructured imports such as `{ sessions_send: send }`, `spawn`/`execSync` of `openclaw`, and `OPENCLAW_GATEWAY_TOKEN`, none of which it detects.
 ## Horizon steps (#2878, parent #2313 decision a)
 
 Publish `step.queued|updated|claimed|started|progress|blocked|finished|observed|attested`
