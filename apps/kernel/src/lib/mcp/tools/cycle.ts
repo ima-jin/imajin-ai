@@ -271,15 +271,14 @@ async function runCyclePhaseStub(
 const cycleRunTool: McpTool = {
   name: 'cycle_run',
   requiredScope: CYCLE_SCOPE,
-  description:
-    'Start your sprint cycle: registers a cycle loop on your own behalf and walks its five fixed phases ' +
-    '(merge-sweep, hot-issue-raise, brief+provision, review-rounds, report — default: all five). ' +
-    'Returns correlationId and the caller horizon captured before starting the run or its merge sweep. ' +
-    HORIZON_DESCRIPTION + 'Read progress with cycle_status. dry_run (default false) previews each ' +
-    'phase as a DecisionCard instead of enacting it. The underlying phase engine is not wired up yet ' +
-    '(#2316 shipped the MCP tool surface only), so every phase is currently recorded as skipped on the ' +
-    "cycle's own rail — nothing merges, files, or dispatches until that follow-up lands. Requires an " +
-    'active cycle:run grant on the Imajin MCP connector.',
+  description: `Start your sprint cycle: registers a cycle loop on your own behalf and walks its five fixed phases
+    (merge-sweep, hot-issue-raise, brief+provision, review-rounds, report — default: all five).
+    Returns correlationId and the caller horizon captured before starting the run or its merge sweep.
+    ${HORIZON_DESCRIPTION}Read progress with cycle_status. dry_run (default false) previews each
+    phase as a DecisionCard instead of enacting it. The underlying phase engine is not wired up yet
+    (#2316 shipped the MCP tool surface only), so every phase is currently recorded as skipped on the
+    cycle's own rail — nothing merges, files, or dispatches until that follow-up lands. Requires an
+    active cycle:run grant on the Imajin MCP connector.`,
   inputSchema: {
     type: 'object',
     properties: {
@@ -398,12 +397,11 @@ async function mostRecentCycleId(principal: string): Promise<string | undefined>
 const cycleStatusTool: McpTool = {
   name: 'cycle_status',
   requiredScope: CYCLE_SCOPE,
-  description:
-    'Read your sprint cycle: current phase, per-phase status, linked children (Warp runs, reviews), and ' +
-    'open DecisionCard ids. Omit correlation_id to read your own most recently active cycle. Only resolves ' +
-    'cycles you started — a correlation_id belonging to a different principal, or naming a non-cycle loop, ' +
-    'is reported as not-found. With no cycle yet, returns correlationId: null and state: not_started. ' +
-    HORIZON_DESCRIPTION + 'Requires an active cycle:run grant on the Imajin MCP connector.',
+  description: `Read your sprint cycle: current phase, per-phase status, linked children (Warp runs, reviews), and
+    open DecisionCard ids. Omit correlation_id to read your own most recently active cycle. Only resolves
+    cycles you started — a correlation_id belonging to a different principal, or naming a non-cycle loop,
+    is reported as not-found. With no cycle yet, returns correlationId: null and state: not_started.
+    ${HORIZON_DESCRIPTION}Requires an active cycle:run grant on the Imajin MCP connector.`,
   inputSchema: {
     type: 'object',
     properties: {
