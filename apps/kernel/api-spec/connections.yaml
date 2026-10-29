@@ -2,7 +2,7 @@ openapi: "3.1.0"
 info:
   title: imajin connections
   version: "2.0.0"
-  description: Pod-based social graph — connections, invite codes, trust graph, group pods, nickname management. Runs as a kernel service at /{service}/api/... on a shared node domain.
+  description: Pod-based social graph and connector lifecycle, including metadata-only org-held service keys. Runs as a kernel service at /{service}/api/... on a shared node domain.
 servers:
   - url: https://{node}.imajin.ai/{service}
     description: production node
