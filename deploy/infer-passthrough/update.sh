@@ -112,12 +112,14 @@ fi
 [[ -z "$(as_user git -C "$candidate" status --porcelain)" ]] || { log 'candidate has local changes; refusing deployment'; exit 1; }
 # No lifecycle scripts or root execution of repository code.
 as_user pnpm --dir "$candidate" install --frozen-lockfile --ignore-scripts --loglevel=error
-as_user pnpm --dir "$candidate" exec turbo run build --filter=@imajin/auth --output-logs=errors-only
+as_user mkdir -p "$state/releases/.turbo"
+as_user env TURBO_CACHE_DIR="$state/releases/.turbo" pnpm --dir "$candidate" exec turbo run build --filter=@imajin/auth --output-logs=errors-only
 
 candidate_started=true
 systemd-run --unit=infer-passthrough-candidate --collect --service-type=exec \
   --uid="$runtime_user" --working-directory="$candidate" \
   --property=EnvironmentFile=/etc/imajin/infer-passthrough.env \
+  --property=TimeoutStopSec=10s --property=KillMode=control-group \
   /usr/bin/env INFER_PROXY_HOST=127.0.0.1 INFER_PROXY_PORT="$candidate_port" \
   "$candidate/node_modules/.bin/tsx" packages/openclaw-infer-passthrough/src/server.ts
 health "$candidate_port"

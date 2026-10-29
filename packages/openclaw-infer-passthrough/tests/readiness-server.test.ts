@@ -4,6 +4,7 @@ import { generateKeypair } from '@imajin/auth';
 import { loadConfig } from '../src/config.js';
 import { createProxyServer } from '../src/server.js';
 import { checkRouteMints } from '../src/readiness.js';
+import { NoLiveGrantError, TokenMintError } from '../src/token-provider.js';
 
 let server: ReturnType<typeof createProxyServer>;
 let baseUrl: string;
@@ -71,7 +72,7 @@ describe('mint-proving readiness (#3041)', () => {
     expect(body.routes).toHaveLength(3);
     for (const route of body.routes) {
       expect(route.ok).toBe(false);
-      expect(route.message).toContain('/jin → Grants');
+      expect(route.message).toContain(status === 403 ? '/jin → Grants' : 'check');
     }
     expect(JSON.stringify(body)).not.toContain('untrusted upstream detail');
     mintStatus = 200;
@@ -103,6 +104,45 @@ describe('mint-proving readiness (#3041)', () => {
 
   it('does not claim an empty route table is ready', async () => {
     expect((await checkRouteMints([], vi.fn())).ok).toBe(false);
+  });
+
+  it.each(['code', 'error'])('soft-fails only an unregistered MCP audience reported as %s, through both health aliases', async (field) => {
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+      if (url.startsWith(baseUrl)) return realFetch(url, init);
+      const body = JSON.parse(init!.body as string);
+      return body.aud
+        ? Response.json({ [field]: 'app_not_registered' }, { status: 403 })
+        : Response.json({ token: 'test-token', expiresIn: 600, scopes: ['infer:completions'] });
+    }));
+    for (const path of ['/health', '/healthz']) {
+      const res = await fetch(`${baseUrl}${path}`);
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.routes.slice(0, 2)).toEqual(['openai', 'anthropic'].map((route) => ({ route, ok: true })));
+      expect(body.routes[2]).toMatchObject({ route: 'mcp', ok: true, skipped: true });
+      expect(body.routes[2].message).toContain('not a registered active kernel app');
+      expect(body.routes[2].message).not.toContain('re-grant');
+    }
+  });
+
+  it.each([
+    ['openai', new TokenMintError(403, 'untrusted', 'app_not_registered'), 'register the audience'],
+    ['anthropic', new TokenMintError(403, 'untrusted', 'app_not_registered'), 'register the audience'],
+    ['mcp', new NoLiveGrantError(), '/jin → Grants'],
+    ['mcp', new TokenMintError(403, 'untrusted'), 'granted scopes'],
+    ['mcp', new TokenMintError(401, 'untrusted'), 'signing credentials'],
+    ['mcp', new TokenMintError(500, 'untrusted', 'app_not_registered'), 'register the audience'],
+    ['mcp', new Error('untrusted'), 'kernel connectivity'],
+  ])('still gates %s and gives a typed remedy for %s', async (id, error, remedy) => {
+    const result = await checkRouteMints([{ id, principalDid: 'p' }], () => ({
+      invalidate() {},
+      getToken: async () => { throw error; },
+    }));
+    expect(result.ok).toBe(false);
+    expect(result.routes[0]).toMatchObject({ route: id, ok: false });
+    expect(JSON.stringify(result)).toContain(remedy);
+    expect(JSON.stringify(result)).not.toContain('untrusted');
+    if (!(error instanceof NoLiveGrantError)) expect(JSON.stringify(result)).not.toContain('re-grant');
   });
 
   it('warns once for legacy environment and route IDs together without retaining values', () => {

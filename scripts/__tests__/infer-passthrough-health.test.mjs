@@ -73,6 +73,7 @@ describe('release mint-health check', () => {
   });
   it.each([
     [200, { ok: true, routes: [{ route: 'openai', ok: true }] }, 0],
+    [200, { ok: true, routes: [{ route: 'openai', ok: true }, { route: 'mcp', ok: true, skipped: true }] }, 0],
     [503, { ok: false, routes: [{ route: 'openai', ok: false }] }, 1],
     [200, { kernelOk: true }, 1],
     [200, { ok: true, routes: [] }, 1],
@@ -88,7 +89,10 @@ describe('release mint-health check', () => {
     await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
     const result = await run(server.address().port);
     expect(result.code).toBe(code);
-    if (code) expect(result.stderr).toContain('/jin → Grants');
+    if (code) {
+      expect(result.stderr).toContain('inspect route readiness for the cause and remedy');
+      expect(result.stderr).not.toContain('re-grant');
+    }
   });
 
   it.each([['0', '1'], ['65536', '1'], ['bad', '1'], ['8787', '0'], ['8787', '31'], ['8787', '1.5']])(

@@ -36,6 +36,7 @@ export class TokenMintError extends Error {
   constructor(
     readonly status: number,
     detail: string,
+    readonly code?: 'app_not_registered',
   ) {
     super(`Failed to mint app token: ${status} ${detail}`);
     this.name = 'TokenMintError';
@@ -120,7 +121,9 @@ export async function mintAppToken(
     // Never interpolate the signature/challenge/nonce into this message —
     // only the kernel's own (non-secret) error string and HTTP status.
     if (res.status === 403 && isRevokedGrant(body)) throw new NoLiveGrantError();
-    throw new TokenMintError(res.status, body?.error ?? res.statusText);
+    const code = body?.code === 'app_not_registered' || body?.error === 'app_not_registered'
+      ? 'app_not_registered' : undefined;
+    throw new TokenMintError(res.status, body?.error ?? res.statusText, code);
   }
 
   const minted = (await res.json()) as MintedToken;

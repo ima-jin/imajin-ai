@@ -194,6 +194,9 @@ describe('pull-based passthrough release updater (#3041, #3082)', () => {
     expect(trace).toContain('--uid=fixture-user');
     expect(trace).toContain('--property=EnvironmentFile=/etc/imajin/infer-passthrough.env');
     expect(trace).toContain('INFER_PROXY_HOST=127.0.0.1 INFER_PROXY_PORT=8788');
+    expect(trace).toContain('--property=TimeoutStopSec=10s --property=KillMode=control-group');
+    expect(trace).toContain(`TURBO_CACHE_DIR=${state}/releases/.turbo`);
+    expect(trace).toContain(`runuser -u fixture-user -- mkdir -p ${state}/releases/.turbo`);
     expect(trace.indexOf('check-health.mjs 8788')).toBeLessThan(trace.indexOf('restart infer-passthrough.service'));
     expect(trace.indexOf('restart infer-passthrough.service')).toBeLessThan(trace.indexOf('check-health.mjs 8787'));
     expect(result.stdout).toContain('all route mints healthy');
