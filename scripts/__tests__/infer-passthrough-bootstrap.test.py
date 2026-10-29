@@ -45,6 +45,7 @@ class BootstrapTests(unittest.TestCase):
         (dropins / "override.conf").write_text("prior-dropin")
         self.trace = []
         self.failure = None
+        self.invocation = "a" * 32
         self.inline = f'KERNEL_BASE_URL=https://kernel.test INFER_PROXY_HOST=127.0.0.1 INFER_PROXY_PORT=8787 INFER_PROXY_ROUTES_CONFIG={self.route} "EXTRA=two words"'
         for name, value in (("STATE", self.state), ("ETC", self.etc),
                             ("UNITS", self.units), ("BUNDLE", self.bundle)):
@@ -62,6 +63,10 @@ class BootstrapTests(unittest.TestCase):
             return f"{self.env} (ignore_errors=no)"
         if "--property=WorkingDirectory" in args:
             return str(self.source)
+        if "--property=InvocationID" in args:
+            return self.invocation
+        if args == ("systemctl", "start", "infer-passthrough-update.service"):
+            self.invocation = "b" * 32
         return ""
 
     def migrate(self):
@@ -133,6 +138,7 @@ class BootstrapTests(unittest.TestCase):
         self.assertEqual((self.units / bootstrap.SERVICE).read_text(), "prior-unit")
         self.assertEqual((self.units / f"{bootstrap.SERVICE}.d/override.conf").read_text(), "prior-dropin")
         self.assertFalse((self.state / "bootstrap-complete").exists())
+        self.assertNotIn(("systemctl", "restart", bootstrap.SERVICE), self.trace)
         self.failure = None
         self.migrate()
         self.assertTrue((self.state / "bootstrap-complete").exists())
@@ -194,6 +200,14 @@ class BootstrapTests(unittest.TestCase):
         (self.source / "package.json").write_text('{"version":"../../outside"}')
         with self.assertRaises(ValueError):
             bootstrap.seed_current(self.source, self.state)
+
+    def test_missing_service_invocation_refuses_without_mutation(self):
+        self.invocation = ""
+        with self.assertRaises(ValueError):
+            self.migrate()
+        self.assertTrue(self.route.exists())
+        self.assertFalse((self.state / "current").exists())
+        self.assertFalse(any("stop" in call or "restart" in call for call in self.trace))
 
     def test_additional_env_files_and_symlinked_routes_are_refused(self):
         def extra_files(*args):

@@ -164,7 +164,7 @@ def install_units(backup):
         (UNITS / name).chmod(0o644)
 
 
-def rollback(saved, backup, route_path, previous, timer_active, moved_route):
+def rollback(saved, backup, route_path, previous, timer_active, moved_route, invocation):
     restore_files(saved)
     if moved_route:
         shutil.move(backup / "routes", route_path)
@@ -177,7 +177,8 @@ def rollback(saved, backup, route_path, previous, timer_active, moved_route):
     if not timer_active:
         run(SYSTEMCTL, "disable", NOW_ARG, TIMER)
     run(SYSTEMCTL, "daemon-reload")
-    run(SYSTEMCTL, "restart", SERVICE)
+    if run(SYSTEMCTL, "show", SERVICE, "--property=InvocationID", VALUE_ARG) != invocation:
+        run(SYSTEMCTL, "restart", SERVICE)
     run(SYSTEMCTL, "is-active", "--quiet", SERVICE)
     if timer_active:
         run(SYSTEMCTL, "start", TIMER)
@@ -185,6 +186,9 @@ def rollback(saved, backup, route_path, previous, timer_active, moved_route):
 
 def migrate():
     env_path, content, route_path, source, port = migration_config()
+    invocation = run(SYSTEMCTL, "show", SERVICE, "--property=InvocationID", VALUE_ARG)
+    if not re.fullmatch(r"[a-f0-9]{32}", invocation):
+        raise ValueError("Running service invocation is unavailable")
     backup = Path(tempfile.mkdtemp(prefix="bootstrap-", dir=STATE))
     backup.chmod(0o700)
     saved = backup_files(backup)
@@ -209,7 +213,7 @@ def migrate():
         run(SYSTEMCTL, "enable", NOW_ARG, TIMER)
         (STATE / COMPLETE).write_text("1\n")
     except BaseException:
-        rollback(saved, backup, route_path, previous, timer_active, moved_route)
+        rollback(saved, backup, route_path, previous, timer_active, moved_route, invocation)
         raise
 
 
