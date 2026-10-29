@@ -30,6 +30,8 @@ class BootstrapTests(unittest.TestCase):
         (self.source / "server.js").write_text("fixture")
         (self.source / "server.js").chmod(0o600)
         (self.source / ".env.local").write_text("not-copied")
+        (self.source / ".npmrc").write_text("not-copied")
+        (self.source / ".netrc").write_text("not-copied")
         self.source.parent.chmod(0o750)
         self.env = self.etc / bootstrap.ENV
         self.env.write_text('INFER_PROXY_PRINCIPAL_DID="did:imajin:fixture"\n')
@@ -85,6 +87,8 @@ class BootstrapTests(unittest.TestCase):
         self.assertEqual(current.stat().st_mode & 0o777, 0o755)
         self.assertEqual((current / "server.js").stat().st_mode & 0o777, 0o644)
         self.assertFalse((current / ".env.local").exists())
+        self.assertFalse((current / ".npmrc").exists())
+        self.assertFalse((current / ".netrc").exists())
         self.assertIn(("systemctl", "start", "infer-passthrough-update.service"), self.trace)
         self.assertIn(("systemctl", "enable", "--now", "infer-passthrough-update.timer"), self.trace)
         self.assertFalse(any("restart" in call for call in self.trace))
@@ -241,6 +245,26 @@ class BootstrapTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 bootstrap.main()
         self.assertFalse(any(call[0] in ("useradd", "install", "runuser", "systemctl") for call in self.trace))
+
+    def test_creates_account_and_clones_only_as_service_user(self):
+        with patch.object(bootstrap.pwd, "getpwnam", side_effect=KeyError), patch.object(
+                bootstrap, "run", self.fake_run):
+            bootstrap.prepare_repository()
+        self.assertTrue(any(call[0] == "useradd" for call in self.trace))
+        self.assertIn(("runuser", "-u", "imajin", "--", "git", "clone", "--bare",
+                       "https://github.com/ima-jin/imajin-ai.git", str(self.state / "repo")), self.trace)
+        self.assertFalse(any(call[0] in ("git", "pnpm") for call in self.trace))
+
+    def test_existing_account_and_repo_are_retained_and_symlinked_state_is_refused(self):
+        repo = self.state / "repo"
+        repo.mkdir()
+        with patch.object(bootstrap.pwd, "getpwnam"), patch.object(bootstrap, "run", self.fake_run):
+            bootstrap.prepare_repository()
+            self.assertFalse(any(call[0] in ("useradd", "runuser") for call in self.trace))
+            repo.rmdir()
+            repo.symlink_to(self.source)
+            with self.assertRaises(ValueError):
+                bootstrap.prepare_repository()
 
 
 if __name__ == "__main__":

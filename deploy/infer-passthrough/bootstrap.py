@@ -19,9 +19,18 @@ BUNDLE = Path("/usr/local/libexec/infer-passthrough")
 ETC = Path("/etc/imajin")
 UNITS = Path("/etc/systemd/system")
 SERVICE = "infer-passthrough.service"
+SYSTEMCTL = "systemctl"
+TIMER = "infer-passthrough-update.timer"
+UPDATER = "infer-passthrough-update.service"
+COMPLETE = "bootstrap-complete"
+CURRENT = "current"
+RELEASES = "releases"
+RUNTIME_USER = "imajin"
+VALUE_ARG = "--value"
+NOW_ARG = "--now"
 ENV = "infer-passthrough.env"
 ROUTES = "INFER_PROXY_ROUTES_CONFIG"
-UNIT_NAMES = (SERVICE, "infer-passthrough-update.service", "infer-passthrough-update.timer")
+UNIT_NAMES = (SERVICE, UPDATER, TIMER)
 
 
 def run(*args):
@@ -80,10 +89,10 @@ def seed_current(source, state):
     # Stage outside the service-writable releases directory. Root never walks
     # a tree an unprivileged process can rename or replace during copying.
     staging = Path(tempfile.mkdtemp(prefix=f"initial-v{version}-", dir=state))
-    initial = state / "releases" / staging.name
+    initial = state / RELEASES / staging.name
     # Carry installed dependencies, not home-directory secrets or git metadata.
     shutil.copytree(source, staging, symlinks=True, dirs_exist_ok=True,
-                    ignore=shutil.ignore_patterns(".git", ".env*", "*.log"))
+                    ignore=shutil.ignore_patterns(".git", ".env*", "*.log", ".npmrc", ".netrc", ".ssh"))
     for directory, dirs, files in os.walk(staging):
         Path(directory).chmod(0o755)
         for name in dirs + files:
@@ -91,9 +100,9 @@ def seed_current(source, state):
             if not item.is_symlink():
                 item.chmod(0o755 if item.is_dir() or item.stat().st_mode & 0o111 else 0o644)
     staging.rename(initial)
-    if (state / "current").is_symlink():
-        (state / "current").unlink()
-    (state / "current").symlink_to(initial)
+    if (state / CURRENT).is_symlink():
+        (state / CURRENT).unlink()
+    (state / CURRENT).symlink_to(initial)
     return initial
 
 
@@ -126,80 +135,85 @@ def restore_files(saved):
             shutil.copy2(backup, path)
 
 
-def migrate():
+def migration_config():
     env_path = ETC / ENV
-    inline = run("systemctl", "show", SERVICE, "--property=Environment", "--value")
+    inline = run(SYSTEMCTL, "show", SERVICE, "--property=Environment", VALUE_ARG)
     content, route = migrated_environment(inline, env_path.read_text())
     # Extra EnvironmentFiles could override the migrated file; refuse them.
-    files = run("systemctl", "show", SERVICE, "--property=EnvironmentFiles", "--value")
+    files = run(SYSTEMCTL, "show", SERVICE, "--property=EnvironmentFiles", VALUE_ARG)
     if files != f"{env_path} (ignore_errors=no)":
         raise ValueError("Unexpected service EnvironmentFiles")
     route_path = Path(route) if route else ETC / "routes.prod.json"
     if route_path.parent != ETC or route_path.is_symlink():
         raise ValueError("Routes file must be directly under /etc/imajin")
-    source = Path(run("systemctl", "show", SERVICE, "--property=WorkingDirectory", "--value"))
+    source = Path(run(SYSTEMCTL, "show", SERVICE, "--property=WorkingDirectory", VALUE_ARG))
     if not source.is_absolute() or not source.is_dir():
         raise ValueError("Running checkout is unavailable")
+    port = assignments(content).get("INFER_PROXY_PORT", "8787")
+    if not re.fullmatch(r"[1-9]\d{0,4}", port) or int(port) > 65535 or port == "8788":
+        raise ValueError("Invalid or colliding service port")
+    return env_path, content, route_path, source, port
+
+
+def install_units(backup):
+    for name in UNIT_NAMES:
+        dropins = UNITS / f"{name}.d"
+        if dropins.exists():
+            shutil.move(dropins, backup / f"{name}.d")
+        shutil.copyfile(BUNDLE / name, UNITS / name)
+        (UNITS / name).chmod(0o644)
+
+
+def rollback(saved, backup, route_path, previous, timer_active, moved_route):
+    restore_files(saved)
+    if moved_route:
+        shutil.move(backup / "routes", route_path)
+    if previous is not None:
+        temporary = STATE / "current.rollback"
+        temporary.symlink_to(previous)
+        temporary.replace(STATE / CURRENT)
+    elif (STATE / CURRENT).is_symlink():
+        (STATE / CURRENT).unlink()
+    if not timer_active:
+        run(SYSTEMCTL, "disable", NOW_ARG, TIMER)
+    run(SYSTEMCTL, "daemon-reload")
+    run(SYSTEMCTL, "restart", SERVICE)
+    run(SYSTEMCTL, "is-active", "--quiet", SERVICE)
+    if timer_active:
+        run(SYSTEMCTL, "start", TIMER)
+
+
+def migrate():
+    env_path, content, route_path, source, port = migration_config()
     backup = Path(tempfile.mkdtemp(prefix="bootstrap-", dir=STATE))
     backup.chmod(0o700)
     saved = backup_files(backup)
-    previous = (STATE / "current").resolve() if (STATE / "current").is_symlink() else None
-    timer_active = subprocess.run(["systemctl", "is-active", "--quiet",
-                                   "infer-passthrough-update.timer"], capture_output=True).returncode == 0
+    previous = (STATE / CURRENT).resolve() if (STATE / CURRENT).is_symlink() else None
+    timer_active = subprocess.run([SYSTEMCTL, "is-active", "--quiet", TIMER],
+                                  capture_output=True).returncode == 0
     moved_route = False
     try:
-        run("systemctl", "stop", "infer-passthrough-update.timer")
+        run(SYSTEMCTL, "stop", TIMER)
         seed_current(source, STATE)
         env_path.write_text(content)
         env_path.chmod(0o600)
         if route_path.exists():
             shutil.move(route_path, backup / "routes")
             moved_route = True
-        for name in UNIT_NAMES:
-            dropins = UNITS / f"{name}.d"
-            if dropins.exists():
-                shutil.move(dropins, backup / f"{name}.d")
-            shutil.copyfile(BUNDLE / name, UNITS / name)
-            (UNITS / name).chmod(0o644)
-        merged = assignments(content)
-        port = merged.get("INFER_PROXY_PORT", "8787")
-        if not re.fullmatch(r"[1-9]\d{0,4}", port) or int(port) > 65535 or port == "8788":
-            raise ValueError("Invalid or colliding service port")
+        install_units(backup)
         (ETC / "infer-passthrough-update.env").write_text(f"INFER_UPDATE_PORT={port}\n")
-        run("systemctl", "daemon-reload")
+        run(SYSTEMCTL, "daemon-reload")
         # Reuse exactly the updater's candidate health, promotion and rollback.
-        run("systemctl", "start", "infer-passthrough-update.service")
-        run("systemctl", "enable", SERVICE)
-        run("systemctl", "enable", "--now", "infer-passthrough-update.timer")
-        (STATE / "bootstrap-complete").write_text("1\n")
+        run(SYSTEMCTL, "start", UPDATER)
+        run(SYSTEMCTL, "enable", SERVICE)
+        run(SYSTEMCTL, "enable", NOW_ARG, TIMER)
+        (STATE / COMPLETE).write_text("1\n")
     except BaseException:
-        restore_files(saved)
-        if moved_route:
-            shutil.move(backup / "routes", route_path)
-        if previous is not None:
-            temporary = STATE / "current.rollback"
-            temporary.symlink_to(previous)
-            temporary.replace(STATE / "current")
-        elif (STATE / "current").is_symlink():
-            (STATE / "current").unlink()
-        if not timer_active:
-            run("systemctl", "disable", "--now", "infer-passthrough-update.timer")
-        run("systemctl", "daemon-reload")
-        run("systemctl", "restart", SERVICE)
-        run("systemctl", "is-active", "--quiet", SERVICE)
-        if timer_active:
-            run("systemctl", "start", "infer-passthrough-update.timer")
+        rollback(saved, backup, route_path, previous, timer_active, moved_route)
         raise
 
 
-def main():
-    if os.geteuid() != 0 or len(sys.argv) != 1:
-        raise ValueError("Bootstrap requires root and no arguments")
-    if STATE.exists():
-        trusted(STATE)
-        if (STATE / "bootstrap-complete").exists():
-            trusted(STATE / "bootstrap-complete")
-            return
+def prerequisites():
     trusted(BUNDLE)
     for name in (*UNIT_NAMES, "bootstrap.sh", "bootstrap.py", "update.sh",
                  "check-health.mjs", "production-deployment.mjs", "release.sha"):
@@ -210,7 +224,7 @@ def main():
     trusted(credential)
     if stat.S_IMODE(credential.stat().st_mode) != 0o600 or credential.stat().st_size == 0:
         raise ValueError("Kernel-provisioned deployment credential required")
-    for command in ("node", "pnpm", "git", "systemctl", "systemd-run", "runuser", "flock"):
+    for command in ("node", "pnpm", "git", SYSTEMCTL, "systemd-run", "runuser", "flock"):
         if shutil.which(command) is None:
             raise ValueError("Missing bootstrap prerequisite")
     if run("node", "--version").split(".")[0] not in ("v22", "v24") or not run("pnpm", "--version").startswith("9."):
@@ -219,6 +233,40 @@ def main():
     if not re.fullmatch(r"[a-f0-9]{40}", sha):
         raise ValueError("Invalid trusted bundle SHA")
     run("node", str(BUNDLE / "production-deployment.mjs"), sha)
+
+
+def prepare_repository():
+    try:
+        pwd.getpwnam(RUNTIME_USER)
+    except KeyError:
+        run("useradd", "--system", "--user-group", "--home-dir", str(STATE / "home"),
+            "--create-home", "--shell", "/usr/sbin/nologin", RUNTIME_USER)
+    for name in (RELEASES, "repo"):
+        if (STATE / name).is_symlink():
+            raise ValueError("Symlinked state subdirectory")
+    run("install", "-d", "-o", RUNTIME_USER, "-g", RUNTIME_USER, "-m", "0755", str(STATE / RELEASES))
+    if not (STATE / "repo").exists():
+        run("install", "-d", "-o", RUNTIME_USER, "-g", RUNTIME_USER, "-m", "0755", str(STATE / "repo"))
+        run("runuser", "-u", RUNTIME_USER, "--", "git", "clone", "--bare",
+            "https://github.com/ima-jin/imajin-ai.git", str(STATE / "repo"))
+
+
+def completed():
+    if not STATE.exists():
+        return False
+    trusted(STATE)
+    if not (STATE / COMPLETE).exists():
+        return False
+    trusted(STATE / COMPLETE)
+    return True
+
+
+def main():
+    if os.geteuid() != 0 or len(sys.argv) != 1:
+        raise ValueError("Bootstrap requires root and no arguments")
+    if completed():
+        return
+    prerequisites()
     STATE.parent.mkdir(parents=True, exist_ok=True)
     trusted(STATE.parent)
     STATE.parent.chmod(0o755)
@@ -229,19 +277,7 @@ def main():
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         if (STATE / "bootstrap-complete").exists():
             return
-        try:
-            pwd.getpwnam("imajin")
-        except KeyError:
-            run("useradd", "--system", "--user-group", "--home-dir", str(STATE / "home"),
-                "--create-home", "--shell", "/usr/sbin/nologin", "imajin")
-        for name in ("releases", "repo"):
-            if (STATE / name).is_symlink():
-                raise ValueError("Symlinked state subdirectory")
-        run("install", "-d", "-o", "imajin", "-g", "imajin", "-m", "0755", str(STATE / "releases"))
-        if not (STATE / "repo").exists():
-            run("install", "-d", "-o", "imajin", "-g", "imajin", "-m", "0755", str(STATE / "repo"))
-            run("runuser", "-u", "imajin", "--", "git", "clone", "--bare",
-                "https://github.com/ima-jin/imajin-ai.git", str(STATE / "repo"))
+        prepare_repository()
         # Release the updater lock: bootstrap has its own fixed systemd unit,
         # and the updater must acquire this lock during promotion.
         fcntl.flock(lock, fcntl.LOCK_UN)

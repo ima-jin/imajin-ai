@@ -130,7 +130,7 @@ fetch needs no token; only the deployment API consumes the restricted credential
 1. Confirms the trusted bundle and successful production deployment, then creates
    the account and bare repository without running package code as root.
 2. Copies the running checkout (including installed dependencies, excluding
-   `.env*`, git metadata and logs) into a root-owned, world-readable
+   `.env*`, `.npmrc`, `.netrc`, `.ssh`, git metadata and logs) into a root-owned, world-readable
    `releases/initial-v<version>-<unique>` rollback seed. It never points `current`
    at the inaccessible home checkout. Earlier seeds and releases are retained.
 3. Captures **all** effective inline `Environment=` assignments in memory, merges
