@@ -1,6 +1,6 @@
 # Release deployment for infer-passthrough (#3041, #3082)
 
-This is a **one-time operator install**, not a change to any live host by this PR.
+Gateway bootstrap migration is tracked in #3185; no live host is changed by this PR.
 Thereafter the timer fetches release tags and `origin/main` every two minutes.
 It selects the highest eligible stable `vX.Y.Z` (not a prerelease), without a
 recurring hand step. **The updater follows the production gate**: a tag alone is
