@@ -52,7 +52,7 @@ export const connectors = connectorsSchema.table('connectors', {
   orgContextDid: text('org_context_did'),
   /** Digest of the member-approved app/upstream destination and injection shape. */
   upstreamBinding: text('upstream_binding'),
-  /** Org-held slot provenance only; never contains credential material. */
+  /** Org-held connection provenance only; never contains credential material. */
   loadedByDid: text('loaded_by_did'),
   loadedAt: timestamp('loaded_at', { withTimezone: true }),
   /**

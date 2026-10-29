@@ -217,9 +217,10 @@ paths:
         Org DID comes only from authenticated act-as, never request JSON.
         Reuses transactional Tier 0 static-secret sealing: org DID is the custody
         subject and connectors.ownerDid, kernel node is the only grantee.
-        Separate org-held slot and immutable private external-mcp-key vault fields
-        prevent changing primary/member resolution. Generic vault fetch/export/
-        renewal cannot disclose the value. Tier 1 fails closed before writes.
+        Separate org-held-{provider} registry provider namespace and immutable
+        private external-mcp-key vault fields prevent changing primary/member resolution.
+        Generic vault fetch/export/renewal cannot disclose the value.
+        Tier 1 fails closed before writes.
         Replacement revokes previous custody and writes a signed vault tombstone.
         Signed connector.org-held attestations record org, actor, provider and
         loaded/replaced/revoked action; never credentials or raw exceptions.
@@ -245,7 +246,7 @@ paths:
         "400": { description: Invalid input, credential-bearing metadata or unsupported provider }
         "401": { description: Organization admin session required }
         "403": { description: Not an active org owner/admin acting as the org }
-        "409": { description: Tier 1 unsupported or removed slot unavailable }
+        "409": { description: Tier 1 unsupported or removed connection unavailable }
         "413": { description: JSON body exceeds 16 KiB }
         "503": { description: Signing, vault or store unavailable; no internal error details }
     delete:

@@ -839,11 +839,22 @@ async function changeOrgBoundary(boundary: string) {
   await changes[boundary]();
 }
 describe('org-held service keys: real SQL, signatures and private vault custody', () => {
+  it('isolates org custody from the existing generic provider registration and revoke writers', async () => {
+    await asOrg();
+    const loaded = await orgRequest('POST', 'anthropic', orgKey());
+    const [orgHeld] = await orgRows();
+    const store = await vi.importActual<typeof import('../connector-registry-store')>('../connector-registry-store');
+    await store.recordConnectorRegistration({ ownerDid: org, provider: 'anthropic', sealedKeyField: 'ordinary:fixture' });
+    await store.revokeConnectorRegistration(org, 'anthropic');
+    expect(await database.select().from(connectors).where(eq(connectors.id, orgHeld.id))).toEqual([orgHeld]);
+    expect((await orgRequest()).body).toEqual(loaded.body);
+    await expect(store.createConnectorConnection(org, 'org-held-anthropic')).rejects.toThrow('Unknown connector');
+  });
   it('hides unconfigured slots and refuses removed slots without changing their history', async () => {
     await asOrg();
     expect((await orgRequest('DELETE')).body).toEqual({ revoked: true });
     await database.insert(connectors).values({
-      id: `empty_org_${sequence}`, ownerDid: org, provider: 'anthropic', slot: 'org-held',
+      id: `empty_org_${sequence}`, ownerDid: org, provider: 'org-held-anthropic', slot: 'primary',
       channel: 'anthropic', connectorDid: h.nodeDid,
     });
     expect((await call(ORG_LIST)).body).toEqual({ connections: [] });
@@ -860,7 +871,7 @@ describe('org-held service keys: real SQL, signatures and private vault custody'
     expect(loaded.status).toBe(201);
     expect(loaded.body).toEqual({ provider, loadedByDid: member, loadedAt: expect.any(String), status: 'loaded' });
     const [row] = await orgRows();
-    expect(row).toMatchObject({ ownerDid: org, provider, slot: 'org-held', loadedByDid: member });
+    expect(row).toMatchObject({ ownerDid: org, provider: `org-held-${provider}`, slot: 'primary', loadedByDid: member });
     const [grant] = await database.select().from(vaultDelegationGrants).where(eq(vaultDelegationGrants.field, row.sealedKeyField!));
     expect(grant).toMatchObject({ subject: org, grantedTo: h.nodeDid, status: 'active' });
     const entry = await vaultService.get(row.sealedKeyField!);

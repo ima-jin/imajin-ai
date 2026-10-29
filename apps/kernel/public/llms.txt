@@ -26,8 +26,8 @@ License: Imajin Network License (INL) v1.0, source-available, not MIT.
   POST accepts only a write-only secret (16 KiB body, 4096 printable ASCII chars).
   Anthropic, Warp and registered static-secret/token-paste providers are supported.
   Keys are sealed under the org DID with kernel-only Tier 0 custody, in a separate
-  org-held slot. All load/read/list responses contain only provider, loadedByDid,
-  loadedAt and status "loaded"; no value, including for the loading admin.
+  org-held-{provider} registry namespace. All load/read/list responses contain only
+  provider, loadedByDid, loadedAt and status "loaded"; no value, including for the loading admin.
   Generic vault fetch/export/renewal are refused. Replace = load again; remove =
   revoke with signed tombstones and actor-attributed connector.org-held history.
   No rows deleted; revoked history is hidden from live reads. No-store responses.

@@ -1,4 +1,4 @@
-import { and, eq, isNotNull, isNull, sql } from 'drizzle-orm';
+import { and, eq, isNotNull, isNull, like, sql } from 'drizzle-orm';
 import { db, attestations, connectors, identities, identityMembers, type ConnectorRow } from '@/src/db';
 import { prepareMechanicalAttestation } from '@/src/lib/auth/emit-mechanical-attestation';
 import { deleteFromVault, revokeStaticSecretGrant, sealAndGrantStaticSecret, vaultService } from '@/src/lib/vault';
@@ -9,8 +9,9 @@ import { getConnector } from './connector-registry';
 import { connectInput, ExternalMcpError } from './external-mcp-policy';
 import { generateId } from './id';
 
-/** Separate from primary/member slots: loading an org key grants no use authority. */
-export const ORG_HELD_SLOT = 'org-held';
+/** Not a catalogue provider: existing provider lifecycle/resolution cannot select it. */
+const ORG_HELD_PREFIX = 'org-held-';
+export const orgHeldProvider = (provider: string) => `${ORG_HELD_PREFIX}${provider}`;
 export interface OrgConnectionActor { orgDid: string; actorDid: string }
 type Transaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
 const refused = () => new ExternalMcpError(403, 'Active organization owner or admin required');
@@ -30,11 +31,11 @@ async function authorize(tx: Transaction, actor: OrgConnectionActor) {
 }
 
 function selection(orgDid: string, provider?: string) {
-  return and(eq(connectors.ownerDid, orgDid), eq(connectors.slot, ORG_HELD_SLOT),
-    provider === undefined ? undefined : eq(connectors.provider, provider));
+  return and(eq(connectors.ownerDid, orgDid), eq(connectors.slot, 'primary'),
+    provider === undefined ? like(connectors.provider, `${ORG_HELD_PREFIX}%`) : eq(connectors.provider, orgHeldProvider(provider)));
 }
 function metadata(row: ConnectorRow) {
-  return { provider: row.provider, loadedByDid: row.loadedByDid, loadedAt: row.loadedAt, status: 'loaded' as const };
+  return { provider: row.provider.slice(ORG_HELD_PREFIX.length), loadedByDid: row.loadedByDid, loadedAt: row.loadedAt, status: 'loaded' as const };
 }
 function providerEntry(provider: string) {
   const entry = getConnector(provider);
@@ -95,8 +96,8 @@ export function loadOrgHeldConnection(actor: OrgConnectionActor, provider: strin
     if (previous?.sealedKeyField) await revokeStaticSecretGrant(previous.sealedKeyField, node.senderDid, tx);
     const loadedAt = new Date();
     const [row] = await tx.insert(connectors).values({
-      id: connectorRegistryId(actor.orgDid, provider, ORG_HELD_SLOT),
-      ownerDid: actor.orgDid, provider, slot: ORG_HELD_SLOT, channel: entry.channel,
+      id: connectorRegistryId(actor.orgDid, orgHeldProvider(provider), 'primary'),
+      ownerDid: actor.orgDid, provider: orgHeldProvider(provider), slot: 'primary', channel: entry.channel,
       connectorDid: node.senderDid, sealedKeyField: field, loadedByDid: actor.actorDid, loadedAt,
       status: 'active',
     }).onConflictDoUpdate({
