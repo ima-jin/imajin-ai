@@ -40,7 +40,7 @@ def trusted(path):
 
 def assignments(text):
     result = {}
-    for entry in shlex.split(text, comments=True):
+    for entry in shlex.split(text, comments=False):
         key, separator, value = entry.partition("=")
         if not separator or not re.fullmatch(r"[A-Za-z_][A-Za-z_0-9]*", key):
             raise ValueError("Invalid environment assignment")
@@ -186,6 +186,7 @@ def migrate():
             run("systemctl", "disable", "--now", "infer-passthrough-update.timer")
         run("systemctl", "daemon-reload")
         run("systemctl", "restart", SERVICE)
+        run("systemctl", "is-active", "--quiet", SERVICE)
         if timer_active:
             run("systemctl", "start", "infer-passthrough-update.timer")
         raise

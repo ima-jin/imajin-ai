@@ -6,7 +6,7 @@ function mintFailure(error: unknown) {
   if (error instanceof NoLiveGrantError) {
     return 'No live grant; re-grant on /jin → Grants';
   }
-  if (error instanceof TokenMintError && error.code === 'app_not_registered') {
+  if (error instanceof TokenMintError && error.status === 403 && error.code === 'app_not_registered') {
     return 'Audience is not a registered active kernel app; register the audience before using this route';
   }
   if (error instanceof TokenMintError && error.status === 401) {

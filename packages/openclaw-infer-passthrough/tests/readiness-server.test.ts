@@ -131,7 +131,7 @@ describe('mint-proving readiness (#3041)', () => {
     ['mcp', new NoLiveGrantError(), '/jin → Grants'],
     ['mcp', new TokenMintError(403, 'untrusted'), 'granted scopes'],
     ['mcp', new TokenMintError(401, 'untrusted'), 'signing credentials'],
-    ['mcp', new TokenMintError(500, 'untrusted', 'app_not_registered'), 'register the audience'],
+    ['mcp', new TokenMintError(500, 'untrusted', 'app_not_registered'), 'kernel connectivity'],
     ['mcp', new Error('untrusted'), 'kernel connectivity'],
   ])('still gates %s and gives a typed remedy for %s', async (id, error, remedy) => {
     const result = await checkRouteMints([{ id, principalDid: 'p' }], () => ({

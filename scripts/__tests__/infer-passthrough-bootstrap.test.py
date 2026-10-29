@@ -102,6 +102,11 @@ class BootstrapTests(unittest.TestCase):
         self.assertEqual(bootstrap.assignments(first), {"A": "file", "B": "keep"})
         self.assertIsNone(route)
 
+    def test_environment_literals_are_not_shell_expanded_or_treated_as_comments(self):
+        content, _ = bootstrap.migrated_environment('A=literal#suffix B="$not_expanded" C=""', "")
+        self.assertEqual(bootstrap.assignments(content),
+                         {"A": "literal#suffix", "B": "$not_expanded", "C": ""})
+
     def test_completed_run_is_noop_even_without_credential(self):
         (self.state / "bootstrap-complete").write_text("1\n")
         with patch.object(bootstrap.os, "geteuid", return_value=0), patch.object(
@@ -185,6 +190,57 @@ class BootstrapTests(unittest.TestCase):
         (self.source / "package.json").write_text('{"version":"../../outside"}')
         with self.assertRaises(ValueError):
             bootstrap.seed_current(self.source, self.state)
+
+    def test_additional_env_files_and_symlinked_routes_are_refused(self):
+        def extra_files(*args):
+            if "--property=EnvironmentFiles" in args:
+                return f"{self.env} (ignore_errors=no) /tmp/other (ignore_errors=no)"
+            return self.fake_run(*args)
+        with patch.object(bootstrap, "run", extra_files), self.assertRaises(ValueError):
+            bootstrap.migrate()
+        self.route.unlink()
+        self.route.symlink_to(self.env)
+        with self.assertRaises(ValueError):
+            self.migrate()
+
+    def test_bootstrap_prerequisite_and_gate_refusals_precede_account_creation(self):
+        bundle = self.root / "trusted-bundle"
+        bundle.mkdir()
+        (bundle / "release.sha").write_text("a" * 40)
+        credential = self.etc / "infer-passthrough-github-token"
+        credential.write_text("non-credential-fixture")
+        credential.chmod(0o600)
+        def commands(*args):
+            self.trace.append(args)
+            if args == ("node", "--version"):
+                return self.node_version
+            if args == ("pnpm", "--version"):
+                return self.pnpm_version
+            raise subprocess.CalledProcessError(2, args)
+        self.node_version = "v24.0.0"
+        self.pnpm_version = "9.15.0"
+        with patch.object(bootstrap.os, "geteuid", return_value=0), patch.object(
+                bootstrap.sys, "argv", ["bootstrap.py"]), patch.object(
+                bootstrap, "trusted"), patch.object(bootstrap, "BUNDLE", bundle), patch.object(
+                bootstrap, "run", commands), patch.object(bootstrap.shutil, "which", return_value="/bin/fixture"):
+            # Unapproved or unavailable production evidence refuses before mutation.
+            with self.assertRaises(subprocess.CalledProcessError):
+                bootstrap.main()
+            self.assertEqual(self.trace[-1], ("node", str(bundle / "production-deployment.mjs"), "a" * 40))
+            for node, pnpm in (("v20.0.0", "9.15.0"), ("v24.0.0", "10.0.0")):
+                self.node_version, self.pnpm_version = node, pnpm
+                with self.assertRaises(ValueError):
+                    bootstrap.main()
+            self.node_version, self.pnpm_version = "v24.0.0", "9.15.0"
+            (bundle / "release.sha").write_text("invalid-sha")
+            with self.assertRaises(ValueError):
+                bootstrap.main()
+            with patch.object(bootstrap.shutil, "which", return_value=None), self.assertRaises(ValueError):
+                bootstrap.main()
+            credential.chmod(0o644)
+            with self.assertRaises(ValueError):
+                bootstrap.main()
+        self.assertFalse(any(call[0] in ("useradd", "install", "runuser", "systemctl") for call in self.trace))
 
 
 if __name__ == "__main__":
