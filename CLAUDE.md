@@ -69,7 +69,22 @@ pnpm --filter @imajin/kernel dev                      # starts only the kernel
 - **IDs:** Prefix + timestamp + random pattern (e.g. `crs_m1abc123`).
 - **Auth pattern:** Every service calls kernel's auth service. See `src/lib/auth.ts` in any app.
 - **Dependencies:** Dynamic imports must be declared in `package.json`. Don't rely on pnpm hoisting.
-## Release seams (v0.8.27 source)
+## Release seams (v0.8.28 source)
+
+- App sign-in: use auth-client's app-local login/state and single-use-code
+  callback handlers, never callback-query identity assertions. Preserve middleware
+  root forwarding before claim/login gates. Read `packages/auth-client/README.md`
+  for bounded existing-keystore bootstrap retry and fail-fast 4xx behavior.
+- Connector custody: use the shared `authorizeMemberConnection` gate for Postman
+  MCP and app-hosted upstream calls; registration/membership is not member consent.
+  Refusals make no upstream call or permanent write. See `/connections/api/spec`.
+- Loops: publisher/lease-holder step authority is evaluated at event time.
+  Signed session wishes/outcomes are not permission to read harness state.
+  `scripts/ci-guard-harness-boundary.mjs` is a static ratchet with exact exceptions,
+  not a complete security proof. Read `docs/loops-rail-contract.md`.
+- Current canon entry point is `docs/canon/README.md`; proposed ADRs and retained
+  source issues are not implementation evidence. The v0.8.28 delta is documented
+  in `apps/kernel/README.md`; earlier release seams below still apply.
 
 - Legal entity: `getLegalEntity` enforces per-field release; bank details use
   `/auth/api/bank-details`, individual vault seals and retained immutable history.

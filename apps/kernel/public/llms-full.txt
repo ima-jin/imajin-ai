@@ -1,6 +1,6 @@
 # Imajin — You compose. Imajin orchestrates. Signed. Legible.
 
-Generated 2026-10-26 UTC from merged working tree based on source 6e4b1d28aa1b5e7888a5a827f407aa54e82974ce, release comparison v0.8.27..6e4b1d28a.
+Generated 2026-10-29 UTC from source f6b412408ee5baf5b73f671111ba00f2568bc886, release comparison v0.8.27..v0.8.28; docs upkeep for v0.9.0.
 This is a source inventory, not deployment evidence or a permission grant.
 
 Imajin is Agentic Relation Management. The kernel serves six primitives:
@@ -19,6 +19,37 @@ the generated package table in README.md links checked public registry metadata.
 License: Imajin Network License (INL) v1.0, source-available, not MIT.
 
 ## Integration and safety
+- Completed v0.8.28 release delta: apps/kernel/README.md#release-delta-for-v0828.
+  /jin session archive/reset require explicit confirmation and full signed wishes;
+  transport acceptance is not execution. Label/archive wait for signed outcomes;
+  reset currently reports the plugin's missing_scope. Kernel code does not acquire
+  transcript/session-store authority. The harness-boundary CI guard is a static
+  ratchet with exact legacy exceptions, not complete detection.
+- Horizon steps expose the earliest verified declaring publisher. Updates/work
+  lifecycle use publisher or lease-holder authority at the fact's event time,
+  preserving unauthorized signed facts without changing the projection.
+- Connector slot Remove uses the existing provider disconnect endpoint with
+  slot=<non-primary>&remove=true. Primary removal is 409 (use Disconnect).
+  Owner/admin service-scoped direct authority is required; delegates must re-issue
+  as owner. Rows and signed history remain; wrapped custody keys are erased.
+  Removed slots cannot be reused. Bound corpus sync returns 410 without fallback.
+  GitHub setup explains device enablement, exact callback and separate org approval.
+- Legal-entity reads select createdAt DESC, id DESC and verify purpose legal-entity
+  as well as owner/asset/hash. Shared media writes re-authorize under the per-DID lock.
+- Provider-billed reconciliation: use /auth/connectors/anthropic or
+  /auth/connectors/openai, Billing (admin) key. GET/POST/DELETE
+  /{anthropic|openai}/api/billing-key use authenticated kernel-root routes.
+  GET returns only presence/pending booleans; POST seals/rotates {token};
+  DELETE revokes billing custody only, retaining signed history. Explicit :billing
+  consent is still required; inference access and pending custody do not suffice.
+  /jin Spend shows missing billed connections even without recent spend/caps.
+  The next usage-billed-ingest cron can populate source=api reconciliation rows.
+- /jin Provision app exposes visibility, approved domain and site owner before
+  countersigning. Owner choices use current owner/admin memberships; the API stays
+  authoritative and claim reissues cannot transfer ownership.
+- docs/canon/README.md is the master canon index; RFCs live in docs/canon/rfcs/.
+  docs/adr/3112-pq-mls.md records a proposed OpenMLS/libcrux wasm choice and isolated
+  spike, not production chat encryption. Historical logs retain their original dates.
 - App-hosted upstreams: PUT /connections/api/upstreams declares {upstreams:[{id,
   origin,credentialHeader,credentialPrefix,paths:[{path,methods}]}]} on the caller's
   existing registry app. App-service token + connectors:upstream:read + live operator
@@ -73,6 +104,10 @@ License: Imajin Network License (INL) v1.0, source-available, not MIT.
   authenticated subject, live authorization, callback and state. The app signs
   its exchange at POST /auth/api/apps/token and uses only the returned subjectDid
   and attestationId for its session. See /auth/api/spec and auth-client README.
+  Missing/malformed registered callbacks return 400 invalid_app_callback before
+  consent effects. Existing-keystore loadAppSigningKey retries transient 5xx/network
+  failures within 120 seconds by default, then exits 1; 4xx fail fast and one-time
+  claims remain single-shot. Standalone dependency adoption/restarts are separate.
 - Internal GET /api/cron/app-authorization-code-cleanup requires the vault cron
   bearer, not a session or app token. Every ten minutes it deletes only
   auth.app_authorization_codes past one hour from consumption (or expiry when
@@ -194,6 +229,7 @@ are omitted from the implemented reference and reported in the #2028 run-log.
   Failure is visible and independent of npm publishing. Production review is
   unchanged. See docs/npm-publishing.md; #3120.
 
+
 ## Service spec catalogue
 
 - /api/spec — imajin www — apps/kernel/app/api/spec/route.ts
@@ -215,7 +251,7 @@ are omitted from the implemented reference and reported in the #2028 run-log.
 - /vault/api/spec — imajin vault — apps/kernel/api-spec/vault.yaml
 - corpus:/spec — imajin corpus — apps/corpus/api-spec/openapi.yaml
 
-## Complete App Router inventory (672 handlers)
+## Complete App Router inventory (674 handlers; 1204 explicitly exported methods)
 
 - GET /.well-known/agent.json — apps/kernel/app/.well-known/agent.json/route.ts
 - GET, OPTIONS /.well-known/agent/{id} — apps/kernel/app/.well-known/agent/[id]/route.ts
@@ -260,10 +296,10 @@ are omitted from the implemented reference and reported in the #2028 run-log.
 - POST /api/admin/registry/apps/{appId}/rotate — apps/kernel/app/api/admin/registry/apps/[appId]/rotate/route.ts
 - GET /api/admin/services/health — apps/kernel/app/api/admin/services/health/route.ts
 - GET /api/admin/subscribers — apps/kernel/app/api/admin/subscribers/route.ts
-- DELETE /api/admin/subscribers/{id} — apps/kernel/app/api/admin/subscribers/[id]/route.ts
-- POST /api/admin/subscribers/{id}/resend-verify — apps/kernel/app/api/admin/subscribers/[id]/resend-verify/route.ts
 - GET /api/admin/subscribers/export — apps/kernel/app/api/admin/subscribers/export/route.ts
 - GET, POST /api/admin/subscribers/lists — apps/kernel/app/api/admin/subscribers/lists/route.ts
+- DELETE /api/admin/subscribers/{id} — apps/kernel/app/api/admin/subscribers/[id]/route.ts
+- POST /api/admin/subscribers/{id}/resend-verify — apps/kernel/app/api/admin/subscribers/[id]/resend-verify/route.ts
 - GET /api/admin/telemetry — apps/kernel/app/api/admin/telemetry/route.ts
 - GET /api/admin/telemetry/errors — apps/kernel/app/api/admin/telemetry/errors/route.ts
 - GET /api/admin/telemetry/slow — apps/kernel/app/api/admin/telemetry/slow/route.ts
@@ -272,8 +308,8 @@ are omitted from the implemented reference and reported in the #2028 run-log.
 - POST /api/admin/users/{did}/upgrade-tier — apps/kernel/app/api/admin/users/[did]/upgrade-tier/route.ts
 - GET /api/admin/verify — apps/kernel/app/api/admin/verify/route.ts
 - GET /api/admin/withdrawals — apps/kernel/app/api/admin/withdrawals/route.ts
-- POST /api/admin/withdrawals/{id}/complete — apps/kernel/app/api/admin/withdrawals/[id]/complete/route.ts
 - POST /api/admin/withdrawals/gating — apps/kernel/app/api/admin/withdrawals/gating/route.ts
+- POST /api/admin/withdrawals/{id}/complete — apps/kernel/app/api/admin/withdrawals/[id]/complete/route.ts
 - OPTIONS, POST /api/apps/claim — apps/kernel/app/api/apps/claim/route.ts
 - OPTIONS, POST /api/apps/featured — apps/kernel/app/api/apps/featured/route.ts
 - GET, OPTIONS, POST /api/apps/provision — apps/kernel/app/api/apps/provision/route.ts
@@ -285,8 +321,8 @@ are omitted from the implemented reference and reported in the #2028 run-log.
 - POST /api/auth/revoke — apps/kernel/app/api/auth/revoke/route.ts
 - GET /api/broker/audit — apps/kernel/app/api/broker/audit/route.ts
 - GET, POST /api/broker/consent — apps/kernel/app/api/broker/consent/route.ts
-- DELETE /api/broker/consent/{id} — apps/kernel/app/api/broker/consent/[id]/route.ts
 - POST /api/broker/consent/revoke-all — apps/kernel/app/api/broker/consent/revoke-all/route.ts
+- DELETE /api/broker/consent/{id} — apps/kernel/app/api/broker/consent/[id]/route.ts
 - GET /api/broker/contacts — apps/kernel/app/api/broker/contacts/route.ts
 - GET /api/broker/contacts/{did}/disclosures — apps/kernel/app/api/broker/contacts/[did]/disclosures/route.ts
 - PUT /api/broker/contacts/{did}/metadata — apps/kernel/app/api/broker/contacts/[did]/metadata/route.ts
@@ -294,9 +330,9 @@ are omitted from the implemented reference and reported in the #2028 run-log.
 - GET /api/broker/preview — apps/kernel/app/api/broker/preview/route.ts
 - POST /api/broker/request — apps/kernel/app/api/broker/request/route.ts
 - GET, POST /api/bugs — apps/kernel/app/api/bugs/route.ts
+- GET /api/bugs/admin — apps/kernel/app/api/bugs/admin/route.ts
 - PATCH /api/bugs/{id} — apps/kernel/app/api/bugs/[id]/route.ts
 - POST /api/bugs/{id}/import — apps/kernel/app/api/bugs/[id]/import/route.ts
-- GET /api/bugs/admin — apps/kernel/app/api/bugs/admin/route.ts
 - POST /api/client-errors — apps/kernel/app/api/client-errors/route.ts
 - GET /api/cron/app-authorization-code-cleanup — apps/kernel/app/api/cron/app-authorization-code-cleanup/route.ts
 - GET /api/cron/attestation-cleanup — apps/kernel/app/api/cron/attestation-cleanup/route.ts
@@ -321,15 +357,15 @@ are omitted from the implemented reference and reported in the #2028 run-log.
 - OPTIONS, POST /api/inference/confirm/{sessionId} — apps/kernel/app/api/inference/confirm/[sessionId]/route.ts
 - GET, OPTIONS /api/inference/sessions — apps/kernel/app/api/inference/sessions/route.ts
 - GET, OPTIONS, POST /api/loops — apps/kernel/app/api/loops/route.ts
-- GET, OPTIONS /api/loops/{loopId} — apps/kernel/app/api/loops/[loopId]/route.ts
-- GET, OPTIONS /api/loops/{loopId}/artifacts/{artifactId} — apps/kernel/app/api/loops/[loopId]/artifacts/[artifactId]/route.ts
 - OPTIONS, POST /api/loops/receipts — apps/kernel/app/api/loops/receipts/route.ts
 - GET, OPTIONS /api/loops/spend — apps/kernel/app/api/loops/spend/route.ts
 - GET, OPTIONS /api/loops/surfaces — apps/kernel/app/api/loops/surfaces/route.ts
+- GET, OPTIONS /api/loops/{loopId} — apps/kernel/app/api/loops/[loopId]/route.ts
+- GET, OPTIONS /api/loops/{loopId}/artifacts/{artifactId} — apps/kernel/app/api/loops/[loopId]/artifacts/[artifactId]/route.ts
 - GET, POST /api/registry/apps — apps/kernel/app/api/registry/apps/route.ts
+- GET /api/registry/apps/by-template — apps/kernel/app/api/registry/apps/by-template/route.ts
 - DELETE, GET, PATCH /api/registry/apps/{appId} — apps/kernel/app/api/registry/apps/[appId]/route.ts
 - PATCH /api/registry/apps/{appId}/template — apps/kernel/app/api/registry/apps/[appId]/template/route.ts
-- GET /api/registry/apps/by-template — apps/kernel/app/api/registry/apps/by-template/route.ts
 - GET /api/spec — apps/kernel/app/api/spec/route.ts
 - POST /api/subscribe — apps/kernel/app/api/subscribe/route.ts
 - GET, PATCH /api/subscribe/status — apps/kernel/app/api/subscribe/status/route.ts
@@ -364,29 +400,27 @@ are omitted from the implemented reference and reported in the #2028 run-log.
 - GET /api/vault/ssh-ca/trusted-keys — apps/kernel/app/api/vault/ssh-ca/trusted-keys/route.ts
 - POST /api/vault/upgrade-custody — apps/kernel/app/api/vault/upgrade-custody/route.ts
 - GET /auth/.well-known/kernel-signing-key — apps/kernel/app/auth/.well-known/kernel-signing-key/route.ts
-- GET, OPTIONS /auth/api/access/{did} — apps/kernel/app/auth/api/access/[did]/route.ts
 - GET, OPTIONS /auth/api/access/bearers — apps/kernel/app/auth/api/access/bearers/route.ts
 - OPTIONS, POST /auth/api/access/bearers/{id}/revoke — apps/kernel/app/auth/api/access/bearers/[id]/revoke/route.ts
 - OPTIONS, POST /auth/api/access/knock — apps/kernel/app/auth/api/access/knock/route.ts
+- GET, OPTIONS /auth/api/access/{did} — apps/kernel/app/auth/api/access/[did]/route.ts
 - GET, OPTIONS /auth/api/account/methods — apps/kernel/app/auth/api/account/methods/route.ts
 - GET, POST /auth/api/agents — apps/kernel/app/auth/api/agents/route.ts
-- DELETE /auth/api/agents/{did} — apps/kernel/app/auth/api/agents/[did]/route.ts
-- POST /auth/api/agents/{did}/reach — apps/kernel/app/auth/api/agents/[did]/reach/route.ts
-- POST /auth/api/agents/{did}/reach/{reachId}/status — apps/kernel/app/auth/api/agents/[did]/reach/[reachId]/status/route.ts
 - GET, POST /auth/api/agents/provision — apps/kernel/app/auth/api/agents/provision/route.ts
 - DELETE, GET /auth/api/agents/provision/{id} — apps/kernel/app/auth/api/agents/provision/[id]/route.ts
 - GET /auth/api/agents/provision/{id}/bundle — apps/kernel/app/auth/api/agents/provision/[id]/bundle/route.ts
 - POST /auth/api/agents/provision/{id}/callback — apps/kernel/app/auth/api/agents/provision/[id]/callback/route.ts
+- DELETE /auth/api/agents/{did} — apps/kernel/app/auth/api/agents/[did]/route.ts
+- POST /auth/api/agents/{did}/reach — apps/kernel/app/auth/api/agents/[did]/reach/route.ts
+- POST /auth/api/agents/{did}/reach/{reachId}/status — apps/kernel/app/auth/api/agents/[did]/reach/[reachId]/status/route.ts
 - GET, OPTIONS /auth/api/apps — apps/kernel/app/auth/api/apps/route.ts
-- DELETE, GET, PUT /auth/api/apps/{slug} — apps/kernel/app/auth/api/apps/[slug]/route.ts
 - GET /auth/api/apps/directory — apps/kernel/app/auth/api/apps/directory/route.ts
 - OPTIONS, POST /auth/api/apps/token — apps/kernel/app/auth/api/apps/token/route.ts
 - OPTIONS, POST /auth/api/apps/token/service — apps/kernel/app/auth/api/apps/token/service/route.ts
 - OPTIONS, POST /auth/api/apps/token/verify — apps/kernel/app/auth/api/apps/token/verify/route.ts
 - POST /auth/api/apps/validate — apps/kernel/app/auth/api/apps/validate/route.ts
+- DELETE, GET, PUT /auth/api/apps/{slug} — apps/kernel/app/auth/api/apps/[slug]/route.ts
 - GET, OPTIONS, POST /auth/api/attestations — apps/kernel/app/auth/api/attestations/route.ts
-- GET, OPTIONS /auth/api/attestations/{did} — apps/kernel/app/auth/api/attestations/[did]/route.ts
-- OPTIONS, POST /auth/api/attestations/{did}/revoke — apps/kernel/app/auth/api/attestations/[did]/revoke/route.ts
 - POST /auth/api/attestations/chain-emit — apps/kernel/app/auth/api/attestations/chain-emit/route.ts
 - OPTIONS, POST /auth/api/attestations/countersign — apps/kernel/app/auth/api/attestations/countersign/route.ts
 - OPTIONS, POST /auth/api/attestations/decline — apps/kernel/app/auth/api/attestations/decline/route.ts
@@ -395,14 +429,16 @@ are omitted from the implemented reference and reported in the #2028 run-log.
 - OPTIONS, POST /auth/api/attestations/turn-evidence — apps/kernel/app/auth/api/attestations/turn-evidence/route.ts
 - GET, OPTIONS, POST /auth/api/attestations/types — apps/kernel/app/auth/api/attestations/types/route.ts
 - GET, OPTIONS /auth/api/attestations/usage — apps/kernel/app/auth/api/attestations/usage/route.ts
+- GET, OPTIONS /auth/api/attestations/{did} — apps/kernel/app/auth/api/attestations/[did]/route.ts
+- OPTIONS, POST /auth/api/attestations/{did}/revoke — apps/kernel/app/auth/api/attestations/[did]/revoke/route.ts
 - POST /auth/api/authenticate — apps/kernel/app/auth/api/authenticate/route.ts
 - DELETE, GET, OPTIONS, PUT /auth/api/bank-details — apps/kernel/app/auth/api/bank-details/route.ts
 - POST /auth/api/challenge — apps/kernel/app/auth/api/challenge/route.ts
 - GET, POST /auth/api/channel-link — apps/kernel/app/auth/api/channel-link/route.ts
-- DELETE /auth/api/channel-link/{id} — apps/kernel/app/auth/api/channel-link/[id]/route.ts
 - POST /auth/api/channel-link/approve — apps/kernel/app/auth/api/channel-link/approve/route.ts
 - POST /auth/api/channel-link/approve-redirect — apps/kernel/app/auth/api/channel-link/approve-redirect/route.ts
 - GET /auth/api/channel-link/resolve — apps/kernel/app/auth/api/channel-link/resolve/route.ts
+- DELETE /auth/api/channel-link/{id} — apps/kernel/app/auth/api/channel-link/[id]/route.ts
 - POST /auth/api/credentials/resolve — apps/kernel/app/auth/api/credentials/resolve/route.ts
 - GET, OPTIONS /auth/api/devices — apps/kernel/app/auth/api/devices/route.ts
 - DELETE, OPTIONS /auth/api/devices/{id} — apps/kernel/app/auth/api/devices/[id]/route.ts
@@ -428,9 +464,11 @@ are omitted from the implemented reference and reported in the #2028 run-log.
 - OPTIONS, POST /auth/api/groups/{groupDid}/transfer-owner/accept — apps/kernel/app/auth/api/groups/[groupDid]/transfer-owner/accept/route.ts
 - GET /auth/api/health — apps/kernel/app/auth/api/health/route.ts
 - GET, POST /auth/api/identities/{did}/domains — apps/kernel/app/auth/api/identities/[did]/domains/route.ts
+- GET /auth/api/identities/{did}/domains/public — apps/kernel/app/auth/api/identities/[did]/domains/public/route.ts
 - DELETE /auth/api/identities/{did}/domains/{domain} — apps/kernel/app/auth/api/identities/[did]/domains/[domain]/route.ts
 - POST /auth/api/identities/{did}/domains/{domain}/verify — apps/kernel/app/auth/api/identities/[did]/domains/[domain]/verify/route.ts
-- GET /auth/api/identities/{did}/domains/public — apps/kernel/app/auth/api/identities/[did]/domains/public/route.ts
+- POST /auth/api/identity/present-chain — apps/kernel/app/auth/api/identity/present-chain/route.ts
+- POST /auth/api/identity/verify-chain — apps/kernel/app/auth/api/identity/verify-chain/route.ts
 - GET, OPTIONS /auth/api/identity/{did} — apps/kernel/app/auth/api/identity/[did]/route.ts
 - GET, OPTIONS /auth/api/identity/{did}/agents — apps/kernel/app/auth/api/identity/[did]/agents/route.ts
 - GET, OPTIONS /auth/api/identity/{did}/chain — apps/kernel/app/auth/api/identity/[did]/chain/route.ts
@@ -441,8 +479,6 @@ are omitted from the implemented reference and reported in the #2028 run-log.
 - OPTIONS, POST /auth/api/identity/{did}/rotate — apps/kernel/app/auth/api/identity/[did]/rotate/route.ts
 - POST /auth/api/identity/{did}/sign — apps/kernel/app/auth/api/identity/[did]/sign/route.ts
 - GET, OPTIONS /auth/api/identity/{did}/verify — apps/kernel/app/auth/api/identity/[did]/verify/route.ts
-- POST /auth/api/identity/present-chain — apps/kernel/app/auth/api/identity/present-chain/route.ts
-- POST /auth/api/identity/verify-chain — apps/kernel/app/auth/api/identity/verify-chain/route.ts
 - POST /auth/api/internal/corpus/owner — apps/kernel/app/auth/api/internal/corpus/owner/route.ts
 - POST /auth/api/internal/grants/introspect — apps/kernel/app/auth/api/internal/grants/introspect/route.ts
 - POST /auth/api/internal/verify-delegation — apps/kernel/app/auth/api/internal/verify-delegation/route.ts
@@ -450,9 +486,9 @@ are omitted from the implemented reference and reported in the #2028 run-log.
 - OPTIONS, POST /auth/api/keys/store — apps/kernel/app/auth/api/keys/store/route.ts
 - DELETE, OPTIONS /auth/api/keys/stored — apps/kernel/app/auth/api/keys/stored/route.ts
 - POST /auth/api/knock — apps/kernel/app/auth/api/knock/route.ts
+- GET /auth/api/knock/pending — apps/kernel/app/auth/api/knock/pending/route.ts
 - POST /auth/api/knock/{knockId}/accept — apps/kernel/app/auth/api/knock/[knockId]/accept/route.ts
 - POST /auth/api/knock/{knockId}/decline — apps/kernel/app/auth/api/knock/[knockId]/decline/route.ts
-- GET /auth/api/knock/pending — apps/kernel/app/auth/api/knock/pending/route.ts
 - DELETE, GET, PUT /auth/api/legal-entity — apps/kernel/app/auth/api/legal-entity/route.ts
 - POST /auth/api/login/challenge — apps/kernel/app/auth/api/login/challenge/route.ts
 - OPTIONS, POST /auth/api/login/mfa — apps/kernel/app/auth/api/login/mfa/route.ts
@@ -502,8 +538,8 @@ are omitted from the implemented reference and reported in the #2028 run-log.
 - GET /auth/corpus/api/status — apps/kernel/app/auth/corpus/api/status/route.ts
 - POST /auth/corpus/api/sync — apps/kernel/app/auth/corpus/api/sync/route.ts
 - GET, POST /calendar/api/availability — apps/kernel/app/calendar/api/availability/route.ts
-- DELETE /calendar/api/availability/{id} — apps/kernel/app/calendar/api/availability/[id]/route.ts
 - GET, PATCH /calendar/api/availability/matches — apps/kernel/app/calendar/api/availability/matches/route.ts
+- DELETE /calendar/api/availability/{id} — apps/kernel/app/calendar/api/availability/[id]/route.ts
 - GET /calendar/api/d/{did}/availability — apps/kernel/app/calendar/api/d/[did]/availability/route.ts
 - GET /calendar/api/d/{did}/entries — apps/kernel/app/calendar/api/d/[did]/entries/route.ts
 - GET, POST /calendar/api/entries — apps/kernel/app/calendar/api/entries/route.ts
@@ -513,18 +549,18 @@ are omitted from the implemented reference and reported in the #2028 run-log.
 - GET /chat/api/capabilities — apps/kernel/app/chat/api/capabilities/route.ts
 - GET, POST /chat/api/conversations — apps/kernel/app/chat/api/conversations/route.ts
 - GET, PATCH /chat/api/conversations-v2 — apps/kernel/app/chat/api/conversations-v2/route.ts
+- GET, OPTIONS /chat/api/conversations/unread — apps/kernel/app/chat/api/conversations/unread/route.ts
 - DELETE, GET, PATCH /chat/api/conversations/{id} — apps/kernel/app/chat/api/conversations/[id]/route.ts
 - GET, POST /chat/api/conversations/{id}/messages — apps/kernel/app/chat/api/conversations/[id]/messages/route.ts
 - DELETE, PUT /chat/api/conversations/{id}/messages/{msgId} — apps/kernel/app/chat/api/conversations/[id]/messages/[msgId]/route.ts
 - GET, POST /chat/api/conversations/{id}/participants — apps/kernel/app/chat/api/conversations/[id]/participants/route.ts
 - POST /chat/api/conversations/{id}/read — apps/kernel/app/chat/api/conversations/[id]/read/route.ts
 - POST /chat/api/conversations/{id}/upload — apps/kernel/app/chat/api/conversations/[id]/upload/route.ts
-- GET, OPTIONS /chat/api/conversations/unread — apps/kernel/app/chat/api/conversations/unread/route.ts
 - OPTIONS, PUT /chat/api/d/{did} — apps/kernel/app/chat/api/d/[did]/route.ts
 - OPTIONS, PATCH /chat/api/d/{did}/context — apps/kernel/app/chat/api/d/[did]/context/route.ts
 - GET, OPTIONS, POST /chat/api/d/{did}/members — apps/kernel/app/chat/api/d/[did]/members/route.ts
-- DELETE, OPTIONS /chat/api/d/{did}/members/{memberDid} — apps/kernel/app/chat/api/d/[did]/members/[memberDid]/route.ts
 - OPTIONS, POST /chat/api/d/{did}/members/leave — apps/kernel/app/chat/api/d/[did]/members/leave/route.ts
+- DELETE, OPTIONS /chat/api/d/{did}/members/{memberDid} — apps/kernel/app/chat/api/d/[did]/members/[memberDid]/route.ts
 - GET, OPTIONS, POST /chat/api/d/{did}/messages — apps/kernel/app/chat/api/d/[did]/messages/route.ts
 - DELETE, OPTIONS, PATCH /chat/api/d/{did}/messages/{msgId} — apps/kernel/app/chat/api/d/[did]/messages/[msgId]/route.ts
 - DELETE, OPTIONS, POST /chat/api/d/{did}/messages/{msgId}/reactions — apps/kernel/app/chat/api/d/[did]/messages/[msgId]/reactions/route.ts
@@ -537,8 +573,8 @@ are omitted from the implemented reference and reported in the #2028 run-log.
 - GET /chat/api/keys/{did} — apps/kernel/app/chat/api/keys/[did]/route.ts
 - GET /chat/api/lookup/{did} — apps/kernel/app/chat/api/lookup/[did]/route.ts
 - DELETE, GET, POST /chat/api/messages/{msgId}/reactions — apps/kernel/app/chat/api/messages/[msgId]/reactions/route.ts
-- GET /chat/api/participants/{did}/conversations — apps/kernel/app/chat/api/participants/[did]/conversations/route.ts
 - POST /chat/api/participants/migrate — apps/kernel/app/chat/api/participants/migrate/route.ts
+- GET /chat/api/participants/{did}/conversations — apps/kernel/app/chat/api/participants/[did]/conversations/route.ts
 - GET /chat/api/profile — apps/kernel/app/chat/api/profile/route.ts
 - GET /chat/api/session — apps/kernel/app/chat/api/session/route.ts
 - GET /chat/api/spec — apps/kernel/app/chat/api/spec/route.ts
@@ -562,21 +598,23 @@ are omitted from the implemented reference and reported in the #2028 run-log.
 - POST /connections/api/auth/logout — apps/kernel/app/connections/api/auth/logout/route.ts
 - GET /connections/api/auth/session — apps/kernel/app/connections/api/auth/session/route.ts
 - GET, OPTIONS /connections/api/connections — apps/kernel/app/connections/api/connections/route.ts
+- GET, OPTIONS /connections/api/connections/status/{did} — apps/kernel/app/connections/api/connections/status/[did]/route.ts
 - DELETE, OPTIONS, PATCH /connections/api/connections/{did} — apps/kernel/app/connections/api/connections/[did]/route.ts
 - DELETE, GET, PATCH /connections/api/connections/{did}/nickname — apps/kernel/app/connections/api/connections/[did]/nickname/route.ts
-- GET, OPTIONS /connections/api/connections/status/{did} — apps/kernel/app/connections/api/connections/status/[did]/route.ts
+- GET, OPTIONS /connections/api/connectors/status — apps/kernel/app/connections/api/connectors/status/route.ts
 - GET, OPTIONS, PATCH, POST /connections/api/connectors/{id}/connections — apps/kernel/app/connections/api/connectors/[id]/connections/route.ts
 - GET, OPTIONS /connections/api/connectors/{id}/spend — apps/kernel/app/connections/api/connectors/[id]/spend/route.ts
 - GET, OPTIONS /connections/api/connectors/{id}/telemetry — apps/kernel/app/connections/api/connectors/[id]/telemetry/route.ts
-- GET, OPTIONS /connections/api/connectors/status — apps/kernel/app/connections/api/connectors/status/route.ts
+- DELETE, GET, OPTIONS, POST /connections/api/external-mcp/postman — apps/kernel/app/connections/api/external-mcp/postman/route.ts
+- OPTIONS, POST /connections/api/external-mcp/postman/rpc — apps/kernel/app/connections/api/external-mcp/postman/rpc/route.ts
 - GET, OPTIONS, POST /connections/api/groups — apps/kernel/app/connections/api/groups/route.ts
 - DELETE, GET, PATCH /connections/api/groups/{id} — apps/kernel/app/connections/api/groups/[id]/route.ts
 - DELETE, PATCH, POST /connections/api/groups/{id}/members — apps/kernel/app/connections/api/groups/[id]/members/route.ts
 - GET /connections/api/health — apps/kernel/app/connections/api/health/route.ts
 - GET, OPTIONS, POST /connections/api/invites — apps/kernel/app/connections/api/invites/route.ts
+- GET /connections/api/invites/invited-by — apps/kernel/app/connections/api/invites/invited-by/route.ts
 - DELETE, GET, OPTIONS, PATCH /connections/api/invites/{code} — apps/kernel/app/connections/api/invites/[code]/route.ts
 - OPTIONS, POST /connections/api/invites/{code}/accept — apps/kernel/app/connections/api/invites/[code]/accept/route.ts
-- GET /connections/api/invites/invited-by — apps/kernel/app/connections/api/invites/invited-by/route.ts
 - OPTIONS, POST /connections/api/nicknames/resolve — apps/kernel/app/connections/api/nicknames/resolve/route.ts
 - GET, POST /connections/api/pods — apps/kernel/app/connections/api/pods/route.ts
 - DELETE, GET, PATCH /connections/api/pods/{id} — apps/kernel/app/connections/api/pods/[id]/route.ts
@@ -638,14 +676,14 @@ are omitted from the implemented reference and reported in the #2028 run-log.
 - GET, PUT /jin/api/orgs/{ownerDid}/mail-senders — apps/kernel/app/jin/api/orgs/[ownerDid]/mail-senders/route.ts
 - DELETE, GET, OPTIONS, POST /jin/api/push-subscriptions — apps/kernel/app/jin/api/push-subscriptions/route.ts
 - GET, OPTIONS /jin/api/reach — apps/kernel/app/jin/api/reach/route.ts
+- OPTIONS, POST /jin/api/reach/knocks/{requestId}/block — apps/kernel/app/jin/api/reach/knocks/[requestId]/block/route.ts
 - OPTIONS, POST /jin/api/reach/{reachId}/block — apps/kernel/app/jin/api/reach/[reachId]/block/route.ts
 - OPTIONS, POST /jin/api/reach/{reachId}/reply — apps/kernel/app/jin/api/reach/[reachId]/reply/route.ts
-- OPTIONS, POST /jin/api/reach/knocks/{requestId}/block — apps/kernel/app/jin/api/reach/knocks/[requestId]/block/route.ts
 - GET /jin/api/registered-apps — apps/kernel/app/jin/api/registered-apps/route.ts
 - GET, OPTIONS /jin/api/runs — apps/kernel/app/jin/api/runs/route.ts
+- GET, OPTIONS /jin/api/runs/horizon-status — apps/kernel/app/jin/api/runs/horizon-status/route.ts
 - GET, OPTIONS /jin/api/runs/{loopId} — apps/kernel/app/jin/api/runs/[loopId]/route.ts
 - OPTIONS, POST /jin/api/runs/{loopId}/commands — apps/kernel/app/jin/api/runs/[loopId]/commands/route.ts
-- GET, OPTIONS /jin/api/runs/horizon-status — apps/kernel/app/jin/api/runs/horizon-status/route.ts
 - GET /jin/api/spec — apps/kernel/app/jin/api/spec/route.ts
 - GET, OPTIONS /jin/api/spend — apps/kernel/app/jin/api/spend/route.ts
 - GET, OPTIONS /jin/api/spend/runs — apps/kernel/app/jin/api/spend/runs/route.ts
@@ -659,6 +697,7 @@ are omitted from the implemented reference and reported in the #2028 run-log.
 - OPTIONS, POST /mcp/api/disconnect — apps/kernel/app/mcp/api/disconnect/route.ts
 - GET, OPTIONS, POST /mcp/api/scope-manifest — apps/kernel/app/mcp/api/scope-manifest/route.ts
 - GET, OPTIONS, POST /media/api/assets — apps/kernel/app/media/api/assets/route.ts
+- OPTIONS, POST /media/api/assets/bundle — apps/kernel/app/media/api/assets/bundle/route.ts
 - DELETE, GET, PATCH /media/api/assets/{id} — apps/kernel/app/media/api/assets/[id]/route.ts
 - OPTIONS, PATCH /media/api/assets/{id}/access — apps/kernel/app/media/api/assets/[id]/access/route.ts
 - OPTIONS, PATCH /media/api/assets/{id}/article — apps/kernel/app/media/api/assets/[id]/article/route.ts
@@ -677,10 +716,9 @@ are omitted from the implemented reference and reported in the #2028 run-log.
 - POST /media/api/assets/{id}/transfer — apps/kernel/app/media/api/assets/[id]/transfer/route.ts
 - POST /media/api/assets/{id}/upgrade-fair — apps/kernel/app/media/api/assets/[id]/upgrade-fair/route.ts
 - GET /media/api/assets/{id}/verify — apps/kernel/app/media/api/assets/[id]/verify/route.ts
-- OPTIONS, POST /media/api/assets/bundle — apps/kernel/app/media/api/assets/bundle/route.ts
 - GET, POST /media/api/folders — apps/kernel/app/media/api/folders/route.ts
-- DELETE, PATCH /media/api/folders/{id} — apps/kernel/app/media/api/folders/[id]/route.ts
 - POST /media/api/folders/init — apps/kernel/app/media/api/folders/init/route.ts
+- DELETE, PATCH /media/api/folders/{id} — apps/kernel/app/media/api/folders/[id]/route.ts
 - GET /media/api/health — apps/kernel/app/media/api/health/route.ts
 - GET /media/api/lots/{correlationId}/fair — apps/kernel/app/media/api/lots/[correlationId]/fair/route.ts
 - GET /media/api/presence/{did} — apps/kernel/app/media/api/presence/[did]/route.ts
@@ -706,9 +744,9 @@ are omitted from the implemented reference and reported in the #2028 run-log.
 - POST /notify/api/internal/operator-approvals/state — apps/kernel/app/notify/api/internal/operator-approvals/state/route.ts
 - POST /notify/api/internal/release — apps/kernel/app/notify/api/internal/release/route.ts
 - GET, OPTIONS /notify/api/notifications — apps/kernel/app/notify/api/notifications/route.ts
-- OPTIONS, POST /notify/api/notifications/{id}/read — apps/kernel/app/notify/api/notifications/[id]/read/route.ts
 - OPTIONS, POST /notify/api/notifications/read-all — apps/kernel/app/notify/api/notifications/read-all/route.ts
 - GET, OPTIONS /notify/api/notifications/unread — apps/kernel/app/notify/api/notifications/unread/route.ts
+- OPTIONS, POST /notify/api/notifications/{id}/read — apps/kernel/app/notify/api/notifications/[id]/read/route.ts
 - GET, OPTIONS /notify/api/preferences — apps/kernel/app/notify/api/preferences/route.ts
 - OPTIONS, PUT /notify/api/preferences/{scope} — apps/kernel/app/notify/api/preferences/[scope]/route.ts
 - OPTIONS, POST /notify/api/send — apps/kernel/app/notify/api/send/route.ts
@@ -731,12 +769,12 @@ are omitted from the implemented reference and reported in the #2028 run-log.
 - POST /pay/api/admin/payment-requests/{id}/retry-settlement — apps/kernel/app/pay/api/admin/payment-requests/[id]/retry-settlement/route.ts
 - GET /pay/api/admin/reconciliation — apps/kernel/app/pay/api/admin/reconciliation/route.ts
 - OPTIONS, POST /pay/api/agent-cost-estimate — apps/kernel/app/pay/api/agent-cost-estimate/route.ts
-- GET, OPTIONS /pay/api/balance/{did} — apps/kernel/app/pay/api/balance/[did]/route.ts
 - OPTIONS, POST /pay/api/balance/event-topup — apps/kernel/app/pay/api/balance/event-topup/route.ts
 - OPTIONS, POST /pay/api/balance/gift — apps/kernel/app/pay/api/balance/gift/route.ts
 - OPTIONS, POST /pay/api/balance/topup — apps/kernel/app/pay/api/balance/topup/route.ts
 - OPTIONS, POST /pay/api/balance/transfer — apps/kernel/app/pay/api/balance/transfer/route.ts
 - OPTIONS, POST /pay/api/balance/withdraw/request — apps/kernel/app/pay/api/balance/withdraw/request/route.ts
+- GET, OPTIONS /pay/api/balance/{did} — apps/kernel/app/pay/api/balance/[did]/route.ts
 - GET, OPTIONS /pay/api/card-rail/check — apps/kernel/app/pay/api/card-rail/check/route.ts
 - OPTIONS, POST /pay/api/charge — apps/kernel/app/pay/api/charge/route.ts
 - OPTIONS, POST /pay/api/charge-pledges — apps/kernel/app/pay/api/charge-pledges/route.ts
@@ -745,14 +783,14 @@ are omitted from the implemented reference and reported in the #2028 run-log.
 - OPTIONS, POST, PUT /pay/api/escrow — apps/kernel/app/pay/api/escrow/route.ts
 - GET /pay/api/health — apps/kernel/app/pay/api/health/route.ts
 - GET, OPTIONS, POST /pay/api/payment-requests — apps/kernel/app/pay/api/payment-requests/route.ts
+- GET, OPTIONS /pay/api/payment-requests/by-handle/{handle} — apps/kernel/app/pay/api/payment-requests/by-handle/[handle]/route.ts
+- DELETE, OPTIONS, POST /pay/api/payment-requests/by-handle/{handle}/emt — apps/kernel/app/pay/api/payment-requests/by-handle/[handle]/emt/route.ts
+- GET, OPTIONS /pay/api/payment-requests/rails — apps/kernel/app/pay/api/payment-requests/rails/route.ts
 - GET, OPTIONS /pay/api/payment-requests/{id} — apps/kernel/app/pay/api/payment-requests/[id]/route.ts
 - OPTIONS, POST /pay/api/payment-requests/{id}/checkout — apps/kernel/app/pay/api/payment-requests/[id]/checkout/route.ts
 - GET, OPTIONS /pay/api/payment-requests/{id}/payer-dids — apps/kernel/app/pay/api/payment-requests/[id]/payer-dids/route.ts
 - OPTIONS, POST /pay/api/payment-requests/{id}/settle — apps/kernel/app/pay/api/payment-requests/[id]/settle/route.ts
 - OPTIONS, POST /pay/api/payment-requests/{id}/void — apps/kernel/app/pay/api/payment-requests/[id]/void/route.ts
-- GET, OPTIONS /pay/api/payment-requests/by-handle/{handle} — apps/kernel/app/pay/api/payment-requests/by-handle/[handle]/route.ts
-- DELETE, OPTIONS, POST /pay/api/payment-requests/by-handle/{handle}/emt — apps/kernel/app/pay/api/payment-requests/by-handle/[handle]/emt/route.ts
-- GET, OPTIONS /pay/api/payment-requests/rails — apps/kernel/app/pay/api/payment-requests/rails/route.ts
 - OPTIONS, POST /pay/api/refund — apps/kernel/app/pay/api/refund/route.ts
 - OPTIONS, POST /pay/api/settle — apps/kernel/app/pay/api/settle/route.ts
 - OPTIONS, POST /pay/api/setup-intent — apps/kernel/app/pay/api/setup-intent/route.ts
@@ -761,12 +799,12 @@ are omitted from the implemented reference and reported in the #2028 run-log.
 - GET, OPTIONS /pay/api/tax/remittance-owed — apps/kernel/app/pay/api/tax/remittance-owed/route.ts
 - OPTIONS, POST /pay/api/topup/emt — apps/kernel/app/pay/api/topup/emt/route.ts
 - OPTIONS, POST /pay/api/topup/stripe — apps/kernel/app/pay/api/topup/stripe/route.ts
+- OPTIONS, POST /pay/api/transactions/lookup — apps/kernel/app/pay/api/transactions/lookup/route.ts
 - GET, OPTIONS /pay/api/transactions/{did} — apps/kernel/app/pay/api/transactions/[did]/route.ts
 - GET, OPTIONS /pay/api/transactions/{did}/summary — apps/kernel/app/pay/api/transactions/[did]/summary/route.ts
-- OPTIONS, POST /pay/api/transactions/lookup — apps/kernel/app/pay/api/transactions/lookup/route.ts
 - POST /pay/api/webhook — apps/kernel/app/pay/api/webhook/route.ts
-- POST /pay/api/webhook/{provider} — apps/kernel/app/pay/api/webhook/[provider]/route.ts
 - POST /pay/api/webhook/did/{routingId} — apps/kernel/app/pay/api/webhook/did/[routingId]/route.ts
+- POST /pay/api/webhook/{provider} — apps/kernel/app/pay/api/webhook/[provider]/route.ts
 - POST /profile/api/auth/logout — apps/kernel/app/profile/api/auth/logout/route.ts
 - POST /profile/api/auth/register — apps/kernel/app/profile/api/auth/register/route.ts
 - GET /profile/api/auth/session — apps/kernel/app/profile/api/auth/session/route.ts
@@ -779,9 +817,12 @@ are omitted from the implemented reference and reported in the #2028 run-log.
 - GET /profile/api/handle-check — apps/kernel/app/profile/api/handle-check/route.ts
 - GET /profile/api/health — apps/kernel/app/profile/api/health/route.ts
 - GET /profile/api/media/{path...} — apps/kernel/app/profile/api/media/[...path]/route.ts
-- GET, OPTIONS /profile/api/presence/{did} — apps/kernel/app/profile/api/presence/[did]/route.ts
 - POST /profile/api/presence/update — apps/kernel/app/profile/api/presence/update/route.ts
+- GET, OPTIONS /profile/api/presence/{did} — apps/kernel/app/profile/api/presence/[did]/route.ts
 - POST /profile/api/profile — apps/kernel/app/profile/api/profile/route.ts
+- POST /profile/api/profile/claim-handle — apps/kernel/app/profile/api/profile/claim-handle/route.ts
+- POST /profile/api/profile/inference — apps/kernel/app/profile/api/profile/inference/route.ts
+- GET /profile/api/profile/search — apps/kernel/app/profile/api/profile/search/route.ts
 - DELETE, GET, OPTIONS, PUT /profile/api/profile/{id} — apps/kernel/app/profile/api/profile/[id]/route.ts
 - OPTIONS, PUT /profile/api/profile/{id}/contact-visibility — apps/kernel/app/profile/api/profile/[id]/contact-visibility/route.ts
 - GET /profile/api/profile/{id}/counts — apps/kernel/app/profile/api/profile/[id]/counts/route.ts
@@ -789,18 +830,15 @@ are omitted from the implemented reference and reported in the #2028 run-log.
 - GET /profile/api/profile/{id}/pricing — apps/kernel/app/profile/api/profile/[id]/pricing/route.ts
 - POST /profile/api/profile/{id}/query — apps/kernel/app/profile/api/profile/[id]/query/route.ts
 - POST /profile/api/profile/{id}/stream — apps/kernel/app/profile/api/profile/[id]/stream/route.ts
-- POST /profile/api/profile/claim-handle — apps/kernel/app/profile/api/profile/claim-handle/route.ts
-- POST /profile/api/profile/inference — apps/kernel/app/profile/api/profile/inference/route.ts
-- GET /profile/api/profile/search — apps/kernel/app/profile/api/profile/search/route.ts
 - POST /profile/api/register — apps/kernel/app/profile/api/register/route.ts
 - OPTIONS, POST /profile/api/resolve — apps/kernel/app/profile/api/resolve/route.ts
 - GET /profile/api/spec — apps/kernel/app/profile/api/spec/route.ts
 - POST /profile/api/stubs — apps/kernel/app/profile/api/stubs/route.ts
+- GET /profile/api/stubs/mine — apps/kernel/app/profile/api/stubs/mine/route.ts
 - PATCH /profile/api/stubs/{did} — apps/kernel/app/profile/api/stubs/[did]/route.ts
 - GET, POST /profile/api/stubs/{did}/images — apps/kernel/app/profile/api/stubs/[did]/images/route.ts
 - DELETE /profile/api/stubs/{did}/images/{id} — apps/kernel/app/profile/api/stubs/[did]/images/[id]/route.ts
 - POST /profile/api/stubs/{did}/join — apps/kernel/app/profile/api/stubs/[did]/join/route.ts
-- GET /profile/api/stubs/mine — apps/kernel/app/profile/api/stubs/mine/route.ts
 - POST /profile/api/upload — apps/kernel/app/profile/api/upload/route.ts
 - GET /quickbooks/api/callback — apps/kernel/app/quickbooks/api/callback/route.ts
 - OPTIONS, POST /quickbooks/api/configure — apps/kernel/app/quickbooks/api/configure/route.ts
@@ -890,22 +928,11 @@ are omitted from the implemented reference and reported in the #2028 run-log.
 - DELETE, GET, OPTIONS, PUT /zai/api/spend-cap — apps/kernel/app/zai/api/spend-cap/route.ts
 - GET, OPTIONS, POST /zai/api/token — apps/kernel/app/zai/api/token/route.ts
 
-## Provider-billed reconciliation
-
-Provider-billed reconciliation setup (#3136): use /auth/connectors/anthropic or
-/auth/connectors/openai, Billing (admin) key. GET/POST/DELETE
-/{anthropic|openai}/api/billing-key are authenticated kernel-root routes.
-GET returns only presence/pending booleans; POST seals or rotates {token};
-DELETE revokes billing custody, not inference scopes, and retains signed history.
-Never send credentials through chat. Explicitly grant the provider's :billing
-scope after sealing. /jin Spend shows billed: not connected when keys are absent;
-the next usage-billed-ingest cron populates source=api rows for reconciliation.
-
 ## Further reading
 
 https://github.com/ima-jin/imajin-ai/blob/main/README.md
-https://github.com/ima-jin/imajin-ai/blob/main/docs/guide/canonical-patterns.md
-https://github.com/ima-jin/imajin-ai/blob/main/docs/ENVIRONMENTS.md
+https://github.com/ima-jin/imajin-ai/blob/main/docs/canon/README.md
+https://github.com/ima-jin/imajin-ai/blob/main/apps/kernel/README.md
 https://github.com/ima-jin/imajin-ai/blob/main/SECURITY.md
 https://jin.imajin.ai/llms-full.txt
 
@@ -915,12 +942,9 @@ https://jin.imajin.ai/llms-full.txt
 
 Source: apps/kernel/app/api/spec/route.ts. Version: 1.0.0.
 Declared server bases: https://imajin.ai, https://dev-www.imajin.ai.
-Legacy service-relative paths are mapped to actual kernel handler paths below;
-parameter placeholders use the handler's spelling. These are not extra aliases.
-Every mapped operation follows with parameter names, body media types, security
-and response codes. Unmapped spec-only operations are excluded (see #2028 run-log).
-Fetch the served spec/source for full schemas and validation; absence of a
-declaration never overrides the implementation's authorization.
+Service-relative paths are mapped to actual handlers; placeholders use handler spelling.
+Presence is not public access or deployment evidence. Fetch the served definition
+for complete schemas. Unmatched declarations are excluded and recorded in the run-log.
 
 - GET /api/health — System health check; security: not declared (not proof of anonymous access); responses: 200
 - POST /api/subscribe — Email subscription; security: not declared (not proof of anonymous access); responses: 200
@@ -929,13 +953,11 @@ declaration never overrides the implementation's authorization.
 
 Source: apps/kernel/api-spec/auth.yaml. Version: 2.0.0.
 Declared server bases: https://{node}.imajin.ai/{service}, http://localhost:3000/{service}.
-Legacy service-relative paths are mapped to actual kernel handler paths below;
-parameter placeholders use the handler's spelling. These are not extra aliases.
-Every mapped operation follows with parameter names, body media types, security
-and response codes. Unmapped spec-only operations are excluded (see #2028 run-log).
-Fetch the served spec/source for full schemas and validation; absence of a
-declaration never overrides the implementation's authorization.
+Service-relative paths are mapped to actual handlers; placeholders use handler spelling.
+Presence is not public access or deployment evidence. Fetch the served definition
+for complete schemas. Unmatched declarations are excluded and recorded in the run-log.
 
+- POST /api/auth/authorize — Consent to a registered keypair app and issue a single-use sign-in code; body: application/json (required); security: [{"cookieAuth":[]}]; responses: 201, 400, 401, 403, 404, 500
 - GET /auth/api/bank-details — Read own non-secret bank-details projection and rail capabilities; security: [{"cookieAuth":[]}]; responses: 200, 401, 403, 404, 503
 - PUT /auth/api/bank-details — Seal and replace own bank-details record; body: application/json (required); security: [{"cookieAuth":[]}]; responses: 201, 400, 401, 403, 503
 - DELETE /auth/api/bank-details — Revoke own document and supersede every active vault grant for its fields; security: [{"cookieAuth":[]}]; responses: 200, 401, 403, 404, 503
@@ -953,7 +975,7 @@ declaration never overrides the implementation's authorization.
 - GET /.well-known/agent/{id} — Read a person's public reach card; parameters: path:id (required); security: []; responses: 200, 404, 500
 - POST /auth/api/agents/{did}/reach — Ask the boolean reach gate or deliver a message; parameters: path:did (required); body: application/json (required); security: [{"reachBearer":[]},{}]; responses: 200, 400, 401, 403, 404, 429
 - POST /auth/api/agents/{did}/reach/{reachId}/status — Read your own reach receipt and principal-signed reply; parameters: path:did (required), path:reachId (required); body: application/json; security: [{"reachBearer":[]},{}]; responses: 200, 400, 401, 404
-- GET /api/health — Service health check; security: not declared (not proof of anonymous access); responses: 200
+- GET /auth/api/health — Service health check; security: not declared (not proof of anonymous access); responses: 200
 - GET /auth/.well-known/kernel-signing-key — Fetch the kernel's Ed25519 signing public key(s) (#2244); security: []; responses: 200, 503
 - POST /auth/api/challenge — Create a signing challenge (API token flow); body: application/json (required); security: not declared (not proof of anonymous access); responses: 200, 400, 404
 - POST /auth/api/authenticate — Submit signed challenge and receive an API token; body: application/json (required); security: not declared (not proof of anonymous access); responses: 200, 400, 401
@@ -978,6 +1000,8 @@ declaration never overrides the implementation's authorization.
 - POST /auth/api/apps/token — Mint a short-lived, scoped app token for a third-party app holding a user's app.authorized attestation (#1069,; body: application/json (required); security: not declared (not proof of anonymous access); responses: 200, 400, 401, 403, 404
 - POST /auth/api/apps/token/service — Mint an app-tier (keyholder) service token — no user delegation (#1141); body: application/json (required); security: not declared (not proof of anonymous access); responses: 200, 400, 401, 403, 404
 - POST /auth/api/apps/token/verify — Stateless verification of an app token minted by /api/apps/token or /api/apps/token/service (#1069); body: application/json (required); security: not declared (not proof of anonymous access); responses: 200, 400, 401, 403
+- POST /auth/api/tokens/app — Mint a short-lived, host-scoped app token from the caller's own session (#1069 Phase 1); body: application/json (required); security: [{"cookieAuth":[]}]; responses: 200, 400, 401, 403
+- POST /auth/api/tokens/app/verify — Stateless verification of a session-scoped app token minted by /api/tokens/app (#1069 Phase 1); body: application/json (required); security: not declared (not proof of anonymous access); responses: 200, 400, 401, 403
 - POST /auth/api/verify — Stateless verification of a signed message; body: application/json (required); security: not declared (not proof of anonymous access); responses: 200
 - GET /auth/api/access/{did} — Check whether the authenticated requester has access to a resource DID; parameters: path:did (required); security: [{"cookieAuth":[]}]; responses: 200, 401
 - GET /auth/api/identity/{did} — Resolve a DID to its public key and metadata; parameters: path:did (required); security: [{},{"cookieAuth":[]},{"bearerAuth":[]}]; responses: 200, 404
@@ -1031,7 +1055,7 @@ declaration never overrides the implementation's authorization.
 - POST /auth/api/mfa/totp/challenge — Validate a TOTP code during login challenge flow; body: application/json (required); security: not declared (not proof of anonymous access); responses: 200, 401
 - POST /auth/api/mfa/totp/disable — Disable TOTP MFA for the current identity; security: [{"cookieAuth":[]}]; responses: 200
 - POST /auth/api/onboard/generate — Generate onboarding materials (keys, DID document) before registration; body: application/json (required); security: not declared (not proof of anonymous access); responses: 200
-- GET /api/spec — Serve the OpenAPI spec YAML; security: not declared (not proof of anonymous access); responses: 200
+- GET /auth/api/spec — Serve the OpenAPI spec YAML; security: not declared (not proof of anonymous access); responses: 200
 - POST /auth/api/grants — Issue a scoped delegation grant to an external agent (#1882); body: application/json (required); security: [{"cookieAuth":[]},{"bearerAuth":[]}]; responses: 201, 400, 401, 403
 - GET /auth/api/grants — List the authenticated delegator's own grants; parameters: query:grantId; security: [{"cookieAuth":[]},{"bearerAuth":[]}]; responses: 200
 - DELETE /auth/api/grants/{grantId} — Revoke an entire grant; parameters: path:grantId (required); security: [{"cookieAuth":[]},{"bearerAuth":[]}]; responses: 200, 403, 404
@@ -1051,16 +1075,13 @@ declaration never overrides the implementation's authorization.
 
 Source: apps/kernel/api-spec/calendar.yaml. Version: 1.0.0.
 Declared server bases: https://{node}.imajin.ai/{service}, http://localhost:3000/{service}.
-Legacy service-relative paths are mapped to actual kernel handler paths below;
-parameter placeholders use the handler's spelling. These are not extra aliases.
-Every mapped operation follows with parameter names, body media types, security
-and response codes. Unmapped spec-only operations are excluded (see #2028 run-log).
-Fetch the served spec/source for full schemas and validation; absence of a
-declaration never overrides the implementation's authorization.
+Service-relative paths are mapped to actual handlers; placeholders use handler spelling.
+Presence is not public access or deployment evidence. Fetch the served definition
+for complete schemas. Unmatched declarations are excluded and recorded in the run-log.
 
-- GET /calendar/api/availability — List the caller's own live (not-expired) availability intents; parameters: #/components/parameters/XActingFor; security: [{"cookieAuth":[]},{"bearerAuth":[]}]; responses: 200, 400, 401
-- POST /calendar/api/availability — Set an availability intent (the standing note); parameters: #/components/parameters/XActingFor; body: application/json (required); security: [{"cookieAuth":[]},{"bearerAuth":[]}]; responses: 201, 400, 401
-- DELETE /calendar/api/availability/{id} — Cancel an availability intent the caller owns; parameters: #/components/parameters/XActingFor, path:id (required); security: [{"cookieAuth":[]},{"bearerAuth":[]}]; responses: 200, 400, 401, 404
+- GET /calendar/api/availability — List the caller's own live (not-expired) availability intents; parameters: header:X-Acting-For (required); security: [{"cookieAuth":[]},{"bearerAuth":[]}]; responses: 200, 400, 401
+- POST /calendar/api/availability — Set an availability intent (the standing note); parameters: header:X-Acting-For (required); body: application/json (required); security: [{"cookieAuth":[]},{"bearerAuth":[]}]; responses: 201, 400, 401
+- DELETE /calendar/api/availability/{id} — Cancel an availability intent the caller owns; parameters: header:X-Acting-For (required), path:id (required); security: [{"cookieAuth":[]},{"bearerAuth":[]}]; responses: 200, 400, 401, 404
 - GET /calendar/api/availability/matches — List pending match notifications for users linked to the requesting bot (bot-authenticated); security: [{"bearerAuth":[]}]; responses: 200, 401
 - PATCH /calendar/api/availability/matches — Mark notifications as delivered (bot-authenticated); body: application/json (required); security: [{"bearerAuth":[]}]; responses: 200, 400, 401
 - GET /calendar/api/d/{did}/availability — Query another identity's live availability entries; parameters: path:did (required); security: [{"cookieAuth":[]}]; responses: 200, 401
@@ -1069,20 +1090,17 @@ declaration never overrides the implementation's authorization.
 - POST /calendar/api/entries — Create a calendar entry owned by the caller; body: application/json (required); security: [{"cookieAuth":[]}]; responses: 201, 400, 401
 - PATCH /calendar/api/entries/{id} — Update an entry the caller owns; parameters: path:id (required); body: application/json (required); security: [{"cookieAuth":[]}]; responses: 200, 400, 401, 404
 - DELETE /calendar/api/entries/{id} — Delete an entry the caller owns; parameters: path:id (required); security: [{"cookieAuth":[]}]; responses: 200, 401, 404
-- GET /api/spec — Serve the OpenAPI spec YAML; security: not declared (not proof of anonymous access); responses: 200
+- GET /calendar/api/spec — Serve the OpenAPI spec YAML; security: not declared (not proof of anonymous access); responses: 200
 
 ## Contract: /chat/api/spec
 
 Source: apps/kernel/api-spec/chat.yaml. Version: 2.0.0.
 Declared server bases: https://{node}.imajin.ai/{service}, http://localhost:3000/{service}.
-Legacy service-relative paths are mapped to actual kernel handler paths below;
-parameter placeholders use the handler's spelling. These are not extra aliases.
-Every mapped operation follows with parameter names, body media types, security
-and response codes. Unmapped spec-only operations are excluded (see #2028 run-log).
-Fetch the served spec/source for full schemas and validation; absence of a
-declaration never overrides the implementation's authorization.
+Service-relative paths are mapped to actual handlers; placeholders use handler spelling.
+Presence is not public access or deployment evidence. Fetch the served definition
+for complete schemas. Unmatched declarations are excluded and recorded in the run-log.
 
-- GET /api/health — Service health check; security: not declared (not proof of anonymous access); responses: 200
+- GET /chat/api/health — Service health check; security: not declared (not proof of anonymous access); responses: 200
 - GET /chat/api/session — Get current chat session — verifies JWT and returns enriched identity with profile; security: [{"cookieAuth":[]}]; responses: 200, 401
 - GET /chat/api/capabilities — Get current user's capabilities based on identity tier; security: [{"cookieAuth":[]}]; responses: 200, 401
 - GET /chat/api/access/{did} — Proxy access check to auth service — forwards session cookie server-to-server; parameters: path:did (required); security: [{"cookieAuth":[]}]; responses: 200, 401
@@ -1136,47 +1154,51 @@ declaration never overrides the implementation's authorization.
 
 Source: apps/kernel/api-spec/cloudflare.yaml. Version: 1.0.0.
 Declared server bases: /cloudflare.
-Legacy service-relative paths are mapped to actual kernel handler paths below;
-parameter placeholders use the handler's spelling. These are not extra aliases.
-Every mapped operation follows with parameter names, body media types, security
-and response codes. Unmapped spec-only operations are excluded (see #2028 run-log).
-Fetch the served spec/source for full schemas and validation; absence of a
-declaration never overrides the implementation's authorization.
+Service-relative paths are mapped to actual handlers; placeholders use handler spelling.
+Presence is not public access or deployment evidence. Fetch the served definition
+for complete schemas. Unmatched declarations are excluded and recorded in the run-log.
 
 - GET /cloudflare/api/grants — List the authenticated grantee's live Cloudflare zone grants; security: [{"cookieAuth":[]},{"bearerAuth":[]}]; responses: 200, 401, 403, 503
-- GET /cloudflare/api/zones/{zoneId}/classification — Derive per-host edge decisions from source and registered service specs; parameters: #/components/parameters/zoneId, #/components/parameters/domain; security: [{"cookieAuth":[]}]; responses: 200, 403, 409, 503
-- GET /cloudflare/api/zones/{zoneId}/dns — List zone DNS records; parameters: #/components/parameters/zoneId, #/components/parameters/domain; security: [{"cookieAuth":[]}]; responses: 200, 403, 409
-- POST /cloudflare/api/zones/{zoneId}/dns — Create a DNS record; parameters: #/components/parameters/zoneId, #/components/parameters/domain; body: application/json (required); security: [{"cookieAuth":[]}]; responses: 201, 400, 403, 409
-- PATCH /cloudflare/api/zones/{zoneId}/dns/{recordId} — Edit a DNS record without changing its proxy; parameters: #/components/parameters/zoneId, #/components/parameters/domain, #/components/parameters/id; body: application/json (required); security: [{"cookieAuth":[]}]; responses: 200, 403, 409
-- DELETE /cloudflare/api/zones/{zoneId}/dns/{recordId} — Delete a zone DNS record; parameters: #/components/parameters/zoneId, #/components/parameters/domain, #/components/parameters/id; security: [{"cookieAuth":[]}]; responses: 200, 403, 409
-- GET /cloudflare/api/zones/{zoneId}/settings — Read zone settings including SSL; parameters: #/components/parameters/zoneId, #/components/parameters/domain; security: [{"cookieAuth":[]}]; responses: 200, 403, 409
-- GET /cloudflare/api/zones/{zoneId}/ssl — Read SSL settings with a dedicated SSL capability; parameters: #/components/parameters/zoneId, #/components/parameters/domain; security: [{"cookieAuth":[]}]; responses: 200, 403, 409
-- GET /cloudflare/api/zones/{zoneId}/cache-rules — List cache rules in evaluation order; parameters: #/components/parameters/zoneId, #/components/parameters/domain; security: [{"cookieAuth":[]}]; responses: 200, 403, 409
-- PUT /cloudflare/api/zones/{zoneId}/cache-rules — Preview or request approval to replace ordered cache rules; parameters: #/components/parameters/zoneId, #/components/parameters/domain; body: application/json (required); security: [{"cookieAuth":[]}]; responses: 200, 202, 403, 409
-- GET /cloudflare/api/zones/{zoneId}/custom-hostnames — List custom hostnames and SSL status; parameters: #/components/parameters/zoneId, #/components/parameters/domain; security: [{"cookieAuth":[]}]; responses: 200, 403, 409
-- POST /cloudflare/api/zones/{zoneId}/custom-hostnames — Create a custom hostname; parameters: #/components/parameters/zoneId, #/components/parameters/domain; body: application/json (required); security: [{"cookieAuth":[]}]; responses: 201, 403, 409
-- GET /cloudflare/api/zones/{zoneId}/custom-hostnames/{hostnameId} — Refresh a custom hostname status; parameters: #/components/parameters/zoneId, #/components/parameters/domain, #/components/parameters/id; security: [{"cookieAuth":[]}]; responses: 200, 403, 409
-- DELETE /cloudflare/api/zones/{zoneId}/custom-hostnames/{hostnameId} — Delete a custom hostname; parameters: #/components/parameters/zoneId, #/components/parameters/domain, #/components/parameters/id; security: [{"cookieAuth":[]}]; responses: 200, 403, 409
-- POST /cloudflare/api/zones/{zoneId}/bulk — Preview or request approval for bulk DNS proxy changes; parameters: #/components/parameters/zoneId, #/components/parameters/domain; body: application/json (required); security: [{"cookieAuth":[]}]; responses: 200, 202, 403, 409
-- GET /cloudflare/api/zones/{zoneId}/history — Read durable node-signed zone mutation history; parameters: #/components/parameters/zoneId, #/components/parameters/domain; security: [{"cookieAuth":[]}]; responses: 200, 403, 409
+- GET /cloudflare/api/zones/{zoneId}/classification — Derive per-host edge decisions from source and registered service specs; parameters: path:zoneId (required), query:domain (required); security: [{"cookieAuth":[]}]; responses: 200, 403, 409, 503
+- GET /cloudflare/api/zones/{zoneId}/dns — List zone DNS records; parameters: path:zoneId (required), query:domain (required); security: [{"cookieAuth":[]}]; responses: 200, 403, 409
+- POST /cloudflare/api/zones/{zoneId}/dns — Create a DNS record; parameters: path:zoneId (required), query:domain (required); body: application/json (required); security: [{"cookieAuth":[]}]; responses: 201, 400, 403, 409
+- PATCH /cloudflare/api/zones/{zoneId}/dns/{recordId} — Edit a DNS record without changing its proxy; parameters: path:zoneId (required), query:domain (required), path:id (required); body: application/json (required); security: [{"cookieAuth":[]}]; responses: 200, 403, 409
+- DELETE /cloudflare/api/zones/{zoneId}/dns/{recordId} — Delete a zone DNS record; parameters: path:zoneId (required), query:domain (required), path:id (required); security: [{"cookieAuth":[]}]; responses: 200, 403, 409
+- GET /cloudflare/api/zones/{zoneId}/settings — Read zone settings including SSL; parameters: path:zoneId (required), query:domain (required); security: [{"cookieAuth":[]}]; responses: 200, 403, 409
+- GET /cloudflare/api/zones/{zoneId}/ssl — Read SSL settings with a dedicated SSL capability; parameters: path:zoneId (required), query:domain (required); security: [{"cookieAuth":[]}]; responses: 200, 403, 409
+- GET /cloudflare/api/zones/{zoneId}/cache-rules — List cache rules in evaluation order; parameters: path:zoneId (required), query:domain (required); security: [{"cookieAuth":[]}]; responses: 200, 403, 409
+- PUT /cloudflare/api/zones/{zoneId}/cache-rules — Preview or request approval to replace ordered cache rules; parameters: path:zoneId (required), query:domain (required); body: application/json (required); security: [{"cookieAuth":[]}]; responses: 200, 202, 403, 409
+- GET /cloudflare/api/zones/{zoneId}/custom-hostnames — List custom hostnames and SSL status; parameters: path:zoneId (required), query:domain (required); security: [{"cookieAuth":[]}]; responses: 200, 403, 409
+- POST /cloudflare/api/zones/{zoneId}/custom-hostnames — Create a custom hostname; parameters: path:zoneId (required), query:domain (required); body: application/json (required); security: [{"cookieAuth":[]}]; responses: 201, 403, 409
+- GET /cloudflare/api/zones/{zoneId}/custom-hostnames/{hostnameId} — Refresh a custom hostname status; parameters: path:zoneId (required), query:domain (required), path:id (required); security: [{"cookieAuth":[]}]; responses: 200, 403, 409
+- DELETE /cloudflare/api/zones/{zoneId}/custom-hostnames/{hostnameId} — Delete a custom hostname; parameters: path:zoneId (required), query:domain (required), path:id (required); security: [{"cookieAuth":[]}]; responses: 200, 403, 409
+- POST /cloudflare/api/zones/{zoneId}/bulk — Preview or request approval for bulk DNS proxy changes; parameters: path:zoneId (required), query:domain (required); body: application/json (required); security: [{"cookieAuth":[]}]; responses: 200, 202, 403, 409
+- GET /cloudflare/api/zones/{zoneId}/history — Read durable node-signed zone mutation history; parameters: path:zoneId (required), query:domain (required); security: [{"cookieAuth":[]}]; responses: 200, 403, 409
 
 ## Contract: /connections/api/spec
 
 Source: apps/kernel/api-spec/connections.yaml. Version: 2.0.0.
 Declared server bases: https://{node}.imajin.ai/{service}, http://localhost:3000/{service}.
-Legacy service-relative paths are mapped to actual kernel handler paths below;
-parameter placeholders use the handler's spelling. These are not extra aliases.
-Every mapped operation follows with parameter names, body media types, security
-and response codes. Unmapped spec-only operations are excluded (see #2028 run-log).
-Fetch the served spec/source for full schemas and validation; absence of a
-declaration never overrides the implementation's authorization.
+Service-relative paths are mapped to actual handlers; placeholders use handler spelling.
+Presence is not public access or deployment evidence. Fetch the served definition
+for complete schemas. Unmatched declarations are excluded and recorded in the run-log.
 
+- GET /connections/api/upstreams — Review an app's destination before connecting a personal credential; parameters: query:appDid (required), query:upstreamId (required); security: [{"cookieAuth":[]}]; responses: 200, 400, 401, 403, 503
+- PUT /connections/api/upstreams — Replace the authenticated registered app's upstream declarations; body: application/json (required); security: [{"appServiceAuth":[]}]; responses: 200, 400, 401, 403, 413, 503
+- GET /connections/api/upstreams/connection — Read your destination-bound status without unsealing; parameters: query:appDid (required), query:upstreamId (required); security: [{"cookieAuth":[]}]; responses: 200, 400, 401, 403, 503
+- POST /connections/api/upstreams/connection — Seal a member-owned key for one reviewed app upstream; body: application/json (required); security: [{"cookieAuth":[]}]; responses: 201, 400, 401, 403, 409, 413, 503
+- DELETE /connections/api/upstreams/connection — Revoke your connection, retaining signed tombstones and history; body: application/json (required); security: [{"cookieAuth":[]}]; responses: 200, 400, 401, 403, 413, 503
+- POST /connections/api/upstreams/call — Call a declared API on behalf of a member with kernel credential injection; body: application/json (required); security: [{"appServiceAuth":[]}]; responses: 200, 400, 401, 403, 413, 429, 502, 503
+- GET /connections/api/external-mcp/postman — Read your personal Postman connection status without unsealing; security: [{"cookieAuth":[]}]; responses: 200, 401, 403, 503
+- POST /connections/api/external-mcp/postman — Seal your own Postman API key for kernel-only outbound use; body: application/json (required); security: [{"cookieAuth":[]}]; responses: 201, 400, 401, 403, 409, 413, 503
+- DELETE /connections/api/external-mcp/postman — Revoke custody and write a signed vault tombstone, retaining history; security: [{"cookieAuth":[]}]; responses: 200, 401, 403, 503
+- POST /connections/api/external-mcp/postman/rpc — List or call allowlisted read-only Postman MCP tools through the kernel; body: application/json (required); security: [{"cookieAuth":[]},{"bearerAuth":[]}]; responses: 200, 400, 401, 403, 413, 429, 502, 503
 - GET /connections/api/apps/pods — List active direct member pod IDs by DID within the app's owner grants; parameters: query:did (required); security: [{"appServiceAuth":[]}]; responses: 200, 400, 401, 403, 503
 - GET /connections/api/apps/pods/{id}/members — Read active direct pod members with the pod owner's grant to this app; parameters: path:id (required); security: [{"appServiceAuth":[]}]; responses: 200, 401, 403, 404, 503
 - GET /connections/api/connectors/{id}/connections — List the authenticated owner's labelled connector connections; parameters: path:id (required); security: [{"cookieAuth":[]}]; responses: 200, 401, 404
 - POST /connections/api/connectors/{id}/connections — Create a named connection slot before configuring or authorizing it; parameters: path:id (required); body: application/json (required); security: [{"cookieAuth":[]}]; responses: 201, 400, 401, 409
 - PATCH /connections/api/connectors/{id}/connections — Update a connection's display label without changing its stable slot; parameters: path:id (required), query:slot; body: application/json (required); security: [{"cookieAuth":[]}]; responses: 200, 400, 401, 404
-- GET /api/health — Service health check; security: not declared (not proof of anonymous access); responses: 200
+- GET /connections/api/health — Service health check; security: not declared (not proof of anonymous access); responses: 200
 - GET /connections/api/connections — List active connections for the effective DID, with its private relationship labels; security: [{"cookieAuth":[]},{"bearerAuth":[]}]; responses: 200
 - PATCH /connections/api/connections/{did} — Set, change or clear the business org's private label on an active connection; parameters: path:did (required); body: application/json (required); security: [{"cookieAuth":[]},{"bearerAuth":[]}]; responses: 200, 400, 401, 403, 404, 500
 - DELETE /connections/api/connections/{did} — Disconnect the effective DID's bilateral connection; parameters: path:did (required); security: [{"cookieAuth":[]}]; responses: 200, 404
@@ -1217,32 +1239,26 @@ declaration never overrides the implementation's authorization.
 
 Source: apps/kernel/api-spec/github.yaml. Version: 1.0.0.
 Declared server bases: https://{node}.imajin.ai/github, http://localhost:3000/github.
-Legacy service-relative paths are mapped to actual kernel handler paths below;
-parameter placeholders use the handler's spelling. These are not extra aliases.
-Every mapped operation follows with parameter names, body media types, security
-and response codes. Unmapped spec-only operations are excluded (see #2028 run-log).
-Fetch the served spec/source for full schemas and validation; absence of a
-declaration never overrides the implementation's authorization.
+Service-relative paths are mapped to actual handlers; placeholders use handler spelling.
+Presence is not public access or deployment evidence. Fetch the served definition
+for complete schemas. Unmatched declarations are excluded and recorded in the run-log.
 
-- POST /github/api/configure — Seal BYO OAuth config for the selected connection; parameters: #/components/parameters/slot; body: application/json (required); security: [{"cookieAuth":[]}]; responses: 201, 400, 401
-- GET /github/api/connect — Start authorization for the selected slot; parameters: #/components/parameters/slot, query:returnTo; security: [{"cookieAuth":[]}]; responses: 307, 400, 401, 409
+- POST /github/api/configure — Seal BYO OAuth config for the selected connection; parameters: query:slot; body: application/json (required); security: [{"cookieAuth":[]}]; responses: 201, 400, 401
+- GET /github/api/connect — Start authorization for the selected slot; parameters: query:slot, query:returnTo; security: [{"cookieAuth":[]}]; responses: 307, 400, 401, 409
 - GET /github/api/callback — Complete authorization for the slot bound into signed state; parameters: query:code (required), query:state (required); security: []; responses: 307
-- POST /github/api/device/start — Start a device grant bound to the owner and selected slot; parameters: #/components/parameters/slot; security: [{"cookieAuth":[]}]; responses: 200, 400, 401
-- POST /github/api/device/poll — Poll a device ticket without crossing slot boundaries; parameters: #/components/parameters/slot; body: application/json (required); security: [{"cookieAuth":[]}]; responses: 200, 400, 401
-- POST /github/api/disconnect — Revoke only the selected connection and its grants; parameters: #/components/parameters/slot; security: [{"cookieAuth":[]}]; responses: 200, 400, 401
-- GET /github/api/scope-manifest — Read credential and scope status for this slot only; parameters: #/components/parameters/slot; security: [{"cookieAuth":[]}]; responses: 200
-- POST /github/api/scope-manifest — Replace only the selected slot's granted scopes; parameters: #/components/parameters/slot; body: application/json (required); security: [{"cookieAuth":[]}]; responses: 200, 400, 401
+- POST /github/api/device/start — Start a device grant bound to the owner and selected slot; parameters: query:slot; security: [{"cookieAuth":[]}]; responses: 200, 400, 401
+- POST /github/api/device/poll — Poll a device ticket without crossing slot boundaries; parameters: query:slot; body: application/json (required); security: [{"cookieAuth":[]}]; responses: 200, 400, 401
+- POST /github/api/disconnect — Revoke only the selected connection and its grants; parameters: query:slot, query:remove; security: [{"cookieAuth":[]}]; responses: 200, 400, 401, 403, 404, 409, 503
+- GET /github/api/scope-manifest — Read credential and scope status for this slot only; parameters: query:slot; security: [{"cookieAuth":[]}]; responses: 200
+- POST /github/api/scope-manifest — Replace only the selected slot's granted scopes; parameters: query:slot; body: application/json (required); security: [{"cookieAuth":[]}]; responses: 200, 400, 401
 
 ## Contract: /infer/api/spec
 
 Source: apps/kernel/api-spec/infer.yaml. Version: 1.0.0.
 Declared server bases: https://{node}.imajin.ai/infer, http://localhost:3000/infer.
-Legacy service-relative paths are mapped to actual kernel handler paths below;
-parameter placeholders use the handler's spelling. These are not extra aliases.
-Every mapped operation follows with parameter names, body media types, security
-and response codes. Unmapped spec-only operations are excluded (see #2028 run-log).
-Fetch the served spec/source for full schemas and validation; absence of a
-declaration never overrides the implementation's authorization.
+Service-relative paths are mapped to actual handlers; placeholders use handler spelling.
+Presence is not public access or deployment evidence. Fetch the served definition
+for complete schemas. Unmatched declarations are excluded and recorded in the run-log.
 
 - GET /infer/v1/models/usable — List every usable sealed connector's picker models; security: [{"appToken":[]}]; responses: 200, 401, 403, 429, 500
 
@@ -1250,15 +1266,9 @@ declaration never overrides the implementation's authorization.
 
 Source: apps/kernel/api-spec/jin.yaml. Version: 2.1.0.
 Declared server bases: https://{node}.imajin.ai/{service}, http://localhost:3000/{service}.
-Legacy service-relative paths are mapped to actual kernel handler paths below;
-parameter placeholders use the handler's spelling. These are not extra aliases.
-Every mapped operation follows with parameter names, body media types, security
-and response codes. Unmapped spec-only operations are excluded (see #2028 run-log).
-Fetch the served spec/source for full schemas and validation; absence of a
-declaration never overrides the implementation's authorization.
-
-
-Warp brief contract: Node-witnessed brief descriptor on each kernel Warp dispatch/resume loop.started and follow-up loop.progress. SHA-256 covers exact UTF-8 outgoing prompt bytes, including whitespace and injected corpus context. No prompt text is placed on the event. Full-text assets are private, immutable, owner-pinned and signed using existing media primitives. Hash-only creates no asset. Missing browser telemetry is null, not no. In hash-only mode, anyone holding a guess of a brief's text can confirm it against the plain SHA-256 hash. All entry points enforce WARP_BRIEF_MAX_BYTES = 1048576 (1 MiB) on the exact final UTF-8 prompt or follow-up message, including corpus prefix and separator, before any brief asset, attestation or Warp request. HTTP routes return 413; MCP tools name the byte limit in their error. A provider 4xx/5xx or network failure retains the recorded brief and adds a node-signed warp.brief.dispatch_failed attestation with only hash, assetId, upstreamStatus (null for network) and errorClass (http_4xx, http_5xx or network). Its contextId is assetId or the hash. The original provider error is rethrown even if failure auditing fails.
+Service-relative paths are mapped to actual handlers; placeholders use handler spelling.
+Presence is not public access or deployment evidence. Fetch the served definition
+for complete schemas. Unmatched declarations are excluded and recorded in the run-log.
 
 - GET /jin/api/brief-settings — Read the authenticated principal's Warp brief storage preference; security: [{"cookieAuth":[]}]; responses: 200, 401, 403, 503
 - PUT /jin/api/brief-settings — Change future brief retention with an atomic node-signed event; body: application/json (required); security: [{"cookieAuth":[]}]; responses: 200, 400, 401, 403, 503
@@ -1291,18 +1301,33 @@ Warp brief contract: Node-witnessed brief descriptor on each kernel Warp dispatc
 - GET /api/loops/{loopId} — One loop's lifecycle, ordered history and derived horizon; parameters: query:includeExited, path:loopId (required); security: [{"cookieAuth":[]}]; responses: 200, 401, 404
 - GET /api/loops/{loopId}/artifacts/{artifactId} — Retrieve full redacted oversized output for the caller's loop; parameters: path:loopId (required), path:artifactId (required); security: [{"cookieAuth":[]}]; responses: 200, 400, 401, 404
 
+MCP tool extensions (source-exact):
+{
+  "cycle_status": {
+    "scope": "cycle:run",
+    "description": "Current caller horizon, aggregated across every principal-scoped registry loop page using getLoopWithHistory/projectHorizon, as in the Runs lane. Omitted correlation_id selects the latest cycle; no cycle returns correlationId null and state not_started with the horizon, not an error. Explicit unknown, foreign or non-cycle correlation_id remains not_found. Requires both the token scope and active connector grant.",
+    "responseSchema": {
+      "$ref": "#/components/schemas/CycleHorizonReadout"
+    }
+  },
+  "cycle_run": {
+    "scope": "cycle:run",
+    "description": "Returns correlationId plus the same horizon captured before startCycle and before the merge sweep, including dry_run. Repo scope does not narrow the caller horizon. No refill, sharpening or new phase actions are added. Requires both the token scope and active connector grant.",
+    "responseSchema": {
+      "$ref": "#/components/schemas/CycleHorizonReadout"
+    }
+  }
+}
+
 ## Contract: /media/api/spec
 
 Source: apps/kernel/api-spec/media.yaml. Version: 2.0.0.
 Declared server bases: https://{node}.imajin.ai/{service}, http://localhost:3000/{service}.
-Legacy service-relative paths are mapped to actual kernel handler paths below;
-parameter placeholders use the handler's spelling. These are not extra aliases.
-Every mapped operation follows with parameter names, body media types, security
-and response codes. Unmapped spec-only operations are excluded (see #2028 run-log).
-Fetch the served spec/source for full schemas and validation; absence of a
-declaration never overrides the implementation's authorization.
+Service-relative paths are mapped to actual handlers; placeholders use handler spelling.
+Presence is not public access or deployment evidence. Fetch the served definition
+for complete schemas. Unmatched declarations are excluded and recorded in the run-log.
 
-- GET /api/health — Service health check; security: not declared (not proof of anonymous access); responses: 200
+- GET /media/api/health — Service health check; security: not declared (not proof of anonymous access); responses: 200
 - POST /media/api/assets — Upload a file (50 MB max) — auto-creates .fair manifest, deduplicates by SHA-256, async ML classification, auto-assigns to context folder. App-token callers need `media:write`.; body: multipart/form-data (required); security: [{"cookieAuth":[]},{"appTokenAuth":[]}]; responses: 200, 201, 400, 403, 413, 415, 429
 - GET /media/api/assets — List own assets when authenticated, or a specified DID's public asset descriptors.; parameters: query:did, query:context_app, query:context_feature, query:type, query:search, query:sort, query:order, query:limit, query:offset; security: [{"cookieAuth":[]},{"bearerAuth":[]},{"appTokenAuth":[]},{}]; responses: 200, 401, 403, 429
 - GET /media/api/assets/{id} — Serve asset file with .fair access control. Supports thumbnail resizing (?w=) and conditional GET (ETag).; parameters: path:id (required), query:w, query:download; security: not declared (not proof of anonymous access); responses: 200, 304, 403, 404
@@ -1330,15 +1355,12 @@ declaration never overrides the implementation's authorization.
 
 Source: apps/kernel/api-spec/notify.yaml. Version: 2.0.0.
 Declared server bases: https://{node}.imajin.ai/{service}, http://localhost:3000/{service}.
-Legacy service-relative paths are mapped to actual kernel handler paths below;
-parameter placeholders use the handler's spelling. These are not extra aliases.
-Every mapped operation follows with parameter names, body media types, security
-and response codes. Unmapped spec-only operations are excluded (see #2028 run-log).
-Fetch the served spec/source for full schemas and validation; absence of a
-declaration never overrides the implementation's authorization.
+Service-relative paths are mapped to actual handlers; placeholders use handler spelling.
+Presence is not public access or deployment evidence. Fetch the served definition
+for complete schemas. Unmatched declarations are excluded and recorded in the run-log.
 
 - POST /notify/api/internal/operator-approvals/state — Record authenticated source truth that a proposal is gone or superseded; body: application/json (required); security: [{"bearerAuth":[]}]; responses: 200, 400, 401, 409, 500
-- GET /api/health — Service health check; security: not declared (not proof of anonymous access); responses: 200
+- GET /notify/api/health — Service health check; security: not declared (not proof of anonymous access); responses: 200
 - GET /notify/api/notifications — List notifications for the current identity; parameters: query:limit, query:offset, query:unread; security: [{"cookieAuth":[]}]; responses: 200, 401
 - POST /notify/api/notifications/{id}/read — Mark a specific notification as read; parameters: path:id (required); security: [{"cookieAuth":[]}]; responses: 200, 401, 404
 - POST /notify/api/notifications/read-all — Mark all notifications as read for the current identity; security: [{"cookieAuth":[]}]; responses: 200, 401
@@ -1349,23 +1371,20 @@ declaration never overrides the implementation's authorization.
 - POST /notify/api/broadcast — Broadcast to an interest audience; body: application/json (required); security: [{"bearerAuth":[]},{"legacyNotifyAuth":[]}]; responses: 200, 400, 401, 403
 - POST /notify/api/interest — Record an interest signal for a DID from an attestation type; body: application/json (required); security: [{"bearerAuth":[]},{"legacyNotifyAuth":[]}]; responses: 200, 400, 401, 403
 - GET /notify/api/unsubscribe — One-click email unsubscribe (linked from notification emails); parameters: query:token (required), query:scope; security: not declared (not proof of anonymous access); responses: 200, 400
-- GET /api/spec — Serve the OpenAPI spec YAML; security: not declared (not proof of anonymous access); responses: 200
+- GET /notify/api/spec — Serve the OpenAPI spec YAML; security: not declared (not proof of anonymous access); responses: 200
 
 ## Contract: /pay/api/spec
 
 Source: apps/kernel/api-spec/pay.yaml. Version: 2.0.0.
 Declared server bases: https://{node}.imajin.ai/{service}, http://localhost:3000/{service}.
-Legacy service-relative paths are mapped to actual kernel handler paths below;
-parameter placeholders use the handler's spelling. These are not extra aliases.
-Every mapped operation follows with parameter names, body media types, security
-and response codes. Unmapped spec-only operations are excluded (see #2028 run-log).
-Fetch the served spec/source for full schemas and validation; absence of a
-declaration never overrides the implementation's authorization.
+Service-relative paths are mapped to actual handlers; placeholders use handler spelling.
+Presence is not public access or deployment evidence. Fetch the served definition
+for complete schemas. Unmatched declarations are excluded and recorded in the run-log.
 
 - POST /pay/api/transactions/lookup — Read this registered app's order payment IDs by checkout session; body: application/json (required); security: [{"appServiceToken":[]}]; responses: 200, 400, 401, 403, 429, 500
 - POST /pay/api/setup-intent — Save a pledge card on the seller's own Stripe account; body: application/json (required); security: [{"appServiceToken":[]}]; responses: 200, 400, 401, 403, 404, 503
 - POST /pay/api/setup-intent/verify — Verify a succeeded pledge SetupIntent and its attached buyer card; body: application/json (required); security: [{"appServiceToken":[]}]; responses: 200, 400, 401, 403, 404, 409, 503
-- GET /api/health — Service health check — checks all configured payment providers; security: []; responses: 200, 503
+- GET /pay/api/health — Service health check — checks all configured payment providers; security: []; responses: 200, 503
 - GET /pay/api/balance/{did} — Get current balance for a DID; parameters: path:did (required); security: [{"cookieAuth":[]},{"bearerAuth":[]}]; responses: 200, 401, 403
 - POST /pay/api/balance/gift — Bulk gift credits from a business DID to multiple recipients; body: application/json (required); security: [{"bearerAuth":[]}]; responses: 200, 400, 401, 402, 403
 - POST /pay/api/balance/event-topup — Multiplier-based credit gifting for event attendees; body: application/json (required); security: [{"bearerAuth":[]}]; responses: 200, 400, 401, 402, 403
@@ -1382,7 +1401,7 @@ declaration never overrides the implementation's authorization.
 - GET /pay/api/transactions/{did} — List transactions for a DID; parameters: path:did (required), query:service, query:type, query:limit, query:offset; security: [{"cookieAuth":[]},{"bearerAuth":[]}]; responses: 200, 401, 403
 - GET /pay/api/transactions/{did}/summary — Aggregated transaction summary grouped by service; parameters: path:did (required); security: [{"cookieAuth":[]},{"bearerAuth":[]}]; responses: 200, 401
 - POST /pay/api/webhook — Retired unbound Stripe webhook; body: application/json (required); security: [{"stripeWebhook":[]}]; responses: 400
-- POST /pay/api/webhook/{provider} — Retired unbound rail webhook alias; parameters: #/components/parameters/provider; body: application/json (required); security: [{"railWebhookSignature":[]}]; responses: 200, 404
+- POST /pay/api/webhook/{provider} — Retired unbound rail webhook alias; parameters: path:provider (required); body: application/json (required); security: [{"railWebhookSignature":[]}]; responses: 200, 404
 - POST /pay/api/webhook/did/{routingId} — Verify and route an owner's Stripe connector event; parameters: path:routingId (required); body: application/json (required); security: [{"stripeWebhook":[]}]; responses: 200, 400, 404, 500, 503
 - POST /pay/api/refund — Issue a refund for a transaction; body: application/json (required); security: [{"appServiceToken":[]}]; responses: 200, 400, 401, 403, 404
 - POST /pay/api/charge-pledges — Charge confirmed pledge setups belonging to the calling app; body: application/json (required); security: [{"appServiceToken":[]}]; responses: 200, 400, 401, 403, 429
@@ -1399,21 +1418,18 @@ declaration never overrides the implementation's authorization.
 - GET /pay/api/payment-requests/rails — Which ways the issuer can be paid right now — drives the issue-time warning (#2754); parameters: query:issuer_did (required); security: [{"cookieAuth":[]},{"bearerAuth":[]}]; responses: 200, 400, 401, 403
 - DELETE /pay/api/payment-requests/by-handle/{handle}/emt — "Pay another way" — withdraw the e-Transfer choice, `emt_pending` -> `issued` (#2758); parameters: path:handle (required); security: not declared (not proof of anonymous access); responses: 200, 404, 409, 429
 - POST /pay/api/payment-requests/{id}/settle — Record an off-platform manual settlement — issuer-only, only valid from `issued`; parameters: path:id (required); body: application/json (required); security: [{"cookieAuth":[]},{"bearerAuth":[]}]; responses: 200, 400, 403, 404, 409
-- GET /api/spec — Serve the OpenAPI spec YAML; security: []; responses: 200
+- GET /pay/api/spec — Serve the OpenAPI spec YAML; security: []; responses: 200
 
 ## Contract: /profile/api/spec
 
 Source: apps/kernel/api-spec/profile.yaml. Version: 2.0.0.
 Declared server bases: https://{node}.imajin.ai/{service}, http://localhost:3000/{service}.
-Legacy service-relative paths are mapped to actual kernel handler paths below;
-parameter placeholders use the handler's spelling. These are not extra aliases.
-Every mapped operation follows with parameter names, body media types, security
-and response codes. Unmapped spec-only operations are excluded (see #2028 run-log).
-Fetch the served spec/source for full schemas and validation; absence of a
-declaration never overrides the implementation's authorization.
+Service-relative paths are mapped to actual handlers; placeholders use handler spelling.
+Presence is not public access or deployment evidence. Fetch the served definition
+for complete schemas. Unmatched declarations are excluded and recorded in the run-log.
 
-- GET /api/health — Service health check; security: not declared (not proof of anonymous access); responses: 200
-- GET /api/spec — Serve OpenAPI spec (YAML); security: not declared (not proof of anonymous access); responses: 200
+- GET /profile/api/health — Service health check; security: not declared (not proof of anonymous access); responses: 200
+- GET /profile/api/spec — Serve OpenAPI spec (YAML); security: not declared (not proof of anonymous access); responses: 200
 - POST /profile/api/profile — Create a profile for authenticated user; body: application/json (required); security: [{"cookieAuth":[]}]; responses: 201, 400, 401, 409
 - GET /profile/api/profile/search — Search profiles; parameters: query:q, query:type, query:limit, query:offset; security: not declared (not proof of anonymous access); responses: 200
 - POST /profile/api/profile/claim-handle — Claim a handle for the authenticated user; body: application/json (required); security: [{"cookieAuth":[]}]; responses: 200, 400, 401, 404, 409
@@ -1444,30 +1460,24 @@ declaration never overrides the implementation's authorization.
 
 Source: apps/kernel/api-spec/quickbooks.yaml. Version: 1.0.0.
 Declared server bases: https://{node}.imajin.ai/quickbooks, http://localhost:3000/quickbooks.
-Legacy service-relative paths are mapped to actual kernel handler paths below;
-parameter placeholders use the handler's spelling. These are not extra aliases.
-Every mapped operation follows with parameter names, body media types, security
-and response codes. Unmapped spec-only operations are excluded (see #2028 run-log).
-Fetch the served spec/source for full schemas and validation; absence of a
-declaration never overrides the implementation's authorization.
+Service-relative paths are mapped to actual handlers; placeholders use handler spelling.
+Presence is not public access or deployment evidence. Fetch the served definition
+for complete schemas. Unmatched declarations are excluded and recorded in the run-log.
 
-- POST /quickbooks/api/configure — Seal Intuit BYO app config for this slot; parameters: #/components/parameters/slot; body: application/json (required); security: [{"cookieAuth":[]}]; responses: 201, 400, 401
-- GET /quickbooks/api/connect — Start Intuit authorization for the selected slot; parameters: #/components/parameters/slot, query:returnTo; security: [{"cookieAuth":[]}]; responses: 307, 400, 401, 409
+- POST /quickbooks/api/configure — Seal Intuit BYO app config for this slot; parameters: query:slot; body: application/json (required); security: [{"cookieAuth":[]}]; responses: 201, 400, 401
+- GET /quickbooks/api/connect — Start Intuit authorization for the selected slot; parameters: query:slot, query:returnTo; security: [{"cookieAuth":[]}]; responses: 307, 400, 401, 409
 - GET /quickbooks/api/callback — Seal Intuit token and realm for the slot bound into signed state; parameters: query:code (required), query:state (required), query:realmId (required); security: []; responses: 307
-- POST /quickbooks/api/disconnect — Revoke only the selected connection and its grants; parameters: #/components/parameters/slot; security: [{"cookieAuth":[]}]; responses: 200, 400, 401
-- GET /quickbooks/api/scope-manifest — Read credential and scope status for the selected slot; parameters: #/components/parameters/slot; security: [{"cookieAuth":[]}]; responses: 200
-- POST /quickbooks/api/scope-manifest — Replace only the selected connection's grants; parameters: #/components/parameters/slot; body: application/json (required); security: [{"cookieAuth":[]}]; responses: 200, 400, 401
+- POST /quickbooks/api/disconnect — Revoke only the selected connection and its grants; parameters: query:slot, query:remove; security: [{"cookieAuth":[]}]; responses: 200, 400, 401, 403, 404, 409, 503
+- GET /quickbooks/api/scope-manifest — Read credential and scope status for the selected slot; parameters: query:slot; security: [{"cookieAuth":[]}]; responses: 200
+- POST /quickbooks/api/scope-manifest — Replace only the selected connection's grants; parameters: query:slot; body: application/json (required); security: [{"cookieAuth":[]}]; responses: 200, 400, 401
 
 ## Contract: /registry/api/spec
 
 Source: apps/kernel/api-spec/registry.yaml. Version: 2.0.0.
 Declared server bases: https://{node}.imajin.ai/{service}, http://localhost:3000/{service}.
-Legacy service-relative paths are mapped to actual kernel handler paths below;
-parameter placeholders use the handler's spelling. These are not extra aliases.
-Every mapped operation follows with parameter names, body media types, security
-and response codes. Unmapped spec-only operations are excluded (see #2028 run-log).
-Fetch the served spec/source for full schemas and validation; absence of a
-declaration never overrides the implementation's authorization.
+Service-relative paths are mapped to actual handlers; placeholders use handler spelling.
+Presence is not public access or deployment evidence. Fetch the served definition
+for complete schemas. Unmatched declarations are excluded and recorded in the run-log.
 
 - GET /api/registry/apps — List discoverable active apps, or the acting owner's apps; parameters: query:owner, query:limit, query:offset; security: not declared (not proof of anonymous access); responses: 200, 401
 - POST /api/registry/apps — Register an app owned by the authenticated acting identity; body: application/json (required); security: [{"cookieAuth":[]},{"bearerAuth":[]}]; responses: 201, 400, 401
@@ -1481,7 +1491,7 @@ declaration never overrides the implementation's authorization.
 - PATCH /api/admin/registry/apps/{appId} — Update app presentation or approved emittable events; parameters: path:appId (required); body: application/json (required); security: [{"cookieAuth":[]}]; responses: 200, 400, 401, 404
 - POST /api/admin/registry/apps/{appId}/revoke — Clear a registered app without deleting history; parameters: path:appId (required); security: [{"cookieAuth":[]},{"bearerAuth":[]}]; responses: 200, 401, 403, 404, 503
 - GET /registry/api/health — Service health check; security: not declared (not proof of anonymous access); responses: 200
-- GET /api/spec — Serve OpenAPI spec (YAML); security: not declared (not proof of anonymous access); responses: 200
+- GET /registry/api/spec — Serve OpenAPI spec (YAML); security: not declared (not proof of anonymous access); responses: 200
 - GET /registry/api/specs — List all registered imajin services with their spec URLs; security: not declared (not proof of anonymous access); responses: 200
 - GET /registry/api/specs/{service} — Proxy and return the OpenAPI spec for a named service; parameters: path:service (required); security: not declared (not proof of anonymous access); responses: 200, 404, 502
 - GET /registry/api/builds/verify — List all approved builds; parameters: query:version, query:deprecated; security: not declared (not proof of anonymous access); responses: 200
@@ -1502,7 +1512,7 @@ declaration never overrides the implementation's authorization.
 - GET /registry/api/preferences/{did} — Get all preference settings for a DID; parameters: path:did (required); security: [{"cookieAuth":[]},{"bearerAuth":[]}]; responses: 200, 404
 - PUT /registry/api/preferences/{did} — Update preference settings for a DID; parameters: path:did (required); body: application/json (required); security: [{"cookieAuth":[]},{"bearerAuth":[]}]; responses: 200
 - PUT /registry/api/preferences/{did}/interests/{scope} — Set interest preference for a scope; parameters: path:did (required), path:scope (required); body: application/json (required); security: [{"cookieAuth":[]},{"bearerAuth":[]}]; responses: 200
-- GET /api/health — Check kernel routes and active registered app destinations; security: not declared (not proof of anonymous access); responses: 200, 503
+- GET /registry/api/health — Check kernel routes and active registered app destinations; security: not declared (not proof of anonymous access); responses: 200, 503
 - GET /.well-known/apple-app-site-association — Apple association discovery; security: not declared (not proof of anonymous access); responses: 200
 - GET /.well-known/assetlinks.json — Android association discovery; security: not declared (not proof of anonymous access); responses: 200
 
@@ -1510,12 +1520,9 @@ declaration never overrides the implementation's authorization.
 
 Source: apps/kernel/api-spec/usage.yaml. Version: 1.0.0.
 Declared server bases: https://{node}.imajin.ai/{service}, http://localhost:3000/{service}.
-Legacy service-relative paths are mapped to actual kernel handler paths below;
-parameter placeholders use the handler's spelling. These are not extra aliases.
-Every mapped operation follows with parameter names, body media types, security
-and response codes. Unmapped spec-only operations are excluded (see #2028 run-log).
-Fetch the served spec/source for full schemas and validation; absence of a
-declaration never overrides the implementation's authorization.
+Service-relative paths are mapped to actual handlers; placeholders use handler spelling.
+Presence is not public access or deployment evidence. Fetch the served definition
+for complete schemas. Unmatched declarations are excluded and recorded in the run-log.
 
 - GET /usage/api/summary — Read incurred/billed/drift/rollup for one (did, window); parameters: query:did, query:window, query:budgetSince, query:budgetCap, query:from, query:to; security: [{"cookieAuth":[]},{"bearerAuth":[]}]; responses: 200, 400, 401, 403
 - GET /usage/api/rollup/{did}/latest — Public signed usage.rollup attestation for a DID; parameters: path:did (required), query:window; security: not declared (not proof of anonymous access); responses: 200, 400, 404
@@ -1523,18 +1530,15 @@ declaration never overrides the implementation's authorization.
 - POST /usage/api/receipts — Confirm a receipt's structured line items and persist + attest them; body: application/json (required); security: [{"cookieAuth":[]},{"bearerAuth":[]}]; responses: 201, 400, 401, 403, 404, 422, 502
 - POST /usage/api/receipts/extract — Qwen-assist draft — LLM-extract line items from an uploaded receipt (never attests); body: application/json (required); security: [{"cookieAuth":[]},{"bearerAuth":[]}]; responses: 200, 400, 401, 403, 404, 409, 415, 502
 - GET /usage/api/audit/sessions/{sessionId} — The auditor chain view for one OpenClaw session (#2204); parameters: path:sessionId (required); security: [{"cookieAuth":[]},{"bearerAuth":[]}]; responses: 200, 400, 401, 403, 404
-- GET /api/spec — Serve the OpenAPI spec YAML; security: not declared (not proof of anonymous access); responses: 200
+- GET /usage/api/spec — Serve the OpenAPI spec YAML; security: not declared (not proof of anonymous access); responses: 200
 
 ## Contract: /vault/api/spec
 
 Source: apps/kernel/api-spec/vault.yaml. Version: 1.0.0.
 Declared server bases: https://{node}.imajin.ai, http://localhost:3000.
-Legacy service-relative paths are mapped to actual kernel handler paths below;
-parameter placeholders use the handler's spelling. These are not extra aliases.
-Every mapped operation follows with parameter names, body media types, security
-and response codes. Unmapped spec-only operations are excluded (see #2028 run-log).
-Fetch the served spec/source for full schemas and validation; absence of a
-declaration never overrides the implementation's authorization.
+Service-relative paths are mapped to actual handlers; placeholders use handler spelling.
+Presence is not public access or deployment evidence. Fetch the served definition
+for complete schemas. Unmatched declarations are excluded and recorded in the run-log.
 
 - GET /vault/api/spec — Read the public vault OpenAPI contract advertised by the spec catalogue; security: []; responses: 200, 503
 - POST /api/vault/ssh-ca — Mint a kernel-custodied SSH CA through vault.mint; body: application/json (required); security: [{"cookieAuth":[]},{"bearerAuth":[]}]; responses: 201, 400, 401, 403, 409, 503
@@ -1554,12 +1558,9 @@ declaration never overrides the implementation's authorization.
 
 Source: apps/corpus/api-spec/openapi.yaml. Version: 1.0.0.
 Declared server bases: http://localhost:8003.
-Legacy service-relative paths are mapped to actual kernel handler paths below;
-parameter placeholders use the handler's spelling. These are not extra aliases.
-Every mapped operation follows with parameter names, body media types, security
-and response codes. Unmapped spec-only operations are excluded (see #2028 run-log).
-Fetch the served spec/source for full schemas and validation; absence of a
-declaration never overrides the implementation's authorization.
+Service-relative paths are mapped to actual handlers; placeholders use handler spelling.
+Presence is not public access or deployment evidence. Fetch the served definition
+for complete schemas. Unmatched declarations are excluded and recorded in the run-log.
 
 - GET /health — Liveness check for the corpus service.; security: []; responses: 200
 - GET /spec — Serve this OpenAPI spec (YAML) so discovery tooling can enumerate corpus's routes.; security: []; responses: 200

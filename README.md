@@ -1,6 +1,5 @@
 # Imajin
-<!-- Documentation replay in progress: 2026-10-29, v0.8.27..v0.8.28; refs #2028. -->
-<!-- Delta documentation replay: 2026-10-26, source 8f2ebbfd455857d3b6b09cc5b4919db78d2b69bd, v0.8.27..main (#2028). -->
+<!-- Delta documentation replay: 2026-10-29, source f6b412408ee5baf5b73f671111ba00f2568bc886, v0.8.27..v0.8.28 (#2028). -->
 
 **You compose. Imajin orchestrates. Signed. Legible.**
 
@@ -26,38 +25,39 @@ not a guarantee that every concrete use case is implemented.
 
 ## What you can do today
 
-**Source checked 2026-10-26 UTC against v0.8.27..`8f2ebbfd4`; v0.8.28 is pre-cut, not released.**
+**Source checked 2026-10-29 UTC at [v0.8.28](https://github.com/ima-jin/imajin-ai/tree/v0.8.28)
+(`f6b412408`); this docs upkeep is for v0.9.0.** Source and npm artifacts are
+not deployment evidence or acceptance of every app flow.
 
-- Run a kernel, register an identity and compose auth, profile, messaging and media
-  surfaces. The [guide index](docs/guide/README.md) explains permissions and setup.
+- Run a kernel, register an identity and compose auth, profile, messaging and media.
+  Start with the [guide index](docs/guide/README.md).
 - Connect your agent through the [OpenClaw plugin](https://github.com/ima-jin/openclaw-imajin-plugin/blob/main/README.md),
   or build a registered app with the published SDK below.
-- Inspect Registered apps, retained consent/Record history, organization records and
-  actionable-only Inbox/Operator views. Existing legal-entity, sealed bank-details,
-  SSH CA/OIDC, corpus and Cloudflare contracts remain documented in the
-  [kernel-owned README](apps/kernel/README.md); their custody and rollout limits still apply.
-- Start card checkout for an organization-addressed request from a personal owner/admin
-  login with pay access. Distinct 403 codes separate party authorization from payer control;
-  EMT retains its opaque-handle capability model.
-- Refresh an existing app's new manifest-secret declaration slots without changing its
-  identity or claims. Countersign sync, then separately **Generate** random material or
-  **Set** operator-supplied material. [Operator steps](docs/app-self-secrets-operator.md).
-- Use principal-based inference minting and the usable model catalog. Re-grant after
-  revoked/expired consent; the [release updater](deploy/infer-passthrough/README.md)
-  requires exact-SHA production evidence and mint-backed health before promotion.
+- Inspect retained consent/Record history, organization records, and actionable
+  Inbox/Operator views. Use the Decisions lane to rule on existing cards and Runs
+  to inspect signed briefs, publisher-attributed horizons and session outcomes.
+- Connect GitHub with flow-specific setup instructions; remove a non-primary
+  connection slot with explicit confirmation and retained history. Use member-held
+  Postman MCP or declared app upstream calls without disclosing credentials to apps.
+- Seal a separate provider billing admin key on the Anthropic/OpenAI connector
+  card and explicitly grant billing consent for billed reconciliation; inference
+  access alone is not billing consent.
+- Provision an app with visibility, approved domain and site owner shown before
+  countersigning. App sign-in uses an app-local state cookie and a kernel-verified
+  single-use code, not identity claims taken from callback query parameters.
+- Keep the earlier organization checkout, additive app-secret Generate/Set,
+  legal-entity/bank, SSH CA/OIDC, corpus, Cloudflare and inference contracts.
+  The [kernel-owned release delta](apps/kernel/README.md#release-delta-for-v0828)
+  links implementation, operator instructions and limits.
 
 Current chat uses **TLS in transit and plaintext at rest** on the hosting node;
-push previews include the first 200 characters. MLS with mandatory hybrid
-post-quantum encryption is planned under #1070, not shipped. Public key bundles
-do not provide current message encryption. [Security limits](SECURITY.md).
-The [v0.8.28 delta](apps/kernel/README.md#pre-cut-delta-for-v0828) cites all four merged PRs.
+push previews include the first 200 characters. The
+[PQ-MLS ADR](docs/adr/3112-pq-mls.md) records a proposed library choice and isolated
+spike, not shipped message encryption. [Security limits](SECURITY.md).
 
-The [v0.8.27 source tag](https://github.com/ima-jin/imajin-ai/tree/v0.8.27) is the
-last cut; registry versions below are independently checked artifacts.
-Source availability and GitHub Releases are not deployment evidence or acceptance
-of every app flow. The [release close-out job](docs/npm-publishing.md) now generates
-missing Releases and rolls open issues/PRs to the next patch milestone; production
-still requires its existing reviewer gate.
+Release close-out generates missing GitHub Releases and rolls open work to the
+next patch milestone. Tags, Releases and registry versions do not prove production
+deployment; its existing reviewer gate remains. See the [release mechanism](docs/npm-publishing.md).
 
 ## Kernel vs. apps
 
@@ -95,25 +95,26 @@ retired the kernel-copy rollback. Use its owned prior deployment ref.
 
 Start from the [app template's owned README](https://github.com/ima-jin/imajin-app-template/blob/main/README.md),
 preserving its history; follow the [registration contract](docs/REGISTRATION.md).
-Use [auth-client](packages/auth-client/README.md) for sign-in/session handlers;
-add published auth/config/logger/ui/fair only as needed.
+Use [auth-client](packages/auth-client/README.md) for sign-in/session handlers,
+single-use-code callbacks and bounded signing-key bootstrap retry.
 
 ```bash
-npm install @ima-jin/auth-client@0.8.27
+npm install @ima-jin/auth-client@0.8.28
 ```
 
 External consumers install **`@ima-jin/*`** anonymously from npmjs.org; workspace
 imports use **`@imajin/*`**. The [publish pipeline](docs/npm-publishing.md) rewrites
 scope and removes `private: true` in the publish copy. That flag is not publication
-evidence. Do not install workspace-only internals.
+evidence. Do not install workspace-only internals. Standalone dependency updates
+and rollout remain separately reviewed work.
 
 ## Packages (SDK)
 
 Generated from every `packages/*/package.json` at
-[`8f2ebbfd4`](https://github.com/ima-jin/imajin-ai/tree/8f2ebbfd455857d3b6b09cc5b4919db78d2b69bd).
+[`f6b412408`](https://github.com/ima-jin/imajin-ai/tree/f6b412408ee5baf5b73f671111ba00f2568bc886).
 Descriptions use manifests, or checked current exports when absent. Anonymous
-registry `latest` checks on 2026-10-26 UTC: **12 published, 18
-workspace-only**. Registry links show live metadata; versions are a checked snapshot.
+registry `latest` checks on 2026-10-29 UTC: **12 published, 18
+workspace-only**. Versions are a checked snapshot, not a production inventory.
 Tracking: [#1982](https://github.com/ima-jin/imajin-ai/issues/1982),
 [#1581](https://github.com/ima-jin/imajin-ai/issues/1581),
 [#1011](https://github.com/ima-jin/imajin-ai/issues/1011),
@@ -123,30 +124,30 @@ Tracking: [#1982](https://github.com/ima-jin/imajin-ai/issues/1982),
 
 | Workspace package | What it provides | Publish status |
 |---|---|---|
-| [`@imajin/auth`](packages/auth/package.json) | Authentication, scoped authorization, DID helpers, signing and verification | [`@ima-jin/auth@0.8.27`](https://registry.npmjs.org/@ima-jin/auth/latest) |
-| [`@imajin/auth-client`](packages/auth-client/package.json) | "Sign in with Imajin" SDK for federated apps — JWT session management and ready-made Next.js route handlers | [`@ima-jin/auth-client@0.8.27`](https://registry.npmjs.org/@ima-jin/auth-client/latest) |
+| [`@imajin/auth`](packages/auth/package.json) | Authentication, scoped authorization, DID helpers, signing and verification | [`@ima-jin/auth@0.8.28`](https://registry.npmjs.org/@ima-jin/auth/latest) |
+| [`@imajin/auth-client`](packages/auth-client/package.json) | "Sign in with Imajin" SDK for federated apps — JWT session management and ready-made Next.js route handlers | [`@ima-jin/auth-client@0.8.28`](https://registry.npmjs.org/@ima-jin/auth-client/latest) |
 | [`@imajin/bus`](packages/bus/package.json) | Event publishing, consent brokering and ordered reactor chains | Workspace-only; npm 404 |
 | [`@imajin/chat`](packages/chat/package.json) | Chat components, message rendering and real-time hooks | Workspace-only; npm 404 |
-| [`@imajin/cid`](packages/cid/package.json) | Deterministic CIDv1 (dag-cbor + SHA-256) helpers shared across Imajin services | [`@ima-jin/cid@0.8.27`](https://registry.npmjs.org/@ima-jin/cid/latest) |
-| [`@imajin/config`](packages/config/package.json) | Shared configuration for Imajin services — CORS, service routing, session config, handle validation, and route helpers | [`@ima-jin/config@0.8.27`](https://registry.npmjs.org/@ima-jin/config/latest) |
-| [`@imajin/db`](packages/db/package.json) | Drizzle/postgres database handle shared across Imajin services | [`@ima-jin/db@0.8.27`](https://registry.npmjs.org/@ima-jin/db/latest) |
+| [`@imajin/cid`](packages/cid/package.json) | Deterministic CIDv1 (dag-cbor + SHA-256) helpers shared across Imajin services | [`@ima-jin/cid@0.8.28`](https://registry.npmjs.org/@ima-jin/cid/latest) |
+| [`@imajin/config`](packages/config/package.json) | Shared configuration for Imajin services — CORS, service routing, session config, handle validation, and route helpers | [`@ima-jin/config@0.8.28`](https://registry.npmjs.org/@ima-jin/config/latest) |
+| [`@imajin/db`](packages/db/package.json) | Drizzle/postgres database handle shared across Imajin services | [`@ima-jin/db@0.8.28`](https://registry.npmjs.org/@ima-jin/db/latest) |
 | [`@imajin/dfos`](packages/dfos/package.json) | DFOS identity-chain verification and content publishing | Workspace-only; npm 404 |
 | [`@imajin/email`](packages/email/package.json) | Email delivery, templates and QR generation | Workspace-only; npm 404 |
 | [`@imajin/emit`](packages/emit/package.json) | Service-scoped operational event emission | Workspace-only; npm 404 |
 | [`eslint-config-imajin`](packages/eslint-config-imajin/package.json) | Shared ESLint flat config for imajin-ai monorepo | Workspace-only; npm 404 |
-| [`@imajin/fair`](packages/fair/package.json) | Shared .fair attribution types, validator, builder, and React components | [`@ima-jin/fair@0.8.27`](https://registry.npmjs.org/@ima-jin/fair/latest) |
+| [`@imajin/fair`](packages/fair/package.json) | Shared .fair attribution types, validator, builder, and React components | [`@ima-jin/fair@0.8.28`](https://registry.npmjs.org/@ima-jin/fair/latest) |
 | [`@imajin/input`](packages/input/package.json) | Composable text, voice, location and attachment inputs | Workspace-only; npm 404 |
 | [`@imajin/llm`](packages/llm/package.json) | AI SDK 5 provider factory, Zod 4 tool contracts and usage-cost calculation | Workspace-only; npm 404 |
-| [`@imajin/logger`](packages/logger/package.json) | Structured logging and request middleware | [`@ima-jin/logger@0.8.27`](https://registry.npmjs.org/@ima-jin/logger/latest) |
-| [`@imajin/media`](packages/media/package.json) | Media browser, asset display components, and resolveMediaRef/resolveAssetUrl helpers for Imajin apps | [`@ima-jin/media@0.8.27`](https://registry.npmjs.org/@ima-jin/media/latest) |
+| [`@imajin/logger`](packages/logger/package.json) | Structured logging and request middleware | [`@ima-jin/logger@0.8.28`](https://registry.npmjs.org/@ima-jin/logger/latest) |
+| [`@imajin/media`](packages/media/package.json) | Media browser, asset display components, and resolveMediaRef/resolveAssetUrl helpers for Imajin apps | [`@ima-jin/media@0.8.28`](https://registry.npmjs.org/@ima-jin/media/latest) |
 | [`@imajin/money`](packages/money/package.json) | Currency-safe Money primitive, signed FX snapshots, and ECB rate cache-through (#1950) | Workspace-only; npm 404 |
 | [`@imajin/notify`](packages/notify/package.json) | Credential-provider-backed notification and broadcast client | Workspace-only; npm 404 |
-| [`@imajin/onboard`](packages/onboard/package.json) | OnboardGate — React component that gates a page behind Imajin onboarding (handle/identity setup) | [`@ima-jin/onboard@0.8.27`](https://registry.npmjs.org/@ima-jin/onboard/latest) |
+| [`@imajin/onboard`](packages/onboard/package.json) | OnboardGate — React component that gates a page behind Imajin onboarding (handle/identity setup) | [`@ima-jin/onboard@0.8.28`](https://registry.npmjs.org/@ima-jin/onboard/latest) |
 | [`@imajin/provision-bootstrap`](packages/provision-bootstrap/package.json) | Build-time ESM compile of scripts/lib/provision-service-bootstrap.ts (+ the kernel sources it imports) for scripts/provision-service-bootstrap.mjs (#2485) | Workspace-only; npm 404 |
-| [`@imajin/tokens`](packages/tokens/package.json) | Imajin design tokens — DTCG format, built with Style Dictionary v4 | [`@ima-jin/tokens@0.8.27`](https://registry.npmjs.org/@ima-jin/tokens/latest) |
+| [`@imajin/tokens`](packages/tokens/package.json) | Imajin design tokens — DTCG format, built with Style Dictionary v4 | [`@ima-jin/tokens@0.8.28`](https://registry.npmjs.org/@ima-jin/tokens/latest) |
 | [`@imajin/trust-graph`](packages/trust-graph/package.json) | Pod membership traversal and trust-graph queries | Workspace-only; npm 404 |
-| [`@imajin/ui`](packages/ui/package.json) | Shared UI components for Imajin apps — NavBar, identity management, app launcher, theming, and common patterns | [`@ima-jin/ui@0.8.27`](https://registry.npmjs.org/@ima-jin/ui/latest) |
-| [`@imajin/vault-core`](packages/vault-core/package.json) | Vault entry models, integrity verification, sealing and delegation primitives for Imajin nodes | [`@ima-jin/vault-core@0.8.27`](https://registry.npmjs.org/@ima-jin/vault-core/latest) |
+| [`@imajin/ui`](packages/ui/package.json) | Shared UI components for Imajin apps — NavBar, identity management, app launcher, theming, and common patterns | [`@ima-jin/ui@0.8.28`](https://registry.npmjs.org/@ima-jin/ui/latest) |
+| [`@imajin/vault-core`](packages/vault-core/package.json) | Vault entry models, integrity verification, sealing and delegation primitives for Imajin nodes | [`@ima-jin/vault-core@0.8.28`](https://registry.npmjs.org/@ima-jin/vault-core/latest) |
 
 ### Plugin and harness surface
 
@@ -166,8 +167,8 @@ No npm installation is claimed for workspace-only packages.
 ## Run a node
 
 For the kernel only: Node.js 22+, pnpm 9, PostgreSQL 14+ and client tools.
-The [setup helper](scripts/setup-local.sh) installs dependencies, prepares local
-environment/migrations and provisions bootstrap identities, not extracted apps.
+The [setup helper](scripts/setup-local.sh) prepares local dependencies,
+environment/migrations and bootstrap identities, not extracted apps.
 
 ```bash
 git clone https://github.com/ima-jin/imajin-ai.git
@@ -179,19 +180,19 @@ pnpm --filter @imajin/kernel dev
 Open `http://localhost:3000/register` and save your key file. The helper disables
 the invite gate for local dev only; production remains policy-gated.
 [Development](docs/DEVELOPER.md) · [deployment](deploy/README.md) ·
-[environments](docs/ENVIRONMENTS.md). Production uses reviewed approval-gated
-workflows, not a manual `git pull`; apps follow their own runbooks.
+[environments](docs/ENVIRONMENTS.md). Use reviewed approval-gated workflows,
+not a manual `git pull`; apps follow their own runbooks.
 
 ## Project status
 
 <!-- stats:start -->
-Generated 2026-10-26 UTC from source commit
-[`8f2ebbfd4`](https://github.com/ima-jin/imajin-ai/commit/8f2ebbfd455857d3b6b09cc5b4919db78d2b69bd);
+Generated 2026-10-29 UTC from source commit
+[`f6b412408`](https://github.com/ima-jin/imajin-ai/commit/f6b412408ee5baf5b73f671111ba00f2568bc886);
 full-history snapshot, not live deployment metrics.
 
 | Repository metric | Computed value |
 |---|---|
-| Reachable commits (`git rev-list --count 8f2ebbfd4`) | 6076 |
+| Reachable commits (`git rev-list --count f6b412408`) | 6216 |
 | `apps/*/package.json` | 3 (includes kernel/internal services) |
 | `packages/*/package.json` | 30 |
 <!-- stats:end -->
@@ -204,7 +205,9 @@ not a guessed network total.
 
 - [Guide index](docs/guide/README.md) · [proof model](docs/guide/proof-model.md) ·
   [migrations](docs/MIGRATIONS.md) · [whitepaper](docs/mjn-whitepaper.md).
-- [RFC index](docs/canon/rfcs/INDEX.md) · [operator spec source](apps/kernel/app/jin/api/spec/route.ts) ·
+- [Canon master index](docs/canon/README.md) · [RFC index](docs/canon/rfcs/INDEX.md) ·
+  [proposed PQ-MLS ADR](docs/adr/3112-pq-mls.md). Canon is not a claim every design ships.
+- [Operator spec source](apps/kernel/app/jin/api/spec/route.ts) ·
   [complete route index](apps/kernel/public/llms.txt) ·
   [service contract reference](apps/kernel/public/llms-full.txt).
 - [Conformance #1287](https://github.com/ima-jin/imajin-ai/issues/1287) tracks the
@@ -213,8 +216,8 @@ not a guessed network total.
   that the proposed entity exists.
 - [Build log](apps/kernel/content/build-log.md) and [process log](apps/kernel/content/process-log.md)
   retain dated history. [#2028](https://github.com/ima-jin/imajin-ai/issues/2028)
-  holds the replay brief/run-logs; this delta checks all tracked text against
-  the post-v0.8.27 release diff and builds on #3108/#3110.
+  holds the replay brief/run-logs. This delta checks tracked text against
+  v0.8.27..v0.8.28, verifying rather than repeating #3129's early coverage.
 
 ## Contributing
 

@@ -112,8 +112,13 @@ refusal, and return no certificate. No separate rate-limit store or config exist
 
 GitHub job signing (#3095) adds a verified external identity, not a new node-key
 role: fixed-issuer RS256 OIDC is checked before the existing CA/grant transaction.
-The signed issuance binds repository, environment, workflow ref, run ID and
-attempt. Grants authorize repository + environment, not workflow filenames.
+The signed issuance binds repository, immutable repository/owner IDs, environment,
+workflow ref, run ID and attempt. GitHub grants require `repositoryId` and
+`repositoryOwnerId`; legacy grants missing either fail closed and need operator
+re-grant. Optional `allowedRefs` pins exact full `workflow_ref` strings, not globs.
+Issuer-separated jti fingerprints in retained signed history prevent issuance
+replay across grants/processes; policy refusal fingerprints deduplicate for all
+time. Unverified/expired/stale or malformed-jti tokens produce no refusal record.
 Reissue the grant for a replacement CA; do not export/reseal the old CA seed.
 The runner's per-job key is unrelated to `AUTH_PRIVATE_KEY` and never enters
 node-root rotation handoff. See [vault SSH deploy](../deploy/vault-ssh-deploy.md)

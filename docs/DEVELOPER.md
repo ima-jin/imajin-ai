@@ -190,6 +190,13 @@ See [ENVIRONMENTS.md](./ENVIRONMENTS.md) for the full port table. The convention
 
 ## Interactive Runs on /jin (#2404)
 
+For the v0.8.28 brief ledger, Decisions lane, publisher-attributed horizon,
+connector setup/removal/upstream calls and billed-key setup, start with the
+[kernel-owned release delta](../apps/kernel/README.md#release-delta-for-v0828)
+and its served-spec pointers. The [auth-client README](../packages/auth-client/README.md)
+owns app-local login/state/code-exchange callbacks and bounded boot retry;
+standalone adoption is separate from a kernel deploy.
+
 The Runs lane uses the existing principal-scoped loop registry, not a harness
 API. Threads are a lineage tree; Blocked-on-you combines blocked loops and the
 same pending approval cards shown in the operator Inbox. Opening a thread shows
@@ -281,6 +288,13 @@ tail and past are projection zones, not UI deductions. The depth counter is
 run pages also includes their horizons. Past retains open release/deployment
 conditions until the signed projection actually exits the step. An absent
 OUTCOME is never synthesized from intention or thread summary (#2931).
+
+Step rows show the earliest verified declaring publisher. Updates and work
+lifecycle projections accept only that publisher or the lease holder at the
+fact's event time; signed unauthorized facts remain in history without changing
+the projection. MCP `cycle_status` and `cycle_run` return the caller's summarized
+horizon and optional below-depth deficit; `cycle_run` snapshots before phase
+execution. Read the [rail contract](loops-rail-contract.md), not a harness store.
 
 **Sign & claim** sends a `session.send` request through the same full-body
 operator countersignature as the composer. It requests the named step's lease
@@ -552,6 +566,12 @@ release header: UI `public` is header `silent`, plus `on-consent` and `never`.
 The signature binds both values and policy through the document's SHA-256
 integrity hash. It is node-witnessed on behalf of the authenticated owner,
 not proof that the owner signed with a device-held DID key.
+
+The newest active record is selected deterministically by `createdAt DESC, id DESC`.
+Signature validation requires `intent.purpose === 'legal-entity'` as well as
+the owner/asset/hash binding. Settings and shared media content updates serialize
+on the same per-DID advisory lock, then re-read and re-authorize; no duplicate
+record or stale generic-media path can bypass that authority (#3149).
 
 Use `getLegalEntity(did, viewerDid)` for consumer reads. Missing, revoked,
 malformed or unverifiable sources return `null`; unreleased fields are absent,

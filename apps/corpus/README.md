@@ -108,3 +108,15 @@ The caller's corpus grant is checked before credential lookup. Stored connector
 refs are read from the resolved owner's status partition, and the forwarded
 `X-Corpus-Credential-Ref` names only that owner's slot. A missing or revoked group
 connector never falls back to the caller's personal connector.
+
+### Removed connector slots (v0.8.28)
+
+Removing a non-primary GitHub slot retains its removed registry row, signed
+history and the source's exact `github:<slot>` binding. `/auth/corpus` shows
+**Connection removed** with last-success metadata; sync returns 410 without a
+provider call or fallback. Re-load the source to choose a replacement explicitly.
+Removing the selected slot never silently selects primary. Primary removal is
+blocked (409); use Disconnect. The owner/admin confirmation lists source
+dependencies for that owner and slot; unavailable dependency metadata blocks
+confirmation. Delegated removal requires the owner to re-issue directly.
+See [#3157](https://github.com/ima-jin/imajin-ai/pull/3157) and `/connections/api/spec`.

@@ -3,6 +3,27 @@
 Repo-only investigation. No server access was used or attempted — every claim below is either a
 citation to a file in this repo or explicitly marked as unverifiable from the repo alone.
 
+## Release delta — v0.8.28 source, 2026-10-29
+
+Apply pending `0222`–`0227` through the normal kernel migration runner; the
+[baseline cut is unchanged](../../migrations/BASELINE.md#v0828-post-cut-additions-2026-10-29-source-check).
+No ledger normalization or production migration is performed by this docs sweep.
+New sign-in callback handlers and bounded bootstrap retry require separately
+reviewed standalone SDK adoption, not just a kernel deploy.
+
+The [SSH deploy runbook](../deploy/vault-ssh-deploy.md) now requires immutable
+repository/owner IDs on GitHub grants (legacy grants fail closed until re-granted),
+optional exact workflow refs, and durable OIDC replay protection. The operator
+must provision the dedicated no-swap label and fail-closed startup orphan sweep.
+The credential-free dry run does not prove that live runner setup.
+
+Billing admin-key sealing plus explicit `:billing` consent is an operator action,
+separate from inference. Gateway loop registration still needs an exact-principal
+`loops:publish` grant; reduced warning volume is not successful authorization.
+Real-account connector checks, live session outcomes and the Warp incurred
+warning-free observation window remain post-deploy checks, not evidence supplied
+by source tests. See the [release delta](../../apps/kernel/README.md#release-delta-for-v0828).
+
 ## Release delta — v0.8.27 source, 2026-10-25
 
 The historical investigations/decisions below retain their dates. New reusable

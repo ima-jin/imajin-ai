@@ -1,6 +1,6 @@
 # Imajin — You compose. Imajin orchestrates. Signed. Legible.
 
-Generated 2026-10-26 UTC from merged working tree based on source 6e4b1d28aa1b5e7888a5a827f407aa54e82974ce, release comparison v0.8.27..6e4b1d28a.
+Generated 2026-10-29 UTC from source f6b412408ee5baf5b73f671111ba00f2568bc886, release comparison v0.8.27..v0.8.28; docs upkeep for v0.9.0.
 This is a source inventory, not deployment evidence or a permission grant.
 
 Imajin is Agentic Relation Management. The kernel serves six primitives:
@@ -19,6 +19,37 @@ the generated package table in README.md links checked public registry metadata.
 License: Imajin Network License (INL) v1.0, source-available, not MIT.
 
 ## Integration and safety
+- Completed v0.8.28 release delta: apps/kernel/README.md#release-delta-for-v0828.
+  /jin session archive/reset require explicit confirmation and full signed wishes;
+  transport acceptance is not execution. Label/archive wait for signed outcomes;
+  reset currently reports the plugin's missing_scope. Kernel code does not acquire
+  transcript/session-store authority. The harness-boundary CI guard is a static
+  ratchet with exact legacy exceptions, not complete detection.
+- Horizon steps expose the earliest verified declaring publisher. Updates/work
+  lifecycle use publisher or lease-holder authority at the fact's event time,
+  preserving unauthorized signed facts without changing the projection.
+- Connector slot Remove uses the existing provider disconnect endpoint with
+  slot=<non-primary>&remove=true. Primary removal is 409 (use Disconnect).
+  Owner/admin service-scoped direct authority is required; delegates must re-issue
+  as owner. Rows and signed history remain; wrapped custody keys are erased.
+  Removed slots cannot be reused. Bound corpus sync returns 410 without fallback.
+  GitHub setup explains device enablement, exact callback and separate org approval.
+- Legal-entity reads select createdAt DESC, id DESC and verify purpose legal-entity
+  as well as owner/asset/hash. Shared media writes re-authorize under the per-DID lock.
+- Provider-billed reconciliation: use /auth/connectors/anthropic or
+  /auth/connectors/openai, Billing (admin) key. GET/POST/DELETE
+  /{anthropic|openai}/api/billing-key use authenticated kernel-root routes.
+  GET returns only presence/pending booleans; POST seals/rotates {token};
+  DELETE revokes billing custody only, retaining signed history. Explicit :billing
+  consent is still required; inference access and pending custody do not suffice.
+  /jin Spend shows missing billed connections even without recent spend/caps.
+  The next usage-billed-ingest cron can populate source=api reconciliation rows.
+- /jin Provision app exposes visibility, approved domain and site owner before
+  countersigning. Owner choices use current owner/admin memberships; the API stays
+  authoritative and claim reissues cannot transfer ownership.
+- docs/canon/README.md is the master canon index; RFCs live in docs/canon/rfcs/.
+  docs/adr/3112-pq-mls.md records a proposed OpenMLS/libcrux wasm choice and isolated
+  spike, not production chat encryption. Historical logs retain their original dates.
 - App-hosted upstreams: PUT /connections/api/upstreams declares {upstreams:[{id,
   origin,credentialHeader,credentialPrefix,paths:[{path,methods}]}]} on the caller's
   existing registry app. App-service token + connectors:upstream:read + live operator
@@ -73,6 +104,10 @@ License: Imajin Network License (INL) v1.0, source-available, not MIT.
   authenticated subject, live authorization, callback and state. The app signs
   its exchange at POST /auth/api/apps/token and uses only the returned subjectDid
   and attestationId for its session. See /auth/api/spec and auth-client README.
+  Missing/malformed registered callbacks return 400 invalid_app_callback before
+  consent effects. Existing-keystore loadAppSigningKey retries transient 5xx/network
+  failures within 120 seconds by default, then exits 1; 4xx fail fast and one-time
+  claims remain single-shot. Standalone dependency adoption/restarts are separate.
 - Internal GET /api/cron/app-authorization-code-cleanup requires the vault cron
   bearer, not a session or app token. Every ten minutes it deletes only
   auth.app_authorization_codes past one hour from consumption (or expiry when
@@ -194,6 +229,7 @@ are omitted from the implemented reference and reported in the #2028 run-log.
   Failure is visible and independent of npm publishing. Production review is
   unchanged. See docs/npm-publishing.md; #3120.
 
+
 ## Service spec catalogue
 
 - /api/spec — imajin www — apps/kernel/app/api/spec/route.ts
@@ -215,7 +251,7 @@ are omitted from the implemented reference and reported in the #2028 run-log.
 - /vault/api/spec — imajin vault — apps/kernel/api-spec/vault.yaml
 - corpus:/spec — imajin corpus — apps/corpus/api-spec/openapi.yaml
 
-## Complete App Router inventory (672 handlers)
+## Complete App Router inventory (674 handlers; 1204 explicitly exported methods)
 
 - GET /.well-known/agent.json — apps/kernel/app/.well-known/agent.json/route.ts
 - GET, OPTIONS /.well-known/agent/{id} — apps/kernel/app/.well-known/agent/[id]/route.ts
@@ -260,10 +296,10 @@ are omitted from the implemented reference and reported in the #2028 run-log.
 - POST /api/admin/registry/apps/{appId}/rotate — apps/kernel/app/api/admin/registry/apps/[appId]/rotate/route.ts
 - GET /api/admin/services/health — apps/kernel/app/api/admin/services/health/route.ts
 - GET /api/admin/subscribers — apps/kernel/app/api/admin/subscribers/route.ts
-- DELETE /api/admin/subscribers/{id} — apps/kernel/app/api/admin/subscribers/[id]/route.ts
-- POST /api/admin/subscribers/{id}/resend-verify — apps/kernel/app/api/admin/subscribers/[id]/resend-verify/route.ts
 - GET /api/admin/subscribers/export — apps/kernel/app/api/admin/subscribers/export/route.ts
 - GET, POST /api/admin/subscribers/lists — apps/kernel/app/api/admin/subscribers/lists/route.ts
+- DELETE /api/admin/subscribers/{id} — apps/kernel/app/api/admin/subscribers/[id]/route.ts
+- POST /api/admin/subscribers/{id}/resend-verify — apps/kernel/app/api/admin/subscribers/[id]/resend-verify/route.ts
 - GET /api/admin/telemetry — apps/kernel/app/api/admin/telemetry/route.ts
 - GET /api/admin/telemetry/errors — apps/kernel/app/api/admin/telemetry/errors/route.ts
 - GET /api/admin/telemetry/slow — apps/kernel/app/api/admin/telemetry/slow/route.ts
@@ -272,8 +308,8 @@ are omitted from the implemented reference and reported in the #2028 run-log.
 - POST /api/admin/users/{did}/upgrade-tier — apps/kernel/app/api/admin/users/[did]/upgrade-tier/route.ts
 - GET /api/admin/verify — apps/kernel/app/api/admin/verify/route.ts
 - GET /api/admin/withdrawals — apps/kernel/app/api/admin/withdrawals/route.ts
-- POST /api/admin/withdrawals/{id}/complete — apps/kernel/app/api/admin/withdrawals/[id]/complete/route.ts
 - POST /api/admin/withdrawals/gating — apps/kernel/app/api/admin/withdrawals/gating/route.ts
+- POST /api/admin/withdrawals/{id}/complete — apps/kernel/app/api/admin/withdrawals/[id]/complete/route.ts
 - OPTIONS, POST /api/apps/claim — apps/kernel/app/api/apps/claim/route.ts
 - OPTIONS, POST /api/apps/featured — apps/kernel/app/api/apps/featured/route.ts
 - GET, OPTIONS, POST /api/apps/provision — apps/kernel/app/api/apps/provision/route.ts
@@ -285,8 +321,8 @@ are omitted from the implemented reference and reported in the #2028 run-log.
 - POST /api/auth/revoke — apps/kernel/app/api/auth/revoke/route.ts
 - GET /api/broker/audit — apps/kernel/app/api/broker/audit/route.ts
 - GET, POST /api/broker/consent — apps/kernel/app/api/broker/consent/route.ts
-- DELETE /api/broker/consent/{id} — apps/kernel/app/api/broker/consent/[id]/route.ts
 - POST /api/broker/consent/revoke-all — apps/kernel/app/api/broker/consent/revoke-all/route.ts
+- DELETE /api/broker/consent/{id} — apps/kernel/app/api/broker/consent/[id]/route.ts
 - GET /api/broker/contacts — apps/kernel/app/api/broker/contacts/route.ts
 - GET /api/broker/contacts/{did}/disclosures — apps/kernel/app/api/broker/contacts/[did]/disclosures/route.ts
 - PUT /api/broker/contacts/{did}/metadata — apps/kernel/app/api/broker/contacts/[did]/metadata/route.ts
@@ -294,9 +330,9 @@ are omitted from the implemented reference and reported in the #2028 run-log.
 - GET /api/broker/preview — apps/kernel/app/api/broker/preview/route.ts
 - POST /api/broker/request — apps/kernel/app/api/broker/request/route.ts
 - GET, POST /api/bugs — apps/kernel/app/api/bugs/route.ts
+- GET /api/bugs/admin — apps/kernel/app/api/bugs/admin/route.ts
 - PATCH /api/bugs/{id} — apps/kernel/app/api/bugs/[id]/route.ts
 - POST /api/bugs/{id}/import — apps/kernel/app/api/bugs/[id]/import/route.ts
-- GET /api/bugs/admin — apps/kernel/app/api/bugs/admin/route.ts
 - POST /api/client-errors — apps/kernel/app/api/client-errors/route.ts
 - GET /api/cron/app-authorization-code-cleanup — apps/kernel/app/api/cron/app-authorization-code-cleanup/route.ts
 - GET /api/cron/attestation-cleanup — apps/kernel/app/api/cron/attestation-cleanup/route.ts
@@ -321,15 +357,15 @@ are omitted from the implemented reference and reported in the #2028 run-log.
 - OPTIONS, POST /api/inference/confirm/{sessionId} — apps/kernel/app/api/inference/confirm/[sessionId]/route.ts
 - GET, OPTIONS /api/inference/sessions — apps/kernel/app/api/inference/sessions/route.ts
 - GET, OPTIONS, POST /api/loops — apps/kernel/app/api/loops/route.ts
-- GET, OPTIONS /api/loops/{loopId} — apps/kernel/app/api/loops/[loopId]/route.ts
-- GET, OPTIONS /api/loops/{loopId}/artifacts/{artifactId} — apps/kernel/app/api/loops/[loopId]/artifacts/[artifactId]/route.ts
 - OPTIONS, POST /api/loops/receipts — apps/kernel/app/api/loops/receipts/route.ts
 - GET, OPTIONS /api/loops/spend — apps/kernel/app/api/loops/spend/route.ts
 - GET, OPTIONS /api/loops/surfaces — apps/kernel/app/api/loops/surfaces/route.ts
+- GET, OPTIONS /api/loops/{loopId} — apps/kernel/app/api/loops/[loopId]/route.ts
+- GET, OPTIONS /api/loops/{loopId}/artifacts/{artifactId} — apps/kernel/app/api/loops/[loopId]/artifacts/[artifactId]/route.ts
 - GET, POST /api/registry/apps — apps/kernel/app/api/registry/apps/route.ts
+- GET /api/registry/apps/by-template — apps/kernel/app/api/registry/apps/by-template/route.ts
 - DELETE, GET, PATCH /api/registry/apps/{appId} — apps/kernel/app/api/registry/apps/[appId]/route.ts
 - PATCH /api/registry/apps/{appId}/template — apps/kernel/app/api/registry/apps/[appId]/template/route.ts
-- GET /api/registry/apps/by-template — apps/kernel/app/api/registry/apps/by-template/route.ts
 - GET /api/spec — apps/kernel/app/api/spec/route.ts
 - POST /api/subscribe — apps/kernel/app/api/subscribe/route.ts
 - GET, PATCH /api/subscribe/status — apps/kernel/app/api/subscribe/status/route.ts
@@ -364,29 +400,27 @@ are omitted from the implemented reference and reported in the #2028 run-log.
 - GET /api/vault/ssh-ca/trusted-keys — apps/kernel/app/api/vault/ssh-ca/trusted-keys/route.ts
 - POST /api/vault/upgrade-custody — apps/kernel/app/api/vault/upgrade-custody/route.ts
 - GET /auth/.well-known/kernel-signing-key — apps/kernel/app/auth/.well-known/kernel-signing-key/route.ts
-- GET, OPTIONS /auth/api/access/{did} — apps/kernel/app/auth/api/access/[did]/route.ts
 - GET, OPTIONS /auth/api/access/bearers — apps/kernel/app/auth/api/access/bearers/route.ts
 - OPTIONS, POST /auth/api/access/bearers/{id}/revoke — apps/kernel/app/auth/api/access/bearers/[id]/revoke/route.ts
 - OPTIONS, POST /auth/api/access/knock — apps/kernel/app/auth/api/access/knock/route.ts
+- GET, OPTIONS /auth/api/access/{did} — apps/kernel/app/auth/api/access/[did]/route.ts
 - GET, OPTIONS /auth/api/account/methods — apps/kernel/app/auth/api/account/methods/route.ts
 - GET, POST /auth/api/agents — apps/kernel/app/auth/api/agents/route.ts
-- DELETE /auth/api/agents/{did} — apps/kernel/app/auth/api/agents/[did]/route.ts
-- POST /auth/api/agents/{did}/reach — apps/kernel/app/auth/api/agents/[did]/reach/route.ts
-- POST /auth/api/agents/{did}/reach/{reachId}/status — apps/kernel/app/auth/api/agents/[did]/reach/[reachId]/status/route.ts
 - GET, POST /auth/api/agents/provision — apps/kernel/app/auth/api/agents/provision/route.ts
 - DELETE, GET /auth/api/agents/provision/{id} — apps/kernel/app/auth/api/agents/provision/[id]/route.ts
 - GET /auth/api/agents/provision/{id}/bundle — apps/kernel/app/auth/api/agents/provision/[id]/bundle/route.ts
 - POST /auth/api/agents/provision/{id}/callback — apps/kernel/app/auth/api/agents/provision/[id]/callback/route.ts
+- DELETE /auth/api/agents/{did} — apps/kernel/app/auth/api/agents/[did]/route.ts
+- POST /auth/api/agents/{did}/reach — apps/kernel/app/auth/api/agents/[did]/reach/route.ts
+- POST /auth/api/agents/{did}/reach/{reachId}/status — apps/kernel/app/auth/api/agents/[did]/reach/[reachId]/status/route.ts
 - GET, OPTIONS /auth/api/apps — apps/kernel/app/auth/api/apps/route.ts
-- DELETE, GET, PUT /auth/api/apps/{slug} — apps/kernel/app/auth/api/apps/[slug]/route.ts
 - GET /auth/api/apps/directory — apps/kernel/app/auth/api/apps/directory/route.ts
 - OPTIONS, POST /auth/api/apps/token — apps/kernel/app/auth/api/apps/token/route.ts
 - OPTIONS, POST /auth/api/apps/token/service — apps/kernel/app/auth/api/apps/token/service/route.ts
 - OPTIONS, POST /auth/api/apps/token/verify — apps/kernel/app/auth/api/apps/token/verify/route.ts
 - POST /auth/api/apps/validate — apps/kernel/app/auth/api/apps/validate/route.ts
+- DELETE, GET, PUT /auth/api/apps/{slug} — apps/kernel/app/auth/api/apps/[slug]/route.ts
 - GET, OPTIONS, POST /auth/api/attestations — apps/kernel/app/auth/api/attestations/route.ts
-- GET, OPTIONS /auth/api/attestations/{did} — apps/kernel/app/auth/api/attestations/[did]/route.ts
-- OPTIONS, POST /auth/api/attestations/{did}/revoke — apps/kernel/app/auth/api/attestations/[did]/revoke/route.ts
 - POST /auth/api/attestations/chain-emit — apps/kernel/app/auth/api/attestations/chain-emit/route.ts
 - OPTIONS, POST /auth/api/attestations/countersign — apps/kernel/app/auth/api/attestations/countersign/route.ts
 - OPTIONS, POST /auth/api/attestations/decline — apps/kernel/app/auth/api/attestations/decline/route.ts
@@ -395,14 +429,16 @@ are omitted from the implemented reference and reported in the #2028 run-log.
 - OPTIONS, POST /auth/api/attestations/turn-evidence — apps/kernel/app/auth/api/attestations/turn-evidence/route.ts
 - GET, OPTIONS, POST /auth/api/attestations/types — apps/kernel/app/auth/api/attestations/types/route.ts
 - GET, OPTIONS /auth/api/attestations/usage — apps/kernel/app/auth/api/attestations/usage/route.ts
+- GET, OPTIONS /auth/api/attestations/{did} — apps/kernel/app/auth/api/attestations/[did]/route.ts
+- OPTIONS, POST /auth/api/attestations/{did}/revoke — apps/kernel/app/auth/api/attestations/[did]/revoke/route.ts
 - POST /auth/api/authenticate — apps/kernel/app/auth/api/authenticate/route.ts
 - DELETE, GET, OPTIONS, PUT /auth/api/bank-details — apps/kernel/app/auth/api/bank-details/route.ts
 - POST /auth/api/challenge — apps/kernel/app/auth/api/challenge/route.ts
 - GET, POST /auth/api/channel-link — apps/kernel/app/auth/api/channel-link/route.ts
-- DELETE /auth/api/channel-link/{id} — apps/kernel/app/auth/api/channel-link/[id]/route.ts
 - POST /auth/api/channel-link/approve — apps/kernel/app/auth/api/channel-link/approve/route.ts
 - POST /auth/api/channel-link/approve-redirect — apps/kernel/app/auth/api/channel-link/approve-redirect/route.ts
 - GET /auth/api/channel-link/resolve — apps/kernel/app/auth/api/channel-link/resolve/route.ts
+- DELETE /auth/api/channel-link/{id} — apps/kernel/app/auth/api/channel-link/[id]/route.ts
 - POST /auth/api/credentials/resolve — apps/kernel/app/auth/api/credentials/resolve/route.ts
 - GET, OPTIONS /auth/api/devices — apps/kernel/app/auth/api/devices/route.ts
 - DELETE, OPTIONS /auth/api/devices/{id} — apps/kernel/app/auth/api/devices/[id]/route.ts
@@ -428,9 +464,11 @@ are omitted from the implemented reference and reported in the #2028 run-log.
 - OPTIONS, POST /auth/api/groups/{groupDid}/transfer-owner/accept — apps/kernel/app/auth/api/groups/[groupDid]/transfer-owner/accept/route.ts
 - GET /auth/api/health — apps/kernel/app/auth/api/health/route.ts
 - GET, POST /auth/api/identities/{did}/domains — apps/kernel/app/auth/api/identities/[did]/domains/route.ts
+- GET /auth/api/identities/{did}/domains/public — apps/kernel/app/auth/api/identities/[did]/domains/public/route.ts
 - DELETE /auth/api/identities/{did}/domains/{domain} — apps/kernel/app/auth/api/identities/[did]/domains/[domain]/route.ts
 - POST /auth/api/identities/{did}/domains/{domain}/verify — apps/kernel/app/auth/api/identities/[did]/domains/[domain]/verify/route.ts
-- GET /auth/api/identities/{did}/domains/public — apps/kernel/app/auth/api/identities/[did]/domains/public/route.ts
+- POST /auth/api/identity/present-chain — apps/kernel/app/auth/api/identity/present-chain/route.ts
+- POST /auth/api/identity/verify-chain — apps/kernel/app/auth/api/identity/verify-chain/route.ts
 - GET, OPTIONS /auth/api/identity/{did} — apps/kernel/app/auth/api/identity/[did]/route.ts
 - GET, OPTIONS /auth/api/identity/{did}/agents — apps/kernel/app/auth/api/identity/[did]/agents/route.ts
 - GET, OPTIONS /auth/api/identity/{did}/chain — apps/kernel/app/auth/api/identity/[did]/chain/route.ts
@@ -441,8 +479,6 @@ are omitted from the implemented reference and reported in the #2028 run-log.
 - OPTIONS, POST /auth/api/identity/{did}/rotate — apps/kernel/app/auth/api/identity/[did]/rotate/route.ts
 - POST /auth/api/identity/{did}/sign — apps/kernel/app/auth/api/identity/[did]/sign/route.ts
 - GET, OPTIONS /auth/api/identity/{did}/verify — apps/kernel/app/auth/api/identity/[did]/verify/route.ts
-- POST /auth/api/identity/present-chain — apps/kernel/app/auth/api/identity/present-chain/route.ts
-- POST /auth/api/identity/verify-chain — apps/kernel/app/auth/api/identity/verify-chain/route.ts
 - POST /auth/api/internal/corpus/owner — apps/kernel/app/auth/api/internal/corpus/owner/route.ts
 - POST /auth/api/internal/grants/introspect — apps/kernel/app/auth/api/internal/grants/introspect/route.ts
 - POST /auth/api/internal/verify-delegation — apps/kernel/app/auth/api/internal/verify-delegation/route.ts
@@ -450,9 +486,9 @@ are omitted from the implemented reference and reported in the #2028 run-log.
 - OPTIONS, POST /auth/api/keys/store — apps/kernel/app/auth/api/keys/store/route.ts
 - DELETE, OPTIONS /auth/api/keys/stored — apps/kernel/app/auth/api/keys/stored/route.ts
 - POST /auth/api/knock — apps/kernel/app/auth/api/knock/route.ts
+- GET /auth/api/knock/pending — apps/kernel/app/auth/api/knock/pending/route.ts
 - POST /auth/api/knock/{knockId}/accept — apps/kernel/app/auth/api/knock/[knockId]/accept/route.ts
 - POST /auth/api/knock/{knockId}/decline — apps/kernel/app/auth/api/knock/[knockId]/decline/route.ts
-- GET /auth/api/knock/pending — apps/kernel/app/auth/api/knock/pending/route.ts
 - DELETE, GET, PUT /auth/api/legal-entity — apps/kernel/app/auth/api/legal-entity/route.ts
 - POST /auth/api/login/challenge — apps/kernel/app/auth/api/login/challenge/route.ts
 - OPTIONS, POST /auth/api/login/mfa — apps/kernel/app/auth/api/login/mfa/route.ts
@@ -502,8 +538,8 @@ are omitted from the implemented reference and reported in the #2028 run-log.
 - GET /auth/corpus/api/status — apps/kernel/app/auth/corpus/api/status/route.ts
 - POST /auth/corpus/api/sync — apps/kernel/app/auth/corpus/api/sync/route.ts
 - GET, POST /calendar/api/availability — apps/kernel/app/calendar/api/availability/route.ts
-- DELETE /calendar/api/availability/{id} — apps/kernel/app/calendar/api/availability/[id]/route.ts
 - GET, PATCH /calendar/api/availability/matches — apps/kernel/app/calendar/api/availability/matches/route.ts
+- DELETE /calendar/api/availability/{id} — apps/kernel/app/calendar/api/availability/[id]/route.ts
 - GET /calendar/api/d/{did}/availability — apps/kernel/app/calendar/api/d/[did]/availability/route.ts
 - GET /calendar/api/d/{did}/entries — apps/kernel/app/calendar/api/d/[did]/entries/route.ts
 - GET, POST /calendar/api/entries — apps/kernel/app/calendar/api/entries/route.ts
@@ -513,18 +549,18 @@ are omitted from the implemented reference and reported in the #2028 run-log.
 - GET /chat/api/capabilities — apps/kernel/app/chat/api/capabilities/route.ts
 - GET, POST /chat/api/conversations — apps/kernel/app/chat/api/conversations/route.ts
 - GET, PATCH /chat/api/conversations-v2 — apps/kernel/app/chat/api/conversations-v2/route.ts
+- GET, OPTIONS /chat/api/conversations/unread — apps/kernel/app/chat/api/conversations/unread/route.ts
 - DELETE, GET, PATCH /chat/api/conversations/{id} — apps/kernel/app/chat/api/conversations/[id]/route.ts
 - GET, POST /chat/api/conversations/{id}/messages — apps/kernel/app/chat/api/conversations/[id]/messages/route.ts
 - DELETE, PUT /chat/api/conversations/{id}/messages/{msgId} — apps/kernel/app/chat/api/conversations/[id]/messages/[msgId]/route.ts
 - GET, POST /chat/api/conversations/{id}/participants — apps/kernel/app/chat/api/conversations/[id]/participants/route.ts
 - POST /chat/api/conversations/{id}/read — apps/kernel/app/chat/api/conversations/[id]/read/route.ts
 - POST /chat/api/conversations/{id}/upload — apps/kernel/app/chat/api/conversations/[id]/upload/route.ts
-- GET, OPTIONS /chat/api/conversations/unread — apps/kernel/app/chat/api/conversations/unread/route.ts
 - OPTIONS, PUT /chat/api/d/{did} — apps/kernel/app/chat/api/d/[did]/route.ts
 - OPTIONS, PATCH /chat/api/d/{did}/context — apps/kernel/app/chat/api/d/[did]/context/route.ts
 - GET, OPTIONS, POST /chat/api/d/{did}/members — apps/kernel/app/chat/api/d/[did]/members/route.ts
-- DELETE, OPTIONS /chat/api/d/{did}/members/{memberDid} — apps/kernel/app/chat/api/d/[did]/members/[memberDid]/route.ts
 - OPTIONS, POST /chat/api/d/{did}/members/leave — apps/kernel/app/chat/api/d/[did]/members/leave/route.ts
+- DELETE, OPTIONS /chat/api/d/{did}/members/{memberDid} — apps/kernel/app/chat/api/d/[did]/members/[memberDid]/route.ts
 - GET, OPTIONS, POST /chat/api/d/{did}/messages — apps/kernel/app/chat/api/d/[did]/messages/route.ts
 - DELETE, OPTIONS, PATCH /chat/api/d/{did}/messages/{msgId} — apps/kernel/app/chat/api/d/[did]/messages/[msgId]/route.ts
 - DELETE, OPTIONS, POST /chat/api/d/{did}/messages/{msgId}/reactions — apps/kernel/app/chat/api/d/[did]/messages/[msgId]/reactions/route.ts
@@ -537,8 +573,8 @@ are omitted from the implemented reference and reported in the #2028 run-log.
 - GET /chat/api/keys/{did} — apps/kernel/app/chat/api/keys/[did]/route.ts
 - GET /chat/api/lookup/{did} — apps/kernel/app/chat/api/lookup/[did]/route.ts
 - DELETE, GET, POST /chat/api/messages/{msgId}/reactions — apps/kernel/app/chat/api/messages/[msgId]/reactions/route.ts
-- GET /chat/api/participants/{did}/conversations — apps/kernel/app/chat/api/participants/[did]/conversations/route.ts
 - POST /chat/api/participants/migrate — apps/kernel/app/chat/api/participants/migrate/route.ts
+- GET /chat/api/participants/{did}/conversations — apps/kernel/app/chat/api/participants/[did]/conversations/route.ts
 - GET /chat/api/profile — apps/kernel/app/chat/api/profile/route.ts
 - GET /chat/api/session — apps/kernel/app/chat/api/session/route.ts
 - GET /chat/api/spec — apps/kernel/app/chat/api/spec/route.ts
@@ -562,21 +598,23 @@ are omitted from the implemented reference and reported in the #2028 run-log.
 - POST /connections/api/auth/logout — apps/kernel/app/connections/api/auth/logout/route.ts
 - GET /connections/api/auth/session — apps/kernel/app/connections/api/auth/session/route.ts
 - GET, OPTIONS /connections/api/connections — apps/kernel/app/connections/api/connections/route.ts
+- GET, OPTIONS /connections/api/connections/status/{did} — apps/kernel/app/connections/api/connections/status/[did]/route.ts
 - DELETE, OPTIONS, PATCH /connections/api/connections/{did} — apps/kernel/app/connections/api/connections/[did]/route.ts
 - DELETE, GET, PATCH /connections/api/connections/{did}/nickname — apps/kernel/app/connections/api/connections/[did]/nickname/route.ts
-- GET, OPTIONS /connections/api/connections/status/{did} — apps/kernel/app/connections/api/connections/status/[did]/route.ts
+- GET, OPTIONS /connections/api/connectors/status — apps/kernel/app/connections/api/connectors/status/route.ts
 - GET, OPTIONS, PATCH, POST /connections/api/connectors/{id}/connections — apps/kernel/app/connections/api/connectors/[id]/connections/route.ts
 - GET, OPTIONS /connections/api/connectors/{id}/spend — apps/kernel/app/connections/api/connectors/[id]/spend/route.ts
 - GET, OPTIONS /connections/api/connectors/{id}/telemetry — apps/kernel/app/connections/api/connectors/[id]/telemetry/route.ts
-- GET, OPTIONS /connections/api/connectors/status — apps/kernel/app/connections/api/connectors/status/route.ts
+- DELETE, GET, OPTIONS, POST /connections/api/external-mcp/postman — apps/kernel/app/connections/api/external-mcp/postman/route.ts
+- OPTIONS, POST /connections/api/external-mcp/postman/rpc — apps/kernel/app/connections/api/external-mcp/postman/rpc/route.ts
 - GET, OPTIONS, POST /connections/api/groups — apps/kernel/app/connections/api/groups/route.ts
 - DELETE, GET, PATCH /connections/api/groups/{id} — apps/kernel/app/connections/api/groups/[id]/route.ts
 - DELETE, PATCH, POST /connections/api/groups/{id}/members — apps/kernel/app/connections/api/groups/[id]/members/route.ts
 - GET /connections/api/health — apps/kernel/app/connections/api/health/route.ts
 - GET, OPTIONS, POST /connections/api/invites — apps/kernel/app/connections/api/invites/route.ts
+- GET /connections/api/invites/invited-by — apps/kernel/app/connections/api/invites/invited-by/route.ts
 - DELETE, GET, OPTIONS, PATCH /connections/api/invites/{code} — apps/kernel/app/connections/api/invites/[code]/route.ts
 - OPTIONS, POST /connections/api/invites/{code}/accept — apps/kernel/app/connections/api/invites/[code]/accept/route.ts
-- GET /connections/api/invites/invited-by — apps/kernel/app/connections/api/invites/invited-by/route.ts
 - OPTIONS, POST /connections/api/nicknames/resolve — apps/kernel/app/connections/api/nicknames/resolve/route.ts
 - GET, POST /connections/api/pods — apps/kernel/app/connections/api/pods/route.ts
 - DELETE, GET, PATCH /connections/api/pods/{id} — apps/kernel/app/connections/api/pods/[id]/route.ts
@@ -638,14 +676,14 @@ are omitted from the implemented reference and reported in the #2028 run-log.
 - GET, PUT /jin/api/orgs/{ownerDid}/mail-senders — apps/kernel/app/jin/api/orgs/[ownerDid]/mail-senders/route.ts
 - DELETE, GET, OPTIONS, POST /jin/api/push-subscriptions — apps/kernel/app/jin/api/push-subscriptions/route.ts
 - GET, OPTIONS /jin/api/reach — apps/kernel/app/jin/api/reach/route.ts
+- OPTIONS, POST /jin/api/reach/knocks/{requestId}/block — apps/kernel/app/jin/api/reach/knocks/[requestId]/block/route.ts
 - OPTIONS, POST /jin/api/reach/{reachId}/block — apps/kernel/app/jin/api/reach/[reachId]/block/route.ts
 - OPTIONS, POST /jin/api/reach/{reachId}/reply — apps/kernel/app/jin/api/reach/[reachId]/reply/route.ts
-- OPTIONS, POST /jin/api/reach/knocks/{requestId}/block — apps/kernel/app/jin/api/reach/knocks/[requestId]/block/route.ts
 - GET /jin/api/registered-apps — apps/kernel/app/jin/api/registered-apps/route.ts
 - GET, OPTIONS /jin/api/runs — apps/kernel/app/jin/api/runs/route.ts
+- GET, OPTIONS /jin/api/runs/horizon-status — apps/kernel/app/jin/api/runs/horizon-status/route.ts
 - GET, OPTIONS /jin/api/runs/{loopId} — apps/kernel/app/jin/api/runs/[loopId]/route.ts
 - OPTIONS, POST /jin/api/runs/{loopId}/commands — apps/kernel/app/jin/api/runs/[loopId]/commands/route.ts
-- GET, OPTIONS /jin/api/runs/horizon-status — apps/kernel/app/jin/api/runs/horizon-status/route.ts
 - GET /jin/api/spec — apps/kernel/app/jin/api/spec/route.ts
 - GET, OPTIONS /jin/api/spend — apps/kernel/app/jin/api/spend/route.ts
 - GET, OPTIONS /jin/api/spend/runs — apps/kernel/app/jin/api/spend/runs/route.ts
@@ -659,6 +697,7 @@ are omitted from the implemented reference and reported in the #2028 run-log.
 - OPTIONS, POST /mcp/api/disconnect — apps/kernel/app/mcp/api/disconnect/route.ts
 - GET, OPTIONS, POST /mcp/api/scope-manifest — apps/kernel/app/mcp/api/scope-manifest/route.ts
 - GET, OPTIONS, POST /media/api/assets — apps/kernel/app/media/api/assets/route.ts
+- OPTIONS, POST /media/api/assets/bundle — apps/kernel/app/media/api/assets/bundle/route.ts
 - DELETE, GET, PATCH /media/api/assets/{id} — apps/kernel/app/media/api/assets/[id]/route.ts
 - OPTIONS, PATCH /media/api/assets/{id}/access — apps/kernel/app/media/api/assets/[id]/access/route.ts
 - OPTIONS, PATCH /media/api/assets/{id}/article — apps/kernel/app/media/api/assets/[id]/article/route.ts
@@ -677,10 +716,9 @@ are omitted from the implemented reference and reported in the #2028 run-log.
 - POST /media/api/assets/{id}/transfer — apps/kernel/app/media/api/assets/[id]/transfer/route.ts
 - POST /media/api/assets/{id}/upgrade-fair — apps/kernel/app/media/api/assets/[id]/upgrade-fair/route.ts
 - GET /media/api/assets/{id}/verify — apps/kernel/app/media/api/assets/[id]/verify/route.ts
-- OPTIONS, POST /media/api/assets/bundle — apps/kernel/app/media/api/assets/bundle/route.ts
 - GET, POST /media/api/folders — apps/kernel/app/media/api/folders/route.ts
-- DELETE, PATCH /media/api/folders/{id} — apps/kernel/app/media/api/folders/[id]/route.ts
 - POST /media/api/folders/init — apps/kernel/app/media/api/folders/init/route.ts
+- DELETE, PATCH /media/api/folders/{id} — apps/kernel/app/media/api/folders/[id]/route.ts
 - GET /media/api/health — apps/kernel/app/media/api/health/route.ts
 - GET /media/api/lots/{correlationId}/fair — apps/kernel/app/media/api/lots/[correlationId]/fair/route.ts
 - GET /media/api/presence/{did} — apps/kernel/app/media/api/presence/[did]/route.ts
@@ -706,9 +744,9 @@ are omitted from the implemented reference and reported in the #2028 run-log.
 - POST /notify/api/internal/operator-approvals/state — apps/kernel/app/notify/api/internal/operator-approvals/state/route.ts
 - POST /notify/api/internal/release — apps/kernel/app/notify/api/internal/release/route.ts
 - GET, OPTIONS /notify/api/notifications — apps/kernel/app/notify/api/notifications/route.ts
-- OPTIONS, POST /notify/api/notifications/{id}/read — apps/kernel/app/notify/api/notifications/[id]/read/route.ts
 - OPTIONS, POST /notify/api/notifications/read-all — apps/kernel/app/notify/api/notifications/read-all/route.ts
 - GET, OPTIONS /notify/api/notifications/unread — apps/kernel/app/notify/api/notifications/unread/route.ts
+- OPTIONS, POST /notify/api/notifications/{id}/read — apps/kernel/app/notify/api/notifications/[id]/read/route.ts
 - GET, OPTIONS /notify/api/preferences — apps/kernel/app/notify/api/preferences/route.ts
 - OPTIONS, PUT /notify/api/preferences/{scope} — apps/kernel/app/notify/api/preferences/[scope]/route.ts
 - OPTIONS, POST /notify/api/send — apps/kernel/app/notify/api/send/route.ts
@@ -731,12 +769,12 @@ are omitted from the implemented reference and reported in the #2028 run-log.
 - POST /pay/api/admin/payment-requests/{id}/retry-settlement — apps/kernel/app/pay/api/admin/payment-requests/[id]/retry-settlement/route.ts
 - GET /pay/api/admin/reconciliation — apps/kernel/app/pay/api/admin/reconciliation/route.ts
 - OPTIONS, POST /pay/api/agent-cost-estimate — apps/kernel/app/pay/api/agent-cost-estimate/route.ts
-- GET, OPTIONS /pay/api/balance/{did} — apps/kernel/app/pay/api/balance/[did]/route.ts
 - OPTIONS, POST /pay/api/balance/event-topup — apps/kernel/app/pay/api/balance/event-topup/route.ts
 - OPTIONS, POST /pay/api/balance/gift — apps/kernel/app/pay/api/balance/gift/route.ts
 - OPTIONS, POST /pay/api/balance/topup — apps/kernel/app/pay/api/balance/topup/route.ts
 - OPTIONS, POST /pay/api/balance/transfer — apps/kernel/app/pay/api/balance/transfer/route.ts
 - OPTIONS, POST /pay/api/balance/withdraw/request — apps/kernel/app/pay/api/balance/withdraw/request/route.ts
+- GET, OPTIONS /pay/api/balance/{did} — apps/kernel/app/pay/api/balance/[did]/route.ts
 - GET, OPTIONS /pay/api/card-rail/check — apps/kernel/app/pay/api/card-rail/check/route.ts
 - OPTIONS, POST /pay/api/charge — apps/kernel/app/pay/api/charge/route.ts
 - OPTIONS, POST /pay/api/charge-pledges — apps/kernel/app/pay/api/charge-pledges/route.ts
@@ -745,14 +783,14 @@ are omitted from the implemented reference and reported in the #2028 run-log.
 - OPTIONS, POST, PUT /pay/api/escrow — apps/kernel/app/pay/api/escrow/route.ts
 - GET /pay/api/health — apps/kernel/app/pay/api/health/route.ts
 - GET, OPTIONS, POST /pay/api/payment-requests — apps/kernel/app/pay/api/payment-requests/route.ts
+- GET, OPTIONS /pay/api/payment-requests/by-handle/{handle} — apps/kernel/app/pay/api/payment-requests/by-handle/[handle]/route.ts
+- DELETE, OPTIONS, POST /pay/api/payment-requests/by-handle/{handle}/emt — apps/kernel/app/pay/api/payment-requests/by-handle/[handle]/emt/route.ts
+- GET, OPTIONS /pay/api/payment-requests/rails — apps/kernel/app/pay/api/payment-requests/rails/route.ts
 - GET, OPTIONS /pay/api/payment-requests/{id} — apps/kernel/app/pay/api/payment-requests/[id]/route.ts
 - OPTIONS, POST /pay/api/payment-requests/{id}/checkout — apps/kernel/app/pay/api/payment-requests/[id]/checkout/route.ts
 - GET, OPTIONS /pay/api/payment-requests/{id}/payer-dids — apps/kernel/app/pay/api/payment-requests/[id]/payer-dids/route.ts
 - OPTIONS, POST /pay/api/payment-requests/{id}/settle — apps/kernel/app/pay/api/payment-requests/[id]/settle/route.ts
 - OPTIONS, POST /pay/api/payment-requests/{id}/void — apps/kernel/app/pay/api/payment-requests/[id]/void/route.ts
-- GET, OPTIONS /pay/api/payment-requests/by-handle/{handle} — apps/kernel/app/pay/api/payment-requests/by-handle/[handle]/route.ts
-- DELETE, OPTIONS, POST /pay/api/payment-requests/by-handle/{handle}/emt — apps/kernel/app/pay/api/payment-requests/by-handle/[handle]/emt/route.ts
-- GET, OPTIONS /pay/api/payment-requests/rails — apps/kernel/app/pay/api/payment-requests/rails/route.ts
 - OPTIONS, POST /pay/api/refund — apps/kernel/app/pay/api/refund/route.ts
 - OPTIONS, POST /pay/api/settle — apps/kernel/app/pay/api/settle/route.ts
 - OPTIONS, POST /pay/api/setup-intent — apps/kernel/app/pay/api/setup-intent/route.ts
@@ -761,12 +799,12 @@ are omitted from the implemented reference and reported in the #2028 run-log.
 - GET, OPTIONS /pay/api/tax/remittance-owed — apps/kernel/app/pay/api/tax/remittance-owed/route.ts
 - OPTIONS, POST /pay/api/topup/emt — apps/kernel/app/pay/api/topup/emt/route.ts
 - OPTIONS, POST /pay/api/topup/stripe — apps/kernel/app/pay/api/topup/stripe/route.ts
+- OPTIONS, POST /pay/api/transactions/lookup — apps/kernel/app/pay/api/transactions/lookup/route.ts
 - GET, OPTIONS /pay/api/transactions/{did} — apps/kernel/app/pay/api/transactions/[did]/route.ts
 - GET, OPTIONS /pay/api/transactions/{did}/summary — apps/kernel/app/pay/api/transactions/[did]/summary/route.ts
-- OPTIONS, POST /pay/api/transactions/lookup — apps/kernel/app/pay/api/transactions/lookup/route.ts
 - POST /pay/api/webhook — apps/kernel/app/pay/api/webhook/route.ts
-- POST /pay/api/webhook/{provider} — apps/kernel/app/pay/api/webhook/[provider]/route.ts
 - POST /pay/api/webhook/did/{routingId} — apps/kernel/app/pay/api/webhook/did/[routingId]/route.ts
+- POST /pay/api/webhook/{provider} — apps/kernel/app/pay/api/webhook/[provider]/route.ts
 - POST /profile/api/auth/logout — apps/kernel/app/profile/api/auth/logout/route.ts
 - POST /profile/api/auth/register — apps/kernel/app/profile/api/auth/register/route.ts
 - GET /profile/api/auth/session — apps/kernel/app/profile/api/auth/session/route.ts
@@ -779,9 +817,12 @@ are omitted from the implemented reference and reported in the #2028 run-log.
 - GET /profile/api/handle-check — apps/kernel/app/profile/api/handle-check/route.ts
 - GET /profile/api/health — apps/kernel/app/profile/api/health/route.ts
 - GET /profile/api/media/{path...} — apps/kernel/app/profile/api/media/[...path]/route.ts
-- GET, OPTIONS /profile/api/presence/{did} — apps/kernel/app/profile/api/presence/[did]/route.ts
 - POST /profile/api/presence/update — apps/kernel/app/profile/api/presence/update/route.ts
+- GET, OPTIONS /profile/api/presence/{did} — apps/kernel/app/profile/api/presence/[did]/route.ts
 - POST /profile/api/profile — apps/kernel/app/profile/api/profile/route.ts
+- POST /profile/api/profile/claim-handle — apps/kernel/app/profile/api/profile/claim-handle/route.ts
+- POST /profile/api/profile/inference — apps/kernel/app/profile/api/profile/inference/route.ts
+- GET /profile/api/profile/search — apps/kernel/app/profile/api/profile/search/route.ts
 - DELETE, GET, OPTIONS, PUT /profile/api/profile/{id} — apps/kernel/app/profile/api/profile/[id]/route.ts
 - OPTIONS, PUT /profile/api/profile/{id}/contact-visibility — apps/kernel/app/profile/api/profile/[id]/contact-visibility/route.ts
 - GET /profile/api/profile/{id}/counts — apps/kernel/app/profile/api/profile/[id]/counts/route.ts
@@ -789,18 +830,15 @@ are omitted from the implemented reference and reported in the #2028 run-log.
 - GET /profile/api/profile/{id}/pricing — apps/kernel/app/profile/api/profile/[id]/pricing/route.ts
 - POST /profile/api/profile/{id}/query — apps/kernel/app/profile/api/profile/[id]/query/route.ts
 - POST /profile/api/profile/{id}/stream — apps/kernel/app/profile/api/profile/[id]/stream/route.ts
-- POST /profile/api/profile/claim-handle — apps/kernel/app/profile/api/profile/claim-handle/route.ts
-- POST /profile/api/profile/inference — apps/kernel/app/profile/api/profile/inference/route.ts
-- GET /profile/api/profile/search — apps/kernel/app/profile/api/profile/search/route.ts
 - POST /profile/api/register — apps/kernel/app/profile/api/register/route.ts
 - OPTIONS, POST /profile/api/resolve — apps/kernel/app/profile/api/resolve/route.ts
 - GET /profile/api/spec — apps/kernel/app/profile/api/spec/route.ts
 - POST /profile/api/stubs — apps/kernel/app/profile/api/stubs/route.ts
+- GET /profile/api/stubs/mine — apps/kernel/app/profile/api/stubs/mine/route.ts
 - PATCH /profile/api/stubs/{did} — apps/kernel/app/profile/api/stubs/[did]/route.ts
 - GET, POST /profile/api/stubs/{did}/images — apps/kernel/app/profile/api/stubs/[did]/images/route.ts
 - DELETE /profile/api/stubs/{did}/images/{id} — apps/kernel/app/profile/api/stubs/[did]/images/[id]/route.ts
 - POST /profile/api/stubs/{did}/join — apps/kernel/app/profile/api/stubs/[did]/join/route.ts
-- GET /profile/api/stubs/mine — apps/kernel/app/profile/api/stubs/mine/route.ts
 - POST /profile/api/upload — apps/kernel/app/profile/api/upload/route.ts
 - GET /quickbooks/api/callback — apps/kernel/app/quickbooks/api/callback/route.ts
 - OPTIONS, POST /quickbooks/api/configure — apps/kernel/app/quickbooks/api/configure/route.ts
@@ -890,21 +928,10 @@ are omitted from the implemented reference and reported in the #2028 run-log.
 - DELETE, GET, OPTIONS, PUT /zai/api/spend-cap — apps/kernel/app/zai/api/spend-cap/route.ts
 - GET, OPTIONS, POST /zai/api/token — apps/kernel/app/zai/api/token/route.ts
 
-## Provider-billed reconciliation
-
-Provider-billed reconciliation setup (#3136): use /auth/connectors/anthropic or
-/auth/connectors/openai, Billing (admin) key. GET/POST/DELETE
-/{anthropic|openai}/api/billing-key are authenticated kernel-root routes.
-GET returns only presence/pending booleans; POST seals or rotates {token};
-DELETE revokes billing custody, not inference scopes, and retains signed history.
-Never send credentials through chat. Explicitly grant the provider's :billing
-scope after sealing. /jin Spend shows billed: not connected when keys are absent;
-the next usage-billed-ingest cron populates source=api rows for reconciliation.
-
 ## Further reading
 
 https://github.com/ima-jin/imajin-ai/blob/main/README.md
-https://github.com/ima-jin/imajin-ai/blob/main/docs/guide/canonical-patterns.md
-https://github.com/ima-jin/imajin-ai/blob/main/docs/ENVIRONMENTS.md
+https://github.com/ima-jin/imajin-ai/blob/main/docs/canon/README.md
+https://github.com/ima-jin/imajin-ai/blob/main/apps/kernel/README.md
 https://github.com/ima-jin/imajin-ai/blob/main/SECURITY.md
 https://jin.imajin.ai/llms-full.txt

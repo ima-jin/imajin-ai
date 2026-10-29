@@ -73,6 +73,8 @@ close them as the work lands. As of this writing:
   planned under [#1070](https://github.com/ima-jin/imajin-ai/issues/1070), not implemented.
   There is no forward secrecy or post-compromise security guarantee yet. Do not treat chat as
   equivalent to Signal-class messaging.
+  The [proposed PQ-MLS ADR](docs/adr/3112-pq-mls.md) and isolated OpenMLS/libcrux
+  spike merged in #3122; neither changes production message protection.
 - **Soft DIDs are low-assurance.** Email-backed soft identities exist for low-friction onboarding.
   They are rate-limited and require email verification before a session is issued, but they are not
   a substitute for key-based (hard) DIDs for high-value actions.
@@ -92,10 +94,24 @@ close them as the work lands. As of this writing:
   allowed hosts and expiry; issuance is capped at 900 seconds and grant expiry.
   Grant/CA revocation stops new issuance, not certificates already accepted by a
   host. Hosts must distribute current public trust and restrict principals.
-  The GitHub deploy action binds verified OIDC to repository + environment, not
-  a workflow-name allowlist. Its private job key requires non-swappable tmpfs and
-  ephemeral runner teardown; pinned host keys are mandatory. See the
+  The GitHub deploy action binds verified OIDC to exact repository/environment
+  plus immutable repository and owner IDs. Legacy grants without IDs fail closed
+  and require operator re-grant; optional `allowedRefs` pins exact full
+  `workflow_ref` strings, not globs. A verified jti can issue once until expiry;
+  signed policy refusals deduplicate by issuer-separated jti hash. Unverified,
+  expired/stale or malformed-jti requests write nothing. Its private job key
+  requires non-swappable tmpfs; dedicated runners need a fail-closed startup
+  orphan sweep before jobs, or guaranteed ephemeral teardown. Pinned host keys
+  are mandatory. See the
   [deploy contract](docs/deploy/vault-ssh-deploy.md).
+- **Member connector custody is kernel-controlled Tier 0.** Postman MCP and
+  app-declared upstream calls inject a member credential server-side, never into
+  app output. They recheck live consent, connection/custody and tagged-org standing;
+  app writes need separate token/operator/member permission and reason. Refusals
+  call no upstream and persist nothing. Disconnect stops new admissions, but an
+  already-authorized in-flight exchange may finish. Limits are per process, not
+  distributed quotas. See `/connections/api/spec` and
+  [canonical patterns](docs/guide/canonical-patterns.md#connector-lifecycle-and-app-facing-invocation).
 - **Corpus ownership is not authority.** Registry-resolved GitHub owner groups
   require live owner-issued corpus grants. Creating an unclaimed stub or having
   membership alone grants no access. The source owner's granted OAuth connector

@@ -70,6 +70,25 @@ explicit different audience is refused (use owner settings to change it).
 `reissueClaim: true` must omit `signInAudience` entirely: reissue cannot reset or
 change it, even to its default. Existing keys, identity and audience survive reissue.
 
+## App-local sign-in sessions (v0.8.28)
+
+Use the released [auth-client handlers](../packages/auth-client/README.md):
+start sign-in on the app's own `createLoginHandler` route, then forward root
+`code`/`state` callbacks to `createCallbackHandler` before claim/login gates.
+An app-isolated state cookie and a kernel-verified 60-second single-use code
+bind the session to the authenticated subject, app, registered callback and live
+authorization. The app signs the exchange at `/auth/api/apps/token`; query-string
+identity/attestation fields are not session authority. Missing/malformed registered
+callbacks return `400 invalid_app_callback` before consent is persisted.
+The internal retention sweep removes only old consumed/expired authorization codes,
+not authorization/consent history. See `/auth/api/spec`.
+
+Existing-keystore `loadAppSigningKey()` fetches now retry transient 5xx/network
+failures within a bounded budget, exiting 1 on exhaustion for process-manager
+recovery. 4xx fail fast and first-boot claims remain single-shot. Upgrade each
+standalone app through its reviewed dependency/deployment process, not a copied
+per-app retry loop or another claim-code exchange.
+
 ## Operator setup (one-time, per node) — optional for an app whose repo already exists
 
 `apps.provision` acts as a **GitHub App installation**, not a personal access token — ruled
@@ -148,6 +167,14 @@ pending" is shown as such (not as an error). Approve the card there, and the for
 result from `GET /api/apps/provision?slug=` — `status`, `repoUrl`, `appDid`, or `failedStep` /
 `errorMessage` on failure — without any manual polling. The form calls the same route as the curl
 below; it adds no endpoint and no authority, and only the operator's approval runs the pipeline.
+
+The form also exposes **visibility**, **approved domain** and **site owner**
+([#3069](https://github.com/ima-jin/imajin-ai/pull/3069)). Its organization choices
+come from `/auth/api/groups`, restricted to current owner/admin memberships;
+unknown choices and invalid direct `imajin.ai` subdomains are refused. Domain
+and site-owner DID appear on the approval before countersigning. These controls
+use the existing API contract, not a post-approval owner PATCH, and do not change
+claim reissues. See [domain ownership](guide/domain-ownership.md#imajin-issued-app-hosts).
 
 **Propose — from a script or agent (curl):**
 

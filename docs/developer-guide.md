@@ -39,9 +39,18 @@ exists or a complete live deployment inventory. Not every route group has a spec
 The generated [route index](../apps/kernel/public/llms.txt) and
 [contract reference](../apps/kernel/public/llms-full.txt) cover the current handler tree.
 
-### v0.8.28 integration delta (2026-10-26 source)
+### v0.8.28 integration delta (2026-10-29 source)
 
-Since v0.8.27, [kernel-owned details](../apps/kernel/README.md#pre-cut-delta-for-v0828)
+The [completed release delta](../apps/kernel/README.md#release-delta-for-v0828)
+covers app-local state/single-use-code sign-in, bounded signing-key boot retry,
+member-held Postman MCP and declared app upstreams, retained connector removal,
+signed brief/Decisions/Runs controls and separate billed-key setup. See
+[auth-client](../packages/auth-client/README.md) before adopting its callback
+handlers; standalone dependencies and rollout do not change automatically.
+The [canon index](canon/README.md) now owns protocol discovery; the PQ-MLS ADR
+is proposed spike evidence, not production E2EE.
+
+Earlier [kernel-owned details](../apps/kernel/README.md#pre-cut-delta-for-v0828)
 cover recipient-organization owner/admin card checkout, distinct 403 party/payer codes,
 and additive manifest-secret sync followed by a separate signed Generate or Set.
 EMT retains its opaque-handle capability model. Chat uses TLS in transit and plaintext

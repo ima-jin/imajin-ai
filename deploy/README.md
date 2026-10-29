@@ -18,6 +18,18 @@ server's absolute paths (`/home/jin/dev/...`, `/home/jin/prod/...`) and are kept
 as-is because they *are* the deployed values.
 
 
+## v0.8.28 deployment prerequisites (source checked 2026-10-29)
+
+The [release posture](../docs/ops/DEPLOY-POSTURE.md#release-delta--v0828-source-2026-10-29)
+and [environment guide](../docs/ENVIRONMENTS.md#v0828-operational-prerequisites)
+cover separately reviewed auth-client adoption, billing consent, gateway publisher
+grants and post-deploy checks. Apply pending `0222`–`0227` without moving the baseline.
+For SSH, re-grant legacy GitHub operation grants with immutable repository/owner
+IDs and optional exact workflow refs. Provision the dedicated no-swap runner's
+fail-closed startup orphan sweep before accepting jobs; see the
+[current action contract](../docs/deploy/vault-ssh-deploy.md).
+No live host, grant, credential, migration or standalone app is changed by this sweep.
+
 ## v0.8.27 deployment additions (source checked 2026-10-25)
 
 - **Reusable SSH step:** follow [the vault SSH action contract](../docs/deploy/vault-ssh-deploy.md)

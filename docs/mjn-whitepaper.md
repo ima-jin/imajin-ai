@@ -1,6 +1,6 @@
 # MJN Protocol
 ## A Cryptographic Operating System for Sovereign Commerce
-### v0.9 · October 2026
+### v0.10 · October 2026
 
 *Ryan Veteze · ryan@imajin.ai · [github.com/ima-jin/imajin-ai](https://github.com/ima-jin/imajin-ai)*
 
@@ -424,7 +424,7 @@ Implementation evidence checked against source `6f16236e` on 2026-10-17. Here �
 merged implementation with a backing PR, not verified deployment or production acceptance.
 Unbacked prior ✅ rows are removed rather than carried forward as assumptions.
 
-Release-diff additions checked at `4d7b2dc1` on 2026-10-25 follow below.
+Release-diff additions through `v0.8.28` / `f6b412408`, checked on 2026-10-29, follow below.
 They are source evidence, not claims of host deployment or production data migration.
 
 | Status | Item |
@@ -441,6 +441,10 @@ They are source evidence, not claims of host deployment or production data migra
 | ✅ | Registry-owner-DID corpus partitions ([#3103](https://github.com/ima-jin/imajin-ai/pull/3103)) and source-owner GitHub OAuth credentials ([#3102](https://github.com/ima-jin/imajin-ai/pull/3102)); live explicit grants required, no node-token fallback, signed migration is a separate operation |
 | ✅ | Grantee-only Cloudflare zone-grant metadata ([#3094](https://github.com/ima-jin/imajin-ai/pull/3094)), without credential release |
 | ✅ | Inference release updater gated by exact-SHA successful production deployment and mint-backed health ([#3060](https://github.com/ima-jin/imajin-ai/pull/3060)); installation is operator-managed |
+| ✅ | App-local state and kernel-verified single-use sign-in codes ([#3154](https://github.com/ima-jin/imajin-ai/pull/3154)), invalid-callback refusal before consent ([#3174](https://github.com/ima-jin/imajin-ai/pull/3174)) and bounded existing-keystore boot retry ([#3147](https://github.com/ima-jin/imajin-ai/pull/3147)); standalone SDK adoption remains separate |
+| ✅ | Signed brief ledger/full-text or hash-only retention ([#3127](https://github.com/ima-jin/imajin-ai/pull/3127)), Decisions lane ([#3128](https://github.com/ima-jin/imajin-ai/pull/3128)), signed session controls ([#3165](https://github.com/ima-jin/imajin-ai/pull/3165)) and publisher-scoped horizon projections ([#3159](https://github.com/ima-jin/imajin-ai/pull/3159)); no kernel harness-state access or proven live plugin rollout |
+| ✅ | Member-held Postman MCP reads ([#3170](https://github.com/ima-jin/imajin-ai/pull/3170)) and declared app upstream calls ([#3175](https://github.com/ima-jin/imajin-ai/pull/3175)); Tier 0 kernel credential custody, live per-call grants/standing, explicit write permission, API-only lifecycle |
+| ✅ | Separate provider billing admin-key UI and consent ([#3145](https://github.com/ima-jin/imajin-ai/pull/3145)) and immutable-ID/ref/replay-hardened SSH GitHub grants ([#3158](https://github.com/ima-jin/imajin-ai/pull/3158)); operator key/grant/runner setup is not automatic |
 | ⏳ | Generalized weighted/decaying and portable standing (local eligibility checks exist) |
 | ⏳ | Portable exit credentials |
 | ⏳ | MJN token settlement (dual-currency) |
@@ -482,6 +486,16 @@ chat disclosure correction: TLS in transit, plaintext at rest and notification p
 public key bundles/legacy utilities do not provide current message encryption.
 MLS with mandatory hybrid post-quantum encryption remains planned under #1070.
 This documentation version is not the kernel release number or deployment evidence.
+
+v0.10 (2026-10): Complete the v0.8.27..v0.8.28 source-delta replay (#2028),
+linking merged app sign-in, brief/Decisions/session/horizon, connector proxy,
+billing and SSH hardening evidence. [Canon now has one master index](https://github.com/ima-jin/imajin-ai/blob/main/docs/canon/README.md)
+after [#3132](https://github.com/ima-jin/imajin-ai/pull/3132).
+The [proposed PQ-MLS ADR](https://github.com/ima-jin/imajin-ai/blob/main/docs/adr/3112-pq-mls.md)
+from [#3122](https://github.com/ima-jin/imajin-ai/pull/3122) is isolated library/spike
+evidence, not shipped E2EE; current chat limitations remain unchanged.
+Economic/model annotations are unchanged. This is a document version, not v0.9.0
+kernel deployment evidence.
 
 *[Developer Guide](https://github.com/ima-jin/imajin-ai/blob/main/docs/developer-guide.md) · [llms-full.txt](https://imajin.ai/llms-full.txt) · [.fair spec](https://github.com/ima-jin/.fair) · [DFOS](https://protocol.dfos.com) · [Source](https://github.com/ima-jin/imajin-ai)*
 

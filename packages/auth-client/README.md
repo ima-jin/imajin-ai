@@ -93,7 +93,7 @@ use `Referrer-Policy: no-referrer`.
 For standalone `imajin-app-template` forks, mount both login and callback
 handlers, configure the registry ID/DID plus the full public app URL, keep the
 existing signing-key bootstrap, and forward root callbacks before login gates
-as below. These changes target the auth-client 0.8.28 release; the normal
+as below. These changes shipped in auth-client 0.8.28; the normal
 Release workflow owns manifest version bumps and publication. Standalone
 repository dependency updates and rollout are separate changes.
 

@@ -12,6 +12,112 @@ pnpm --filter @imajin/kernel dev   # http://localhost:3000
 
 Full setup guide: [docs/DEVELOPER.md](../../docs/DEVELOPER.md).
 
+## Release delta for v0.8.28
+
+Checked **2026-10-29** against `v0.8.27..v0.8.28` (`f6b412408`).
+This completes the early [#3129 replay](https://github.com/ima-jin/imajin-ai/pull/3129)
+below, without redoing its four contracts. Source availability is not live deployment
+or real-account acceptance; this documentation upkeep ships in v0.9.0.
+
+- **App sign-in:** start on the app's `createLoginHandler` route. A host-only,
+  app-isolated state cookie binds the callback; kernel consent issues a hashed,
+  60-second single-use code. The app exchanges it with registered-key proof at
+  `/auth/api/apps/token` and trusts only the returned subject/authorization.
+  Forward root `code`/`state` callbacks before app claim/login middleware.
+  Missing/malformed registered callbacks return `400 invalid_app_callback` before
+  consent effects. The internal ten-minute cleanup retains live codes and deletes
+  only codes strictly past the one-hour consumption/expiry grace, not consent or
+  attestation history. See [auth-client](../../packages/auth-client/README.md)
+  and `/auth/api/spec`
+  ([#3154](https://github.com/ima-jin/imajin-ai/pull/3154),
+  [#3174](https://github.com/ima-jin/imajin-ai/pull/3174),
+  [#3176](https://github.com/ima-jin/imajin-ai/pull/3176)).
+- **Restart authentication:** existing-keystore signing-key fetches retry 5xx/network
+  failures within a default 120-second budget, with fresh signed challenges and
+  bounded requests; exhaustion exits 1 for process-manager recovery. 4xx fail fast;
+  one-time claims are not replayed. Standalone SDK adoption/restarts remain separate
+  ([#3147](https://github.com/ima-jin/imajin-ai/pull/3147)).
+- **Provisioning:** `/jin` exposes visibility, approved domain and site owner before
+  countersigning. Group choices come from current owner/admin memberships; client
+  validation adds no authority. Existing claim reissues stay unchanged
+  ([#3069](https://github.com/ima-jin/imajin-ai/pull/3069);
+  [registration](../../docs/REGISTRATION.md)).
+- **Decisions and brief ledger:** Decisions groups open cards oldest first, with
+  subject/recorded-agent filters and matching nav count; ruled/pending-apply and
+  applied history remain collapsed, not deleted. Ruling uses the existing signed
+  approval rail ([#3128](https://github.com/ima-jin/imajin-ai/pull/3128)).
+  `/jin/brief-settings` selects full-text private immutable signed brief assets
+  (default) or hash-only retention. Exact final UTF-8, including corpus context,
+  is limited to 1 MiB; dispatch/resume/follow-up events carry the hash/ref.
+  Failed dispatches retain value-free signed failure evidence. Hash-only is plain
+  SHA-256 and permits confirming guessed text; it is not a hiding commitment
+  ([#3127](https://github.com/ima-jin/imajin-ai/pull/3127); `/jin/api/spec`).
+- **Runs and horizon:** archive/reset first require explicit confirmation naming the
+  signed session; Cancel sends nothing. Label/history remain direct signed wishes.
+  Archive/rename wait for signed outcomes, never transport success; archived history
+  remains readable. Reset currently displays the plugin's signed `missing_scope`,
+  not success. No kernel transcript/Gateway access is added
+  ([#3165](https://github.com/ima-jin/imajin-ai/pull/3165);
+  [command contract](../../docs/DEVELOPER.md#interactive-runs-on-jin-2404)).
+  Each horizon step exposes its earliest declaring publisher; mutation authority
+  uses publisher or lease-holder rights at event time. `cycle_status`/`cycle_run`
+  summarize the caller's horizon and below-depth deficit; the latter snapshots
+  before phase execution. Empty published history is distinct from a drained horizon
+  ([#3159](https://github.com/ima-jin/imajin-ai/pull/3159),
+  [#3169](https://github.com/ima-jin/imajin-ai/pull/3169)).
+- **Publisher repair and harness boundary:** a gateway still needs a live
+  exact-principal `loops:publish` grant; throttled warnings do not mean authorization
+  is repaired. The production turn/24-hour observations remain operator checks.
+  CI's static harness-boundary ratchet has exact legacy exceptions and documented
+  detection limits, not a claim no harness-related code exists
+  ([#3143](https://github.com/ima-jin/imajin-ai/pull/3143),
+  [#3173](https://github.com/ima-jin/imajin-ai/pull/3173);
+  [rail contract](../../docs/loops-rail-contract.md)).
+- **Connectors:** GitHub setup explains callback URL, device-flow enablement and org
+  approval. Remove a non-primary GitHub/Google/QuickBooks slot only from an authorized
+  owner/admin session; delegates must re-issue as the owner. Primary removal is 409:
+  use Disconnect. Confirm the exact slot and GitHub corpus dependencies; removal
+  erases wrapped custody keys, revokes grants and retains signed tombstones/removed
+  rows. Bound consumers fail closed without primary fallback
+  ([#3160](https://github.com/ima-jin/imajin-ai/pull/3160),
+  [#3157](https://github.com/ima-jin/imajin-ai/pull/3157)).
+  Member-held Postman MCP allows only reviewed reads; declared app-hosted upstream
+  calls share the per-call member/connection/org gate. Credentials stay kernel-held;
+  write methods need explicit token, operator and member consent plus reason.
+  Changed declared path/method sets require reconnecting. Both are API-only, not
+  deployed org-suspension management; in-flight authorized exchanges may finish
+  after disconnect ([#3170](https://github.com/ima-jin/imajin-ai/pull/3170),
+  [#3175](https://github.com/ima-jin/imajin-ai/pull/3175);
+  [canonical contract](../../docs/guide/canonical-patterns.md#connector-lifecycle-and-app-facing-invocation),
+  `/connections/api/spec`).
+- **Spend and billing:** seal a separate Anthropic/OpenAI **Billing (admin) key**
+  through its connector card, then explicitly grant `:billing`. Pending custody is
+  not connected; revoke affects billing only. Spend shows missing billed connections
+  even without recent spend. Incurred metering remains distinct from billed ingest
+  ([#3145](https://github.com/ima-jin/imajin-ai/pull/3145)).
+  The Warp sweep uses ISO-text timestamp binding and redacted bounded diagnostics;
+  the production TypeError/root cause and warning-free observation window are not
+  proven by local tests ([#3144](https://github.com/ima-jin/imajin-ai/pull/3144)).
+  Internal Spend helper renames preserve the `interim` response field and behavior
+  ([#3148](https://github.com/ima-jin/imajin-ai/pull/3148)).
+- **Private records and deployment:** legal-entity lookup selects newest active
+  `(createdAt DESC, id DESC)`, verifies purpose and shares the per-DID media lock
+  ([#3149](https://github.com/ima-jin/imajin-ai/pull/3149)).
+  SSH GitHub grants now require immutable repository/owner IDs, optional exact
+  `workflow_ref` pins and durable jti replay protection. Legacy grants need re-grant;
+  runner startup cleanup/no-swap prerequisites remain operator work
+  ([#3158](https://github.com/ima-jin/imajin-ai/pull/3158);
+  [deploy runbook](../../docs/deploy/vault-ssh-deploy.md)).
+- **Docs and copy:** [canon](../../docs/canon/README.md) is the master index;
+  numbered RFCs moved to `docs/canon/rfcs/`. Canon/design is not implementation
+  ([#3132](https://github.com/ima-jin/imajin-ai/pull/3132)).
+  The [proposed PQ-MLS ADR](../../docs/adr/3112-pq-mls.md) chooses a pinned
+  OpenMLS/libcrux wasm spike, not production encryption
+  ([#3122](https://github.com/ima-jin/imajin-ai/pull/3122)).
+  Product-copy issue refs are guarded in CI; the UPDATE-only repair retains
+  registry rows and historical loop summaries
+  ([#3164](https://github.com/ima-jin/imajin-ai/pull/3164)).
+
 ## Pre-cut delta for v0.8.28
 
 Merged-source snapshot **2026-10-26**, limited to `v0.8.27..8f2ebbfd`.

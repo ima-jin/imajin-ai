@@ -27,7 +27,8 @@
 - **[Canonical Patterns](./canonical-patterns.md)** — the one correct primitive for each seam (auth, settlement, .fair, checkout identity). Read before writing code at a primitive boundary; do not re-implement these inline.
 - **[Legal entity and sealed bank details](../DEVELOPER.md#sealed-bank-details-api-3075)** — distinct private-record and per-field disclosure contracts; no generic media/vault shortcut.
 - **[Corpus ownership and credentials](../../apps/corpus/README.md)** — owner-DID partitions, live grants, OAuth connector selection and signed migration.
-- **[v0.8.28 integration delta](../../apps/kernel/README.md#pre-cut-delta-for-v0828)** — recipient-organization payer control, additive app-secret slots with separate Generate/Set approval, current chat plaintext limits and automatic release close-out.
+- **[v0.8.28 integration delta](../../apps/kernel/README.md#release-delta-for-v0828)** — verified-code app sign-in, connector custody/removal and app upstreams, signed briefs/Decisions/Runs, billing-key setup and SSH OIDC hardening; earlier checkout/secret/chat/release contracts remain linked.
+- **[Canon master index](../canon/README.md)** — protocol thesis, numbered RFCs and carried rulings; designs are not a shipped-capability inventory.
 
 ## Security & Boundaries
 

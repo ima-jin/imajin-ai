@@ -148,6 +148,29 @@ See [cookie isolation](security/cookie-isolation.md). The production ecosystem
 file retains obsolete split-service entries (documented in deploy/README.md);
 they do not establish a cross-host sign-in requirement.
 
+### v0.8.28 operational prerequisites
+
+No new hand-provisioned environment credential is needed for the release's sign-in,
+connector proxy, brief/settings or billing-key UI. Billing admin keys are separate
+from inference keys: seal in `/auth/connectors/anthropic` or `/auth/connectors/openai`,
+then explicitly grant `:billing`; pending approval is not connected. Member
+Postman/upstream credentials also use dedicated kernel custody, never app env files.
+See [release contracts](../apps/kernel/README.md#release-delta-for-v0828).
+
+Consume auth-client v0.8.28 through each standalone app's reviewed dependency
+update: mount its login/code-exchange callback handlers and preserve root callback
+forwarding before claim gates. Set the full public app URL including basePath.
+Existing-keystore signing-key fetches retry transient outages within 120 seconds
+by default and exit 1 on exhaustion; 4xx fail fast and one-time claims are not retried.
+Process-manager recovery is not a reason to re-provision or rotate the app identity.
+See [SDK configuration](../packages/auth-client/README.md).
+
+SSH GitHub operation grants predating #3158 must be revoked/re-granted with
+verified immutable repository/owner IDs. Optional `allowedRefs` are exact full
+workflow refs. These are signed public policy fields, not environment secrets.
+Wire no-swap runner startup cleanup before accepting jobs; this docs check does
+not install a label/hook or modify a host. See [SSH runbook](deploy/vault-ssh-deploy.md).
+
 ### pm2 Naming
 
 - **`prod-*` prefix** = production in the recorded ecosystem (kernel: `prod-jin`).
