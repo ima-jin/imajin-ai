@@ -67,13 +67,13 @@ describe('Adopt orphaned agent control', () => {
     setup();
     h.fetch.mockResolvedValue(Response.json({}, { status: 500 }));
     submit();
-    await screen.findByText('Adoption failed');
+    expect(await screen.findByText('Adoption failed')).toBeDefined();
   });
   it('handles network failures', async () => {
     setup();
     h.fetch.mockRejectedValue(new Error('Network unavailable'));
     submit();
-    await screen.findByText('Network unavailable');
+    expect(await screen.findByText('Network unavailable')).toBeDefined();
   });
   it('handles signing failure without making an adopt request', async () => {
     setup();

@@ -31,7 +31,7 @@ async function authorizeOrg(input: AdoptionPrincipal, tx: DbExecutor) {
 
 async function requireOrphan(agentDid: string, tx: DbExecutor) {
   const [agent] = await tx.select().from(identities).where(eq(identities.id, agentDid)).limit(1).for('update');
-  if (!agent || agent.scope !== 'actor' || agent.subtype !== 'agent' || agent.suspendedAt) {
+  if (agent?.scope !== 'actor' || agent.subtype !== 'agent' || agent.suspendedAt) {
     throw new AdoptionError('Target must be an active agent identity', 409);
   }
   const members = await tx.select({ identityDid: identityMembers.identityDid }).from(identityMembers)
@@ -48,7 +48,7 @@ async function requireOrphan(agentDid: string, tx: DbExecutor) {
 }
 
 /** No private key is sent to the server. The challenge binds org, human, DID and scopes. */
-export async function prepareAdoption(input: AdoptionIntent) {
+export function prepareAdoption(input: AdoptionIntent) {
   return db.transaction(async tx => {
     await authorizeOrg(input, tx);
     await requireOrphan(input.agentDid, tx);
@@ -61,11 +61,11 @@ export async function prepareAdoption(input: AdoptionIntent) {
   });
 }
 
-export async function adoptAgent(input: AdoptionPrincipal & { challengeId: string; signature: string }) {
+export function adoptAgent(input: AdoptionPrincipal & { challengeId: string; signature: string }) {
   return db.transaction(async tx => {
     await authorizeOrg(input, tx);
     const [proof] = await tx.select().from(challenges).where(eq(challenges.id, input.challengeId)).limit(1).for('update');
-    if (!proof || !proof.id.startsWith('adopt_') || proof.usedAt || proof.expiresAt <= new Date()) {
+    if (!proof?.id.startsWith('adopt_') || proof.usedAt || proof.expiresAt <= new Date()) {
       throw new AdoptionError('Adoption challenge missing, expired, or already used', 403);
     }
     const intent = JSON.parse(proof.challenge) as AdoptionIntent & { purpose: string };

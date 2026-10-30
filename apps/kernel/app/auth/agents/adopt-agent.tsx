@@ -65,7 +65,7 @@ export default function AdoptAgent({ orgDid, onAdopted }: Readonly<{ orgDid: str
         className="px-3 py-2 bg-amber-500 text-black rounded disabled:opacity-50">
         {busy ? 'Adopting…' : 'Sign proof & adopt agent'}
       </button>
-      {message && <p role="status">{message}</p>}
+      {message && <output className="block">{message}</output>}
     </section>
   );
 }
