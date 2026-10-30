@@ -2,6 +2,7 @@ import { and, eq, isNull } from 'drizzle-orm';
 import { db, identities, identityMembers } from '@/src/db';
 import { OwnershipError } from './ownership-policy';
 import { recordMemberEvent, type MemberActor } from './member-attestation';
+import { suspendRemovedMember } from '@/src/lib/kernel/org-connection-admin';
 
 /** Share the transfer lock: a stale role check can never remove the new owner. */
 export async function removeGroupController(groupDid: string, actor: MemberActor, controllerDid: string) {
@@ -21,6 +22,7 @@ export async function removeGroupController(groupDid: string, actor: MemberActor
     if (caller.role === 'admin' && !leaving && target.role !== 'member') {
       throw new OwnershipError('Admin can only remove members', 403);
     }
+    await suspendRemovedMember(tx, groupDid, controllerDid, callerDid);
     await recordMemberEvent(tx, 'group.member.removed', groupDid, controllerDid, actor, {
       role: target.role, allowedServices: target.allowedServices,
     });

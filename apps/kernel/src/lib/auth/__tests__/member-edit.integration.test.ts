@@ -7,11 +7,13 @@ import { eq } from 'drizzle-orm';
 import { NextRequest } from 'next/server';
 import { canonicalize, type Identity } from '@imajin/auth';
 import * as schema from '@/src/db/schemas/auth';
+import { connectors } from '@/src/db/schemas/connectors';
 
 const mocks = vi.hoisted(() => ({ db: null as unknown, auth: vi.fn(), directory: vi.fn() }));
 vi.mock('@/src/lib/kernel/app-nav', () => ({ resolveAppDirectoryForIdentity: mocks.directory }));
 vi.mock('@/src/db', async () => ({
   ...await import('@/src/db/schemas/auth'), get db() { return mocks.db; },
+  ...await import('@/src/db/schemas/connectors'),
 }));
 vi.mock('@imajin/auth', async (original) => ({
   ...await original<typeof import('@imajin/auth')>(), requireAuth: mocks.auth,
@@ -58,8 +60,8 @@ async function evidence() {
 }
 beforeAll(async () => {
   mocks.db = database;
-  await pg.exec('CREATE SCHEMA auth;');
-  for (const table of [schema.identities, schema.identityMembers, schema.attestations]) {
+  await pg.exec('CREATE SCHEMA auth; CREATE SCHEMA kernel;');
+  for (const table of [schema.identities, schema.identityMembers, schema.attestations, connectors]) {
     const config = getTableConfig(table);
     const columns = config.columns.map((column) => `"${column.name}" ${column.getSQLType()}`);
     await pg.exec(`CREATE TABLE "${config.schema}"."${config.name}" (${columns.join(', ')});`);
