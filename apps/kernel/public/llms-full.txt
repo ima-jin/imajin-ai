@@ -19,6 +19,20 @@ the generated package table in README.md links checked public registry metadata.
 License: Imajin Network License (INL) v1.0, source-available, not MIT.
 
 ## Integration and safety
+- Org-held service keys: GET /connections/api/org-held lists loaded metadata;
+  GET/POST/DELETE /connections/api/org-held/{provider} reads, loads/replaces or
+  revokes. Human session acting as the org plus live identity_members owner/admin
+  and connections-service access required; agents/apps cannot manage lifecycle.
+  POST accepts only a write-only secret (16 KiB body, 4096 printable ASCII chars).
+  Anthropic, Warp and registered static-secret/token-paste providers are supported.
+  Keys are sealed under the org DID with kernel-only Tier 0 custody, in a separate
+  org-held-{provider} registry namespace. All load/read/list responses contain only
+  provider, loadedByDid, loadedAt and status "loaded"; no value, including for the loading admin.
+  Generic vault fetch/export/renewal are refused. Replace = load again; remove =
+  revoke with signed tombstones and actor-attributed connector.org-held history.
+  No rows deleted; revoked history is hidden from live reads. No-store responses.
+  Personal/member resolution is unchanged. Grants, proxy injection and UI are
+  separate work. See /connections/api/spec; Tier 1 loads fail closed.
 - App-hosted upstreams: PUT /connections/api/upstreams declares {upstreams:[{id,
   origin,credentialHeader,credentialPrefix,paths:[{path,methods}]}]} on the caller's
   existing registry app. App-service token + connectors:upstream:read + live operator

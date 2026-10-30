@@ -5,6 +5,7 @@
  */
 
 export const ATTESTATION_TYPES = [
+  'connector.org-held',
   'connector.external-mcp',
   'connector.disconnected',
   'warp.brief.recorded',
@@ -326,6 +327,7 @@ export type AttestationType = typeof ATTESTATION_TYPES[number];
  * excluded from any "pending your countersignature" view or query.
  */
 export const MECHANICAL_ATTESTATION_TYPES = [
+  'connector.org-held',
   'connector.external-mcp',
   'connector.disconnected',
   'warp.brief.recorded',

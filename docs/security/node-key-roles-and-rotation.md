@@ -693,6 +693,7 @@ file: ``- `path` — role``.
 - `apps/kernel/src/lib/vault/group-key.ts` — D2/D3/S3 (explicit node-key configuration gate; countersigned group-to-node custody, wrapped-key revoke and transactional signed audit)
 - `apps/kernel/src/lib/vault/bank-details.ts` — D2/D3/S3/S6 (explicit node-key presence gate; field sealing via existing custody helpers, signed private documents and retained revocation; no generic export or renewal)
 - `apps/kernel/src/lib/kernel/external-mcp.ts` — D2/D3/S3 (member-subject, kernel-only credential custody and signed lifecycle/call receipts; external-mcp-key fields are excluded from generic fetch, renewal and rotation handoff; after node-root rotation the member must reconnect from their original provider account, never export the key)
+- `apps/kernel/src/lib/kernel/org-held-connection.ts` — D2/D3/S3 (org-subject, kernel-only static-secret custody with actor-attributed lifecycle receipts; private fields never enter generic fetch, renewal or rotation export; after node-root rotation an org admin must load again from the original provider account, never export the key)
 - `apps/kernel/src/lib/vault/internal-secret.ts` — D2
 - `apps/kernel/src/lib/vault/internal-secret-revoke.ts` — D2
 - `apps/kernel/src/lib/vault/internal-secret-rotate.ts` — D2

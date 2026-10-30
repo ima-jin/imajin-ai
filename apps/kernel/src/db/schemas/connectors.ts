@@ -54,6 +54,9 @@ export const connectors = connectorsSchema.table('connectors', {
   orgSuspendedAt: timestamp('org_suspended_at', { withTimezone: true }),
   /** Digest of the member-approved app/upstream destination and injection shape. */
   upstreamBinding: text('upstream_binding'),
+  /** Org-held connection provenance only; never contains credential material. */
+  loadedByDid: text('loaded_by_did'),
+  loadedAt: timestamp('loaded_at', { withTimezone: true }),
   /**
    * Snapshot of the scopes granted on this connector, refreshed whenever the
    * owner publishes a scope-manifest. `auth.channel_links` stays authoritative:

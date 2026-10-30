@@ -2,7 +2,7 @@ openapi: "3.1.0"
 info:
   title: imajin connections
   version: "2.0.0"
-  description: Pod-based social graph — connections, invite codes, trust graph, group pods, nickname management. Runs as a kernel service at /{service}/api/... on a shared node domain.
+  description: Pod-based social graph and connector lifecycle, including metadata-only org-held service keys. Runs as a kernel service at /{service}/api/... on a shared node domain.
 servers:
   - url: https://{node}.imajin.ai/{service}
     description: production node
@@ -32,6 +32,15 @@ components:
         the operation's documented scope in the token and current operator-approved
         service scopes of an active registry app. Not a session or delegated app token.
   schemas:
+    OrgHeldConnection:
+      type: object
+      additionalProperties: false
+      required: [provider, loadedByDid, loadedAt, status]
+      properties:
+        provider: { type: string }
+        loadedByDid: { type: string, description: "Authenticated human who last loaded the key." }
+        loadedAt: { type: string, format: date-time }
+        status: { type: string, const: loaded }
     AppUpstream:
       type: object
       additionalProperties: false
@@ -146,6 +155,125 @@ tags:
     description: imajin connections service
 
 paths:
+  /api/org-held:
+    get:
+      tags: [connections]
+      operationId: listOrgHeldConnections
+      summary: List loaded organization service-key metadata, never key values
+      description: >-
+        Human session acting as the org, connections-service access and live
+        identity_members owner/admin role required. Org identity and actor must
+        be active. Revoked history is retained but hidden. No unseal on reads.
+        Loading grants no member or proxy access; personal resolution is unchanged.
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: Metadata only; Cache-Control no-store
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [connections]
+                properties:
+                  connections:
+                    type: array
+                    items: { $ref: "#/components/schemas/OrgHeldConnection" }
+        "401": { description: Organization admin session required }
+        "403": { description: Not an active org owner/admin acting as the org }
+        "503": { description: Store unavailable; no internal error details }
+  /api/org-held/{provider}:
+    parameters:
+      - name: provider
+        in: path
+        required: true
+        schema: { type: string, examples: [anthropic, warp] }
+    get:
+      tags: [connections]
+      operationId: getOrgHeldConnection
+      summary: Read loaded metadata without unsealing, including for the loading admin
+      description: Same session, live org-admin and connections-service gate as the list.
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: Metadata only; Cache-Control no-store
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OrgHeldConnection" }
+        "401": { description: Organization admin session required }
+        "403": { description: Not an active org owner/admin acting as the org }
+        "404": { description: No loaded connection; revoked history is hidden }
+        "503": { description: Store unavailable; no internal error details }
+    post:
+      tags: [connections]
+      operationId: loadOrgHeldConnection
+      summary: Load or replace an org-held service key; no read-back, even for the admin
+      description: >-
+        Same human org-admin gate as the list; no app/agent lifecycle authority.
+        Supports registered static-secret and token-paste providers, including
+        Anthropic and Warp; OAuth and unknown providers are refused.
+        Org DID comes only from authenticated act-as, never request JSON.
+        Reuses transactional Tier 0 static-secret sealing: org DID is the custody
+        subject and connectors.ownerDid, kernel node is the only grantee.
+        Separate org-held-{provider} registry provider namespace and immutable
+        private external-mcp-key vault fields prevent changing primary/member resolution.
+        Generic vault fetch/export/renewal cannot disclose the value.
+        Tier 1 fails closed before writes.
+        Replacement revokes previous custody and writes a signed vault tombstone.
+        Signed connector.org-held attestations record org, actor, provider and
+        loaded/replaced/revoked action; never credentials or raw exceptions.
+        No rows deleted. Per-member grants, proxy injection and UI are separate.
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [secret]
+              properties:
+                secret: { type: string, writeOnly: true, minLength: 1, maxLength: 4096, pattern: '^[!-~]+$' }
+      responses:
+        "201":
+          description: Only provider, loaded-by DID, loaded-at and status loaded; no-store
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OrgHeldConnection" }
+        "400": { description: Invalid input, credential-bearing metadata or unsupported provider }
+        "401": { description: Organization admin session required }
+        "403": { description: Not an active org owner/admin acting as the org }
+        "409": { description: Tier 1 unsupported or removed connection unavailable }
+        "413": { description: JSON body exceeds 16 KiB }
+        "503": { description: Signing, vault or store unavailable; no internal error details }
+    delete:
+      tags: [connections]
+      operationId: revokeOrgHeldConnection
+      summary: Revoke org custody, retaining signed history and hiding it from live reads
+      description: >-
+        Same live org-admin act-as gate. Erases wrapped custody, marks the row
+        revoked and writes a signed vault tombstone and actor-attributed
+        connector.org-held attestation. No rows deleted. Missing or already
+        revoked connection is an idempotent success without another event.
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: revoked=true only; Cache-Control no-store
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [revoked]
+                properties:
+                  revoked: { type: boolean, const: true }
+        "401": { description: Organization admin session required }
+        "403": { description: Not an active org owner/admin acting as the org }
+        "503": { description: Signing, vault or store unavailable; no internal error details }
   /api/upstreams:
     get:
       tags: [connections]

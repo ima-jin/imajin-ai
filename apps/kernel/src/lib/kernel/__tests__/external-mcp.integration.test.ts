@@ -66,7 +66,7 @@ vi.mock('@/src/lib/vault/vault-repository', () => ({
   getVaultRepository: () => ({
     load: async () => structuredClone(h.vault),
     save: async (vault: VaultFile) => {
-      if (h.saveError) throw new Error('Synthetic storage failure');
+      if (h.saveError) throw new Error(h.secrets.at(-1) ?? 'Synthetic storage failure');
       h.vault = structuredClone(vault);
     },
   }),
@@ -88,6 +88,8 @@ import { GET as CONNECTION_STATUS, POST as CONNECT_UPSTREAM, DELETE as DISCONNEC
 import { POST as UPSTREAM, OPTIONS as UPSTREAM_OPTIONS } from '@/app/connections/api/upstreams/call/route';
 import { UPSTREAM_READ_SCOPE, UPSTREAM_WRITE_SCOPE, upstreamProvider } from '../app-upstream-policy';
 import { invokeAppUpstream } from '../app-upstream';
+import { GET as ORG_LIST, OPTIONS as ORG_OPTIONS } from '@/app/connections/api/org-held/route';
+import { GET as ORG_GET, POST as ORG_LOAD, DELETE as ORG_REMOVE, OPTIONS as ORG_PROVIDER_OPTIONS } from '@/app/connections/api/org-held/[provider]/route';
 import { GET as ORG_STATUS, POST as ORG_CHANGE } from '@/app/auth/api/org-connections/route';
 import { removeGroupController } from '@/src/lib/auth/remove-group-controller';
 
@@ -183,6 +185,9 @@ beforeAll(async () => {
   const suspensionMigration = readFileSync('migrations/0228_org_connection_suspensions.sql', 'utf8');
   await client.exec(suspensionMigration);
   await client.exec(suspensionMigration);
+  const orgHeldMigration = readFileSync('migrations/0229_org_held_connections.sql', 'utf8');
+  await client.exec(orgHeldMigration);
+  await client.exec(orgHeldMigration);
 });
 beforeEach(async () => {
   vi.clearAllMocks();
@@ -998,5 +1003,199 @@ describe('registered app service → declared external API', () => {
     const before = await database.select().from(attestations);
     expect((await call(UPSTREAM, 'POST', upstreamCall(), serviceHeaders)).status).toBe(200);
     expect(await database.select().from(attestations)).toHaveLength(before.length + 1);
+  });
+});
+
+async function asOrg(role = 'admin') {
+  await database.update(identityMembers).set({ role }).where(eq(identityMembers.memberDid, member));
+  h.identity = { id: member, scope: 'actor', subtype: 'human', actingAs: org, actingAsRole: role };
+}
+async function orgRequest(method = 'GET', provider = 'anthropic', input?: unknown, raw?: string) {
+  const handler = method === 'POST' ? ORG_LOAD : method === 'DELETE' ? ORG_REMOVE : ORG_GET;
+  const response = await handler(new NextRequest(`https://kernel.test/connections/api/org-held/${provider}`, {
+    method, ...(input === undefined && raw === undefined ? {} : { body: raw ?? JSON.stringify(input) }),
+  }), { params: Promise.resolve({ provider }) });
+  const body = await response.json();
+  h.outputs.push(body);
+  return { status: response.status, body, headers: response.headers };
+}
+function orgKey() {
+  // Generated test-only bytes, never a provider credential or snapshot.
+  const secret = `fixture_${generateKeypair().publicKey}`;
+  h.secrets.push(secret);
+  return { secret };
+}
+async function orgRows() {
+  return database.select().from(connectors).where(eq(connectors.ownerDid, org));
+}
+async function changeOrgBoundary(boundary: string) {
+  const changes: Record<string, () => unknown> = {
+    member: () => database.update(identityMembers).set({ role: 'member' }).where(eq(identityMembers.memberDid, member)),
+    maintainer: () => database.update(identityMembers).set({ role: 'maintainer' }).where(eq(identityMembers.memberDid, member)),
+    agent: () => database.update(identityMembers).set({ role: 'agent' }).where(eq(identityMembers.memberDid, member)),
+    removed: () => database.update(identityMembers).set({ removedAt: new Date() }).where(eq(identityMembers.memberDid, member)),
+    restricted: () => database.update(identityMembers).set({ allowedServices: ['auth'] }).where(eq(identityMembers.memberDid, member)),
+    'suspended-org': () => database.update(identities).set({ suspendedAt: new Date() }).where(eq(identities.id, org)),
+    'suspended-actor': () => database.update(identities).set({ suspendedAt: new Date() }).where(eq(identities.id, member)),
+    'foreign-org': () => { h.identity.actingAs = 'did:imajin:foreignorg'; },
+    'missing-org': () => database.update(identities).set({ id: `${org}missing` }).where(eq(identities.id, org)),
+    personal: () => database.update(identities).set({ scope: 'actor' }).where(eq(identities.id, org)),
+    delegated: () => { h.identity.actingFor = member; },
+    'agent-session': () => { h.identity.subtype = 'agent'; },
+    'agent-in-db': () => database.update(identities).set({ subtype: 'agent' }).where(eq(identities.id, member)),
+    'no-act-as': () => { h.identity.actingAs = undefined; },
+    'session-member': () => { h.identity.actingAsRole = 'member'; },
+    unauthenticated: () => { h.authError = true; },
+  };
+  await changes[boundary]();
+}
+describe('org-held service keys: real SQL, signatures and private vault custody', () => {
+  it('isolates org custody from the existing generic provider registration and revoke writers', async () => {
+    await asOrg();
+    const loaded = await orgRequest('POST', 'anthropic', orgKey());
+    const [orgHeld] = await orgRows();
+    const store = await vi.importActual<typeof import('../connector-registry-store')>('../connector-registry-store');
+    await store.recordConnectorRegistration({ ownerDid: org, provider: 'anthropic', sealedKeyField: 'ordinary:fixture' });
+    await store.revokeConnectorRegistration(org, 'anthropic');
+    expect(await database.select().from(connectors).where(eq(connectors.id, orgHeld.id))).toEqual([orgHeld]);
+    expect((await orgRequest()).body).toEqual(loaded.body);
+    await expect(store.createConnectorConnection(org, 'org-held-anthropic')).rejects.toThrow('Unknown connector');
+  });
+  it('hides unconfigured slots and refuses removed slots without changing their history', async () => {
+    await asOrg();
+    expect((await orgRequest('DELETE')).body).toEqual({ revoked: true });
+    await database.insert(connectors).values({
+      id: `empty_org_${sequence}`, ownerDid: org, provider: 'org-held-anthropic', slot: 'primary',
+      channel: 'anthropic', connectorDid: h.nodeDid,
+    });
+    expect((await call(ORG_LIST)).body).toEqual({ connections: [] });
+    expect((await orgRequest()).status).toBe(404);
+    await database.update(connectors).set({ status: 'removed' }).where(eq(connectors.ownerDid, org));
+    const before = await permanentState();
+    expect((await orgRequest('POST', 'anthropic', orgKey())).status).toBe(409);
+    expect(await permanentState()).toBe(before);
+  });
+  it.each(['anthropic', 'warp', 'gemini'])('loads %s under the org DID and returns metadata only on load/get/list', async provider => {
+    await asOrg();
+    const input = orgKey();
+    const loaded = await orgRequest('POST', provider, input);
+    expect(loaded.status).toBe(201);
+    expect(loaded.body).toEqual({ provider, loadedByDid: member, loadedAt: expect.any(String), status: 'loaded' });
+    const [row] = await orgRows();
+    expect(row).toMatchObject({ ownerDid: org, provider: `org-held-${provider}`, slot: 'primary', loadedByDid: member });
+    const [grant] = await database.select().from(vaultDelegationGrants).where(eq(vaultDelegationGrants.field, row.sealedKeyField!));
+    expect(grant).toMatchObject({ subject: org, grantedTo: h.nodeDid, status: 'active' });
+    const entry = await vaultService.get(row.sealedKeyField!);
+    expect(entry?.custodyScheme).toBe('delegation-grant');
+    const read = vi.spyOn(vaultService, 'get');
+    try {
+      expect((await orgRequest('GET', provider)).body).toEqual(loaded.body);
+      expect((await call(ORG_LIST)).body).toEqual({ connections: [loaded.body] });
+      expect(read).not.toHaveBeenCalled();
+    } finally { read.mockRestore(); }
+    expect(loaded.headers.get('cache-control')).toBe('no-store');
+    expect(requireAuth).toHaveBeenCalledWith(expect.anything(), { sessionOnly: true, service: 'connections' });
+    expect(await fetchGrantSecret({ grantId: grant.id, granteeDid: h.nodeDid })).toEqual({ status: 'not_grantee' });
+    expect(await fetchGrantSecret({ grantId: grant.id, granteeDid: member })).toEqual({ status: 'not_grantee' });
+    await expect(loadAndUnseal(row.sealedKeyField!)).rejects.toThrow();
+    await expect(loadAndUnsealByGrantee(row.sealedKeyField!, h.nodeDid)).rejects.toThrow();
+    expect((await listRenewableGrants({ nodeDid: h.nodeDid })).some(item => item.field === row.sealedKeyField)).toBe(false);
+    const [event] = await database.select().from(attestations).where(eq(attestations.subjectDid, org));
+    expect(event).toMatchObject({ type: 'connector.org-held', attestationStatus: null });
+    expect(event.payload).toEqual({ actorDid: member, orgDid: org, provider, action: 'loaded' });
+    expect(crypto.verifySync(event.signature, canonicalize({
+      subject_did: org, type: event.type, context_id: event.contextId, context_type: event.contextType,
+      payload: event.payload, issued_at: event.issuedAt.getTime(),
+    }), keys.publicKey)).toBe(true);
+  });
+  it('replaces with immutable custody, revokes without deleting rows, hides history and can reload', async () => {
+    await asOrg('owner');
+    await orgRequest('POST', 'warp', orgKey());
+    const [old] = await orgRows();
+    const replacement = await orgRequest('POST', 'warp', orgKey());
+    expect(replacement.status).toBe(201);
+    const [current] = await orgRows();
+    expect(current.sealedKeyField).not.toBe(old.sealedKeyField);
+    expect((await vaultService.getHistory(old.sealedKeyField!))[0].deleted).toBe(true);
+    const [retired] = await database.select().from(vaultDelegationGrants).where(eq(vaultDelegationGrants.field, old.sealedKeyField!));
+    expect(retired).toMatchObject({ status: 'revoked', wrappedKey: '', wrappedNonce: '' });
+    expect((await orgRequest('DELETE', 'warp')).body).toEqual({ revoked: true });
+    expect((await orgRequest('GET', 'warp')).status).toBe(404);
+    expect((await call(ORG_LIST)).body).toEqual({ connections: [] });
+    expect(await orgRows()).toHaveLength(1);
+    expect((await orgRows())[0].status).toBe('revoked');
+    expect((await vaultService.getHistory(current.sealedKeyField!))[0].deleted).toBe(true);
+    const events = await database.select().from(attestations).where(eq(attestations.subjectDid, org));
+    expect(events.map(event => event.payload)).toEqual(['loaded', 'replaced', 'revoked'].map(action => ({
+      actorDid: member, orgDid: org, provider: 'warp', action,
+    })));
+    const grants = await database.select().from(vaultDelegationGrants).where(eq(vaultDelegationGrants.subject, org));
+    expect(grants).toHaveLength(2);
+    expect(grants.every(grant => grant.status === 'revoked' && grant.wrappedKey === '')).toBe(true);
+    expect((await orgRequest('DELETE', 'warp')).status).toBe(200);
+    expect(await database.select().from(attestations).where(eq(attestations.subjectDid, org))).toHaveLength(3);
+    expect((await orgRequest('POST', 'warp', orgKey())).status).toBe(201);
+  });
+  it.each(['member', 'maintainer', 'agent', 'removed', 'restricted', 'suspended-org', 'suspended-actor', 'foreign-org',
+    'missing-org', 'personal', 'delegated', 'agent-session', 'agent-in-db', 'no-act-as', 'session-member', 'unauthenticated'])(
+    'refuses %s for load, read, list and removal without mutation', async boundary => {
+      await asOrg();
+      await orgRequest('POST', 'anthropic', orgKey());
+      // The session keeps its stale admin role for live-DB boundary tests.
+      await changeOrgBoundary(boundary);
+      const before = await permanentState();
+      const status = boundary === 'unauthenticated' ? 401 : 403;
+      for (const method of ['POST', 'GET', 'DELETE']) {
+        expect((await orgRequest(method, 'anthropic', method === 'POST' ? orgKey() : undefined)).status).toBe(status);
+      }
+      expect((await call(ORG_LIST)).status).toBe(status);
+      expect(await permanentState()).toBe(before);
+    });
+  it.each([null, [], {}, { secret: '' }, { secret: 123 }, { secret: 'a\nb' }, { secret: 'a b' },
+    { secret: 'x'.repeat(4097) }, { secret: 'fixture', ownerDid: 'did:imajin:override' },
+    { secret: 'fixture', orgContextDid: 'did:imajin:override' }])('rejects invalid write shape %# without echo', async input => {
+    await asOrg();
+    const before = await permanentState();
+    expect((await orgRequest('POST', 'anthropic', input)).status).toBe(400);
+    expect(await permanentState()).toBe(before);
+  });
+  it('rejects unknown/OAuth providers, credential-bearing metadata, malformed/absent/oversized bodies, and Tier 1', async () => {
+    await asOrg();
+    const before = await permanentState();
+    for (const provider of ['unknown', 'google', '__proto__']) expect((await orgRequest('POST', provider, orgKey())).status).toBe(400);
+    expect((await orgRequest('POST', 'anthropic', { secret: org })).status).toBe(400);
+    expect((await orgRequest('POST', 'anthropic', undefined, '{bad')).status).toBe(400);
+    expect((await orgRequest('POST', 'anthropic')).status).toBe(400);
+    expect((await orgRequest('POST', 'anthropic', { secret: 'x'.repeat(17000) })).status).toBe(413);
+    vi.stubEnv('VAULT_OWNER_X_PUB', 'fake-public'); vi.stubEnv('VAULT_OWNER_ED_PUB', 'fake-public');
+    expect((await orgRequest('POST', 'anthropic', orgKey())).status).toBe(409);
+    expect(await permanentState()).toBe(before);
+    for (const handler of [ORG_OPTIONS, ORG_PROVIDER_OPTIONS]) {
+      expect((await handler(new NextRequest('https://kernel.test', { method: 'OPTIONS' }))).status).toBe(204);
+    }
+  });
+  it('fails closed on storage and signing failures, without leaking errors or losing prior working custody', async () => {
+    await asOrg();
+    await orgRequest('POST', 'anthropic', orgKey());
+    const before = await permanentState();
+    h.saveError = true;
+    expect((await orgRequest('POST', 'anthropic', orgKey())).status).toBe(503);
+    expect((await orgRequest('DELETE')).status).toBe(503);
+    expect(await permanentState()).toBe(before);
+    h.saveError = false;
+    vi.stubEnv('AUTH_PRIVATE_KEY', '');
+    expect((await orgRequest('POST', 'anthropic', orgKey())).status).toBe(503);
+    expect(await permanentState()).toBe(before);
+  });
+  it('does not change personal connection ownership or resolution alongside an org-held key', async () => {
+    const personal = await connect();
+    const before = await database.select().from(connectors).where(eq(connectors.ownerDid, member));
+    await asOrg();
+    await orgRequest('POST', 'anthropic', orgKey());
+    expect(await database.select().from(connectors).where(eq(connectors.ownerDid, member))).toEqual(before);
+    h.identity = { id: member, scope: 'actor', subtype: 'human' };
+    expect((await call(GET)).body).toEqual(personal.body);
+    expect((await call(RPC, 'POST', rpcCall())).status).toBe(200);
+    expect(h.fetch.mock.calls[0][1].headers.Authorization).toBe(`Bearer ${h.secrets[0]}`);
   });
 });
