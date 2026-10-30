@@ -10,6 +10,7 @@ import * as authSchema from '@/src/db/schemas/auth';
 import { nodeConfig } from '@/src/db/schemas/registry';
 import { identityAliases } from '@/src/db/schemas/identity-aliases';
 import { profiles } from '@/src/db/schemas/profile';
+import { connectors } from '@/src/db/schemas/connectors';
 
 const mocks = vi.hoisted(() => ({ db: null as unknown, auth: vi.fn() }));
 vi.mock('@/src/db', async () => ({
@@ -17,6 +18,7 @@ vi.mock('@/src/db', async () => ({
   ...await import('@/src/db/schemas/registry'),
   ...await import('@/src/db/schemas/identity-aliases'),
   ...await import('@/src/db/schemas/profile'),
+  ...await import('@/src/db/schemas/connectors'),
   get db() { return mocks.db; },
 }));
 vi.mock('@imajin/auth', async (original) => ({
@@ -77,7 +79,7 @@ beforeAll(async () => {
   mocks.db = database;
   await pg.exec('CREATE SCHEMA auth; CREATE SCHEMA registry;');
   // Use the production Drizzle column definitions, not a fake query builder.
-  for (const table of [authSchema.identities, authSchema.identityMembers, authSchema.attestations, nodeConfig, identityAliases, profiles]) {
+  for (const table of [authSchema.identities, authSchema.identityMembers, authSchema.attestations, nodeConfig, identityAliases, profiles, connectors]) {
     const config = getTableConfig(table);
     await pg.exec(`CREATE SCHEMA IF NOT EXISTS "${config.schema}";`);
     const columns = config.columns.map((column) => `"${column.name}" ${column.getSQLType()}`);

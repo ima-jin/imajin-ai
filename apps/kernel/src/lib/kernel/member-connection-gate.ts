@@ -1,5 +1,5 @@
-import { and, eq, isNull } from 'drizzle-orm';
-import { db, channelLinks, connectors, identities, registryApps, type ConnectorRow } from '@/src/db';
+import { and, eq, isNull, isNotNull, or } from 'drizzle-orm';
+import { db, channelLinks, connectors, identities, registryApps, orgConnectionSuspensions, type ConnectorRow } from '@/src/db';
 import { isActiveGroupMember } from '@/src/lib/auth/group-membership';
 import { APP_AUTHORIZATION_CHANNEL } from '@/src/lib/auth/app-authorization-grant';
 import { ExternalMcpError, EXTERNAL_MCP_SCOPE, POSTMAN_PROVIDER } from './external-mcp-policy';
@@ -47,7 +47,7 @@ async function authorizeCaller(tx: ConnectionTransaction, caller: ExternalMcpCal
 }
 /**
  * One per-call gate for BOTH member MCP and app upstream paths.
- * #3167: extend HERE with org-admin connection/service suspension checks.
+ * Org-admin suspension is enforced HERE only, before either caller accesses custody.
  * A token, org membership, or a selected member DID alone is never authority.
  * Call under the member custody snapshot lock, before any credential unseal.
  */
@@ -59,5 +59,18 @@ export async function authorizeMemberConnection(
   if (!row || !isLiveConnection(row) || !row.sealedKeyField) throw connectionUnavailable();
   if (target.binding !== undefined && row.upstreamBinding !== target.binding) throw connectionUnavailable();
   await checkMemberStanding(tx, caller.memberDid, row.orgContextDid);
+  if (row.orgContextDid) {
+    const [suspension] = await tx.select({ provider: orgConnectionSuspensions.provider })
+      .from(orgConnectionSuspensions).where(and(
+        eq(orgConnectionSuspensions.orgDid, row.orgContextDid),
+        eq(orgConnectionSuspensions.provider, row.provider),
+        isNotNull(orgConnectionSuspensions.suspendedAt),
+        or(
+          eq(orgConnectionSuspensions.memberDid, ''),
+          and(eq(orgConnectionSuspensions.memberDid, caller.memberDid), eq(orgConnectionSuspensions.slot, row.slot)),
+        ),
+      )).limit(1);
+    if (suspension) throw connectionUnavailable();
+  }
   return row;
 }

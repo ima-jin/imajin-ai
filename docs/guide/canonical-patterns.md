@@ -78,8 +78,12 @@ the existing app registration, `/connections/api/upstreams/connection` for perso
 member custody, and `/connections/api/upstreams/call` for app-service invocation.
 Never grant the app a raw upstream credential. Both this path and personal MCP use
 `authorizeMemberConnection` in `apps/kernel/src/lib/kernel/member-connection-gate.ts`
-for live member consent, connection state and org standing. #3167 extends that
-single gate for org-admin suspension; do not fork checks into routes.
+for live member consent, connection state, org standing and org-admin suspension;
+do not fork checks into routes. Org admins manage suspension on `/auth/members`
+via session-only `/auth/api/org-connections`. `removeGroupController` persists
+and signs suspension in its existing removal transaction. Retained org/member/
+provider/slot policies prevent reconnect/retag bypass; service-wide policies also
+cover future connections. Personal use is unaffected. Resume each policy explicitly.
 The outbound transport shares credential injection and echo refusal with MCP.
 Admission limits run before any database read. Successful calls are recorded with
 signed member/app/org metadata, as are authorized upstream failures; refusals

@@ -426,7 +426,8 @@ paths:
         live operator ceiling. Every call checks member per-app OAuth consent, active
         connection/custody, destination binding, member/org standing and active org
         membership through authorizeMemberConnection, shared with member MCP
-        (the #3167 suspension hook). GET/HEAD are reads; all other methods require
+        including org member/service suspension before vault access. Admin controls
+        are GET/POST /auth/api/org-connections (auth spec). GET/HEAD are reads; all other methods require
         connectors:upstream:write in token, operator ceiling AND live member grant,
         plus a reason code. No automatic writes. Exact declared paths/methods only;
         no URL, header, query or app DID override. HTTPS public egress with DNS connect
@@ -586,7 +587,10 @@ paths:
         with no database transaction or lock held. A second short transaction records each
         admitted attempt (including successful use) as a signed member/org/app/method/tool event;
         no arguments, RPC IDs, credential or provider error is stored.
-        Org controls and org-wide revocation remain separate work.
+        Org-admin suspension uses the same authorizeMemberConnection gate before
+        vault access and returns the existing generic connection-unavailable 403.
+        GET/POST /auth/api/org-connections administers retained individual/service
+        policies; see the auth spec. Personal untagged use is unaffected.
       security:
         - cookieAuth: []
         - bearerAuth: []

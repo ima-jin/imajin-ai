@@ -502,6 +502,16 @@ token counts stay unpriced. Moonshot JSON and SSE use our rate card, never an
 upstream `usage.cost` or account balance. The existing OpenRouter-specific
 explicit-cost contract is unchanged. `/jin` Spend UI work remains #2725.
 ## Testing
+For org-tagged connection suspension (#3167), `/auth/members` shows the external
+connections panel while acting as an org. The session-only
+`GET/POST /auth/api/org-connections` rechecks live owner/admin role and auth access.
+The real-SQL acceptance tests live in `external-mcp.integration.test.ts` and cover
+both call paths, unchanged custody, removal/re-add, and service policies covering
+future connections. Only `authorizeMemberConnection` enforces suspension.
+With the development kernel running, `/dev/org-connections-preview` renders the
+real panel with labeled fixture transport, including simulated non-admin 403.
+It is unavailable outside development and never creates an authenticated session.
+Browser evidence from that page proves UI rendering, not live authorization.
 
 The full agent suite is `pnpm --silent test:agent`; while iterating, pass only
 affected test files. SSH certificate/deploy tests require OpenSSH client
