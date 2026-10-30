@@ -163,9 +163,9 @@ including after a partial network failure. Provider errors are fixed codes,
 without response bodies, headers or exception causes.
 
 This is **not yet wired to `/jin`**, does not persist provider settings and does
-not enable owner-domain sending. #2918's merged #2958 contains no implementation;
-its supported Postal domain-management boundary still needs a decision. The
-future integration must supply authoritative Postal records, enforce owner/admin
+not enable owner-domain sending. **BLOCKED on #2918 (← postal-deploy#2)**:
+main has no Postal domain provisioning/record retrieval/verification flow yet.
+The future integration must supply authoritative Postal records, enforce owner/admin
 and delegation policy, serialize setup per domain, persist non-secret settings,
 and poll actual verification before enabling mail. Cloudflare has no atomic
 SPF compare-and-swap here: concurrent external DNS edits require reconciliation.
