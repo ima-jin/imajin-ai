@@ -56,6 +56,18 @@ describe('OPTIONS /jin/api/events', () => {
 });
 
 describe('GET /jin/api/events (#2289)', () => {
+  it.each(['person', 'agent'])('passes the %s actor filter through without changing personal scope', async kind => {
+    const res = await GET(makeReq(`?kind=${kind}`) as Parameters<typeof GET>[0]);
+    expect(res.status).toBe(200);
+    expect(mockList).toHaveBeenCalledWith(HUMAN_DID, { kind });
+  });
+
+  it.each(['', 'all', 'robot', 'PERSON', ' person '])('rejects invalid actor kind %j without querying events', async kind => {
+    const res = await GET(makeReq(`?kind=${encodeURIComponent(kind)}`) as Parameters<typeof GET>[0]);
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: 'kind must be person or agent' });
+    expect(mockList).not.toHaveBeenCalled();
+  });
   it('retains jin Record access but suppresses grant refs without auth-service access', async () => {
     mockRequireAuth.mockResolvedValueOnce({ identity: {
       ...humanIdentity(), actingAs: 'did:imajin:org', actingAsRole: 'admin',

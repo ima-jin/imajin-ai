@@ -41,6 +41,7 @@ export interface CronManifest {
 export const KERNEL_CRON_MANIFEST: CronManifest = {
   app: 'kernel',
   jobs: [
+    { path: '/api/cron/registry-app-expiry', schedule: '*/10 * * * *', noOverlap: true },
     { path: '/api/cron/operator-approval-expiry', schedule: '*/10 * * * *', noOverlap: true },
     { path: '/api/cron/grant-expiry', schedule: '*/10 * * * *', noOverlap: true },
     { path: '/api/cron/grant-audit-retry', schedule: '* * * * *', noOverlap: true },
@@ -50,6 +51,7 @@ export const KERNEL_CRON_MANIFEST: CronManifest = {
     { path: '/api/cron/withdrawal-reconcile', schedule: '*/15 * * * *', noOverlap: true },
     { path: '/api/cron/attestation-cleanup', schedule: '0 0 * * *', noOverlap: true },
     { path: '/api/cron/event-subscription-cleanup', schedule: '0 1 * * *', noOverlap: true },
+    { path: '/api/cron/app-authorization-code-cleanup', schedule: '*/10 * * * *', noOverlap: true },
     { path: '/api/cron/claim-stub-expiry', schedule: '0 0 * * *', noOverlap: true },
     { path: '/api/cron/warp-run-watch', schedule: '*/10 * * * *', noOverlap: true },
     { path: '/api/cron/usage-rollup', schedule: '0 2 * * *', noOverlap: true },

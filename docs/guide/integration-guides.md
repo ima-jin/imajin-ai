@@ -41,6 +41,12 @@ The OpenClaw Imajin plugin (`extensions/imajin/`) acts as a bridge:
 
 ### Migrating OpenClaw's model providers to the kernel passthrough
 
+For pull-based release deployment, use the tracked
+[systemd updater runbook](../../deploy/infer-passthrough/README.md) (#3060).
+It requires a release tag reachable from main, successful production deployment
+evidence for the exact SHA, and mint-backed candidate/live health. It rolls back
+failed promotion; one-time host installation remains an operator action.
+
 OpenClaw's own inference calls (its custom-provider model config, separate from the
 chat-as-channel bridge above) can also be routed through the kernel's completions
 passthrough instead of static per-provider keys in gateway config — see

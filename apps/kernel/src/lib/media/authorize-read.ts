@@ -1,5 +1,6 @@
 import type { FairManifest } from '@imajin/fair';
 import { canReadAsset, type ReadDecision } from './read-access';
+import { isLegalEntityAsset } from './control-document-kind';
 
 /**
  * Async per-asset READ authorization (#1166, closes #1168, closes #1851).
@@ -61,6 +62,14 @@ export async function authorizeAssetRead(
   requesterDid: string | null,
   deps: AuthorizeDeps = {},
 ): Promise<ReadDecision> {
+  if (isLegalEntityAsset(subject.metadata)) {
+    // A broad media token may carry the owner's effective DID. Raw source is
+    // therefore settings-only, even for that DID; consumers use getLegalEntity.
+    return {
+      allowed: false, requiresAuth: true, accessType: 'private',
+      reason: 'Use legal-entity settings or the per-field disclosure helper',
+    };
+  }
   const base = canReadAsset({ ownerDid: subject.ownerDid, access: subject.access }, requesterDid);
 
   // Already allowed, or no authenticated requester to re-check against.

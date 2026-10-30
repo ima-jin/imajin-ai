@@ -4,7 +4,9 @@ import { useCallback, useEffect, useState } from 'react';
 import type { LoopWithHistory, LoopsPage } from '@/src/lib/loops/query';
 import { RunOutput } from './run-output';
 import { RunComposer } from './run-composer';
+import { RunBrief } from './run-brief';
 import type { SessionCommandClient } from './session-command-client';
+import { RunSessionControls } from './run-session-controls';
 
 
 interface DetailProps {
@@ -80,6 +82,7 @@ export function RunsPanelDetail({ loopId, onSelect, onDenied, client }: Readonly
         ))}
       </dl>
       <RunComposer key={loopId} loopId={loopId} events={detail.events} disabled={!commandAvailable || !!detail.loop.finishedAt} onDispatched={refreshDetail} client={client} />
+      <RunSessionControls key={`session-${loopId}`} loopId={loopId} sessionName={detail.loop.summary} events={detail.events} disabled={!commandAvailable || !!detail.loop.finishedAt} onDispatched={refreshDetail} client={client} />
       <div>
         <h4 className="font-semibold text-gray-200">Lineage</h4>
         {detail.loop.parentLoopId && (
@@ -107,6 +110,12 @@ export function RunsPanelDetail({ loopId, onSelect, onDenied, client }: Readonly
               <p className="text-gray-200">{event.type}</p>
               <time dateTime={event.occurredAt}>{event.occurredAt}</time>
               <p>{String(event.payload.summary ?? '')}</p>
+              {event.type.startsWith('loop.session.') && <p className="break-all">
+                Command: {String(event.payload.commandId ?? '')}
+                {typeof event.payload.reason === 'string' && <span data-failure-reason={event.payload.reason}> · {event.payload.reason}</span>}
+                {typeof event.payload.detail === 'string' && ` · ${event.payload.detail}`}
+              </p>}
+              <RunBrief value={event.payload.brief} />
               {event.payload.output && <RunOutput output={event.payload.output} />}
               <p className="break-all">Signed by {event.issuer}</p>
             </li>

@@ -42,6 +42,30 @@ export const IMPORTED_KEY_NAMESPACE = 'vault-imported-key';
 /** Group signing seeds are private to the countersigned group custody rail. */
 export const GROUP_KEY_NAMESPACE = 'vault-group-key';
 
+/** SSH CA seeds are kernel-only, with no generic fetch or export surface. */
+export const SSH_CA_NAMESPACE = 'vault-ssh-ca';
+/** Financial fields are released only through the bank-details disclosure rail. */
+export const BANK_DETAILS_NAMESPACE = 'bank-details';
+/** Member credentials are usable only by the kernel's outbound MCP transport. */
+export const EXTERNAL_MCP_NAMESPACE = 'external-mcp-key';
+
+export function isExternalMcpField(field: string): boolean {
+  return vaultFieldNamespace(field) === EXTERNAL_MCP_NAMESPACE;
+}
+
+export function isBankDetailsField(field: string): boolean {
+  return vaultFieldNamespace(field) === BANK_DETAILS_NAMESPACE;
+}
+
+export function isSshCaField(field: string): boolean {
+  return vaultFieldNamespace(field) === SSH_CA_NAMESPACE;
+}
+
+/** Fields whose plaintext and lifecycle belong exclusively to an in-process rail. */
+export function isPrivateCustodyField(field: string): boolean {
+  return isGroupKeyField(field) || isSshCaField(field) || isBankDetailsField(field) || isExternalMcpField(field);
+}
+
 export function isGroupKeyField(field: string): boolean {
   return vaultFieldNamespace(field) === GROUP_KEY_NAMESPACE;
 }

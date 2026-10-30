@@ -51,20 +51,35 @@ describe('auth.yaml app token selectors (#3040)', () => {
   const auth = parse(readFileSync(join(KERNEL_ROOT, 'api-spec/auth.yaml'), 'utf-8'));
   const mint = auth.paths['/api/apps/token'].post;
 
-  it('documents both exclusive signed request shapes', () => {
+  it('documents all three exclusive signed request shapes', () => {
     const schema = mint.requestBody.content['application/json'].schema;
     expect(schema.required).toEqual(['appDid', 'nonce', 'timestamp', 'signature']);
     expect(schema.oneOf).toEqual([
-      { required: ['attestationId'], not: { required: ['principalDid'] } },
-      { required: ['principalDid'], not: { required: ['attestationId'] } },
+      { required: ['attestationId'], not: { anyOf: [{ required: ['principalDid'] }, { required: ['code'] }] } },
+      { required: ['principalDid'], not: { anyOf: [{ required: ['attestationId'] }, { required: ['code'] }] } },
+      { required: ['code', 'state'], not: { anyOf: [{ required: ['attestationId'] }, { required: ['principalDid'] }] } },
     ]);
     for (const selector of ['attestationId', 'principalDid']) {
       expect(schema.properties[selector]).toMatchObject({ type: 'string', minLength: 1 });
-      expect(schema.properties.signature.description).toContain(`\${appDid}:\${${selector}}:\${nonce}:\${timestamp}`);
     }
+    expect(schema.properties.signature.description).toContain('${appDid}:${selector}:${nonce}:${timestamp}');
+    expect(schema.properties.code).toMatchObject({ type: 'string', pattern: '^[a-f0-9]{64}$' });
+    expect(schema.properties.state).toMatchObject({ type: 'string', minLength: 32, maxLength: 256 });
+    expect(auth.components.schemas.AppTokenMintResult.properties.subjectDid.type).toBe('string');
+    expect(auth.components.schemas.AppTokenMintResult.properties.attestationId.type).toBe('string');
+    expect(mint.responses['400'].description).toContain('code_used');
     expect(mint.description).toContain('not revoked, not expired');
     expect(mint.responses['403'].description).toContain('no_live_grant');
     expect(mint.responses['403'].description).toContain('Re-grant <app name> on /jin → Grants');
+  });
+
+  it('documents keypair consent on the kernel origin with code/state issuance', () => {
+    const route = auth.paths['/api/auth/authorize'];
+    expect(route.servers).toEqual([{ url: '/', description: expect.any(String) }]);
+    expect(route.post.security).toEqual([{ cookieAuth: [] }]);
+    expect(route.post.requestBody.content['application/json'].schema.required).toEqual(['appId', 'scopes', 'state']);
+    expect(route.post.responses['201'].content['application/json'].schema.required).toEqual(['redirect']);
+    expect(route.post.description).toContain('TTL is 60 seconds');
   });
 });
 

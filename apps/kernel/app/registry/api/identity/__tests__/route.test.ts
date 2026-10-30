@@ -120,6 +120,12 @@ beforeEach(() => {
 // ─── Tests ───────────────────────────────────────────────────────────────────
 
 describe('POST /registry/api/identity — dual-mode auth (Issue #1464)', () => {
+  it.each(['github', 'GitHub', ' github '])('reserves source-owner namespace %s from public writes', async namespace => {
+    const res = await POST(makeRequest({ ...VALID_BODY, namespace, ref: 'org:ima-jin', type: 'organization' }));
+    expect(res.status).toBe(403);
+    expect(mockResolveOrMintIdentity).not.toHaveBeenCalled();
+    expect(mockPublish).not.toHaveBeenCalled();
+  });
 
   // ── App-tier path ─────────────────────────────────────────────────────────
 

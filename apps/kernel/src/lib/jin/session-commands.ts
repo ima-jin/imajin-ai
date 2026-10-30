@@ -63,7 +63,7 @@ export async function prepareSessionCommand(
 
 function requireCommandTime(frame: SessionCommandFrame): void {
   const issued = Date.parse(frame.issuedAt);
-  const expires = Date.parse(frame.expiresAt);
+  const expires = frame.expiresAt == null ? issued + TTL : Date.parse(frame.expiresAt);
   if (expires <= issued || expires - issued > TTL || issued > Date.now() + SKEW || expires <= Date.now()) {
     throw new SessionCommandError('Command expired or outside time window', 403);
   }

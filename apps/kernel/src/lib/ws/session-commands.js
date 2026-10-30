@@ -3,7 +3,7 @@ const SESSION_COMMAND_PATH = '/chat/api/internal/session-command';
 const MAX_BODY_BYTES = 32 * 1024;
 
 function sendOwnSessionCommand(didSockets, socketMeta, targetDid, command) {
-  if (!command || command.to !== targetDid || !/^session\.(send|abort|spawn|approve|deny)$/.test(command.type)) return false;
+  if (!command || command.to !== targetDid || !/^session\.(send|abort|spawn|approve|deny|archive|reset|label|history)$/.test(command.type)) return false;
   const sockets = didSockets.get(targetDid);
   const serialized = JSON.stringify(command);
   for (const ws of sockets ?? []) {
@@ -53,7 +53,7 @@ function handleSessionCommandRequest(req, res, didSockets, socketMeta, key) {
 }
 
 function isSessionEvent(type) {
-  return type === 'loop.approval.bound' || /^loop\.session\.(send|abort|spawn|approve|deny)\.(completed|failed)$/.test(type);
+  return type === 'loop.approval.bound' || /^loop\.session\.(send|abort|spawn|approve|deny|archive|reset|label|history)\.(completed|failed)$/.test(type);
 }
 
 async function forwardSessionEvent(meta, frame) {

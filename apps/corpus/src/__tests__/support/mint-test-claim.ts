@@ -10,6 +10,7 @@ export type TestClaimScope = 'corpus:read' | 'corpus:write';
 
 export interface TestClaimOverrides {
   did?: string;
+  onBehalfOf?: string;
   scope?: TestClaimScope;
   aud?: string;
   /** Override to mint a claim with an unsupported/missing alg, for negative tests. */
@@ -27,6 +28,7 @@ export function mintTestClaimHeader(privateKey: string, overrides: TestClaimOver
   const issuedAt = overrides.issuedAt ?? Date.now();
   const claim = {
     did: overrides.did ?? 'did:example:alice',
+    ...(overrides.onBehalfOf ? { onBehalfOf: overrides.onBehalfOf } : {}),
     scope: overrides.scope ?? 'corpus:read',
     aud: overrides.aud ?? 'corpus',
     alg: overrides.alg ?? 'Ed25519',

@@ -27,6 +27,7 @@ import { and, eq, isNull, gt, or, like, desc, type SQL } from 'drizzle-orm';
 import { createLogger } from '@imajin/logger';
 import {
   db,
+  attestations,
   vaultDelegationGrants,
   vaultGrantRequests,
   vaultOwnerEnvelopes,
@@ -41,7 +42,7 @@ import { VaultDelegationError } from './errors';
 import { isInternalSecretField } from './internal-secret';
 import { rotateInternalSecret } from './internal-secret-rotate';
 import { reissueFieldGrants } from './shared-internal-secret';
-import { isCloudflareImportedKeyField, isGroupKeyField } from './field-grammar';
+import { isBankDetailsField, isCloudflareImportedKeyField, isExternalMcpField, isPrivateCustodyField, isSshCaField } from './field-grammar';
 import { isCloudflarePurpose } from '@/src/lib/cloudflare/contract';
 import { forEachSequential, mapWithConcurrency } from '@/src/lib/async/sequential';
 
@@ -893,7 +894,7 @@ export async function vaultFieldExists(field: string): Promise<boolean> {
  * No plaintext is logged at any point.
  */
 export async function loadAndUnseal(field: string): Promise<string | undefined> {
-  if (isGroupKeyField(field)) throw new Error('Group keys require an in-process purpose grant');
+  if (isPrivateCustodyField(field)) throw new Error('Group keys require an in-process purpose grant');
   const entry = await vaultService.get(field);
   if (!entry) {
     return undefined;
@@ -1162,7 +1163,7 @@ export async function loadAndUnsealByGrantee(
   field: string,
   granteeDid: string,
 ): Promise<string | undefined> {
-  if (isGroupKeyField(field)) throw new Error('Group keys require an in-process purpose grant');
+  if (isPrivateCustodyField(field)) throw new Error('Group keys require an in-process purpose grant');
   const entry = await vaultService.get(field);
   if (!entry || entry.deleted) {
     return undefined;
@@ -1240,30 +1241,43 @@ export async function revokeStaticSecretGrant(
  *
  * Returns the number of grants revoked.
  */
-export async function revokeVaultDelegationGrantsForConnector(
+export function revokeVaultDelegationGrantsForConnector(
   connectorId: string,
   ownerDid: string,
+  options?: { attest: boolean },
 ): Promise<number> {
   const fieldPattern = `${connectorId}-%-key:${ownerDid}`;
+  async function revoke(executor: DbExecutor): Promise<number> {
+    const updated = await executor
+      .update(vaultDelegationGrants)
+      .set({ status: 'revoked', revokedAt: new Date() })
+      .where(
+        and(
+          like(vaultDelegationGrants.field, fieldPattern),
+          eq(vaultDelegationGrants.status, 'active'),
+        ),
+      )
+      .returning({
+        id: vaultDelegationGrants.id,
+        field: vaultDelegationGrants.field,
+        keyId: vaultDelegationGrants.keyId,
+      });
 
-  const updated = await db
-    .update(vaultDelegationGrants)
-    .set({ status: 'revoked', revokedAt: new Date() })
-    .where(
-      and(
-        like(vaultDelegationGrants.field, fieldPattern),
-        eq(vaultDelegationGrants.status, 'active'),
-      ),
-    )
-    .returning({
-      id: vaultDelegationGrants.id,
-      field: vaultDelegationGrants.field,
-      keyId: vaultDelegationGrants.keyId,
-    });
+    if (options?.attest && updated.length > 0) {
+      const { prepareMechanicalAttestation } = await import('@/src/lib/auth/emit-mechanical-attestation');
+      await executor.insert(attestations).values(await prepareMechanicalAttestation({
+        subjectDid: ownerDid,
+        type: 'delegation.grant.revoked',
+        contextId: `${connectorId}:${ownerDid}`,
+        contextType: 'vault.delegation',
+        payload: { connectorId, ownerDid, grants: updated.map(({ id, field, keyId }) => ({ id, field, keyId })) },
+      }));
+    }
+    await eraseGrantKeyMaterial(updated, executor);
 
-  await eraseGrantKeyMaterial(updated);
-
-  return updated.length;
+    return updated.length;
+  }
+  return options?.attest ? db.transaction(revoke) : revoke(db);
 }
 
 // ── Renewal (#1535) ──────────────────────────────────────────────────────
@@ -1395,7 +1409,8 @@ export async function listRenewableGrants(options: {
   const now = options.now ?? new Date();
   const horizon = new Date(now.getTime() + (options.withinMs ?? 0));
 
-  const envelopes = await db.select().from(vaultOwnerEnvelopes);
+  const envelopes = (await db.select().from(vaultOwnerEnvelopes))
+    .filter(envelope => !isSshCaField(envelope.field) && !isBankDetailsField(envelope.field) && !isExternalMcpField(envelope.field));
 
   // Each envelope's grant lookups are independent reads: scan a few envelopes at a
   // time, then flatten in envelope order so the worklist order is unchanged.
@@ -1581,6 +1596,7 @@ export function canonicalizeGrantPayload(grant: {
   wrappedNonce: string;
   keyId: string;
   expiresAt: Date | null;
+  sshScope?: VaultDelegationGrant['sshScope'];
 }): string {
   return JSON.stringify({
     expiresAt: grant.expiresAt?.toISOString() ?? null,
@@ -1589,6 +1605,15 @@ export function canonicalizeGrantPayload(grant: {
     keyId: grant.keyId,
     ownerXPub: grant.ownerXPub,
     subject: grant.subject,
+    ...(grant.sshScope ? { sshScope: {
+      caId: grant.sshScope.caId, principals: grant.sshScope.principals,
+      forceCommand: grant.sshScope.forceCommand, allowedHosts: grant.sshScope.allowedHosts,
+      ...(grant.sshScope.github ? { github: {
+        repository: grant.sshScope.github.repository, repositoryId: grant.sshScope.github.repositoryId,
+        repositoryOwnerId: grant.sshScope.github.repositoryOwnerId, environment: grant.sshScope.github.environment,
+        ...(grant.sshScope.github.allowedRefs === undefined ? {} : { allowedRefs: grant.sshScope.github.allowedRefs }),
+      } } : {}),
+    } } : {}),
     wrappedKey: grant.wrappedKey,
     wrappedNonce: grant.wrappedNonce,
   });
@@ -1621,7 +1646,7 @@ export async function _applyDelegationGrant(
   grant: Pick<VaultDelegationGrant,
     'subject' | 'grantedTo' | 'field' | 'ownerXPub' |
     'wrappedKey' | 'wrappedNonce' | 'keyId' | 'ownerSignature' | 'expiresAt'
-  >,
+  > & { sshScope?: VaultDelegationGrant['sshScope'] },
   nodeXPriv: string,
   ownerEdPub: string,
 ): Promise<string> {
@@ -1725,7 +1750,7 @@ export async function fetchGrantSecret(params: {
     // someone else would let a caller enumerate grantIds it cannot use.
     return { status: 'not_grantee' };
   }
-  if (!params.kernelCredentialUse && (isCloudflarePurpose(grant.purpose) || isCloudflareImportedKeyField(grant.field))) {
+  if (isSshCaField(grant.field) || (!params.kernelCredentialUse && (isExternalMcpField(grant.field) || isBankDetailsField(grant.field) || isCloudflarePurpose(grant.purpose) || isCloudflareImportedKeyField(grant.field)))) {
     return { status: 'not_grantee' };
   }
   if (grant.status !== 'active') {

@@ -26,10 +26,12 @@ function param(params: URLSearchParams, key: string): string | undefined {
 
 function readFilters(url: URL): RecordEventFilters {
   const query = url.searchParams;
+  const kind = query.get('kind');
   const limit = Number.parseInt(param(query, 'limit') ?? '', 10);
   const offset = Number.parseInt(param(query, 'offset') ?? '', 10);
 
   return {
+    ...(kind === 'person' || kind === 'agent' ? { kind } : {}),
     ...(param(query, 'action') === undefined ? {} : { action: param(query, 'action') }),
     ...(param(query, 'since') === undefined ? {} : { since: param(query, 'since') }),
     ...(param(query, 'agent') === undefined ? {} : { agent: param(query, 'agent') }),
@@ -49,7 +51,12 @@ export async function GET(request: NextRequest) {
 
   const { identity } = authResult;
   const principalDid = identity.actingAs ?? identity.id;
-  const filters = readFilters(new URL(request.url));
+  const url = new URL(request.url);
+  const kind = url.searchParams.get('kind');
+  if (kind !== null && kind !== 'person' && kind !== 'agent') {
+    return NextResponse.json({ error: 'kind must be person or agent' }, { status: 400, headers: cors });
+  }
+  const filters = readFilters(url);
 
   try {
     if (identity.actingAs && (

@@ -386,7 +386,7 @@ describe('executeVaultApproval — vault:claim (stub pending #2243)', () => {
     const result = await executeVaultApproval(card({ kind: 'vault:claim', detail: {} }));
 
     expect(result.ok).toBe(false);
-    expect(result.error).toMatch(/#2243/);
+    expect(result.error).toBe('Service pairing is not available yet');
     expect(mockMintKeypair).not.toHaveBeenCalled();
     expect(mockGrantExistingMintedKey).not.toHaveBeenCalled();
     expect(mockRevokeMintedKey).not.toHaveBeenCalled();

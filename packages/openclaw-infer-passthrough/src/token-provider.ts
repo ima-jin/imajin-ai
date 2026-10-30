@@ -88,6 +88,7 @@ export async function mintAppToken(
   principalDid: string,
   scope: string | null = APP_TOKEN_SCOPE,
   aud?: string,
+  timeoutMs = 20_000,
 ): Promise<MintedToken> {
   const nonce = randomBytes(16).toString('hex');
   const timestamp = new Date().toISOString();
@@ -106,6 +107,7 @@ export async function mintAppToken(
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ appDid, principalDid, scope: resolvedScope, aud, nonce, timestamp, signature }),
+      signal: AbortSignal.timeout(timeoutMs),
     });
   } catch (err) {
     // Network failure reaching the kernel's mint endpoint: a kernel outage,
@@ -121,7 +123,13 @@ export async function mintAppToken(
     throw new TokenMintError(res.status, body?.error ?? res.statusText);
   }
 
-  return (await res.json()) as MintedToken;
+  const minted = (await res.json()) as MintedToken;
+  if (!minted || typeof minted.token !== 'string' || minted.token.length === 0 ||
+      !Number.isFinite(minted.expiresIn) || minted.expiresIn <= 0 ||
+      !Array.isArray(minted.scopes) || !minted.scopes.every((scope) => typeof scope === 'string')) {
+    throw new TokenMintError(502, 'Invalid token response');
+  }
+  return minted;
 }
 
 /** Minimal surface `handle-completions.ts` needs — lets tests inject a stub instead of a real `RouteTokenProvider`. */
@@ -174,6 +182,7 @@ export class RouteTokenProvider implements ScopedTokenSource {
     private readonly now: () => number = Date.now,
     private readonly scope: string | null = APP_TOKEN_SCOPE,
     private readonly aud?: string,
+    private readonly timeoutMs = 20_000,
   ) {}
 
   /** Get a valid token, minting or refreshing as needed. Coalesces concurrent callers onto one mint. */
@@ -201,7 +210,7 @@ export class RouteTokenProvider implements ScopedTokenSource {
   private async refresh(): Promise<string> {
     // A failed mint must not leave an expired/revoked token or scopes cached.
     this.invalidate();
-    const minted = await mintAppToken(this.kernelBaseUrl, this.appDid, this.privateKeyHex, this.principalDid, this.scope, this.aud);
+    const minted = await mintAppToken(this.kernelBaseUrl, this.appDid, this.privateKeyHex, this.principalDid, this.scope, this.aud, this.timeoutMs);
     this.cached = { token: minted.token, expiresAt: this.now() + minted.expiresIn * 1000, scopes: minted.scopes };
     return this.cached.token;
   }

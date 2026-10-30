@@ -93,6 +93,7 @@ export function RunsPanel({ client }: Readonly<{ client?: SessionCommandClient }
         <div className="min-w-0">
           <h2 className="text-base font-semibold text-gray-100">Runs</h2>
           <p className="text-xs text-gray-500">Signed loop registry · loop-addressed commands</p>
+          <a href="/jin/brief-settings" className="inline-flex min-h-11 items-center text-xs text-indigo-300">Brief storage settings</a>
         </div>
         <button type="button" disabled={loading} onClick={() => void load()} className="min-h-11 text-xs text-gray-400 disabled:opacity-50">
           Refresh runs
@@ -145,6 +146,13 @@ export function RunsPanel({ client }: Readonly<{ client?: SessionCommandClient }
           </li>
         ))}
       </ul>
+      {loops.some(loop => loop.state.toLowerCase() === 'archived') && <details className="mt-3">
+        <summary className="min-h-11 cursor-pointer py-3 text-xs text-gray-400">Archived run history</summary>
+        {loops.filter(loop => loop.state.toLowerCase() === 'archived').map(loop => <button
+          key={loop.loopId} type="button" className="block min-h-11 break-words text-left text-xs text-indigo-300"
+          onClick={() => setSelected(loop.loopId)}
+        >{loop.summary} · archived history</button>)}
+      </details>}
       {selected && !threads.some((loop) => loop.loopId === selected) && (
         <div className="mt-3 rounded-lg border border-gray-800 p-3">
           <button type="button" className="min-h-11 text-xs text-gray-400" onClick={() => setSelected(null)}>Close run history</button>

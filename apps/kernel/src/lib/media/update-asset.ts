@@ -1,7 +1,8 @@
 import { writeFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
-import { db, assets, type Asset } from "@/src/db";
+import { db, assets, attestations, type Asset } from "@/src/db";
 import { eq, sql } from "drizzle-orm";
+import type { PgUpdateSetSource } from "drizzle-orm/pg-core";
 import type { FairManifest, FairManifestV11 } from "@imajin/fair";
 import { isFairManifestV11 } from "@imajin/fair";
 import { computeCid } from "@imajin/cid";
@@ -14,97 +15,59 @@ import { checkArticleFrontmatter, type ArticleFrontmatterCheck } from "./article
 import { ensureProjectReactorRegistered } from "./projection-reactor";
 import { ensureChannelLinksSurfaceRegistered } from "./channel-links-surface";
 import { publish } from "@imajin/bus";
+import { isLegalEntityAsset, signLegalEntityDocument, prepareLegalEntityChange } from "./control-document";
+import { LegalEntityValidationError } from "../profile/legal-entity-schema";
+import { parseLegalEntity } from "../profile/legal-entity-document";
 
 const log = createLogger("kernel");
 
-/**
- * Tracked *authored* document classes that may fire the document.changed
- * trigger (#1205, EPIC #1204). Human-cadence authored config/content only —
- * NEVER binary/other assets or machine-hot state (discipline rule 1). Editing
- * one of these IS the privileged control-plane action; the bus reacts
- * downstream (#1207).
- */
+/** Human-cadence authored config/content only — never binary or machine-hot state (#1205). */
 const AUTHORED_DOC_MIME_TYPES = new Set([
-  "text/markdown",
-  "text/yaml",
-  "application/yaml",
-  "application/x-yaml",
+  "text/markdown", "text/yaml", "application/yaml", "application/x-yaml",
 ]);
 
-/** Service scope for authored-document control-plane events. */
-const DOCUMENT_CHANGED_SCOPE = "media";
-
 export interface UpdateAssetContentInput {
+  /** Internal owner-settings rail only; generic media writes cannot change this record. */
+  controlDocument?: 'legal-entity';
+  composedBy?: string;
   assetId: string;
   requesterDid: string;
-  /** New UTF-8 text content (empty string is allowed — clears the file). */
+  /** New UTF-8 text content (empty string is allowed for ordinary assets). */
   content: string;
-  /**
-   * Reject non-text assets (text/* or application/json) so a UTF-8 string write
-   * cannot corrupt a binary asset. The HTTP route omits this to preserve its
-   * existing behavior; the MCP tool sets it.
-   */
+  /** Reject binary assets rather than corrupting them with a UTF-8 write. */
   requireTextMime?: boolean;
-  /**
-   * Hard-reject (instead of warn) when this write would null out the article
-   * projection of an article-context markdown asset (#1542). Opt-in: the
-   * default stays warn-only so existing callers are unaffected.
-   */
+  /** Opt-in hard rejection for an article-frontmatter demotion (#1542). */
   strict?: boolean;
-  /**
-   * The ACTING delegate's app DID (the token's `azp`) when an app drove this
-   * write on the owner's behalf (#2366) — e.g. an MCP/OAuth client publishing
-   * a scope-manifest via `projectConsentedScopes` (#1804).
-   *
-   * Purely attributive: authorization is unchanged (still owner-only via
-   * `canWriteAssetContent`). It rides `document.changed` so the downstream
-   * projection reactor can name the delegate on any owner-facing alert its
-   * consent gate raises, instead of rendering the owner as their own
-   * requester. Omitted for a first-party write.
-   */
+  /** Acting delegate's app DID (token azp), attribution only (#2366). */
   appDid?: string;
 }
 
 export type UpdateAssetContentResult =
-  | {
-      ok: true;
-      asset: Asset;
-      /**
-       * Non-null when the write left `metadata.article` null despite article
-       * intent (#1542). Callers surface `.warning` and the
-       * `articleProjection: null` flag via articleWarningFields().
-       */
-      articleWarning: ArticleFrontmatterCheck | null;
-    }
+  | { ok: true; asset: Asset; articleWarning: ArticleFrontmatterCheck | null }
   | {
       ok: false;
       code:
-        | "not_found"
-        | "forbidden"
-        | "immutable"
-        | "unsupported_media"
-        | "storage_failed"
-        | "db_failed"
-        | "article_frontmatter_required";
+        | "not_found" | "forbidden" | "immutable" | "unsupported_media"
+        | "storage_failed" | "db_failed" | "article_frontmatter_required"
+        | "invalid_document" | "signing_failed";
       message: string;
     };
+type UpdateFailure = Extract<UpdateAssetContentResult, { ok: false }>;
+type LegalRevision = {
+  ok: true;
+  manifest?: FairManifestV11;
+  change?: Awaited<ReturnType<typeof prepareLegalEntityChange>>;
+  revoked: boolean;
+};
 
-/**
- * Re-sign the asset's `.fair` manifest so the signature covers the new content
- * state, mirroring it to disk when the asset has a `.fair` path. Non-fatal at
- * every step: the content is already saved, so any failure degrades to keeping
- * the previous manifest.
- */
+/** Ordinary media preserves its best-effort signing semantics. Legal records never use this fallback. */
 async function resignFairManifest(asset: Asset, assetId: string): Promise<Record<string, unknown> | undefined> {
   const current = asset.fairManifest as Record<string, unknown> | undefined;
   const rawManifest = asset.fairManifest as FairManifest | null;
   if (!rawManifest || !isFairManifestV11(rawManifest)) return current;
-
   try {
     const signed = await contentSigner.sign(rawManifest as FairManifestV11);
-    if (asset.fairPath) {
-      await mirrorFairToDisk(asset.fairPath, signed, assetId);
-    }
+    if (asset.fairPath) await mirrorFairToDisk(asset.fairPath, signed, assetId);
     return signed as unknown as Record<string, unknown>;
   } catch (err: unknown) {
     log.warn({ err: String(err), assetId }, "Could not re-sign .fair after content edit (non-fatal)");
@@ -112,7 +75,7 @@ async function resignFairManifest(asset: Asset, assetId: string): Promise<Record
   }
 }
 
-/** Writes the re-signed manifest next to the asset; a write failure only warns (the in-DB manifest is still updated). */
+/** The signed in-DB copy is authoritative if mirroring its sidecar fails. */
 async function mirrorFairToDisk(fairPath: string, signed: unknown, assetId: string): Promise<void> {
   try {
     await writeFile(fairPath, JSON.stringify(signed, null, 2));
@@ -121,16 +84,9 @@ async function mirrorFairToDisk(fairPath: string, signed: unknown, assetId: stri
   }
 }
 
-/**
- * Article frontmatter guard for the update path (#1542). Headerless markdown
- * still projects to `{ article: null }` (unchanged) — this only makes that null
- * visible, loudly when the write DEMOTES a live article.
- */
 function guardArticleUpdate(asset: Asset, content: string, assetId: string): ArticleFrontmatterCheck | null {
   const check = checkArticleFrontmatter({
-    mimeType: asset.mimeType,
-    content,
-    existingMetadata: asset.metadata,
+    mimeType: asset.mimeType, content, existingMetadata: asset.metadata,
   });
   if (check) {
     log.warn(
@@ -141,65 +97,137 @@ function guardArticleUpdate(asset: Asset, content: string, assetId: string): Art
   return check;
 }
 
-/**
- * The `document.changed` payload for one write (#1205).
- *
- * `appDid` (#2366) is spread in ONLY when an app drove the write, so a
- * first-party write publishes the exact pre-#2366 shape. Extracted so the
- * conditional lives here rather than adding a branch to `updateAssetContent`.
- */
-function documentChangedPayload(
-  path: string,
-  cid: string,
-  prevCid: string | null,
-  appDid?: string,
-): { path: string; cid: string; prevCid: string | null; appDid?: string } {
-  return { path, cid, prevCid, ...(appDid ? { appDid } : {}) };
-}
-
-/**
- * Overwrite an asset's text content as a new version (#1170 Stage 2).
- *
- * Extracted verbatim from PUT /media/api/assets/[id]/content so the HTTP route
- * and the media_update MCP tool share one path. Authorization is OWNER-ONLY via
- * canWriteAssetContent (write-access.ts); the versioning semantics are
- * unchanged: new content hash + CID, a fresh Lore revision, a re-signed `.fair`
- * manifest, and versionCount + 1. The asset id (alias) is stable.
- */
-export async function updateAssetContent(input: UpdateAssetContentInput): Promise<UpdateAssetContentResult> {
-  const { assetId, requesterDid, content, requireTextMime = false, strict = false, appDid } = input;
-
-  let loaded: Asset | undefined;
+async function loadWritableAsset(input: UpdateAssetContentInput): Promise<{ ok: true; asset: Asset } | UpdateFailure> {
+  const { assetId, requesterDid, requireTextMime = false } = input;
+  let asset: Asset | undefined;
   try {
-    [loaded] = await db.select().from(assets).where(eq(assets.id, assetId)).limit(1);
+    [asset] = await db.select().from(assets).where(eq(assets.id, assetId)).limit(1);
   } catch (err) {
     log.error({ err: String(err), assetId }, "DB lookup failed");
     return { ok: false, code: "db_failed", message: "Database failure" };
   }
-
-  if (loaded?.status !== "active") {
-    return { ok: false, code: "not_found", message: "Not found" };
+  if (asset?.status !== "active") return { ok: false, code: "not_found", message: "Not found" };
+  const legalEntity = isLegalEntityAsset(asset.metadata);
+  if (legalEntity && input.controlDocument !== 'legal-entity') {
+    return { ok: false, code: "forbidden", message: "Use legal-entity settings to edit or revoke this document" };
   }
-  const asset = loaded; // narrowed to Asset
-
-  // Capture the CID BEFORE the write so document.changed can report the
-  // prev→new transition (#1205).
-  const prevCid = asset.cid ?? null;
-
-  const decision = canWriteAssetContent({ ownerDid: asset.ownerDid, immutable: asset.immutable }, requesterDid);
-  if (!decision.allowed) {
-    return { ok: false, code: decision.code, message: decision.reason };
-  }
-
+  const decision = canWriteAssetContent({
+    ownerDid: asset.ownerDid, immutable: legalEntity ? false : asset.immutable,
+  }, requesterDid);
+  if (!decision.allowed) return { ok: false, code: decision.code, message: decision.reason };
   if (requireTextMime && !(asset.mimeType.startsWith("text/") || asset.mimeType === "application/json")) {
     return { ok: false, code: "unsupported_media", message: `Cannot update non-text content (${asset.mimeType})` };
   }
+  return { ok: true, asset };
+}
 
-  // Evaluated before the file write so `strict` rejects without mutating anything.
+/** Legal revisions require schema validation, content-bound signing AND a durable state-change attestation. */
+async function prepareLegalRevision(asset: Asset, input: UpdateAssetContentInput): Promise<LegalRevision | UpdateFailure> {
+  if (!isLegalEntityAsset(asset.metadata)) return { ok: true, revoked: false };
+  const { content, requesterDid } = input;
+  try {
+    const revoked = parseLegalEntity(content, asset.ownerDid).input === null;
+    const composedBy = input.composedBy ?? requesterDid;
+    const manifest = await signLegalEntityDocument(
+      asset.fairManifest as FairManifestV11, content, asset.ownerDid, composedBy,
+    );
+    const change = await prepareLegalEntityChange(asset.id, asset.ownerDid, composedBy, content, asset.hash);
+    return { ok: true, manifest, change, revoked };
+  } catch (err) {
+    return {
+      ok: false,
+      code: err instanceof LegalEntityValidationError ? "invalid_document" : "signing_failed",
+      message: err instanceof LegalEntityValidationError ? err.message : "Document signing failed",
+    };
+  }
+}
+
+async function persistRevision(assetId: string, values: PgUpdateSetSource<typeof assets>, legal: LegalRevision): Promise<void> {
+  if (legal.change) {
+    const change = legal.change;
+    await db.transaction(async tx => {
+      await tx.update(assets).set(values).where(eq(assets.id, assetId));
+      await tx.insert(attestations).values(change);
+    });
+  } else {
+    await db.update(assets).set(values).where(eq(assets.id, assetId));
+  }
+}
+
+async function deriveUpdatedArticle(asset: Asset, content: string): Promise<void> {
+  if (asset.mimeType !== "text/markdown" || isLegalEntityAsset(asset.metadata)) return;
+  try {
+    await deriveArticleProjection(asset.id, content, asset.metadata);
+  } catch (err) {
+    log.warn({ err: String(err), assetId: asset.id }, "Article projection re-derive failed (non-fatal)");
+  }
+}
+
+async function publishDocumentChange(asset: Asset, cid: string, appDid?: string): Promise<void> {
+  if (!AUTHORED_DOC_MIME_TYPES.has(asset.mimeType)) return;
+  // Keep the #1205/#1208 event rail. Legal documents are explicitly excluded
+  // by projectReactor; connector surfaces retain their own document gates.
+  ensureProjectReactorRegistered();
+  ensureChannelLinksSurfaceRegistered();
+  try {
+    await publish("document.changed", {
+      issuer: asset.ownerDid,
+      subject: asset.id,
+      scope: "media",
+      payload: {
+        path: asset.storagePath, cid, prevCid: asset.cid ?? null,
+        ...(appDid ? { appDid } : {}),
+      },
+    });
+  } catch (err) {
+    log.error({ err: String(err), assetId: asset.id }, "document.changed publish failed (non-fatal)");
+  }
+}
+
+/**
+ * Shared owner-only content write (#1170): a stable asset alias, new content
+ * hash/CID, Lore revision, re-signed .fair and versionCount + 1. Legal control
+ * records additionally validate before write and atomically retain a signed
+ * change attestation alongside the new DB state; deletion is a signed
+ * value-free tombstone plus status=deleted, never row/history destruction.
+ */
+export async function updateAssetContent(input: UpdateAssetContentInput): Promise<UpdateAssetContentResult> {
+  const loaded = await loadWritableAsset(input);
+  if (!loaded.ok) return loaded;
+  return withAssetContentLock(loaded.asset.ownerDid, update => update(input));
+}
+
+/**
+ * Share the settings create/edit/revoke lock with every media content update.
+ * The callback gets the locked writer so settings never reacquire their own
+ * transaction lock. Keep the existing key to serialize with older processes.
+ */
+export function withAssetContentLock<T>(
+  did: string,
+  action: (update: (input: UpdateAssetContentInput) => Promise<UpdateAssetContentResult>) => Promise<T>,
+): Promise<T> {
+  const lockKey = `legal-entity:${did}`;
+  return db.transaction(async tx => {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))`);
+    return action(input => updateLockedAssetContent(input, did));
+  });
+}
+
+async function updateLockedAssetContent(input: UpdateAssetContentInput, lockedDid: string): Promise<UpdateAssetContentResult> {
+  const { assetId, content, strict = false, appDid } = input;
+  // The record may have changed or been revoked while waiting for the lock.
+  const loaded = await loadWritableAsset(input);
+  if (!loaded.ok) return loaded;
+  const { asset } = loaded;
+  if (asset.ownerDid !== lockedDid) {
+    return { ok: false, code: "forbidden", message: "Asset owner changed" };
+  }
   const articleWarning = guardArticleUpdate(asset, content, assetId);
   if (articleWarning && strict) {
     return { ok: false, code: "article_frontmatter_required", message: articleWarning.warning };
   }
+  const legal = await prepareLegalRevision(asset, input);
+  if (!legal.ok) return legal;
 
   try {
     await writeFile(asset.storagePath, content, "utf-8");
@@ -207,82 +235,30 @@ export async function updateAssetContent(input: UpdateAssetContentInput): Promis
     log.error({ err: String(err), assetId }, "File write failed");
     return { ok: false, code: "storage_failed", message: "File write failed" };
   }
-
   const hash = createHash("sha256").update(content).digest("hex");
   const size = Buffer.byteLength(content, "utf-8");
-
-  // New CID for this version of the content (#1122 Bundle 3 — new CID per edit).
   const cid = await computeCid(new Uint8Array(Buffer.from(content, "utf-8")));
-
-  // Register the new revision in Lore (non-fatal).
-  const blobRef = await blobStore
-    .put(asset.ownerDid, asset.storagePath, { assetId, sizeBytes: size })
+  const blobRef = await blobStore.put(asset.ownerDid, asset.storagePath, { assetId, sizeBytes: size })
     .catch((err: unknown) => {
       log.error({ err: String(err), assetId }, "Lore put after content edit failed (non-fatal)");
       return null;
     });
-
-  // Re-sign the .fair manifest so the signature covers the current content state
-  // (non-fatal: content is saved regardless).
-  const updatedFairManifest = await resignFairManifest(asset, assetId);
-
+  const updatedFairManifest = legal.manifest ?? await resignFairManifest(asset, assetId);
+  if (legal.manifest && asset.fairPath) await mirrorFairToDisk(asset.fairPath, legal.manifest, assetId);
   try {
-    await db
-      .update(assets)
-      .set({
-        hash,
-        size,
-        versionCount: sql`${assets.versionCount} + 1`,
-        cid,
-        loreRef: blobRef?.loreRef ?? asset.loreRef, // keep prior ref if Lore put failed
-        fairManifest: updatedFairManifest ?? asset.fairManifest,
-        updatedAt: new Date(),
-      })
-      .where(eq(assets.id, assetId));
+    await persistRevision(assetId, {
+      hash, size, versionCount: sql`${assets.versionCount} + 1`, cid,
+      loreRef: blobRef?.loreRef ?? asset.loreRef,
+      fairManifest: updatedFairManifest ?? asset.fairManifest,
+      updatedAt: new Date(),
+      ...(legal.revoked ? { status: "deleted" } : {}),
+    }, legal);
   } catch (err) {
     log.error({ err: String(err), assetId }, "DB update failed");
     return { ok: false, code: "db_failed", message: "Database update failed" };
   }
-
-  // Re-derive the article projection from the freshly written file. Frontmatter
-  // is the source of truth (#1193): markdown-only, and a no-op for plain notes
-  // (content with no article header). Best-effort — the file is authoritative, so
-  // a projection failure self-heals on the next write rather than failing it.
-  if (asset.mimeType === "text/markdown") {
-    try {
-      await deriveArticleProjection(assetId, content, asset.metadata);
-    } catch (err) {
-      log.warn({ err: String(err), assetId }, "Article projection re-derive failed (non-fatal)");
-    }
-  }
-
-  // #1205 — authored-document change trigger. Editing a tracked authored doc
-  // (markdown/YAML) IS the control-plane action: republish it on the bus so the
-  // release-gated projection reactor (#1207) can run downstream. Owner-pinned is
-  // already enforced above (canWriteAssetContent, owner-only). Gated to authored
-  // doc classes ONLY — binary/other assets and machine-hot state never fire this
-  // (discipline rule 1). Best-effort/non-fatal: the file is authoritative, so a
-  // publish failure must not fail the write (mirrors asset.article.published).
-  if (AUTHORED_DOC_MIME_TYPES.has(asset.mimeType)) {
-    // Ensure the release-gated projection reactor (#1207) and its projection
-    // surfaces are registered in this process before we publish, so publish()
-    // can run them in-process. Idempotent. The connector scope-manifest surface
-    // (#1209) gates itself to scope-manifest assets, so it is a cheap no-op for
-    // article/other docs.
-    ensureProjectReactorRegistered();
-    ensureChannelLinksSurfaceRegistered();
-    try {
-      await publish("document.changed", {
-        issuer: asset.ownerDid,
-        subject: assetId,
-        scope: DOCUMENT_CHANGED_SCOPE,
-        payload: documentChangedPayload(asset.storagePath, cid, prevCid, appDid),
-      });
-    } catch (err) {
-      log.error({ err: String(err), assetId }, "document.changed publish failed (non-fatal)");
-    }
-  }
-
+  await deriveUpdatedArticle(asset, content);
+  await publishDocumentChange(asset, cid, appDid);
   const [updated] = await db.select().from(assets).where(eq(assets.id, assetId)).limit(1);
   return { ok: true, asset: updated, articleWarning };
 }

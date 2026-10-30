@@ -94,6 +94,9 @@ describe('extractReceiptDraft — brain resolution', () => {
     await extractReceiptDraft({ ownerDid: OWNER_DID, assetId: 'asset_1' });
 
     expect(mocks.resolveBrain).toHaveBeenCalledWith(OWNER_DID, { connectors: ['local'] });
+    expect(mocks.generateText.mock.calls[0][0].messages[0].content[1]).toMatchObject({
+      type: 'image', mediaType: 'image/jpeg',
+    });
   });
 
   it('returns no_local_brain when nothing is sealed', async () => {

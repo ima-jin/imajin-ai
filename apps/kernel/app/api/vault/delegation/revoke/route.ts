@@ -6,7 +6,7 @@ import { createLogger } from '@imajin/logger';
 import { db, vaultDelegationGrants } from '@/src/db';
 import { eraseInactiveGrantKeyMaterial } from '@/src/lib/vault';
 import { getNodeSigningIdentity } from '@/src/lib/vault/sealing';
-import { isInternalSecretField, isGroupKeyField, parseVaultFieldName } from '@/src/lib/vault/field-grammar';
+import { isInternalSecretField, isPrivateCustodyField, parseVaultFieldName } from '@/src/lib/vault/field-grammar';
 
 const log = createLogger('kernel');
 
@@ -52,7 +52,7 @@ export async function POST(request: NextRequest) {
   }
 
   const trimmedField = parsedField.value.field;
-  if (isGroupKeyField(trimmedField)) {
+  if (isPrivateCustodyField(trimmedField)) {
     return NextResponse.json({ error: 'Group keys require countersigned group custody revocation' }, { status: 409 });
   }
 

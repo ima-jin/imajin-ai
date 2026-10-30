@@ -21,6 +21,7 @@ const { default: JinPage } = await import('../page');
 function installFetch() {
   const spy = vi.fn(async (url: string) => {
     if (url === '/jin/api/app-secrets') return new Response(null, { status: 403 });
+    if (url.startsWith('/jin/api/events?')) return Response.json({ events: [], total: 0, limit: 50, offset: 0 });
     return { ok: true, status: 200, json: async () => ({ isOperator: false, approvals: [], entries: [] }) } as unknown as Response;
   });
   vi.stubGlobal('fetch', spy);
@@ -40,12 +41,20 @@ describe('JinPage', () => {
     const card = {
       proposalId: 'restart-personal', source: 'system-agent', kind: 'system-agent:restart',
       summary: 'Personal gateway restart', status: 'pending', keysTouched: [],
-      detail: null, decision: null, createdAt: '2026-10-21T00:00:00Z',
+      detail: null, decision: null, createdAt: new Date().toISOString(),
     };
     let pending = 0;
     let approved = false;
     const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
       let data: object = { isOperator: false, approvals: [], entries: [] };
+      if (url.startsWith('/jin/api/events?')) {
+        const org = Boolean(localStorage.getItem('imajin:acting-as'));
+        return Response.json({ events: [{
+          id: org ? 'org-record' : 'personal-record', kind: 'person',
+          who: org ? 'did:imajin:org-record-actor' : 'did:imajin:personal-record-actor',
+          action: 'test.event', service: 'kernel', createdAt: '2026-10-21T00:00:00Z',
+        }], total: 1, limit: 50, offset: 0 });
+      }
       if (url === '/auth/api/session/act-as') {
         expect(JSON.parse(String(init?.body))).toEqual({ did: null });
         return { ok: true, json: async () => ({ ok: true }) } as Response;
@@ -75,6 +84,8 @@ describe('JinPage', () => {
     Object.defineProperty(Element.prototype, 'scrollIntoView', { configurable: true, value: scroll });
     render(<JinPage />);
     await screen.findByText('Inbox');
+    expect(await screen.findByText('did:imajin:org-record-actor')).toBeDefined();
+    expect(screen.queryByText('did:imajin:personal-record-actor')).toBeNull();
     expect(screen.queryByRole('button', { name: 'Switch back' })).toBeNull();
     fixture.setPending(2);
     await act(async () => { timers.forEach(tick => tick()); });
@@ -82,6 +93,8 @@ describe('JinPage', () => {
     expect(screen.getByRole('status').textContent).toContain('2 approvals waiting for you as @ryan');
     expect(screen.queryByText('Personal gateway restart')).toBeNull();
     fireEvent.click(button);
+    expect(await screen.findByText('did:imajin:personal-record-actor')).toBeDefined();
+    expect(screen.queryByText('did:imajin:org-record-actor')).toBeNull();
     fireEvent.click(await screen.findByRole('button', { name: 'Approve' }));
     await screen.findByText('approved — pending apply');
     expect(fixture.fetchMock.mock.calls.filter(([url]) => url === '/auth/api/session/act-as')).toHaveLength(1);

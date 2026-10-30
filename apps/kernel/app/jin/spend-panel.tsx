@@ -23,7 +23,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { CapStatus, ProviderSpend, SpendLane, TrendDay } from '@/src/lib/jin/spend-lane';
-import type { InterimRunCost, InterimSpend } from '@/src/lib/jin/spend-interim-join';
+import type { SpendRunCost, Spend } from '@/src/lib/jin/spend-shared';
 
 const POLL_INTERVAL_MS = 30_000;
 
@@ -129,6 +129,14 @@ function ProviderBlock({ spend }: Readonly<{ spend: SpendLane }>) {
         </p>
       </div>
       <Trend days={spend.trend} />
+      <ul className="space-y-1 text-xs text-gray-400" aria-label="Provider billed connections">
+        {spend.billingConnections?.map(({ provider, status }) => (
+          <li key={provider}>
+            <a href={`/auth/connectors/${provider}`} className="text-amber-400">{provider}</a>
+            {' · billed: '}{status}
+          </li>
+        ))}
+      </ul>
       {spend.providers.length === 0 ? (
         <p className="text-sm text-gray-500">No provider spend or caps in the last 7 days.</p>
       ) : (
@@ -140,9 +148,9 @@ function ProviderBlock({ spend }: Readonly<{ spend: SpendLane }>) {
   );
 }
 
-// ── Interim block ─────────────────────────────────────────────────────────────
+// ── Run spend block ─────────────────────────────────────────────────────────────
 
-function InterimBadge({ label }: Readonly<{ label: string }>) {
+function SpendBadge({ label }: Readonly<{ label: string }>) {
   return (
     <span className="inline-block max-w-full px-1.5 py-0.5 rounded text-[10px] bg-indigo-900/40 text-indigo-300 break-words" data-testid="spend-interim-label">
       {label}
@@ -154,13 +162,13 @@ function plural(count: number, noun: string): string {
   return `${count} ${noun}${count === 1 ? '' : 's'}`;
 }
 
-function noClosedIssueReason(interim: InterimSpend): string {
+function noClosedIssueReason(interim: Spend): string {
   const why = interim.githubAvailable ? 'no linked issue is closed yet' : 'issue state unknown — GitHub read not available';
   const linked = interim.closedIssueCost.unknownCount;
   return linked > 0 ? `${why}; ${plural(linked, 'linked issue')} unresolved` : why;
 }
 
-function ClosedIssueSummary({ interim }: Readonly<{ interim: InterimSpend }>) {
+function ClosedIssueSummary({ interim }: Readonly<{ interim: Spend }>) {
   const c = interim.closedIssueCost;
   if (c.closedCount === 0) {
     return (
@@ -181,7 +189,7 @@ function ClosedIssueSummary({ interim }: Readonly<{ interim: InterimSpend }>) {
   );
 }
 
-function RunCostLines({ run }: Readonly<{ run: InterimRunCost }>) {
+function RunCostLines({ run }: Readonly<{ run: SpendRunCost }>) {
   return (
     <div className="mt-1.5 space-y-0.5 text-[11px] text-gray-400" data-testid="spend-run-detail">
       {run.warp && (
@@ -206,7 +214,7 @@ function RunCostLines({ run }: Readonly<{ run: InterimRunCost }>) {
   );
 }
 
-function runHeadline(run: InterimRunCost): string {
+function runHeadline(run: SpendRunCost): string {
   const meteredUsd = run.metered?.usd ?? null;
   const warpTotal = run.warp?.total ?? null;
   if (run.attribution === 'metered' && meteredUsd !== null) return `${formatUsd(meteredUsd)} metered`;
@@ -214,7 +222,7 @@ function runHeadline(run: InterimRunCost): string {
   return 'unattributed';
 }
 
-function RunRow({ run }: Readonly<{ run: InterimRunCost }>) {
+function RunRow({ run }: Readonly<{ run: SpendRunCost }>) {
   const [open, setOpen] = useState(false);
   return (
     <li className="rounded-lg border border-gray-800" data-testid="spend-run">
@@ -232,12 +240,12 @@ function RunRow({ run }: Readonly<{ run: InterimRunCost }>) {
   );
 }
 
-function InterimBlock({ interim }: Readonly<{ interim: InterimSpend }>) {
+function RunSpendBlock({ interim }: Readonly<{ interim: Spend }>) {
   return (
     <div className="mt-5 space-y-2" data-testid="spend-interim">
       <div className="flex flex-wrap items-center gap-2">
         <h3 className="text-sm font-semibold text-gray-200">Runs &amp; issues · this month</h3>
-        <InterimBadge label={interim.label} />
+        <SpendBadge label={interim.label} />
       </div>
       {interim.runsAvailable ? (
         <>
@@ -265,7 +273,7 @@ function isAbortError(err: unknown): boolean {
 export function SpendPanel() {
   const [isOperator, setIsOperator] = useState(false);
   const [spend, setSpend] = useState<SpendLane | null>(null);
-  const [interim, setInterim] = useState<InterimSpend | null>(null);
+  const [runSpend, setRunSpend] = useState<Spend | null>(null);
   const [error, setError] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
@@ -290,26 +298,26 @@ export function SpendPanel() {
     }
   }, []);
 
-  const loadInterim = useCallback(async () => {
+  const loadRunSpend = useCallback(async () => {
     try {
       const res = await fetch('/jin/api/spend/runs', { credentials: 'include' });
       if (!res.ok) return;
-      const data = (await res.json()) as { isOperator: boolean; interim: InterimSpend | null };
-      setInterim(data.isOperator ? data.interim : null);
+      const data = (await res.json()) as { isOperator: boolean; interim: Spend | null };
+      setRunSpend(data.isOperator ? data.interim : null);
     } catch {
-      // Interim block simply stays absent on a transient failure.
+      // Run spend block simply stays absent on a transient failure.
     }
   }, []);
 
   useEffect(() => {
     void loadSpend();
-    void loadInterim();
+    void loadRunSpend();
     const timer = setInterval(() => void loadSpend(), POLL_INTERVAL_MS);
     return () => {
       clearInterval(timer);
       abortRef.current?.abort();
     };
-  }, [loadSpend, loadInterim]);
+  }, [loadSpend, loadRunSpend]);
 
   // Operator gate: nothing — not even a header — for anyone else.
   if (!isOperator) return null;
@@ -323,7 +331,7 @@ export function SpendPanel() {
         </div>
         <button
           type="button"
-          onClick={() => { void loadSpend(); void loadInterim(); }}
+          onClick={() => { void loadSpend(); void loadRunSpend(); }}
           className="shrink-0 text-xs text-gray-500 hover:text-gray-300 transition-colors"
         >
           ↺ refresh
@@ -332,7 +340,7 @@ export function SpendPanel() {
 
       {error && <div className="mb-3 px-3 py-2 rounded text-xs font-medium bg-red-900/40 text-red-300">{error}</div>}
       {spend && <ProviderBlock spend={spend} />}
-      {interim && <InterimBlock interim={interim} />}
+      {runSpend && <RunSpendBlock interim={runSpend} />}
     </section>
   );
 }

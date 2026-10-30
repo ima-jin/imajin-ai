@@ -65,7 +65,7 @@ NOT assumed:
   passthrough the way NanoClaw's renderer does.
 - **Workspace shape**: unlike NanoClaw (whose real persona surface is one
   file, `instructions.prepend.md` — see `nanoclaw-first-boot.md` §2), RFC-31's
-  own workspace vocabulary (`docs/rfcs/RFC-31-agent-execution-sandbox.md`'s
+  own workspace vocabulary (`docs/canon/rfcs/RFC-31-agent-execution-sandbox.md`'s
   "Workspace: The Agent IS Its Files" section) genuinely IS OpenClaw's shape:
   `AGENTS.md`, `SOUL.md`, `MEMORY.md`, `USER.md`, `memory/README.md`,
   `memory/context/*.md`. This is asserted by that RFC, not independently

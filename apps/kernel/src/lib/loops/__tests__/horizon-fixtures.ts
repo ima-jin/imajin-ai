@@ -27,6 +27,10 @@ export function stepEvent(
   };
 }
 export const queuedStep = () => stepEvent('step.queued', 0, { step: structuredClone(CODE_STEP) });
+export function stepLeaseEvent(type: string, sequence: number, issuer: string, fields: Record<string, unknown> = {}): LoopEventJson {
+  const event = stepEvent('step.progress', sequence, { surface: 'step:step-2878', ...fields });
+  return { ...event, id: `${type}-${sequence}`, type, issuer };
+}
 export function observedStep(sequence: number, conditionId: string, evidence: Record<string, unknown>): LoopEventJson {
   return stepEvent('step.observed', sequence, { observation: { conditionId, evidence } });
 }

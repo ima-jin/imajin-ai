@@ -8,9 +8,6 @@
  * the corpus engine itself (#1728), so the two can be built in parallel.
  */
 import { graphql as octokitGraphql } from '@octokit/graphql';
-import { readFileSync } from 'node:fs';
-import { homedir } from 'node:os';
-import { join } from 'node:path';
 import type {
   AdapterFetchOptions,
   AdapterSyncResult,
@@ -282,34 +279,6 @@ const REVIEW_COMMENTS_QUERY = /* GraphQL */ `
   }
 `;
 
-// ─── Token resolution ────────────────────────────────────────────────────────
-
-/**
- * Resolves the GitHub token to authenticate with, in order of preference:
- * an explicit constructor argument, `GITHUB_TOKEN`/`GH_TOKEN` env vars, or
- * the token the `gh` CLI already has stored locally.
- */
-export function resolveGitHubToken(explicitToken?: string): string {
-  if (explicitToken) return explicitToken;
-  if (process.env.GITHUB_TOKEN) return process.env.GITHUB_TOKEN;
-  if (process.env.GH_TOKEN) return process.env.GH_TOKEN;
-  const ghCliToken = readGhCliToken();
-  if (ghCliToken) return ghCliToken;
-  throw new Error(
-    'No GitHub token available. Pass one to the GitHubAdapter constructor, set GITHUB_TOKEN, or run `gh auth login`.',
-  );
-}
-
-function readGhCliToken(): string | undefined {
-  try {
-    const hostsPath = join(homedir(), '.config', 'gh', 'hosts.yml');
-    const contents = readFileSync(hostsPath, 'utf8');
-    const match = /github\.com:[\s\S]*?oauth_token:\s*(\S+)/.exec(contents);
-    return match?.[1];
-  } catch {
-    return undefined;
-  }
-}
 
 // ─── Source parsing ──────────────────────────────────────────────────────────
 
@@ -580,9 +549,9 @@ export class GitHubAdapter implements CorpusAdapter {
     if (options.graphqlClient) {
       this.graphqlClient = options.graphqlClient;
     } else {
-      const resolvedToken = resolveGitHubToken(token);
+      if (!token) throw new Error('GitHub credential unavailable. Select an active GitHub connector for this source.');
       this.graphqlClient = octokitGraphql.defaults({
-        headers: { authorization: `token ${resolvedToken}` },
+        headers: { authorization: `token ${token}` },
       }) as GraphqlClient;
     }
   }

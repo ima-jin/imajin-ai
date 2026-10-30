@@ -1,4 +1,5 @@
 import type { LoopEventJson } from './serialize';
+import { stepLeaseWindows, type StepLeaseWindow } from './step-lease-history';
 import {
   isStepEventType, validateStepPayload, type StepAttestation, type StepClaim,
   type StepDeclaration, type StepEvidence, type StepExitCondition, type StepUpdate,
@@ -12,6 +13,11 @@ interface ConditionEvidence {
   at: string;
   fact: StepEvidence | StepAttestation;
 }
+function canMutateStep(step: ReplayStep, event: LoopEventJson, windows: StepLeaseWindow[]): boolean {
+  if (event.issuer === step.publisher) return true;
+  const at = Date.parse(event.occurredAt);
+  return windows.some(window => window.holderDid === event.issuer && window.acquiredAt <= at && at < window.endsAt);
+}
 function projectState(state: StepState, zone: StepZone, hasLease: boolean): StepState {
   if (zone === 'done') return 'exited';
   if (state === 'queued' || state === 'claimed') return hasLease ? 'claimed' : 'queued';
@@ -19,6 +25,7 @@ function projectState(state: StepState, zone: StepZone, hasLease: boolean): Step
 }
 export type HorizonStep = StepDeclaration & StepUpdate & {
   stepId: string;
+  publisher: string;
   state: StepState;
   zone: StepZone;
   claim?: StepClaim & { acquiredAt: string };
@@ -32,6 +39,7 @@ export interface Horizon {
 }
 interface ReplayStep {
   stepId: string;
+  publisher: string;
   queuedAt: number;
   declaration: StepDeclaration;
   update: StepUpdate;
@@ -50,18 +58,19 @@ export interface HorizonLease {
 /** Smaller rank is closer to the head. History remains immutable, including done steps. */
 export function projectHorizon(events: LoopEventJson[], loopId: string, principal: string, now = Date.now(), includeExited = false, leases: HorizonLease[] = []): Horizon {
   const steps = new Map<string, ReplayStep>();
+  const liveLeases = new Map(leases.filter(lease => lease.loopId === loopId && lease.principal === principal
+    && Date.parse(lease.expiresAt) > now).map(lease => [lease.surface, lease]));
   const ordered = events.filter(event => event.loopId === loopId && event.principal === principal)
     .sort((a, b) => Date.parse(a.occurredAt) - Date.parse(b.occurredAt) || a.id.localeCompare(b.id));
+  const leaseHistory = stepLeaseWindows(ordered);
   // Seed immutable declarations first so a batched same-timestamp update
   // cannot sort before its queue merely because its signed hash is smaller.
   for (const event of ordered) {
     if (event.type === 'step.queued') replayEvent(steps, event);
   }
   for (const event of ordered) {
-    if (event.type !== 'step.queued') replayEvent(steps, event);
+    if (event.type !== 'step.queued') replayEvent(steps, event, leaseHistory.get(`step:${event.payload.stepId}`));
   }
-  const liveLeases = new Map(leases.filter(lease => lease.loopId === loopId && lease.principal === principal
-    && Date.parse(lease.expiresAt) > now).map(lease => [lease.surface, lease]));
   const projected = [...steps.values()].map(step => projectStep(step, liveLeases.get(`step:${step.stepId}`)));
   const visible = projected.filter(step => includeExited || step.zone !== 'done')
     .sort((a, b) => a.rank - b.rank || a.stepId.localeCompare(b.stepId));
@@ -73,25 +82,28 @@ const lifecycle = {
   'step.started': 'running', 'step.progress': 'running', 'step.blocked': 'blocked', 'step.finished': 'finished',
 } as const;
 
-function replayEvent(steps: Map<string, ReplayStep>, event: LoopEventJson): void {
+function replayEvent(steps: Map<string, ReplayStep>, event: LoopEventJson, windows: StepLeaseWindow[] = []): void {
   if (!isStepEventType(event.type) || !validateStepPayload(event.type, event.payload, event.issuer)) return;
   const stepId = event.payload.stepId as string;
   if (event.type === 'step.queued') {
     // The earliest declaration wins: a later queue cannot erase exit criteria.
     if (!steps.has(stepId)) steps.set(stepId, {
-      stepId, queuedAt: Date.parse(event.occurredAt), declaration: event.payload.step as StepDeclaration,
+      stepId, publisher: event.issuer, queuedAt: Date.parse(event.occurredAt), declaration: event.payload.step as StepDeclaration,
       update: {}, state: 'queued', evidence: new Map(),
     });
     return;
   }
   const step = steps.get(stepId);
   if (!step || Date.parse(event.occurredAt) < step.queuedAt) return;
+  if (event.type === 'step.observed' || event.type === 'step.attested') {
+    rememberEvidence(step, event);
+    return;
+  }
+  if (!canMutateStep(step, event, windows)) return;
   if (event.type === 'step.updated') {
     step.update = { ...step.update, ...event.payload.update as StepUpdate };
   } else if (event.type === 'step.claimed') {
     step.state = 'claimed';
-  } else if (event.type === 'step.observed' || event.type === 'step.attested') {
-    rememberEvidence(step, event);
   } else {
     step.state = lifecycle[event.type];
   }
@@ -134,7 +146,7 @@ function projectStep(step: ReplayStep, lease?: HorizonLease): HorizonStep {
   const openExitConditions = conditions.filter(condition => !condition.satisfied).map(condition => condition.declaration.id);
   const zone = deriveZone(step, conditions, !!lease);
   return {
-    ...step.declaration, ...step.update, stepId: step.stepId,
+    ...step.declaration, ...step.update, stepId: step.stepId, publisher: step.publisher,
     state: projectState(step.state, zone, !!lease), zone,
     ...(lease ? { claim: {
       leaseId: lease.surface, holderDid: lease.holderDid, acquiredAt: lease.acquiredAt, expiresAt: lease.expiresAt,

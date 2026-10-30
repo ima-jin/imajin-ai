@@ -186,6 +186,8 @@ export interface ConnectorEntry {
    * have no credential, and OAuth connectors collect theirs via redirect.
    */
   credentialUi: CredentialUiCopy | null;
+  /** Independent admin-key custody on the same connector, never an inference key. */
+  billingCredential?: { route: string; scope: string; hint: string };
   /**
    * Non-secret configuration the card lets the owner edit, or `null` when the
    * connector has nothing to configure beyond its credential and scopes.
@@ -330,6 +332,11 @@ const ANTHROPIC_ENTRY: ConnectorEntry = {
   // gemini-2.0-flash did (#1764). The owner picks a live model from GET
   // /anthropic/api/models and it is sealed as `modelId`.
   modelsRoute: '/anthropic/api/models',
+  billingCredential: {
+    route: '/anthropic/api/billing-key',
+    scope: 'anthropic:billing',
+    hint: 'Use an Admin API key from Anthropic Console → Settings → Admin keys, not your inference key.',
+  },
 };
 
 /** xAI's registry entry (#1928) — see {@link GEMINI_ENTRY}. */
@@ -366,6 +373,11 @@ const OPENAI_ENTRY = brainConnectorEntry({
   // is sealed as `modelId`.
   modelsRoute: '/openai/api/models',
 });
+OPENAI_ENTRY.billingCredential = {
+  route: '/openai/api/billing-key',
+  scope: 'openai:billing',
+  hint: 'Use an organization Admin API key from OpenAI → Organization settings → Admin keys, not a project inference key.',
+};
 
 /** Moonshot's registry entry (#1930) — see {@link GEMINI_ENTRY}. */
 const MOONSHOT_ENTRY = brainConnectorEntry({

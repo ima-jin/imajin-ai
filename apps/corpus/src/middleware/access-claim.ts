@@ -32,6 +32,7 @@ type SupportedAlg = typeof SUPPORTED_ALG;
 
 export interface CorpusAccessClaim {
   did: string;
+  onBehalfOf?: string;
   scope: CorpusAccessScope;
   aud: 'corpus';
   alg: SupportedAlg;
@@ -79,6 +80,7 @@ function isCorpusAccessClaimShape(value: unknown): value is CorpusAccessClaim {
   const claim = value as Record<string, unknown>;
   return (
     typeof claim.did === 'string' &&
+    (claim.onBehalfOf === undefined || typeof claim.onBehalfOf === 'string') &&
     (claim.scope === 'corpus:read' || claim.scope === 'corpus:write') &&
     claim.aud === 'corpus' &&
     claim.alg === SUPPORTED_ALG &&
@@ -184,6 +186,11 @@ export function createAccessClaimMiddleware(): RequestHandler {
     }
 
     request.corpusAccessClaim = claim;
+    const readOnly = request.method === 'GET' || request.path === '/search';
+    if (!readOnly && claim.scope !== 'corpus:write') {
+      response.status(403).json({ error: 'corpus:write scope is required' });
+      return;
+    }
     next();
   };
 }

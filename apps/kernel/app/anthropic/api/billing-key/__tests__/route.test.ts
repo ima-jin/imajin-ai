@@ -15,7 +15,7 @@ describe('anthropic billing-key route wiring', () => {
   // Direct, literal it() with a literal expect() on the helper's return
   // value (see expectNoDisconnectRouteWired's doc comment) so Sonar S2699
   // recognizes this file as containing a real assertion.
-  it('does not wire a disconnect route for this Stage 1 billing credential', () => {
+  it('does not wire a whole-connector disconnect for the billing credential', () => {
     expect(expectNoDisconnectRouteWired(disconnectOpts)).toBe(true);
   });
 

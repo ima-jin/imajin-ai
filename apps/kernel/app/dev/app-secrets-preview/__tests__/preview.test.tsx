@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import AppSecretsPreview from '../app-secrets-preview';
 import AppSecretsPreviewPage from '../page';
 
@@ -24,7 +24,7 @@ describe('App secrets development preview', () => {
     expect(screen.getAllByText('Last seen')).toHaveLength(9);
     expect(await screen.findByRole('region', { name: 'Registered apps' })).toBeDefined();
     expect(screen.getByText('provision failed')).toBeDefined();
-    expect(screen.getAllByText('unknown (pre-#3006 row)').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('unknown (legacy record)').length).toBeGreaterThan(0);
     expect(screen.getByText(/Claim code expired/).textContent).toContain('2020-01-02T03:04:05Z');
     fireEvent.click(screen.getByRole('button', { name: 'Reissue claim code' }));
     expect(screen.getByText(/reissue reached the existing provision control/)).toBeDefined();
@@ -40,5 +40,25 @@ describe('App secrets development preview', () => {
     render(<AppSecretsPreview />);
     expect(screen.queryByTestId('app-secrets-panel')).toBeNull();
     expect(globalThis.fetch).toBe(originalFetch);
+  });
+  it('simulates Clear locally without letting the development preview send real mutations', async () => {
+    vi.stubEnv('NODE_ENV', 'development');
+    const originalFetch = vi.fn();
+    vi.stubGlobal('fetch', originalFetch);
+    vi.stubGlobal('confirm', vi.fn().mockReturnValue(true));
+    render(<AppSecretsPreview />);
+    const panel = await screen.findByRole('region', { name: 'Registered apps' });
+    const row = within(panel).getByText('BrokerAgent fixture (zero consent)').closest('li')!;
+    fireEvent.click(within(row).getByRole('button', { name: 'Clear' }));
+    const history = (await within(panel).findByText('revoked (2)')).closest('details')!;
+    expect(history.open).toBe(false);
+    fireEvent.click(within(history).getByText('revoked (2)'));
+    const revokedRow = within(history).getByText('BrokerAgent fixture (zero consent)').closest('li')!;
+    expect(within(revokedRow).getByText('delegated app · revoked')).toBeDefined();
+    expect(revokedRow.textContent).toContain('att_fixture_clear');
+    expect(row.isConnected).toBe(false);
+    expect(originalFetch).not.toHaveBeenCalled();
+    expect((await fetch('/api/admin/registry/apps/not-a-fixture/revoke', { method: 'POST' })).status).toBe(404);
+    expect(originalFetch).not.toHaveBeenCalled();
   });
 });

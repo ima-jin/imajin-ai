@@ -42,6 +42,7 @@ const anthropicBilling = createConnectorTokenPaste({
   displayName: 'Anthropic Billing',
   connectorDid: ANTHROPIC_CONNECTOR_DID,
   channel: ANTHROPIC_CHANNEL,
+  preserveScopesOnRevoke: true,
 });
 
 /** Per-DID vault field for the Anthropic Admin API key: `anthropic-billing-api-key:{ownerDid}`. */

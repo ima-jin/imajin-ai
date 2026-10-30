@@ -46,7 +46,7 @@ vi.mock('@imajin/auth', async () => {
 });
 
 describe('app-secret explicit dispatch', () => {
-  it.each(['sync', 'set', 'rotate', 'revoke'])('dispatches apps:secrets-%s only after approval', async (action) => {
+  it.each(['sync', 'generate', 'set', 'rotate', 'revoke'])('dispatches apps:secrets-%s only after approval', async (action) => {
     mockDecide.mockResolvedValueOnce({ ok: true, card: pendingApprovalCard({ status: 'approved', source: 'apps', kind: `apps:secrets-${action}` }) });
     const response = await POST(makeReq({ decision: 'approve' }) as Parameters<typeof POST>[0], paramsFor(PROPOSAL_ID));
     expect(mockExecuteAppSecretsApproval).toHaveBeenCalledTimes(1);

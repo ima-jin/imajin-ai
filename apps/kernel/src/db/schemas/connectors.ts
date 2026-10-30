@@ -48,6 +48,15 @@ export const connectors = connectorsSchema.table('connectors', {
    * only — never key material.
    */
   sealedKeyField: text('sealed_key_field'),
+  /** Attribution context only; never transfers ownership of a member's key. */
+  orgContextDid: text('org_context_did'),
+  /** Admin projection only; org-scoped suspension records remain authoritative across reconnects. */
+  orgSuspendedAt: timestamp('org_suspended_at', { withTimezone: true }),
+  /** Digest of the member-approved app/upstream destination and injection shape. */
+  upstreamBinding: text('upstream_binding'),
+  /** Org-held connection provenance only; never contains credential material. */
+  loadedByDid: text('loaded_by_did'),
+  loadedAt: timestamp('loaded_at', { withTimezone: true }),
   /**
    * Snapshot of the scopes granted on this connector, refreshed whenever the
    * owner publishes a scope-manifest. `auth.channel_links` stays authoritative:
@@ -91,3 +100,30 @@ export const connectors = connectorsSchema.table('connectors', {
 
 export type ConnectorRow = typeof connectors.$inferSelect;
 export type NewConnectorRow = typeof connectors.$inferInsert;
+
+/** Empty member/slot means every member/slot for this org+provider, including future installs. */
+export const orgConnectionSuspensions = connectorsSchema.table('org_connection_suspensions', {
+  orgDid: text('org_did').notNull(),
+  memberDid: text('member_did').notNull().default(''),
+  provider: text('provider').notNull(),
+  slot: text('slot').notNull().default(''),
+  suspendedAt: timestamp('suspended_at', { withTimezone: true }),
+}, (table) => ({
+  targetUniq: uniqueIndex('uniq_org_connection_suspension').on(table.orgDid, table.memberDid, table.provider, table.slot),
+}));
+
+/** Insert-only operation history; service-wide events explicitly use null member/connection. */
+export const orgConnectionEvents = connectorsSchema.table('org_connection_events', {
+  id: text('id').primaryKey(),
+  orgDid: text('org_did').notNull(),
+  memberDid: text('member_did'),
+  connectionId: text('connection_id'),
+  provider: text('provider').notNull(),
+  actorDid: text('actor_did').notNull(),
+  action: text('action').notNull(),
+  reason: text('reason').notNull(),
+  attestationId: text('attestation_id').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => ({
+  orgIdx: index('idx_org_connection_events_org').on(table.orgDid, table.createdAt),
+}));

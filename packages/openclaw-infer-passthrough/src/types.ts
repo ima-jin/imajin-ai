@@ -49,6 +49,8 @@ export interface ProxyConfig {
   appDid: string;
   /** Raw hex Ed25519 private key seed. Never logged, never echoed in any response. */
   appPrivateKey: string;
+  /** Presence only; deprecated grant env values are never retained or logged. */
+  legacyGrantIdConfigured?: boolean;
   routes: ProviderRouteConfig[];
   /**
    * Public origin the kernel's MCP surface is issued/verified against (#2368)

@@ -10,7 +10,7 @@ import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
 import { render, screen, cleanup, waitFor, fireEvent, within } from '@testing-library/react';
 import { SpendPanel, formatUsd, formatWarpUnits } from '../spend-panel';
 import type { SpendLane, ProviderSpend } from '@/src/lib/jin/spend-lane';
-import type { InterimRunCost, InterimSpend } from '@/src/lib/jin/spend-interim-join';
+import type { SpendRunCost, Spend } from '@/src/lib/jin/spend-shared';
 
 function provider(overrides: Partial<ProviderSpend> = {}): ProviderSpend {
   return {
@@ -39,7 +39,7 @@ function lane(overrides: Partial<SpendLane> = {}): SpendLane {
   };
 }
 
-function runCost(overrides: Partial<InterimRunCost> = {}): InterimRunCost {
+function runCost(overrides: Partial<SpendRunCost> = {}): SpendRunCost {
   return {
     runId: 'run-1',
     title: 'Fix the thing',
@@ -53,9 +53,9 @@ function runCost(overrides: Partial<InterimRunCost> = {}): InterimRunCost {
   };
 }
 
-function interim(overrides: Partial<InterimSpend> = {}): InterimSpend {
+function interim(overrides: Partial<Spend> = {}): Spend {
   return {
-    label: 'interim · derived from Warp runs + branch names (until #2290)',
+    label: 'interim · derived from Warp runs + branch names (estimated)',
     windowFrom: '2026-10-01T00:00:00.000Z',
     runsAvailable: true,
     runsTruncated: false,
@@ -69,7 +69,7 @@ function interim(overrides: Partial<InterimSpend> = {}): InterimSpend {
 
 type Payloads = {
   spend?: { isOperator: boolean; spend: SpendLane | null } | 'fail' | 'throw';
-  runs?: { isOperator: boolean; interim: InterimSpend | null } | 'fail' | 'throw';
+  runs?: { isOperator: boolean; interim: Spend | null } | 'fail' | 'throw';
 };
 
 function installFetch({ spend = { isOperator: true, spend: lane() }, runs = { isOperator: true, interim: interim() } }: Payloads = {}) {
@@ -134,6 +134,17 @@ describe('SpendPanel operator gate', () => {
 });
 
 describe('SpendPanel provider block', () => {
+  it('shows billed gaps for both providers with no spend or caps and links their existing cards', async () => {
+    installFetch({ spend: { isOperator: true, spend: lane({ providers: [], billingConnections: [
+      { provider: 'anthropic', status: 'not connected' }, { provider: 'openai', status: 'not connected' },
+    ] }) } });
+    render(<SpendPanel />);
+    const connections = await screen.findByRole('list', { name: 'Provider billed connections' });
+    expect(connections.textContent).toContain('anthropic · billed: not connected');
+    expect(connections.textContent).toContain('openai · billed: not connected');
+    expect(within(connections).getByRole('link', { name: 'anthropic' }).getAttribute('href')).toBe('/auth/connectors/anthropic');
+    expect(within(connections).getByRole('link', { name: 'openai' }).getAttribute('href')).toBe('/auth/connectors/openai');
+  });
   it('shows today per provider, the 7-day trend and totals', async () => {
     installFetch({ runs: { isOperator: true, interim: null } });
     render(<SpendPanel />);
@@ -224,7 +235,8 @@ describe('SpendPanel interim block', () => {
     render(<SpendPanel />);
 
     expect((await screen.findByTestId('spend-interim-label')).textContent).toContain('interim');
-    expect(screen.getByTestId('spend-interim-label').textContent).toContain('#2290');
+    expect(screen.getByTestId('spend-interim-label').textContent).toContain('(estimated)');
+    expect(screen.getByTestId('spend-interim-label').textContent).not.toMatch(/#\d+/);
     const closed = screen.getByTestId('spend-closed-issue-cost').textContent ?? '';
     expect(closed).toContain('$0.5000 metered');
     expect(closed).toContain('3.00 units Warp-reported');

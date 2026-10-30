@@ -30,6 +30,26 @@ servers:
   - url: http://localhost:3000/{service}
     description: local development
 
+x-mcp-tools:
+  cycle_status:
+    scope: cycle:run
+    description: >-
+      Current caller horizon, aggregated across every principal-scoped registry
+      loop page using getLoopWithHistory/projectHorizon, as in the Runs lane.
+      Omitted correlation_id selects the latest cycle; no cycle returns
+      correlationId null and state not_started with the horizon, not an error.
+      Explicit unknown, foreign or non-cycle correlation_id remains not_found.
+      Requires both the token scope and active connector grant.
+    responseSchema: { $ref: "#/components/schemas/CycleHorizonReadout" }
+  cycle_run:
+    scope: cycle:run
+    description: >-
+      Returns correlationId plus the same horizon captured before startCycle
+      and before the merge sweep, including dry_run. Repo scope does not narrow
+      the caller horizon. No refill, sharpening or new phase actions are added.
+      Requires both the token scope and active connector grant.
+    responseSchema: { $ref: "#/components/schemas/CycleHorizonReadout" }
+
 tags:
   - name: jin
     description: /jin kernel dashboard — operator approvals
@@ -56,6 +76,48 @@ components:
       in: header
       name: x-internal-key
   schemas:
+    CycleHorizonReadout:
+      type: object
+      required: [correlationId, horizon]
+      properties:
+        correlationId: { type: [string, "null"], description: "Null only for cycle_status before the first cycle." }
+        horizon: { $ref: "#/components/schemas/CycleHorizonSummary" }
+        belowDepth:
+          type: object
+          description: "Present exactly when horizon.depth < horizon.targetDepth."
+          required: [deficit]
+          additionalProperties: false
+          properties:
+            deficit: { type: integer, minimum: 1 }
+    CycleHorizonSummary:
+      type: object
+      required: [depth, targetDepth, deficit, zones, noStepsPublished]
+      additionalProperties: false
+      description: >-
+        Read-only summary of canonical registry projections, never harness state.
+        Done/exited steps do not count; past steps with open exit conditions do.
+        Deficit is max(0, targetDepth - depth). A drained horizon is not the same
+        as never published: noStepsPublished uses the principal's last signed
+        step event, including exited history, matching the Runs lane (#3010).
+      properties:
+        depth: { type: integer, minimum: 0 }
+        targetDepth: { type: integer, const: 12 }
+        deficit: { type: integer, minimum: 0 }
+        zones:
+          type: object
+          required: [tail, middle, near, head, past]
+          additionalProperties: false
+          properties:
+            tail: { type: integer, minimum: 0 }
+            middle: { type: integer, minimum: 0 }
+            near: { type: integer, minimum: 0 }
+            head: { type: integer, minimum: 0 }
+            past: { type: integer, minimum: 0 }
+        noStepsPublished: { type: boolean }
+        message:
+          type: string
+          const: "No horizon steps published yet"
+          description: "Present only when noStepsPublished is true; a non-error empty registry."
     RegistryProvenancePoint:
       type: object
       required: [at, by]
@@ -88,6 +150,9 @@ components:
       properties:
         proposalId: { type: string }
         operatorDid: { type: string }
+        signerDid:
+          type: [string, "null"]
+          description: "DecisionCard requesting agent DID recorded at ingest; null when not recorded. Never inferred from a harness or the emission source category."
         source: { type: string, example: "skill-workshop", description: "Open vocabulary namespace." }
         kind: { type: string, example: "skill-workshop:update", description: "'<source>:<subkind>'." }
         summary: { type: string }
@@ -179,21 +244,21 @@ components:
       type: object
       description: >-
         Plugin #77 command frame. Kernel grant and principal wish both sign
-        canonicalize({type,commandId,to,principal,issuer,issuedAt,expiresAt,payload}).
+        canonicalize({type,commandId,to,principal,issuer,issuedAt,expiresAt:expiresAt??null,payload}).
         Prepare returns the grant; dispatch requires the full countersignature.
         Payload is strictly allowlisted per command and never contains harness keys.
-      required: [type, commandId, to, principal, issuer, issuedAt, expiresAt, payload, signature]
+      required: [type, commandId, to, principal, issuer, issuedAt, payload, signature]
       additionalProperties: false
       properties:
         type:
           type: string
-          enum: [session.send, session.abort, session.spawn, session.approve, session.deny]
+          enum: [session.send, session.abort, session.spawn, session.approve, session.deny, session.archive, session.reset, session.label, session.history]
         commandId: { type: string }
         to: { type: string, description: "Verified owning agent DID, never a gateway address." }
         principal: { type: string }
         issuer: { type: string }
         issuedAt: { type: string, format: date-time }
-        expiresAt: { type: string, format: date-time }
+        expiresAt: { type: [string, "null"], format: date-time, description: "Defaults to issuedAt plus five minutes; prepare emits an explicit expiry." }
         payload:
           type: object
           description: >-
@@ -201,6 +266,12 @@ components:
             spawn: {parentLoopId,task,label?,agentId?,group?,model?};
             approve/deny: {loopId,approvalId,kind?}. Target must match the
             route loop. Approval dispatch uses the existing decision route only.
+            Archive/reset/history: {loopId}; label: {loopId,label}, nonblank
+            and at most 256 characters. Extra fields are rejected.
+            Reset can return signed missing_scope; scopes are never widened.
+            History publishes redacted typed loop.progress output through the
+            existing events path: at most 20 recent entries, 80 blocks,
+            12 KiB per output. Archive retains history and records.
           additionalProperties: { type: string }
         signature: { $ref: "#/components/schemas/SessionCommandSignature" }
         countersignature: { $ref: "#/components/schemas/SessionCommandSignature" }
@@ -516,6 +587,11 @@ components:
             have none of these blocks. Zone/depth/output and state exited are forbidden.
             All text is nonblank. Step observations must remain inline and credential-free
             so their exact publisherProof can be retained.
+            Updates, claims and work lifecycle facts require the declaring publisher or
+            the step lease holder at the fact's occurredAt. Signed acquisitions renew
+            the fifteen-minute window; release, loop completion or expiry ends it.
+            Authorized historical facts survive lease release/expiry. The live
+            HorizonClaim is only the current claim, not historical mutation authority.
           properties:
             stepId: { type: string, minLength: 1, maxLength: 2000 }
             step: { $ref: "#/components/schemas/StepDeclaration" }
@@ -559,9 +635,10 @@ components:
     HorizonStep:
       allOf:
         - type: object
-          required: [stepId, stepKind, intention, rank, exitConditions, state, zone, conditions, openExitConditions]
+          required: [stepId, publisher, stepKind, intention, rank, exitConditions, state, zone, conditions, openExitConditions]
           properties:
             stepId: { type: string }
+            publisher: { type: string, pattern: '^did:[^\s:]+:\S+$', maxLength: 512, readOnly: true, description: "Verified issuer of the earliest step.queued declaration; never supplied by an update." }
             stepKind: { type: string, enum: [code, human, ops] }
             intention: { type: string }
             rank: { type: number }
@@ -603,6 +680,32 @@ components:
           items: { $ref: "#/components/schemas/HorizonStep" }
         depth: { type: integer, minimum: 0, readOnly: true, description: "All non-done items, not truncated to 12." }
         targetDepth: { const: 12, readOnly: true }
+    WarpBrief:
+      type: object
+      required: [hash, assetId, storage, browserTesting]
+      description: >-
+        Node-witnessed brief descriptor on each kernel Warp dispatch/resume
+        loop.started and follow-up loop.progress. SHA-256 covers exact UTF-8
+        outgoing prompt bytes, including whitespace and injected corpus context.
+        No prompt text is placed on the event. Full-text assets are private,
+        immutable, owner-pinned and signed using existing media primitives.
+        Hash-only creates no asset. Missing browser telemetry is null, not no.
+        In hash-only mode, anyone holding a guess of a brief's text can confirm
+        it against the plain SHA-256 hash.
+        All entry points enforce WARP_BRIEF_MAX_BYTES = 1048576 (1 MiB) on the
+        exact final UTF-8 prompt or follow-up message, including corpus prefix
+        and separator, before any brief asset, attestation or Warp request.
+        HTTP routes return 413; MCP tools name the byte limit in their error.
+        A provider 4xx/5xx or network failure retains the recorded brief and adds
+        a node-signed warp.brief.dispatch_failed attestation with only hash,
+        assetId, upstreamStatus (null for network) and errorClass
+        (http_4xx, http_5xx or network). Its contextId is assetId or the hash.
+        The original provider error is rethrown even if failure auditing fails.
+      properties:
+        hash: { type: string, pattern: '^[a-f0-9]{64}$' }
+        assetId: { type: [string, "null"] }
+        storage: { type: string, enum: [full-text, hash-only] }
+        browserTesting: { type: [string, "null"], enum: [yes, no, null] }
     LoopEnvelope:
       type: object
       description: >-
@@ -619,6 +722,7 @@ components:
         summary: { type: string, maxLength: 2000 }
         at: { type: string, format: date-time, description: "When the publisher observed this transition. Bounded at ingest for clock skew." }
         output: { $ref: "#/components/schemas/LoopOutput" }
+        brief: { $ref: "#/components/schemas/WarpBrief" }
     StoredLoopEnvelope:
       type: object
       description: "Sanitized envelope retaining loop metadata and optional inline output or private artifact wrapper."
@@ -947,6 +1051,103 @@ components:
         errorMessage: { type: string, nullable: true }
 
 paths:
+  /api/brief-settings:
+    get:
+      tags: [jin]
+      summary: Read the authenticated principal's Warp brief storage preference
+      description: >-
+        Human session only, warp-scoped act-as owner/admin authorization;
+        agents and actingFor delegations are refused. Default full-text.
+        GET and PUT are no-store. The /jin/brief-settings page exposes this control.
+      security: [{ cookieAuth: [] }]
+      responses:
+        "200":
+          description: Current preference
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  storage: { type: string, enum: [full-text, hash-only], default: full-text }
+        "401": { description: Authentication required }
+        "403": { description: Principal owner authority required }
+        "503": { description: Preference unavailable; never silently falls back }
+    put:
+      tags: [jin]
+      summary: Change future brief retention with an atomic node-signed event
+      description: >-
+        Same human-session authorization as GET. The principal is server-resolved,
+        never caller-selected in the body. Appends warp.brief.storage.changed and
+        updates the identity metadata projection in one transaction. Earlier assets
+        and events are retained. Signing/storage failure refuses the change.
+      security: [{ cookieAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [storage]
+              properties:
+                storage: { type: string, enum: [full-text, hash-only] }
+      responses:
+        "200":
+          description: Saved with signed audit reference
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  storage: { type: string, enum: [full-text, hash-only] }
+                  attestationId: { type: string }
+        "400": { description: Invalid JSON, storage value or extra field }
+        "401": { description: Authentication required }
+        "403": { description: Principal owner authority required }
+        "503": { description: Change not saved }
+  /api/cron/registry-app-expiry:
+    get:
+      tags: [apps]
+      servers:
+        - url: https://{node}.imajin.ai
+          variables:
+            node: { default: jin }
+        - url: http://localhost:3000
+      operationId: expireRegistryApps
+      summary: Expire DCR clients that never completed consent after seven days
+      description: >-
+        Kernel-cron calls this route every ten minutes (UTC), noOverlap enabled.
+        Uses the vault-generated kernel.cron-secret bearer, never a user session.
+        Each tick locks at most 100 active did:imajin:mcp-* registry rows,
+        oldest first, skipping locked rows. created_at must be at least seven
+        days old. Any app.authorized history (even revoked or expired), provision,
+        signing-key claim, or first_party tier excludes the app.
+        Each status='expired', revoked_at and updated_at change commits atomically
+        with a node-signed registry.app.expired mechanical attestation.
+        Payload is {appId, reason: 'dcr-unconsented-ttl', ttlDays: 7, createdAt};
+        subject is the app DID, context_id is appId, context_type is registry_app.
+        Signing or persistence failure rolls back the tick. Nothing is deleted.
+        Already-expired rows are a no-op; existing old registrations are included
+        on the first ticks without SQL cleanup. Registered apps returns retained
+        expired history with the node issuer as ended.by in the collapsed expired
+        group. Returning clients re-register; non-active apps cannot authorize
+        or mint tokens.
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Bounded tick completed, including no-op ticks.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok, checked, expired]
+                properties:
+                  ok: { type: boolean, const: true }
+                  checked: { type: integer, minimum: 0, maximum: 100 }
+                  expired: { type: integer, minimum: 0, maximum: 100 }
+        "401": { description: Missing or incorrect cron bearer; no writes. }
+        "503": { description: Cron secret unavailable from the vault; no writes. }
+        "500": { description: Tick failed and rolled back; generic error only. }
   /jin/api/registered-apps:
     get:
       tags: [jin, apps]
@@ -966,6 +1167,9 @@ paths:
         Without activity, age starts at the latest creation/consent/provision/claim.
         First consent includes historical revoked/expired consents; the count is
         distinct currently consenting principals (unrevoked, unexpired).
+        liveConsents separately counts all unrevoked, unexpired app.authorized
+        attestations, including multiple consents by one principal, for Clear's
+        confirmation. Clear calls the existing POST /api/admin/registry/apps/{appId}/revoke.
         Last seen is the maximum refresh-token creation/rotation, successful
         token mint, or authorization validation. Delegated mint/validate reads
         auth.app_authorization_usage (#3009). Service/session mints record
@@ -976,6 +1180,8 @@ paths:
         issuer with owner_did fallback for older rows. Terminal actor comes from
         the matching registry.app.revoked/expired attestation. Expired apps are
         returned normally; the UI groups them in a collapsed expired disclosure.
+        revocationId identifies the latest registry.app.revoked receipt for
+        this registry row; revoked rows expose it alongside the time and operator.
         No credential, bearer, hash, claim code, or attestation payload is returned.
       security: [{ cookieAuth: [] }, { bearerAuth: [] }]
       responses:
@@ -991,7 +1197,7 @@ paths:
                     type: array
                     items:
                       type: object
-                      required: [id, appDid, name, kind, status, created, firstConsent, consentingPrincipals, lastSeen, ended]
+                      required: [id, appDid, name, kind, status, created, firstConsent, consentingPrincipals, liveConsents, lastSeen, ended, revocationId]
                       properties:
                         id: { type: string }
                         appDid: { type: string }
@@ -1001,8 +1207,10 @@ paths:
                         created: { $ref: "#/components/schemas/RegistryProvenancePoint" }
                         firstConsent: { $ref: "#/components/schemas/RegistryProvenancePoint" }
                         consentingPrincipals: { type: integer, minimum: 0 }
+                        liveConsents: { type: integer, minimum: 0 }
                         lastSeen: { type: [string, "null"], format: date-time }
                         ended: { $ref: "#/components/schemas/RegistryProvenancePoint" }
+                        revocationId: { type: [string, "null"] }
         "401": { description: Authentication required. }
         "403": { description: Node operator required; no metadata returned. }
         "503": { description: Metadata unavailable; provider detail is redacted. }
@@ -1219,7 +1427,7 @@ paths:
                     action: { type: string, const: prepare }
                     type:
                       type: string
-                      enum: [session.send, session.abort, session.spawn, session.approve, session.deny]
+                      enum: [session.send, session.abort, session.spawn, session.approve, session.deny, session.archive, session.reset, session.label, session.history]
                     payload: { type: object, additionalProperties: { type: string } }
                 - type: object
                   additionalProperties: false
@@ -1346,6 +1554,11 @@ paths:
       security:
         - cookieAuth: []
       parameters:
+        - name: kind
+          in: query
+          required: false
+          schema: { type: string, enum: [person, agent] }
+          description: "Narrow by actor classification before pagination; totals reflect the filter. Omit for both."
         - name: action
           in: query
           required: false
@@ -1390,6 +1603,11 @@ paths:
                   offset: { type: integer }
         "401":
           description: Not authenticated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "400":
+          description: Invalid actor kind (must be person or agent)
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }

@@ -64,6 +64,7 @@ function installControllableFetch() {
       pending.push({ resolve: resolve as (response: unknown) => void, signal: init?.signal ?? undefined });
     });
   });
+
   vi.stubGlobal('fetch', spy);
   return { spy, pending };
 }
@@ -95,6 +96,12 @@ afterEach(() => {
 });
 
 describe('empty state', () => {
+  it('explains tool evidence without a ticket reference in the tooltip', async () => {
+    await renderPanel([turn({ id: 'copy-fixture' })]);
+    for (const element of document.querySelectorAll('[title]')) {
+      expect(element.getAttribute('title')).not.toMatch(/#\d{3,5}/);
+    }
+  });
   it('shows the empty-state copy from the issue when there are no turns yet', async () => {
     await renderPanel([]);
 

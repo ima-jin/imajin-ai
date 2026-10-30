@@ -10,10 +10,9 @@ Every claim below cites a file:line on `main`. Nothing here needs `ssh`.
 Roll back when prod is serving the wrong behaviour and the fix isn't a five-minute forward patch:
 
 - A deploy shipped a functional regression (bad page, broken auth flow, wrong data rendered).
-- `deploy-prod.yml` went green but a service didn't come back. A failed `pm2 restart` is only
-  **warned** about — `build.sh` collects it into `RESTART_FAILED` (`scripts/build.sh:346-348`) but
-  its exit line folds in only `FAILED` and `PORT_REAP_FAILED` (`scripts/build.sh:362`), so a dead
-  service can leave a green run.
+- A deployed service regresses or fails its observed health check. Since #2382,
+  `build.sh` exits `2` for `RESTART_FAILED` instead of merely warning; a green
+  deploy still is not a substitute for checking the live version/build and health.
 
 Do **not** roll back for:
 
@@ -27,9 +26,11 @@ Do **not** roll back for:
 
 ## Pick the last good tag
 
-This repo ships tags, not GitHub Releases — `tag-release.yml` creates and pushes an annotated
-`vX.Y.Z` (`.github/workflows/tag-release.yml:80-92`) and nothing publishes a Release, so
-`gh release list` is empty. Use tags plus the deploy run log:
+Tags remain the rollback authority. Since [#3120](https://github.com/ima-jin/imajin-ai/pull/3120),
+`tag-release.yml` also creates a GitHub Release with generated notes in its independent
+`close-out` job. An existing Release is left untouched; close-out failure does not block
+npm publishing or undo tagging/deploy dispatch. Neither a tag nor Release proves a successful
+production deployment. Use tags plus the deploy run log:
 
 ```bash
 # candidate tags, newest first
@@ -44,8 +45,8 @@ gh run list --workflow deploy-prod.yml -R ima-jin/imajin-ai \
 `headBranch` is the tag the run deployed — `tag-release.yml` dispatches with `--ref "$TAG"`
 (`.github/workflows/tag-release.yml:124`). The last good tag is the newest tag whose
 `deploy-prod.yml` run concluded `success` **and** which you have no regression reports against.
-Skip any tag whose run is `failure`/`cancelled`, and remember a green run can still hide a failed
-restart (above) — prefer a tag you have observed serving.
+Skip any tag whose run is `failure`/`cancelled`; prefer a tag you have observed
+serving. Restart failures now fail the job, but later runtime failures remain possible.
 
 ## The command
 
@@ -88,11 +89,11 @@ That is safe only because migrations are additive — see Consequences.
    `git rev-parse --short HEAD` on the checked-out ref (`scripts/build.sh:104-124`). After a
    rollback, `version` must equal the tag you deployed and `build` its short SHA. Same route also
    reports every downstream service's up/down state (`:84-96`) — use it to confirm the restart took.
-2. **Migration head.** Not queryable today: no health route reads `public._migrations`
-   (`docs/ops/DEPLOY-POSTURE.md:56-58`). Once **#2384** lands (per-app `/api/health` reports its own
-   schema head, kernel's aggregator relays it — `docs/ops/DEPLOY-POSTURE.md:162-165`), also confirm
-   the head is **at or ahead of** the rolled-back code's expectations. Until then the migration state
-   is only visible in the deploy run log.
+2. **Migration head.** Since #2384, each app's `/api/health` reports its own
+   `migrations` block; the kernel relays it without querying another app's DB.
+   Confirm the head is **at or ahead of** the rolled-back code's expectations
+   and inspect pending counts. Older tags may lack this response block: use
+   the deploy run log for those, without inferring that forward migrations reversed.
 3. **The run log itself** is the record of what was deployed and who approved it
    (`.github/workflows/deploy-prod.yml:13-16`).
 
@@ -117,6 +118,14 @@ The one-line rule, also recorded in `docs/MIGRATIONS.md`:
 > A column or table may be dropped only **≥1 release after** the last code that reads it shipped.
 
 ## See also
+
+- [Inference passthrough rollback](../../deploy/infer-passthrough/README.md) —
+  the systemd updater stages release refs only with exact-SHA production evidence
+  and rolls back failed mint-backed post-restart health. This is separate from a
+  kernel tag rollback.
+- [Vault SSH deploy](../deploy/vault-ssh-deploy.md) — revoking an operation grant
+  stops new signing, not already-issued certificates. CA/trust/principal policy
+  on the host is a separate rollout; do not export a CA seed for rollback.
 
 - `docs/ops/DEPLOY-POSTURE.md` — how code reaches dev and prod, what's machine-checkable, known drift.
 - `docs/MIGRATIONS.md` — migration rules, ownership, tracking table.

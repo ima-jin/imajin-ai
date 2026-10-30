@@ -252,6 +252,8 @@ export type DecisionAction = 'approve' | 'reject' | 'withdrawn';
 
 export interface OperatorApprovalCard {
   proposalId: string;
+  /** Recorded requesting agent, never inferred from a harness or the card's source category. */
+  signerDid?: string | null;
   /** Open vocabulary namespace, e.g. 'system-agent', 'skill-workshop' (#2152). */
   source: string;
   /** '<source>:<subkind>', e.g. 'system-agent:restart' (#2152). */
@@ -380,10 +382,12 @@ function renderAppSecretsDetail(approval: OperatorApprovalCard): ReactNode {
       <p>{approval.summary}</p>
       <p className="font-mono">{detailString(approval.detail, 'appDid', '—')}</p>
       {approval.kind === 'apps:secrets-sync' ? (
-        <p>Approve only these manifest secrets: {'ok' in snapshot
+        <p>Append only these new manifest secrets: {'ok' in snapshot
           ? snapshot.ok.map((secret) => `${secret.name} (${secret.kind})`).join(', ') || 'none'
           : 'invalid snapshot — execution will be refused'}. No scope or event changes.</p>
       ) : <p className="font-mono">{detailString(approval.detail, 'name', '—')}</p>}
+      {approval.kind === 'apps:secrets-sync' && <p>Not applied: {detailString(approval.detail, 'notApplied',
+        'Secret removals, kind changes and all non-secret declaration changes.')}</p>}
       <p>No values are revealed. Rotation takes effect at next boot; SESSION_SECRET signs users out after restart. Revoke blocks future fetches, not values already in memory.</p>
     </div>
   );
@@ -666,6 +670,9 @@ function renderAppsProvisionDetail(approval: OperatorApprovalCard): ReactNode {
       <p>Provision <span className="font-medium text-gray-100">{displayName}</span> as a third-party app.</p>
       <p className="text-xs text-gray-400">{approval.summary}</p>
       <div className="text-xs text-gray-500"><span className="uppercase tracking-wide mr-2">Slug</span><span className="font-mono">{slug}</span></div>
+      <div className="text-xs text-gray-500"><span className="uppercase tracking-wide mr-2">Visibility</span><span className="font-mono">{detailString(detail, 'visibility', 'public')}</span></div>
+      <div className="text-xs text-gray-500"><span className="uppercase tracking-wide mr-2">Domain</span><span className="font-mono">{detailString(detail, 'domain', `${slug}.imajin.ai`)}</span></div>
+      <div className="text-xs text-gray-500"><span className="uppercase tracking-wide mr-2">Site owner</span><span className="font-mono">{detailString(detail, 'siteOwnerDid', 'Node operator (default)')}</span></div>
       {sourceRepo ? (
         <>
           <div className="text-xs text-gray-500"><span className="uppercase tracking-wide mr-2">Source repository</span><span className="font-mono">{sourceRepo}</span></div>
@@ -1346,7 +1353,11 @@ function renderPanelBody(
   );
 }
 
-export function useRunApprovals(prepareCommand = prepareSignedSessionCommand) {
+export function useRunApprovals(
+  prepareCommand = prepareSignedSessionCommand,
+  options?: { source: string; includeHistory: boolean },
+) {
+  const source = options?.source;
 
   const [isOperator, setIsOperator] = useState(false);
   const [actAs, setActAs] = useState<ActAsState | null>(null);
@@ -1356,7 +1367,7 @@ export function useRunApprovals(prepareCommand = prepareSignedSessionCommand) {
   const [reachActAsAllowed, setReachActAsAllowed] = useState(false);
   const [approvals, setApprovals] = useState<OperatorApprovalCard[]>([]);
   const [hasHistory, setHasHistory] = useState(false);
-  const historyRef = useRef(false);
+  const historyRef = useRef(options?.includeHistory ?? false);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState('');
   const [revealedBearer, setRevealedBearer] = useState<RevealedBearer | null>(null);
@@ -1380,7 +1391,8 @@ export function useRunApprovals(prepareCommand = prepareSignedSessionCommand) {
     const generation = ++loadGeneration.current;
     if (!silent) setLoading(true);
     try {
-      const res = await fetch(`/jin/api/operator-approvals?view=acting${historyRef.current ? '&history=true' : ''}`, {
+      const sourceQuery = source ? `&source=${encodeURIComponent(source)}` : '';
+      const res = await fetch(`/jin/api/operator-approvals?view=acting${historyRef.current ? '&history=true' : ''}${sourceQuery}`, {
         credentials: 'include', cache: 'no-store', headers: getActingAsHeaders(), signal: controller.signal,
       });
       if (!res.ok) throw new Error('Inbox unavailable');
@@ -1411,7 +1423,7 @@ export function useRunApprovals(prepareCommand = prepareSignedSessionCommand) {
     } finally {
       if (generation === loadGeneration.current) setLoading(false);
     }
-  }, []);
+  }, [source]);
 
   const setHistory = useCallback((shown: boolean) => {
     historyRef.current = shown;

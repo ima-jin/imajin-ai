@@ -13,6 +13,18 @@ beforeEach(() => {
 afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
 
 describe('session commands own-DID transport', () => {
+  it.each(['archive', 'reset', 'label', 'history'])('transports session.%s and forwards both signed outcome names only to intake', async verb => {
+    const own = socket();
+    const command = { ...frame, type: `session.${verb}`, payload: { loopId: 'loop', ...(verb === 'label' ? { label: 'Label' } : {}) } };
+    expect(sendOwnSessionCommand(new Map([[agent, new Set([own])]]), new Map([[own, { did: agent, authenticated: true }]]), agent, command)).toBe(true);
+    expect(own.send).toHaveBeenCalledWith(JSON.stringify(command));
+    for (const status of ['completed', 'failed']) {
+      const result = { type: `loop.session.${verb}.${status}`, attestation: { from: agent } };
+      expect(isSessionEvent(result.type)).toBe(true);
+      await forwardSessionEvent({ did: agent, authenticated: true }, result);
+      expect(JSON.parse(String(vi.mocked(fetch).mock.lastCall?.[1]?.body))).toEqual({ socketDid: agent, frame: result });
+    }
+  });
   it('sends to exactly one own authenticated socket, never delegates/principal/subscriptions', () => {
     const own = socket(); const duplicate = socket(); const delegate = socket(); const owner = socket();
     const didSockets = new Map([[agent, new Set([delegate, owner, own, duplicate])]]);

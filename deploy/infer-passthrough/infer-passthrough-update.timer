@@ -1,0 +1,11 @@
+[Unit]
+Description=Poll release tags for infer-passthrough
+
+[Timer]
+OnBootSec=2min
+OnUnitInactiveSec=2min
+Persistent=true
+Unit=infer-passthrough-update.service
+
+[Install]
+WantedBy=timers.target

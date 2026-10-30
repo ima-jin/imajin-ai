@@ -23,6 +23,7 @@ import { db, usageIncurred, type ConnectorRow } from '@/src/db';
 import { CONNECTOR_REGISTRY } from '@/src/lib/kernel/connector-registry';
 import { listConnectorRegistrations } from '@/src/lib/kernel/connector-registry-store';
 import { checkSpendCap, parseSpendCap, type SpendCap } from '@/src/lib/inference/spend-cap';
+import type { BillingConnectionStatus } from '@/src/lib/usage/billed/connection-status';
 
 export const TREND_DAYS = 7;
 /** A provider at or above this share of its cap is flagged "near". */
@@ -52,6 +53,7 @@ export interface TrendDay {
 }
 
 export interface SpendLane {
+  billingConnections?: BillingConnectionStatus[];
   generatedAt: string;
   currency: 'USD';
   providers: ProviderSpend[];

@@ -30,8 +30,10 @@ const GROUP_SCOPES = ['business', 'community', 'family'] as const;
  * lookup miss, including a missing owner row — fail-closed, same posture
  * as the rest of this seam.
  */
-export async function isActiveGroupMember(ownerDid: string, requesterDid: string): Promise<boolean> {
-  const [owner] = await db
+export async function isActiveGroupMember(
+  ownerDid: string, requesterDid: string, database: Pick<typeof db, 'select'> = db,
+): Promise<boolean> {
+  const [owner] = await database
     .select({ scope: identities.scope })
     .from(identities)
     .where(eq(identities.id, ownerDid))
@@ -41,7 +43,7 @@ export async function isActiveGroupMember(ownerDid: string, requesterDid: string
     return false;
   }
 
-  const [membership] = await db
+  const [membership] = await database
     .select({ memberDid: identityMembers.memberDid })
     .from(identityMembers)
     .where(

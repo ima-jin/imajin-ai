@@ -69,6 +69,56 @@ countersign fresh custody from the group's original server-encrypted key.
 Keep the independent group-encryption secret unchanged. If that source cannot
 be authenticated, stop: do not export a seed or invent a replacement.
 
+SSH CAs (#3063) use `apps/kernel/src/lib/vault/ssh-ca.ts`: the CA Ed25519
+key is independently minted by `vault.mint`, not derived from the node key.
+Its sealed custody still depends on D2/D3, and its lifecycle receipts use S3.
+Protected `vault-ssh-ca:*` fields never enter generic fetch, grant renewal or
+rotation export. CA rotation itself is the vault action
+`POST /api/vault/ssh-ca/rotate` plus a trust-file deploy, not a key-export
+runbook. If the node root is replaced, use that action to mint a usable new
+CA under the new custody root; old public trust overlaps for the shared
+maximum certificate TTL, then disappears on the next trusted-keys read.
+Never move a CA seed through the node rotation handoff.
+
+Bank details (#3075), `apps/kernel/src/lib/vault/bank-details.ts`, use D2/D3
+custody through the existing static-secret seal helper, S6 signed private media
+and S3 transactional create/revoke receipts. The explicit node-key presence
+check refuses deterministic development custody. Protected `bank-details:*`
+fields never enter generic fetch, renewal or rotation export. Node-root rotation
+does not migrate them: preserve the old custody backup until the owner can
+replace the record through the authenticated bank-details API under the new
+root, using their original banking source. Never export identifiers through a
+shell or handoff, and do not claim existing record secrets survive root rotation
+without that separately authorized replacement.
+
+SSH signing (#3064), `apps/kernel/src/lib/vault/ssh-cert.ts`, uses D2/D3 to
+open the live node-only CA custody grant in-process and S3 for issuance,
+refusal and operation-grant attestations. Operation grants contain no CA key
+material; their principal/command/host scope is signed by the node root.
+Replacing that root invalidates the old operation grants as well as custody.
+Grant signing authority for the replacement CA through the vault grant route;
+never re-sign a stored scope implicitly or move a private key through a shell.
+
+Issuance records bind job, grantee, principal, host, TTL, serial, keyId, caId,
+grantId and `publicKeyFingerprint`: the OpenSSH `SHA256:...` fingerprint of
+the caller's throwaway public wire key, not the key material. Anonymous signing
+requests return 401 without signing or storing refusal records. Authenticated
+refusals retain their signed audit. Each grant may issue at most 10 certificates
+in a rolling 60-second window (`SSH_CERT_ISSUANCE_LIMIT` /
+`SSH_CERT_ISSUANCE_WINDOW_SECONDS`). The signing transaction counts that grant's
+existing issuance events under its locks before signing, so concurrent requests
+cannot exceed the budget. Excess requests return 429, record an authenticated
+refusal, and return no certificate. No separate rate-limit store or config exists.
+
+GitHub job signing (#3095) adds a verified external identity, not a new node-key
+role: fixed-issuer RS256 OIDC is checked before the existing CA/grant transaction.
+The signed issuance binds repository, environment, workflow ref, run ID and
+attempt. Grants authorize repository + environment, not workflow filenames.
+Reissue the grant for a replacement CA; do not export/reseal the old CA seed.
+The runner's per-job key is unrelated to `AUTH_PRIVATE_KEY` and never enters
+node-root rotation handoff. See [vault SSH deploy](../deploy/vault-ssh-deploy.md)
+for pinned host trust, non-swappable tmpfs and cleanup requirements.
+
 ### 2.2 Derived-secret roles (HKDF / HMAC; nobody outside the process can verify these)
 
 | Role | Consumers | What breaks on rotation | Who can read the old material |
@@ -581,6 +631,7 @@ file: ``- `path` — role``.
 - `apps/kernel/src/lib/auth/knock.ts` — S3
 - `apps/kernel/app/auth/api/attestations/internal/route.ts` — S3
 - `apps/kernel/app/api/admin/registry/apps/route.ts` — S3
+- `apps/kernel/app/api/admin/registry/apps/[appId]/revoke/route.ts` — S3 (operator-only Clear; node-signed registry.app.revoked receipt commits atomically with the retained app tombstone)
 - `apps/kernel/src/lib/auth/node-key-rotation.ts` — S3
 - `packages/auth/src/key-rotation.ts` — S3
 - `packages/auth/src/types/attestation.ts` — S3
@@ -630,14 +681,20 @@ file: ``- `path` — role``.
 - `apps/kernel/src/lib/vault/grant.ts` — D2
 - `apps/kernel/src/lib/vault/field-status.ts` — D2
 - `apps/kernel/src/lib/vault/mint.ts` — D2
+- `apps/kernel/src/lib/vault/ssh-ca.ts` — D2/D3/S3 (independent in-vault CA mint, node-only custody, transactional signed lifecycle; never exported by node-root handoff)
+- `apps/kernel/src/lib/vault/ssh-cert.ts` — D2/D3/S3 (locked live CA custody unseal, signed SSH operation scope, issuance/refusal audit; no private-key export)
 - `apps/kernel/src/lib/vault/mint-authority.ts` — D2
 - `apps/kernel/src/lib/vault/import-authority.ts` — D2 (node identity comparison only; real human/group ownership remains independently checked)
 - `apps/kernel/src/lib/vault/import.ts` — D2/S3 (v2 static-secret custody and node-attested, human-countersigned import/rotation)
 - `apps/kernel/app/api/vault/import/route.ts` — D2 (pins Cloudflare credential consumer to this kernel node; never releases token material)
 - `apps/kernel/src/lib/cloudflare/authority.ts` — D2 (node consumer identifier for verified-domain credential resolution; edge authority remains owner-granted)
 - `apps/kernel/src/lib/dns/provider.ts` — D2 (node consumer identifier for the connector's existing zone-scoped DNS credential; no signing, sealing or new secret)
+- `apps/kernel/src/lib/cloudflare/zone-grants.ts` — D2 (public node consumer identifier comparison for metadata-only zone grant discovery; never unseals or signs)
 - `apps/kernel/src/lib/vault/cloudflare-import.ts` — D2 (checks node-only token custody against exact verified zone ownership)
 - `apps/kernel/src/lib/vault/group-key.ts` — D2/D3/S3 (explicit node-key configuration gate; countersigned group-to-node custody, wrapped-key revoke and transactional signed audit)
+- `apps/kernel/src/lib/vault/bank-details.ts` — D2/D3/S3/S6 (explicit node-key presence gate; field sealing via existing custody helpers, signed private documents and retained revocation; no generic export or renewal)
+- `apps/kernel/src/lib/kernel/external-mcp.ts` — D2/D3/S3 (member-subject, kernel-only credential custody and signed lifecycle/call receipts; external-mcp-key fields are excluded from generic fetch, renewal and rotation handoff; after node-root rotation the member must reconnect from their original provider account, never export the key)
+- `apps/kernel/src/lib/kernel/org-held-connection.ts` — D2/D3/S3 (org-subject, kernel-only static-secret custody with actor-attributed lifecycle receipts; private fields never enter generic fetch, renewal or rotation export; after node-root rotation an org admin must load again from the original provider account, never export the key)
 - `apps/kernel/src/lib/vault/internal-secret.ts` — D2
 - `apps/kernel/src/lib/vault/internal-secret-revoke.ts` — D2
 - `apps/kernel/src/lib/vault/internal-secret-rotate.ts` — D2

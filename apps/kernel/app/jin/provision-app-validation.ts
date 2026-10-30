@@ -7,6 +7,8 @@
 
 import { isRepositoryName } from '@/src/lib/apps/template-lineage';
 import { APP_SIGN_IN_AUDIENCE_ERROR, isAppSignInAudience, type AppSignInAudience } from '@/src/lib/apps/sign-in-audience';
+import { validateDomainChoice } from '@/src/lib/apps/domain-choice';
+import type { AppVisibility } from '@/src/lib/apps/visibility';
 
 export const DEFAULT_APP_TEMPLATE = 'ima-jin/imajin-app-template';
 
@@ -21,12 +23,18 @@ export interface ProvisionFormValues {
   displayName: string;
   template: string;
   sourceRepo?: string;
+  visibility?: AppVisibility;
+  domain?: string;
+  siteOwnerDid?: string;
   signInAudience?: AppSignInAudience;
   /** Raw textarea/input text — comma- or whitespace-separated `<slug>/<type>` entries. */
   attestationTypes: string;
 }
 
 export interface ProvisionFormErrors {
+  visibility?: string;
+  domain?: string;
+  siteOwnerDid?: string;
   signInAudience?: string;
   slug?: string;
   displayName?: string;
@@ -36,6 +44,9 @@ export interface ProvisionFormErrors {
 }
 
 export interface ProvisionPayload {
+  visibility: AppVisibility;
+  domain?: string;
+  siteOwnerDid?: string;
   signInAudience: AppSignInAudience;
   slug: string;
   displayName: string;
@@ -66,8 +77,14 @@ function attestationTypesError(types: readonly string[], slug: string, slugValid
   return undefined;
 }
 
-export function validateProvisionForm(values: ProvisionFormValues): ProvisionFormErrors {
+export function validateProvisionForm(values: ProvisionFormValues, controlledOwnerDids: readonly string[] = []): ProvisionFormErrors {
   const errors: ProvisionFormErrors = {};
+  errors.visibility = validateDomainChoice({ visibility: values.visibility }) ?? undefined;
+  errors.domain = validateDomainChoice({ domain: values.domain || undefined }) ?? undefined;
+  errors.siteOwnerDid = validateDomainChoice({ siteOwnerDid: values.siteOwnerDid || undefined }) ?? undefined;
+  if (values.siteOwnerDid && !errors.siteOwnerDid && !controlledOwnerDids.includes(values.siteOwnerDid)) {
+    errors.siteOwnerDid = 'Choose a group you own or administer';
+  }
   if (values.signInAudience !== undefined && !isAppSignInAudience(values.signInAudience)) errors.signInAudience = APP_SIGN_IN_AUDIENCE_ERROR;
   const slug = values.slug.trim();
   const displayName = values.displayName.trim();
@@ -103,6 +120,9 @@ export function hasProvisionErrors(errors: ProvisionFormErrors): boolean {
 export function buildProvisionPayload(values: ProvisionFormValues): ProvisionPayload {
   return {
     slug: values.slug.trim(),
+    visibility: values.visibility ?? 'public',
+    ...(values.domain ? { domain: values.domain } : {}),
+    ...(values.siteOwnerDid ? { siteOwnerDid: values.siteOwnerDid } : {}),
     signInAudience: values.signInAudience ?? 'members',
     displayName: values.displayName.trim(),
     template: values.template.trim() || DEFAULT_APP_TEMPLATE,

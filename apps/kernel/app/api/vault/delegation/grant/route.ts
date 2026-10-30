@@ -3,7 +3,7 @@ import { and, eq } from 'drizzle-orm';
 import { requireAdmin, verifySync } from '@imajin/auth';
 import { publish } from '@imajin/bus';
 import { createLogger } from '@imajin/logger';
-import { isAppSelfSecretField, isGroupKeyField, parseVaultFieldName } from '@/src/lib/vault/field-grammar';
+import { isAppSelfSecretField, isPrivateCustodyField, parseVaultFieldName } from '@/src/lib/vault/field-grammar';
 import { db, vaultDelegationGrants, vaultGrantRequests } from '@/src/db';
 import {
   canonicalizeGrantPayload,
@@ -214,7 +214,7 @@ function validateSignedFieldName(field: string): string | null {
   return parsedField.value.field === field ? null : 'field must not have leading or trailing whitespace';
 }
 function privateCustodyRefusal(field: string): NextResponse | null {
-  if (isGroupKeyField(field)) {
+  if (isPrivateCustodyField(field)) {
     return NextResponse.json({ error: 'Group keys require countersigned group custody' }, { status: 409 });
   }
   if (isAppSelfSecretField(field)) {

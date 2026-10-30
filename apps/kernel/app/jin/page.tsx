@@ -1,6 +1,7 @@
 'use client';
 
 import { UsageFeedPanel } from './usage-feed-panel';
+import { DecisionsPanel } from './decisions-panel';
 import { OperatorApprovalsPanel } from './operator-approvals-panel';
 import { VaultKeysPanel } from './vault-keys-panel';
 import { VaultImportPanel } from './vault-import-panel';
@@ -15,6 +16,7 @@ import { SpendPanel } from './spend-panel';
 import { RunsPanel } from './runs-panel';
 import { FrontDoorPanel } from './front-door-panel';
 import { PushSubscribeButton } from './push-subscribe-button';
+import { RecordPanel } from './record-panel';
 
 // ─── Main page ────────────────────────────────────────────────────────────────
 //
@@ -48,6 +50,7 @@ export default function JinPage() {
       </header>
 
       <main className="px-6 py-4">
+        <DecisionsPanel />
         {/* Vault key cards (#2247) — mint/grant/rotate/revoke as signed
             canvas proposals; renders nothing for a non-admin. Rendered
             ABOVE the operator-approvals panel so a freshly-raised vault
@@ -91,6 +94,7 @@ export default function JinPage() {
             raised revoke/decision surfaces above this read-only lane. */}
         <GrantsPanel />
         <RunsPanel />
+        <RecordPanel />
 
         {/* Spend lane (#2725) — provider cost vs caps, 7-day trend, and
             (labelled interim, until the #2290 loop registry) Warp run cost +

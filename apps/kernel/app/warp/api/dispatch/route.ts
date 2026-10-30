@@ -31,6 +31,9 @@
  * Fails closed with 403 when the caller has no active `warp:dispatch` grant and
  * 409 when no key is sealed (or its grant was revoked). The key is never logged,
  * echoed, or included in any error body.
+ * Briefs are capped at 1,048,576 UTF-8 bytes (1 MiB), including the final
+ * corpus prefix and separator. Oversize is 413 before storage or Warp dispatch.
+ * Provider failures retain the brief plus a value-free dispatch_failed record.
  *
  * When `corpusContext` is given, its DID is always the acting principal —
  * never a caller-supplied value — and a search failure (corpus unreachable,
@@ -60,6 +63,8 @@ import {
 } from '@/src/lib/warp/dispatch';
 import { warpErrorResponse } from '@/src/lib/warp/route-errors';
 import { claimTerminalPublish } from '@/src/lib/warp/run-watch-sweep';
+import { isWarpBriefTooLarge, WARP_BRIEF_MAX_BYTES } from '@/src/lib/warp/brief-limit';
+import { WarpBriefSizeError } from '@/src/lib/warp/errors';
 
 /** Upper bound on `corpusContext.maxChars` accepted from a caller before it is treated as malformed. */
 const CORPUS_CONTEXT_MAX_CHARS_CEILING = 100_000;
@@ -189,8 +194,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400, headers: cors });
   }
 
-  const prompt = optionalString(body.prompt);
-  if (!prompt) {
+  const prompt = typeof body.prompt === 'string' ? body.prompt : '';
+  if (isWarpBriefTooLarge(prompt)) return warpErrorResponse(new WarpBriefSizeError(WARP_BRIEF_MAX_BYTES), cors);
+  if (prompt.trim().length === 0) {
     return NextResponse.json(
       { error: 'prompt must be a non-empty string' },
       { status: 400, headers: cors },
@@ -221,7 +227,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(run, { status: 201, headers: cors });
   } catch (err) {
-    log.error({ err: String(err), principalDid }, 'Warp dispatch failed');
+    log.error({ principalDid }, 'Warp dispatch failed');
     return warpErrorResponse(err, cors);
   }
 }

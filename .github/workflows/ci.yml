@@ -249,6 +249,11 @@ jobs:
       - name: Rebuild native dependencies needed for tests
         run: pnpm rebuild -r better-sqlite3
 
+      - name: Install OpenSSH and Python for vault certificate/deploy tests
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends openssh-client python3
+
       - name: Run tests with coverage
         if: github.event_name != 'merge_group'
         run: pnpm --silent test:agent --coverage
@@ -524,6 +529,8 @@ jobs:
       # remaining violations so it lands green — see migrations/OWNERSHIP.md.
       - name: Cross-schema query guard
         run: node scripts/ci-guard-cross-schema-reads.mjs
+      - name: Kernel harness-boundary guard
+        run: node scripts/ci-guard-harness-boundary.mjs
 
       # Stripe SDK import scope guard (#2172 design amendment): the withdraw
       # rail adapter interface exists so the withdraw/reconciliation path
@@ -540,6 +547,9 @@ jobs:
       # public transactions-API field).
       - name: No stripe_id guard
         run: node scripts/ci-guard-no-stripe-id.mjs
+
+      - name: No issue references in product copy
+        run: node scripts/ci-guard-no-issue-refs-in-copy.mjs
 
   sonarcloud:
     name: SonarCloud

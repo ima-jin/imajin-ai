@@ -2,7 +2,7 @@ openapi: "3.1.0"
 info:
   title: imajin connections
   version: "2.0.0"
-  description: Pod-based social graph — connections, invite codes, trust graph, group pods, nickname management. Runs as a kernel service at /{service}/api/... on a shared node domain.
+  description: Pod-based social graph and connector lifecycle, including metadata-only org-held service keys. Runs as a kernel service at /{service}/api/... on a shared node domain.
 servers:
   - url: https://{node}.imajin.ai/{service}
     description: production node
@@ -29,9 +29,65 @@ components:
       bearerFormat: app-service+jwt
       description: >-
         Existing POST /auth/api/apps/token/service credential. Requires
-        connections:read in the token and current operator-approved service
-        scopes of an active registry app. Not a session or delegated app token.
+        the operation's documented scope in the token and current operator-approved
+        service scopes of an active registry app. Not a session or delegated app token.
   schemas:
+    OrgHeldConnection:
+      type: object
+      additionalProperties: false
+      required: [provider, loadedByDid, loadedAt, status]
+      properties:
+        provider: { type: string }
+        loadedByDid: { type: string, description: "Authenticated human who last loaded the key." }
+        loadedAt: { type: string, format: date-time }
+        status: { type: string, const: loaded }
+    AppUpstream:
+      type: object
+      additionalProperties: false
+      required: [id, origin, paths]
+      properties:
+        id: { type: string, pattern: '^[a-z][a-z0-9-]{0,63}$' }
+        origin: { type: string, description: "Exact HTTPS origin only, without userinfo." }
+        credentialHeader: { type: string, enum: [Authorization, X-API-Key], default: Authorization }
+        credentialPrefix: { type: string, enum: ["Bearer ", ""], default: "Bearer " }
+        paths:
+          type: array
+          minItems: 1
+          maxItems: 64
+          items:
+            type: object
+            additionalProperties: false
+            required: [path, methods]
+            properties:
+              path: { type: string, maxLength: 1024, description: "Exact canonical path; no query, fragment, escapes, traversal or double slashes." }
+              methods:
+                type: array
+                minItems: 1
+                maxItems: 7
+                items: { type: string, enum: [GET, HEAD, POST, PUT, PATCH, DELETE, OPTIONS] }
+    AppUpstreamSelector:
+      type: object
+      additionalProperties: false
+      required: [appDid, upstreamId]
+      properties:
+        appDid: { type: string }
+        upstreamId: { type: string, pattern: '^[a-z][a-z0-9-]{0,63}$' }
+    AppUpstreamConnection:
+      type: object
+      additionalProperties: false
+      required: [provider, connected, orgContextDid, permissions]
+      properties:
+        provider: { type: string }
+        connected: { type: boolean }
+        orgContextDid: { type: [string, "null"] }
+        permissions:
+          type: array
+          uniqueItems: true
+          items: { type: string, example: "GET /me" }
+          description: >-
+            Sorted plain-text METHOD /path list for the current declaration, shown
+            to the member at this API-only connect step. When connected=false this
+            is a review list, not evidence that the member approved the changed list.
     ConnectorConnection:
       type: object
       required: [slot, label, accountEmail, connected]
@@ -99,6 +155,482 @@ tags:
     description: imajin connections service
 
 paths:
+  /api/org-held:
+    get:
+      tags: [connections]
+      operationId: listOrgHeldConnections
+      summary: List loaded organization service-key metadata, never key values
+      description: >-
+        Human session acting as the org, connections-service access and live
+        identity_members owner/admin role required. Org identity and actor must
+        be active. Revoked history is retained but hidden. No unseal on reads.
+        Loading grants no member or proxy access; personal resolution is unchanged.
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: Metadata only; Cache-Control no-store
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [connections]
+                properties:
+                  connections:
+                    type: array
+                    items: { $ref: "#/components/schemas/OrgHeldConnection" }
+        "401": { description: Organization admin session required }
+        "403": { description: Not an active org owner/admin acting as the org }
+        "503": { description: Store unavailable; no internal error details }
+  /api/org-held/{provider}:
+    parameters:
+      - name: provider
+        in: path
+        required: true
+        schema: { type: string, examples: [anthropic, warp] }
+    get:
+      tags: [connections]
+      operationId: getOrgHeldConnection
+      summary: Read loaded metadata without unsealing, including for the loading admin
+      description: Same session, live org-admin and connections-service gate as the list.
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: Metadata only; Cache-Control no-store
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OrgHeldConnection" }
+        "401": { description: Organization admin session required }
+        "403": { description: Not an active org owner/admin acting as the org }
+        "404": { description: No loaded connection; revoked history is hidden }
+        "503": { description: Store unavailable; no internal error details }
+    post:
+      tags: [connections]
+      operationId: loadOrgHeldConnection
+      summary: Load or replace an org-held service key; no read-back, even for the admin
+      description: >-
+        Same human org-admin gate as the list; no app/agent lifecycle authority.
+        Supports registered static-secret and token-paste providers, including
+        Anthropic and Warp; OAuth and unknown providers are refused.
+        Org DID comes only from authenticated act-as, never request JSON.
+        Reuses transactional Tier 0 static-secret sealing: org DID is the custody
+        subject and connectors.ownerDid, kernel node is the only grantee.
+        Separate org-held-{provider} registry provider namespace and immutable
+        private external-mcp-key vault fields prevent changing primary/member resolution.
+        Generic vault fetch/export/renewal cannot disclose the value.
+        Tier 1 fails closed before writes.
+        Replacement revokes previous custody and writes a signed vault tombstone.
+        Signed connector.org-held attestations record org, actor, provider and
+        loaded/replaced/revoked action; never credentials or raw exceptions.
+        No rows deleted. Per-member grants, proxy injection and UI are separate.
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [secret]
+              properties:
+                secret: { type: string, writeOnly: true, minLength: 1, maxLength: 4096, pattern: '^[!-~]+$' }
+      responses:
+        "201":
+          description: Only provider, loaded-by DID, loaded-at and status loaded; no-store
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OrgHeldConnection" }
+        "400": { description: Invalid input, credential-bearing metadata or unsupported provider }
+        "401": { description: Organization admin session required }
+        "403": { description: Not an active org owner/admin acting as the org }
+        "409": { description: Tier 1 unsupported or removed connection unavailable }
+        "413": { description: JSON body exceeds 16 KiB }
+        "503": { description: Signing, vault or store unavailable; no internal error details }
+    delete:
+      tags: [connections]
+      operationId: revokeOrgHeldConnection
+      summary: Revoke org custody, retaining signed history and hiding it from live reads
+      description: >-
+        Same live org-admin act-as gate. Erases wrapped custody, marks the row
+        revoked and writes a signed vault tombstone and actor-attributed
+        connector.org-held attestation. No rows deleted. Missing or already
+        revoked connection is an idempotent success without another event.
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: revoked=true only; Cache-Control no-store
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [revoked]
+                properties:
+                  revoked: { type: boolean, const: true }
+        "401": { description: Organization admin session required }
+        "403": { description: Not an active org owner/admin acting as the org }
+        "503": { description: Signing, vault or store unavailable; no internal error details }
+  /api/upstreams:
+    get:
+      tags: [connections]
+      operationId: getAppUpstreamDeclaration
+      summary: Review an app's destination before connecting a personal credential
+      security:
+        - cookieAuth: []
+      parameters:
+        - { name: appDid, in: query, required: true, schema: { type: string } }
+        - { name: upstreamId, in: query, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: Non-secret declaration; personal human session only, no-store
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AppUpstream" }
+        "400": { description: Invalid selector }
+        "401": { description: Personal session required }
+        "403": { description: App inactive, not operator-approved, or upstream absent }
+        "503": { description: Store unavailable }
+    put:
+      tags: [connections]
+      operationId: declareAppUpstreams
+      summary: Replace the authenticated registered app's upstream declarations
+      description: >-
+        App-service+jwt with connectors:upstream:read and live operator approval.
+        Verified app DID only, no body override. Extends registry.apps.upstreams;
+        grants neither member consent nor key access. [] withdraws declarations.
+        Old/new declarations are atomically node-attested. Origin/header/prefix
+        and canonical path/method pairs are bound to the member connection.
+        Any addition, change or removal invalidates it until explicit reconnection;
+        reordering or repeating equivalent pairs does not.
+        Request body limit 16 KiB. No rows deleted.
+      security:
+        - appServiceAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [upstreams]
+              properties:
+                upstreams:
+                  type: array
+                  maxItems: 16
+                  description: Unique IDs within the app.
+                  items: { $ref: "#/components/schemas/AppUpstream" }
+      responses:
+        "200": { description: Declarations saved without credentials }
+        "400": { description: Invalid or duplicate declarations }
+        "401": { description: Scoped app authentication required }
+        "403": { description: Not an active operator-approved app service }
+        "413": { description: Body exceeds 16 KiB }
+        "503": { description: Signing or store unavailable }
+  /api/upstreams/connection:
+    get:
+      tags: [connections]
+      operationId: getPersonalAppUpstreamConnection
+      summary: Read your destination-bound status without unsealing
+      security:
+        - cookieAuth: []
+      parameters:
+        - { name: appDid, in: query, required: true, schema: { type: string } }
+        - { name: upstreamId, in: query, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: "Non-secret status plus current plain-text permissions; no-store"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AppUpstreamConnection" }
+        "400": { description: Invalid selector }
+        "401": { description: Personal session required }
+        "403": { description: App or declaration unavailable }
+        "503": { description: Store unavailable }
+    post:
+      tags: [connections]
+      operationId: connectPersonalAppUpstream
+      summary: Seal a member-owned key for one reviewed app upstream
+      description: >-
+        Personal human session only, never app/agent/org act-as lifecycle.
+        Explicit origin must match the declaration. Reuses private external-mcp-key
+        sealing with member subject and kernel-only custody; generic vault fetch,
+        export and renewal cannot disclose it. Stores destination/header/prefix
+        and canonical path/method binding, optional org_context_did and signed
+        lifecycle history. Any path/method addition or removal requires reconnecting;
+        ordering alone does not. Earlier destination-only bindings require one reconnect.
+        This connect step is API-only: connect/status responses return a sorted,
+        deduplicated permissions list such as ["GET /me"] for member review. Tier 0 only.
+        Connecting grants no app authority: use existing OAuth consent for
+        connectors:upstream:read and optionally connectors:upstream:write.
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [appDid, upstreamId, origin, secret]
+              properties:
+                appDid: { type: string }
+                upstreamId: { type: string, pattern: '^[a-z][a-z0-9-]{0,63}$' }
+                origin: { type: string }
+                secret: { type: string, writeOnly: true, minLength: 1, maxLength: 4096, pattern: '^[!-~]+$' }
+                orgContextDid: { type: string }
+      responses:
+        "201":
+          description: "connected=true and the plain-text approved permissions; never key material"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AppUpstreamConnection" }
+        "400": { description: Invalid input or unsafe metadata }
+        "401": { description: Personal session required }
+        "403": { description: Not a personal human or active org member, or declaration unavailable }
+        "409": { description: Destination changed or Tier 1 unsupported }
+        "413": { description: Body exceeds 16 KiB }
+        "503": { description: Signing or vault/store unavailable }
+    delete:
+      tags: [connections]
+      operationId: disconnectPersonalAppUpstream
+      summary: Revoke your connection, retaining signed tombstones and history
+      description: >-
+        Personal human only. Works after app/declaration removal. No rows deleted.
+        The next call fails; already-admitted calls may finish under the existing
+        member MCP snapshot contract. Idempotent when no connection exists.
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AppUpstreamSelector" }
+      responses:
+        "200": { description: disconnected=true }
+        "400": { description: Invalid selector }
+        "401": { description: Personal session required }
+        "403": { description: Not a personal human }
+        "413": { description: Body exceeds 16 KiB }
+        "503": { description: Signing or vault/store unavailable }
+  /api/upstreams/call:
+    post:
+      tags: [connections]
+      operationId: invokeAppUpstream
+      summary: Call a declared API on behalf of a member with kernel credential injection
+      description: >-
+        App-service+jwt as its registered DID, connectors:upstream:read in token and
+        live operator ceiling. Every call checks member per-app OAuth consent, active
+        connection/custody, destination binding, member/org standing and active org
+        membership through authorizeMemberConnection, shared with member MCP
+        including org member/service suspension before vault access. Admin controls
+        are GET/POST /auth/api/org-connections (auth spec). GET/HEAD are reads; all other methods require
+        connectors:upstream:write in token, operator ceiling AND live member grant,
+        plus a reason code. No automatic writes. Exact declared paths/methods only;
+        no URL, header, query or app DID override. HTTPS public egress with DNS connect
+        pinning; local-inference private allowlist never applies. Redirects refused.
+        Kernel injects the key, buffers at most 2 MiB, refuses credential echoes and
+        strips all upstream headers. No raw provider exceptions or streams returned.
+        Connect timeout and body deadline each 30 seconds. Existing shared member/app
+        quotas and concurrency cap apply before any database read. Successful calls
+        are recorded, as are authorized upstream failures, with node-signed memberDid,
+        appDid, orgContextDid,
+        upstream ID, method, outcome and reason; never body, arguments or credential.
+        Admission, validation and permission refusals write nothing permanent and
+        make no upstream call.
+        Invalid/authentication-rejected requests cannot invoke or impersonate a member.
+      security:
+        - appServiceAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [memberDid, upstreamId, path, method]
+              properties:
+                memberDid: { type: string }
+                upstreamId: { type: string, pattern: '^[a-z][a-z0-9-]{0,63}$' }
+                path: { type: string, maxLength: 1024 }
+                method: { type: string, enum: [GET, HEAD, POST, PUT, PATCH, DELETE, OPTIONS] }
+                body: { type: string, maxLength: 12000, description: "JSON text; forbidden for GET/HEAD." }
+                reason: { type: string, enum: [member-request, app-workflow, scheduled-task], description: "Required for non-GET/HEAD; codes only, not free text." }
+      responses:
+        "200":
+          description: Upstream status and bounded text body only; no-store
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, body]
+                properties:
+                  status: { type: integer }
+                  body: { type: string }
+        "400": { description: Invalid input or missing mutation reason }
+        "401": { description: Scoped app authentication required }
+        "403": { description: Grant, standing, custody, destination or declaration refused }
+        "413": { description: Body exceeds 16 KiB }
+        "429": { description: Member or app rate exceeded }
+        "502": { description: Generic upstream failure, redirect, oversized body or credential echo }
+        "503": { description: Capacity or signing/vault/store unavailable }
+  /api/external-mcp/postman:
+    get:
+      tags: [connections]
+      operationId: externalMcpPostmanStatus
+      summary: Read your personal Postman connection status without unsealing
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: provider=postman, connected boolean and nullable orgContextDid only; no-store
+        "401":
+          description: Personal member session required
+        "403":
+          description: Organization act-as and agent/delegated sessions refused
+        "503":
+          description: Connection store unavailable
+    post:
+      tags: [connections]
+      operationId: connectExternalMcpPostman
+      summary: Seal your own Postman API key for kernel-only outbound use
+      description: >-
+        Personal human member session only; no app or org act-as lifecycle authority.
+        The optional org tag requires active membership and is attribution, not key ownership.
+        Fixed official target https://mcp.postman.com/mcp; URLs and headers are not configurable.
+        Tier 0 node-delegated custody, not zero custody. Tier 1 returns 409 before writing.
+        Each save uses an immutable private vault field with member subject and kernel grantee,
+        revokes prior custody and records node-signed connector.external-mcp history.
+        After the new seal is written, reconnect writes a signed tombstone for the old field.
+        Body limit 16 KiB; never echo parser/driver/provider messages or credentials.
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [secret]
+              properties:
+                secret: { type: string, writeOnly: true, minLength: 1, maxLength: 4096, pattern: '^[!-~]+$' }
+                orgContextDid: { type: string, maxLength: 256, pattern: '^did:[a-z0-9]+:[a-zA-Z0-9._:-]+$' }
+      responses:
+        "201":
+          description: provider=postman, connected=true, orgContextDid only; no-store
+        "400":
+          description: Invalid input; unknown properties refused
+        "401":
+          description: Personal member session required
+        "403":
+          description: Not a personal member or no active org membership
+        "409":
+          description: Kernel vault custody required
+        "413":
+          description: Request exceeds 16 KiB
+        "503":
+          description: Signing, vault or persistence unavailable
+    delete:
+      tags: [connections]
+      operationId: disconnectExternalMcpPostman
+      summary: Revoke custody and write a signed vault tombstone, retaining history
+      description: >-
+        Same member-only lifecycle gate. Serializes against connects and short custody snapshots.
+        An already-admitted outbound call may finish after disconnect; new calls are refused.
+        Erases wrapped grant material, marks the connection revoked and records
+        a node-signed lifecycle attestation. No database rows are deleted.
+        No connection is an idempotent success. Org removal does not prevent personal disconnect.
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: disconnected=true; no-store
+        "401":
+          description: Personal member session required
+        "403":
+          description: Not a personal human member
+        "503":
+          description: Signing, vault or persistence unavailable
+  /api/external-mcp/postman/rpc:
+    post:
+      tags: [connections]
+      operationId: invokeExternalMcpPostman
+      summary: List or call allowlisted read-only Postman MCP tools through the kernel
+      description: >-
+        JSON-RPC-shaped kernel invocation facade, not a transparent MCP server:
+        accepts tools/list and tools/call only. The kernel handles a fresh upstream
+        initialize/initialized handshake for each invocation and keeps session IDs private.
+        Injects the current member credential as Authorization Bearer on every outbound hop.
+        Redirects disabled, 30s total deadline, 2 MiB response budget; JSON and SSE supported.
+        No upstream headers, errors or credential echoes are returned; upstream failure is generic 502.
+        Exact allowlist: getWorkspaces, getWorkspace, getCollections, getCollection,
+        getCollectionRequest, getEnvironments, getEnvironment. Arguments are validated
+        against reviewed per-tool schemas; no URLs, headers or protocol metadata accepted.
+        Write, unknown and live-request tools (including runCollection) are refused with 403,
+        regardless of upstream readOnlyHint. tools/list filters out nonallowlisted tools.
+        Personal human session may use its own connection. Registered app callers need
+        connectors:mcp:read plus the member's live OAuth app consent on every call.
+        An app-service token also needs current operator approval of this service scope
+        and supplies memberDid; a delegated app cannot select a different userDid.
+        No session fallback after app-auth refusal. Connection, custody, member identity,
+        app registration, tagged org identity and current org membership are checked each call.
+        Admission uses the existing in-memory sliding-window limiter: 20 calls per member
+        and 60 calls per app in 60 seconds, plus a process-wide cap of 4 in-flight calls.
+        Limits are per process (not a distributed quota); restart resets the in-memory budgets.
+        Limit refusal is generic 429, capacity refusal generic 503; neither starts a database
+        transaction, calls Postman or writes an attestation/row. Capacity is released on every exit.
+        Authorization and unseal run in one short transaction, then the outbound exchange runs
+        with no database transaction or lock held. A second short transaction records each
+        admitted attempt (including successful use) as a signed member/org/app/method/tool event;
+        no arguments, RPC IDs, credential or provider error is stored.
+        Org-admin suspension uses the same authorizeMemberConnection gate before
+        vault access and returns the existing generic connection-unavailable 403.
+        GET/POST /auth/api/org-connections administers retained individual/service
+        policies; see the auth spec. Personal untagged use is unaffected.
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [jsonrpc, id, method]
+              properties:
+                jsonrpc: { type: string, const: "2.0" }
+                id: { oneOf: [{ type: string, maxLength: 128 }, { type: integer }] }
+                memberDid: { type: string, maxLength: 256, description: "Required for app-service, otherwise must match authenticated member." }
+                method: { type: string, enum: [tools/list, tools/call] }
+                params:
+                  type: object
+                  additionalProperties: false
+                  properties:
+                    name: { type: string, maxLength: 128 }
+                    arguments: { type: object }
+                    cursor: { type: string, maxLength: 1024, description: "tools/list pagination only" }
+      responses:
+        "200":
+          description: JSON-RPC 2.0 id and sanitized result; no-store
+        "400":
+          description: Invalid RPC envelope, arguments or selector
+        "401":
+          description: Authentication required
+        "403":
+          description: Tool refused or no current member/app/custody authorization
+        "413":
+          description: Request exceeds 16 KiB
+        "429":
+          description: Generic per-member or per-app rate limit refusal; nothing permanent written
+        "502":
+          description: Generic upstream failure, including credential echo refusal
+        "503":
+          description: In-flight capacity exhausted (nothing permanent written), or authorization, signing or custody unavailable
   /api/apps/pods:
     get:
       tags: [connections]
@@ -208,6 +740,9 @@ paths:
         as primary without re-sealing. Disconnected slots may remain available
         for reconnecting. Labels are not unique identifiers: ambiguous label
         selectors fail with an error listing matching slots.
+        ownerDid is derived from authentication, never from a caller selector.
+        It scopes dependency warnings to this owner's slots; removed slot
+        history is excluded from live listings.
       security:
         - cookieAuth: []
       responses:
@@ -217,8 +752,9 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [connections]
+                required: [ownerDid, connections]
                 properties:
+                  ownerDid: { type: string, description: "Authenticated effective owner; metadata, not removal authority." }
                   connections:
                     type: array
                     items: { $ref: "#/components/schemas/ConnectorConnection" }

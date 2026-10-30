@@ -7,4 +7,5 @@ export const POST = createDisconnectHandler({
   channel: 'github',
   connectorDid: GITHUB_CONNECTOR_DID,
   connectorName: 'github',
+  allowSlotRemoval: true,
 });

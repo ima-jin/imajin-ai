@@ -97,6 +97,7 @@ describe('kernel manifest', () => {
   it('preserves the existing schedules and adds hourly domain rechecks', () => {
     const table = Object.fromEntries(KERNEL_CRON_MANIFEST.jobs.map((j) => [cronJobName(j), j.schedule]));
     expect(table).toEqual({
+      'registry-app-expiry': '*/10 * * * *',
       'operator-approval-expiry': '*/10 * * * *',
       'grant-expiry': '*/10 * * * *',
       'grant-audit-retry': '* * * * *',
@@ -105,6 +106,7 @@ describe('kernel manifest', () => {
       'withdrawal-reconcile': '*/15 * * * *',
       'attestation-cleanup': '0 0 * * *',
       'event-subscription-cleanup': '0 1 * * *',
+      'app-authorization-code-cleanup': '*/10 * * * *',
       'claim-stub-expiry': '0 0 * * *',
       'warp-run-watch': '*/10 * * * *',
       'usage-rollup': '0 2 * * *',

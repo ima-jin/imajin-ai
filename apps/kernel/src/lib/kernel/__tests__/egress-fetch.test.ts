@@ -171,7 +171,7 @@ describe('egressSafeFetch', () => {
         { connector: 'local', timeoutMs: 5000 },
       );
 
-      expect(checkEgressTargetMock).toHaveBeenCalledWith(`http://ollama.example:${port}/`);
+      expect(checkEgressTargetMock).toHaveBeenCalledWith(`http://ollama.example:${port}/`, { allowPrivate: undefined });
       expect(await res.text()).toBe('ok');
     });
 

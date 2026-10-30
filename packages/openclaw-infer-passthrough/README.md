@@ -93,7 +93,10 @@ uses that route's principal and optional break-glass key. `GET /openai/v1/models
    provider endpoint using a direct API key from env. A kernel `4xx` (auth, scope,
    `422 NoModelSelected`, …) is a client error and is always forwarded verbatim — never
    triggers fallback.
-5. `GET /healthz` reports `{ kernelOk, fallbackCount, fallbackRate, lastFallbackAt }` so
+5. `GET /health` (also `/healthz`) first proves an app-token mint (or a cached,
+   unexpired token) for every configured route. It returns 503 naming any failed
+   route and the **/jin → Grants** fix; break-glass never makes mint health pass.
+   It also reports `{ kernelOk, fallbackCount, fallbackRate, lastFallbackAt }` so
    an external alert can watch the fallback rate (the #1922 guardrail: "alert if
    fallback rate exceeds threshold"). Every fallback also emits a structured log line.
    It also reports passthrough liveness (#2453): `{ passthroughOk, passthroughErrorCount,
@@ -370,6 +373,13 @@ calls for: swap those two lines in for the scoped direct Anthropic key, no other
 container or code change, and the deployment is off the direct-key deviation.
 
 ## One-time production unit cleanup (#3041) — operator only
+
+For release-by-release deployment, install the
+[pull-based updater, systemd unit and timer](../../deploy/infer-passthrough/README.md)
+once from an approved release artifact. It first verifies main ancestry and a
+successful `production` deployment for the exact release SHA, then stages and
+mint-checks that release before restarting live, and
+rolls back on failed post-restart health. No live host is touched by this change.
 
 These are rollout instructions, **not changes applied by this PR**. Do not edit
 live server files or `/etc/imajin` as part of development.

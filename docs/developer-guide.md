@@ -12,7 +12,9 @@ MJN is a set of HTTP services that add identity, attribution, and payments to yo
 
 You interact with MJN the same way you interact with Stripe or Auth0 — by calling APIs.
 
-**The reference implementation** is 1 kernel (9 domains) + 6 federated apps running at `jin.imajin.ai`:
+**The reference implementation** has one kernel plus independently owned apps.
+The table is a capability/routing map, not a workspace or live deployment inventory;
+current source inventory and dated acceptance evidence live in the [root README](../README.md).
 
 | Service | URL | What It Does |
 |---------|-----|-------------|
@@ -32,7 +34,36 @@ You interact with MJN the same way you interact with Stripe or Auth0 — by call
 | **links** | jin.imajin.ai/links | Link-in-bio pages |
 | **dykil** | jin.imajin.ai/dykil | Community spending surveys |
 
-Every service exposes an OpenAPI spec at `/api/spec`.
+`/registry/api/specs` lists configured service candidates, not proof every spec
+exists or a complete live deployment inventory. Not every route group has a spec.
+The generated [route index](../apps/kernel/public/llms.txt) and
+[contract reference](../apps/kernel/public/llms-full.txt) cover the current handler tree.
+
+### v0.8.28 integration delta (2026-10-26 source)
+
+Since v0.8.27, [kernel-owned details](../apps/kernel/README.md#pre-cut-delta-for-v0828)
+cover recipient-organization owner/admin card checkout, distinct 403 party/payer codes,
+and additive manifest-secret sync followed by a separate signed Generate or Set.
+EMT retains its opaque-handle capability model. Chat uses TLS in transit and plaintext
+at rest with notification previews; MLS/hybrid post-quantum encryption is planned,
+not implemented ([security](../SECURITY.md)). These are merged-source statements,
+not proof of deployment. [Release close-out](npm-publishing.md) now generates missing
+GitHub Releases and rolls milestones forward independently of npm publishing.
+
+### v0.8.27 integration additions (2026-10-25 source)
+
+- [Legal entity and bank details](DEVELOPER.md#sealed-bank-details-api-3075):
+  per-field disclosure and individually sealed financial fields, human-session
+  auth-scoped owner/admin checks, immutable replacement and retained history.
+  Tier 0 is not zero-custody; bank settings UI/invoice disclosure are separate.
+- [SSH signing / GitHub OIDC deploy](deploy/vault-ssh-deploy.md):
+  purpose-scoped CA grants, capped certificates, verified repo/environment
+  identity, pinned host keys and non-swappable tmpfs. Hosts enforce trust/principals.
+- [Corpus](../apps/corpus/README.md): registry-resolved owner-DID partitions,
+  explicit live grants and that owner's OAuth connector; no node-token fallback.
+- [Cloudflare grantee metadata](guide/domain-ownership.md#domain-scoped-credentials)
+  and [production-evidence-gated inference deployment](../deploy/infer-passthrough/README.md).
+  Source availability is not evidence of a live rollout.
 
 Events setup, API implementation and deployment now belong to its standalone
 repository. Existing routing stays **`/events`**, with **3006 dev / 7006 prod**;
@@ -77,22 +108,15 @@ curl -X POST https://jin.imajin.ai/auth/api/onboard \
 # Format: did:imajin:xxx (stable — same format as hard DIDs)
 ```
 
-A soft DID lets you buy tickets, enroll in courses, and chat. No keypair needed. Your email is stored as a credential attached to the DID, not embedded in the DID itself.
+A soft DID supports low-assurance onboarding/purchases under each app's policy,
+but cannot send chat messages or sign attestations. Email is a credential attached
+to the DID, not embedded in it; verification is required before issuing a session.
 
 ### Step 2: Get an Identity (Hard DID — Keypair)
 
-For full sovereignty. You generate the keys. Nobody can revoke your identity.
-
-```bash
-# Generate an Ed25519 keypair (Node.js example)
-node -e "
-  const ed = require('@noble/ed25519');
-  const priv = ed.utils.randomPrivateKey();
-  const pub = ed.getPublicKey(priv);
-  console.log('Private:', Buffer.from(priv).toString('hex'));
-  console.log('Public:', Buffer.from(pub).toString('hex'));
-"
-```
+Use the kernel's `/register` flow or the SDK's secure key-management path.
+Keep the private key in its owner-only keystore; never print it to a terminal.
+Key possession is distinct from a node's decision to serve a suspended identity.
 
 ```bash
 # Register with your public key (invite-only — you need an invite code)
@@ -102,13 +126,14 @@ curl -X POST https://jin.imajin.ai/auth/api/register \
     "publicKey": "<your-public-key-hex>",
     "handle": "yourhandle",
     "name": "Your Name",
-    "type": "human",
+    "scope": "actor",
+    "subtype": "human",
     "signature": "<sign-the-payload-with-your-private-key>",
     "inviteCode": "<invite-code>"
   }'
 
 # Response: { "did": "did:imajin:5Qn8...", "handle": "yourhandle", "created": true }
-# Your DID is derived from your public key. It's also a valid Solana wallet.
+# Your DID encodes public-key bytes in base58; the did:imajin string is not a Solana address.
 ```
 
 ### Step 3: Log In (Challenge-Response)
@@ -152,6 +177,11 @@ curl -X POST https://jin.imajin.ai/events/api/checkout \
 
 Every event (and every media asset) has a .fair manifest:
 
+The 0.3.0 examples below are **legacy illustrations**, not the current settlement
+contract or evidence of a standalone app response. Current kernel settlement
+builders emit 0.4.0 or tax-bearing 0.5.0; media v1.1 is a distinct shape.
+Use the current [package documentation](../packages/fair/README.md) and served specs.
+
 ```bash
 curl https://jin.imajin.ai/events/api/events/<event-id>/fair
 
@@ -174,15 +204,17 @@ The .fair manifest is a JSON sidecar. It says who made it and how revenue splits
 
 ## Core Concepts
 
-### Identity: Three Tiers
+### Identity: Five Standing Tiers
 
 All DIDs use the same stable format: `did:imajin:xxx`. Identity is decoupled from authentication method.
 
 | Tier | How You Get It | What You Can Do |
 |------|---------------|----------------|
-| **Soft** | Verify an email | Buy tickets, enroll in courses, chat |
+| **Soft** | Verify an email | Low-assurance participation; no chat send/signing |
 | **Preliminary** | Generate an Ed25519 keypair + invite code | Create events, connect, full trust graph |
 | **Established** | Earn through participation + attestation history | Invite new people, vouch, create Cultural DIDs |
+| **Steward** | Trusted community role | Route-specific steward capabilities |
+| **Operator** | Operator role | Operator-gated capabilities |
 
 Tiers upgrade seamlessly. All history, attestations, and tickets carry over — the DID never changes.
 
@@ -192,7 +224,10 @@ Tiers upgrade seamlessly. All history, attestations, and tickets carry over — 
 2. **Challenge-response** (Ed25519 signature) → Preliminary/Established DID session
 3. **DFOS chain** → Bridged identity (same Ed25519 keypair, dual DID)
 
-Both return a session cookie (`imajin_session` / `imajin_session_dev`) that works across all `*.imajin.ai` services.
+Verified browser login/onboarding sets `imajin_session` / `imajin_session_dev`.
+Cookies are host-only by default, with explicit domain-scope rollback; app-token
+and bearer flows do not imply a cookie. `/auth/api/session/soft` resolves an
+identity without setting one. See [cookie isolation](security/cookie-isolation.md).
 
 ### .fair: Attribution as JSON
 
@@ -213,7 +248,9 @@ A `.fair.json` file is metadata that says who contributed to something and how v
 }
 ```
 
-The media service auto-creates .fair sidecars on upload. Events carry them for revenue splitting. Settlement verifies signatures cryptographically before processing payments.
+Media creates .fair sidecars on upload; app manifests can carry payout instructions.
+Verification is path-dependent, with transitional missing-signature and funded
+exceptions. See the whitepaper's settlement caveats rather than assuming a universal gate.
 
 ### Trust Graph
 
@@ -231,7 +268,10 @@ curl https://jin.imajin.ai/connections/api/connections/status/<their-did> \
 
 ### Attestations
 
-Cryptographically signed records of actions and trust. Live attestation types:
+Cryptographically signed records of claims. The shared vocabulary is
+[80+ and growing](../packages/auth/src/types/attestation.ts); these are selected
+examples, not a count of types emitting in production. Node-witnessed and
+user-authored signatures have different proof strength.
 
 | Type | Emitted By | What It Records |
 |------|-----------|----------------|
@@ -294,7 +334,8 @@ curl https://jin.imajin.ai/pay/api/spec
 
 ### Option B: Run Your Own Node
 
-The entire stack is open source. Self-host on a Raspberry Pi, a VPS, or a server in your closet.
+The reference code is source-available under [INL v1.0](../LICENSE.md).
+Self-host the kernel; deploy extracted apps separately.
 
 ```
 git clone https://github.com/ima-jin/imajin-ai
@@ -304,12 +345,10 @@ pnpm install
 # See docs/ENVIRONMENTS.md for port assignments
 ```
 
-Register your node with the federation registry:
-```bash
-curl -X POST https://jin.imajin.ai/registry/api/node/register \
-  -H "Content-Type: application/json" \
-  -d '{"did": "<your-node-did>", "hostname": "yournode.example.com"}'
-```
+`POST /registry/api/node/register` requires a signed `attestation` containing
+nodeId, publicKey, buildHash, hostname and signature, plus an approved build.
+Bare `{did, hostname}` is not the contract. Read `/registry/api/spec` and
+the route's validation before constructing a request.
 
 ### Option C: Add .fair to Your Existing App
 
@@ -342,14 +381,14 @@ npx ajv-cli validate -s node_modules/.fair/schema/fair.schema.json -d my-project
 │ market · coffee · links · dykil         │
 ├─────────────────────────────────────────┤
 │          Attestation Layer              │
-│  6 live types · crypto verification     │
+│  Extensible vocabulary · verification  │
 │        countersignatures                │
 ├─────────────────────────────────────────┤
 │           Trust Graph Layer             │
 │        connections · pods · vouches     │
 ├─────────────────────────────────────────┤
 │    Identity + Commerce + Protocol       │
-│  auth (stable DIDs) · pay (Stripe/SOL) │
+│  auth (stable DIDs) · pay (receipt rails)│
 │  DFOS bridge · key rotation · CID      │
 ├─────────────────────────────────────────┤
 │       Attribution + Discovery           │
@@ -361,12 +400,16 @@ npx ajv-cli validate -s node_modules/.fair/schema/fair.schema.json -d my-project
 ```
 
 **Key architectural decisions:**
-- **Ed25519 keypairs** for identity. Your DID is derived from your public key. It's also a valid Solana wallet address — no bridging needed. Same keypair bridges to DFOS (`did:dfos`) chains.
+- **Ed25519 keypairs** for hard identities; soft identities have no actor key.
+  Key-based DIDs encode public-key bytes, not a Solana wallet address.
+  DFOS linking is optional and separate.
 - **Stable DIDs** — all identities are `did:imajin:xxx` from birth. Email is a credential, not the identity. Tier reflects credential strength, not DID format.
-- **Shared session cookies** across `*.imajin.ai`. Authenticate once, use everywhere. Dev/prod isolated (`imajin_session_dev` / `imajin_session`).
-- **Postgres** for all services. Each service has its own schema in a shared database. Per-service migration tracking.
+- **Host-only session cookies** by default; scoped app tokens cross app boundaries.
+  Dev/prod cookies remain distinct (`imajin_session_dev` / `imajin_session`).
+- **Postgres** for kernel relational state; corpus uses SQLite and vault content is file-backed.
 - **Next.js** API routes. Standard Node.js. No custom framework.
-- **.fair sidecars** travel with content. Cryptographically signed. Settlement verifies signatures before processing.
+- **.fair sidecars** carry attribution. Verification differs by settlement path;
+  consult the whitepaper's explicit signature exceptions.
 - **DID-based conversations** — every chat conversation is a DID (`did:imajin:event:*`, `did:imajin:dm:*`, `did:imajin:group:*`). Auth service is the single access control authority.
 - **Attestations** — every trust-relevant action emits a cryptographic attestation. Attestations are the substance of the trust graph.
 
@@ -375,6 +418,8 @@ npx ajv-cli validate -s node_modules/.fair/schema/fair.schema.json -d my-project
 ## What Exists Today vs. What's Planned
 
 ### Live Now (March 2026)
+Historical March snapshot, not present release inventory. The generated README
+and source-derived route references above supersede its counts and roadmap status.
 - ✅ Three-tier DID identity (soft/preliminary/established) — all `did:imajin:xxx` from birth
 - ✅ Challenge-response auth + magic link + DFOS chain bridge
 - ✅ Events with Stripe payments and .fair attribution (66 tickets sold)
@@ -391,6 +436,9 @@ npx ajv-cli validate -s node_modules/.fair/schema/fair.schema.json -d my-project
 - ✅ Postgres backups (hourly, local + NAS)
 
 ### Coming Next
+Historical March roadmap, not a current release commitment. Identity scopes and
+the published SDK have since landed; generalized portable standing and exit
+credentials remain distinct work.
 - ⏳ DFOS adoption across all services (P25 — 10 issues)
 - ⏳ `@imajin/graph` trust-scoped query layer
 - ⏳ Standing computation (reputation from attestation history)
@@ -405,10 +453,13 @@ npx ajv-cli validate -s node_modules/.fair/schema/fair.schema.json -d my-project
 ## FAQ
 
 **Do I need crypto to use this?**
-No. Payments are Stripe. Identity works with just an email. Crypto (Ed25519 keypairs, Solana settlement) is available for those who want sovereignty — but it's never required.
+No. Email-backed identity and implemented Stripe/receiver-confirmed EMT paths
+are distinct from key-based signatures. A live Solana settlement rail is not established.
 
 **Is this a blockchain project?**
-The identity layer uses Ed25519 cryptography (same as Solana). Your DID happens to be a valid Solana wallet. The platform also bridges to DFOS chains for cryptographic identity proofs. But the platform runs on Postgres and HTTP today. On-chain settlement is planned, not shipped.
+The identity layer uses Ed25519; the DID string is not a Solana wallet address.
+DFOS linking supplies separate chain proofs. On-chain settlement remains planned,
+not a consequence of sharing a cryptographic curve.
 
 **What's the difference between MJN and .fair?**
 .fair is a JSON file format for attribution (who made it, who gets paid). MJN is the network that routes identity, trust, and settlement around those attributions. You can use .fair without MJN. You can't use MJN without .fair.
@@ -417,17 +468,20 @@ The identity layer uses Ed25519 cryptography (same as Solana). Your DID happens 
 DFOS (by Metalabel) is an open-source cryptographic identity protocol. Imajin bridges to it — same Ed25519 keypair produces both a `did:imajin:xxx` and a `did:dfos:xxx`. Your DFOS chain provides cryptographic proofs of identity history (key rotation, countersignatures). Imajin is Layer 6 — the economic, settlement, and inference layer on top of DFOS's proof substrate.
 
 **Can I use this without Imajin?**
-Yes. The APIs are open. The code is open source. .fair is a standalone file format. Run your own node or just adopt the parts you want.
+Yes. The APIs are open and the code is source-available under INL v1.0.
+.fair is a standalone format. Run your node or adopt the parts you need.
 
 **Where's the SDK?**
-Not yet. For now, it's direct HTTP calls. The OpenAPI specs at `/api/spec` can generate client libraries in any language.
+The published `@ima-jin/auth-client` SDK supplies sign-in and session handlers.
+See the [generated package/status table](../README.md#packages-sdk);
+workspace `@imajin/*` imports are not external install names.
 
 ---
 
 ## Links
 
 - **Source code:** [github.com/ima-jin/imajin-ai](https://github.com/ima-jin/imajin-ai)
-- **Protocol RFCs:** See `docs/rfcs/` for protocol specifications
+- **Protocol RFCs:** See `docs/canon/rfcs/` for protocol specifications
 - **.fair spec:** [github.com/ima-jin/.fair](https://github.com/ima-jin/.fair)
 - **OpenAPI specs:** `https://jin.imajin.ai/{service}/api/spec`
 - **First demonstration:** April 1, 2026

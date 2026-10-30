@@ -17,6 +17,9 @@ const {
   mockUpdateReturning,
   mockSession,
   mockPublicAppToggles,
+  mockBroker,
+  mockUnseal,
+  mockMembershipWhere,
 } = vi.hoisted(() => {
   const mockFindFirst = vi.fn();
   const mockRequireAuth = vi.fn();
@@ -25,21 +28,27 @@ const {
   const mockUpdateReturning = vi.fn();
   const mockSession = vi.fn();
   const mockPublicAppToggles = vi.fn();
+  const mockBroker = vi.fn();
+  const mockUnseal = vi.fn();
+  const mockMembershipWhere = vi.fn();
   const mockSet = vi.fn((_updates: Record<string, unknown>) => ({
     where: () => ({ returning: mockUpdateReturning }),
   }));
-  return { mockFindFirst, mockRequireAuth, mockResolveActingDid, mockSelectLimit, mockSet, mockUpdateReturning, mockSession, mockPublicAppToggles };
+  return { mockFindFirst, mockRequireAuth, mockResolveActingDid, mockSelectLimit, mockSet, mockUpdateReturning, mockSession, mockPublicAppToggles, mockBroker, mockUnseal, mockMembershipWhere };
 });
 
 vi.mock('@/src/db', () => ({
   db: {
     query: { profiles: { findFirst: mockFindFirst } },
-    select: () => ({ from: () => ({ where: () => ({ limit: mockSelectLimit }) }) }),
+    select: () => ({ from: () => ({ where: (condition: unknown) => {
+      mockMembershipWhere(condition);
+      return { limit: mockSelectLimit };
+    } }) }),
     update: () => ({ set: mockSet }),
     insert: () => ({ values: vi.fn(() => Promise.resolve([])) }),
   },
   profiles: {},
-  identityMembers: {},
+  identityMembers: { identityDid: 'identityDid', memberDid: 'memberDid', removedAt: 'removedAt', role: 'role', allowedServices: 'allowedServices' },
   identities: {},
 }));
 
@@ -49,9 +58,9 @@ vi.mock('@imajin/auth', () => ({
   resolveActingDid: mockResolveActingDid,
 }));
 vi.mock('@imajin/logger', () => ({ createLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }) }));
-vi.mock('@imajin/bus', () => ({ publish: vi.fn(() => Promise.resolve()), broker: vi.fn(), isBrokerRelease: vi.fn(() => false) }));
+vi.mock('@imajin/bus', () => ({ publish: vi.fn(() => Promise.resolve()), broker: mockBroker, isBrokerRelease: vi.fn(() => false) }));
 vi.mock('@imajin/fair', () => ({ validateAgentPricingManifest: vi.fn(() => ({ valid: true })) }));
-vi.mock('@/src/lib/vault', () => ({ loadAndUnseal: vi.fn(() => Promise.reject(new Error('not needed in these tests'))) }));
+vi.mock('@/src/lib/vault', () => ({ loadAndUnseal: mockUnseal }));
 vi.mock('@/src/lib/profile/vault-contacts', () => ({
   processEmailUpdate: vi.fn(() => Promise.resolve()),
   processPhoneUpdate: vi.fn(() => Promise.resolve()),
@@ -92,6 +101,7 @@ beforeEach(() => {
   mockUpdateReturning.mockResolvedValue([{ did: BUSINESS_DID, etransferEmail: 'pay@biz.example' }]);
   mockSession.mockResolvedValue(null);
   mockPublicAppToggles.mockImplementation(async (toggles) => toggles);
+  mockUnseal.mockResolvedValue(undefined);
 });
 
 describe('PUT /profile/api/profile/:id — etransferEmail (#2665)', () => {
@@ -191,6 +201,86 @@ describe('GET /profile/api/profile/:id — the email is owner-only (#2665)', () 
     mockSession.mockResolvedValue({ did: BUSINESS_DID });
     const body = await (await GET(getRequest(), params())).json();
     expect(body.etransferEmail).toBe('pay@biz.example');
+  });
+});
+
+describe('GET profile — validated act-as owner contact reads (#3081)', () => {
+  beforeEach(() => {
+    mockSession.mockResolvedValue({ did: OTHER_DID });
+    mockUnseal.mockImplementation(async (key: string) => key.includes(':email:') ? 'contact@biz.example' : '+15555550123');
+    mockBroker.mockResolvedValue({ status: 'rejected', reason: 'no_consent' });
+  });
+
+  function actingRequest(via: 'header' | 'cookie' = 'header') {
+    const request = getRequest();
+    if (via === 'header') request.headers.set('x-acting-as', BUSINESS_DID);
+    else request.cookies.set('x-acting-as', BUSINESS_DID);
+    return request;
+  }
+
+  it.each(['owner', 'admin'])('returns contact fields to an active %s without calling the broker', async role => {
+    mockSelectLimit.mockResolvedValue([{ role, allowedServices: null }]);
+    const response = await GET(actingRequest(), params());
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      contactEmail: 'contact@biz.example', phone: '+15555550123', etransferEmail: 'pay@biz.example',
+    });
+    expect(mockSelectLimit).toHaveBeenCalledOnce();
+    expect(mockBroker).not.toHaveBeenCalled();
+    expect(mockPublicAppToggles).not.toHaveBeenCalled();
+    const condition = JSON.stringify(mockMembershipWhere.mock.calls[0]);
+    expect(condition).toContain(BUSINESS_DID);
+    expect(condition).toContain(OTHER_DID);
+    expect(condition).toContain('removedAt');
+    expect(condition).toContain('is null');
+  });
+
+  it('resolves the browser act-as cookie and permits a profile-scoped admin', async () => {
+    mockSelectLimit.mockResolvedValue([{ role: 'admin', allowedServices: ['profile'] }]);
+    const body = await (await GET(actingRequest('cookie'), params())).json();
+    expect(body.contactEmail).toBe('contact@biz.example');
+    expect(mockBroker).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { membership: [] },
+    { membership: [{ role: 'member' }] },
+    { membership: [{ role: 'maintainer' }] },
+    { membership: [{ role: 'agent' }] },
+    { membership: [{ role: 'owner', allowedServices: [] }] },
+    { membership: [{ role: 'admin', allowedServices: ['pay'] }] },
+    { membership: [{ role: 'admin', allowedServices: 'profile' }] },
+  ])('keeps unprivileged or service-restricted memberships on the consent path: %j', async ({ membership }) => {
+    mockSelectLimit.mockResolvedValue(membership);
+    const body = await (await GET(actingRequest(), params())).json();
+    expect(body).not.toHaveProperty('contactEmail');
+    expect(body).not.toHaveProperty('phone');
+    expect(body).not.toHaveProperty('etransferEmail');
+    expect(mockBroker).toHaveBeenCalledWith('profile.contact.request', expect.objectContaining({
+      requester: OTHER_DID, subject: BUSINESS_DID, purpose: 'contact.disclosure',
+    }));
+  });
+
+  it('fails closed when membership lookup fails', async () => {
+    mockSelectLimit.mockRejectedValueOnce(new Error('membership unavailable'));
+    const body = await (await GET(actingRequest(), params())).json();
+    expect(body).not.toHaveProperty('contactEmail');
+    expect(mockBroker).toHaveBeenCalledOnce();
+  });
+
+  it('never trusts an acting-as header without an authenticated session', async () => {
+    mockSession.mockResolvedValue(null);
+    const body = await (await GET(actingRequest(), params())).json();
+    expect(body).not.toHaveProperty('contactEmail');
+    expect(mockSelectLimit).not.toHaveBeenCalled();
+    expect(mockBroker).not.toHaveBeenCalled();
+  });
+
+  it('does not grant org access merely because the viewer is a member without act-as', async () => {
+    mockSelectLimit.mockResolvedValue([{ role: 'owner' }]);
+    await GET(getRequest(), params());
+    expect(mockSelectLimit).not.toHaveBeenCalled();
+    expect(mockBroker).toHaveBeenCalledOnce();
   });
 });
 

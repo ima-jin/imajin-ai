@@ -40,7 +40,8 @@ vi.mock('@/src/lib/warp/run-watch-sweep', () => ({
 
 import { POST, OPTIONS } from '../route';
 import { dispatchAgentRun, watchRun } from '@/src/lib/warp/dispatch';
-import { WarpApiError } from '@/src/lib/warp/errors';
+import { WarpApiError, WarpBriefEventError, WarpBriefSizeError } from '@/src/lib/warp/errors';
+import { WARP_BRIEF_MAX_BYTES } from '@/src/lib/warp/brief-limit';
 
 // ─── Fixtures ────────────────────────────────────────────────────────────────
 
@@ -105,6 +106,25 @@ describe('authentication', () => {
 // ─── Body validation ─────────────────────────────────────────────────────────
 
 describe('body validation', () => {
+  it('returns 413 when corpus composition exceeds the final cap after a small input passes ingress', async () => {
+    vi.mocked(dispatchAgentRun).mockRejectedValueOnce(new WarpBriefSizeError(WARP_BRIEF_MAX_BYTES));
+    const response = await POST(makeReq({ prompt: 'small', corpusContext: { source: 's', query: 'q' } }));
+    expect(response.status).toBe(413);
+    expect(await response.json()).toMatchObject({ maxBytes: WARP_BRIEF_MAX_BYTES });
+    expect(watchRun).not.toHaveBeenCalled();
+  });
+  it('returns 413 for oversized UTF-8 input before dispatch or watch', async () => {
+    const response = await POST(makeReq({ prompt: '今'.repeat(Math.floor(WARP_BRIEF_MAX_BYTES / 3) + 1) }));
+    expect(response.status).toBe(413);
+    expect(await response.json()).toMatchObject({ error: 'warp_brief_too_large', maxBytes: WARP_BRIEF_MAX_BYTES });
+    expect(dispatchAgentRun).not.toHaveBeenCalled();
+    expect(watchRun).not.toHaveBeenCalled();
+  });
+  it('accepts exactly the shared byte limit at ingress', async () => {
+    const response = await POST(makeReq({ prompt: 'x'.repeat(WARP_BRIEF_MAX_BYTES) }));
+    expect(response.status).toBe(201);
+    expect(Buffer.byteLength(dispatchInput().prompt as string)).toBe(WARP_BRIEF_MAX_BYTES);
+  });
   it('returns 400 on malformed JSON', async () => {
     const res = await POST(makeReq(undefined, { rawBody: 'not json' }));
 
@@ -124,9 +144,9 @@ describe('body validation', () => {
     expect(dispatchAgentRun).not.toHaveBeenCalled();
   });
 
-  it('trims the prompt before dispatching', async () => {
+  it('preserves exact brief bytes before dispatching', async () => {
     await POST(makeReq({ prompt: '  go  ' }));
-    expect(dispatchInput().prompt).toBe('go');
+    expect(dispatchInput().prompt).toBe('  go  ');
   });
 
   it('forwards the optional config surface', async () => {
@@ -188,6 +208,22 @@ describe('body validation', () => {
 // ─── Success ─────────────────────────────────────────────────────────────────
 
 describe('successful dispatch', () => {
+  it.each([422, 503, null])('retains the original provider error response for status %s', async status => {
+    vi.mocked(dispatchAgentRun).mockRejectedValueOnce(status === null ? new TypeError('network unavailable')
+      : new WarpApiError('provider refusal', { status, detail: 'unchanged detail' }));
+    const response = await POST(makeReq({ prompt: 'opaque brief' }));
+    expect(response.status).toBe(status === 422 ? 422 : status === null ? 500 : 502);
+    expect(await response.json()).toMatchObject(status === null ? { error: 'warp_dispatch_failed' }
+      : { error: 'warp_upstream_error', upstreamStatus: status, detail: 'unchanged detail' });
+  });
+  it('returns the accepted run id without inviting redispatch if brief event persistence fails', async () => {
+    vi.mocked(dispatchAgentRun).mockRejectedValueOnce(new WarpBriefEventError(RUN.runId));
+    const response = await POST(makeReq({ prompt: 'go' }));
+    expect(response.status).toBe(502);
+    expect(await response.json()).toMatchObject({
+      error: 'warp_brief_event_failed', runId: RUN.runId, accepted: true, retryable: false,
+    });
+  });
   it('returns 201 with the run id, state, and session link', async () => {
     const res = await POST(makeReq({ prompt: 'go' }));
 

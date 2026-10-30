@@ -18,6 +18,16 @@ vi.mock('@/src/lib/kernel/node-identity', () => ({ getNodeDid: fixture.nodeDid }
 vi.mock('@/src/cron/auth', () => ({ requireCronAuth: fixture.cronAuth }));
 // Notification transport is stubbed; grant lifecycle, ingest, signatures and storage are real.
 vi.mock('@imajin/bus', () => ({ publish: vi.fn().mockResolvedValue(undefined) }));
+// Loop projection transport is outside the grant seam; signature and publisher
+// authorization remain real, and denied events must never reach reservation.
+vi.mock('@/src/lib/loops/prepare-output', async (importOriginal) => ({
+  ...await importOriginal<typeof import('@/src/lib/loops/prepare-output')>(),
+  reserveLoopOwnership: vi.fn().mockResolvedValue(true),
+}));
+vi.mock('@/src/lib/loops/surface-lease', () => ({
+  projectSurfaceLease: vi.fn().mockResolvedValue(null),
+  loopObservationId: () => 'gateway-observation',
+}));
 vi.mock('../agent-provisioner', () => ({
   // Denial-only tests assert these operations are never reached by the real auth gate.
   createProvision: fixture.createProvision,
@@ -40,6 +50,10 @@ import { DELETE as revokeProvision } from '@/app/auth/api/agents/provision/[id]/
 import { GET as retryAuditJob } from '@/app/api/cron/grant-audit-retry/route';
 import { retryGrantRevocationAudits } from '../grants';
 import { AGENT_KEYPAIR, signedItem, wireBody } from '@/src/lib/turn-evidence/__tests__/helpers';
+import { ingestLoopEvent } from '@/src/lib/loops/ingest';
+import { reserveLoopOwnership } from '@/src/lib/loops/prepare-output';
+import type { LoopIngestRequest } from '@/src/lib/loops/types';
+import { publish } from '@imajin/bus';
 
 vi.setConfig({ hookTimeout: 30_000, testTimeout: 30_000 });
 
@@ -185,6 +199,63 @@ afterEach(() => {
 });
 
 describe('organization grant acceptance (#2997)', () => {
+  it.each(['openclaw.session', 'openclaw.subagent'])('accepts signed %s events only after a principal-scoped loops:publish grant (#3134)', async (kind) => {
+    await harness.client.query(
+      'INSERT INTO auth.identities (id, public_key, scope, subtype) VALUES ($1, $2, $3, $4)',
+      [AGENT, AGENT_KEYPAIR.publicKey, 'actor', 'agent'],
+    );
+    const execute = (principal = ORG, tamper = false) => {
+      const type = 'loop.started';
+      const payload = {
+        loopId: `${kind}:fixture`, kind, principal, state: 'running',
+        summary: 'Gateway turn', at: new Date().toISOString(),
+      };
+      const request: LoopIngestRequest = {
+        type, payload, publisherDid: AGENT,
+        signature: {
+          keyId: AGENT_KEYPAIR.publicKey, alg: 'ed25519',
+          sig: authCrypto.signSync(canonicalize({ type, payload }), AGENT_KEYPAIR.privateKey),
+        },
+      };
+      if (tamper) request.payload.summary = 'Changed after signing';
+      return ingestLoopEvent(request);
+    };
+    vi.mocked(publish).mockClear();
+    vi.mocked(reserveLoopOwnership).mockClear();
+    expect(await execute()).toMatchObject({ ok: false, status: 403 });
+    expect(publish).not.toHaveBeenCalled();
+    expect(reserveLoopOwnership).not.toHaveBeenCalled();
+
+    const response = await issue(request('POST', { body: {
+      ...grantBody(), capabilities: ['loops:publish'], ttlMs: 2 * 86400000,
+    } }));
+    expect(response.status).toBe(201);
+    const { grant } = await response.json();
+    await assertSignedEvent(grant.grantId, 'issued');
+    const started = Date.now();
+    expect(await execute()).toEqual({ ok: true });
+    expect(Date.now() - started).toBeLessThan(60000);
+    expect(publish).toHaveBeenCalledWith('loop.started', expect.objectContaining({
+      issuer: AGENT, subject: ORG,
+      payload: expect.objectContaining({ kind, principal: ORG, publisherProof: expect.any(Object) }),
+    }));
+
+    vi.mocked(publish).mockClear();
+    vi.mocked(reserveLoopOwnership).mockClear();
+    expect(await execute(OTHER_ORG)).toMatchObject({ ok: false, status: 403 });
+    expect(await execute(ORG, true)).toMatchObject({ ok: false, status: 400 });
+    expect(publish).not.toHaveBeenCalled();
+    expect(reserveLoopOwnership).not.toHaveBeenCalled();
+
+    expect((await removeCapability(request('DELETE'), capParams(grant.grantId, 'loops:publish'))).status).toBe(200);
+    expect(await execute()).toMatchObject({ ok: false, status: 403 });
+    expect((await addCapability(request('PUT'), capParams(grant.grantId, 'loops:publish'))).status).toBe(200);
+    expect(await execute()).toEqual({ ok: true });
+    expect((await revoke(request('DELETE'), grantParams(grant.grantId))).status).toBe(200);
+    vi.mocked(publish).mockClear();
+    expect(await execute()).toMatchObject({ ok: false, status: 403 });
+    expect(publish).not.toHaveBeenCalled();
+  });
   it('passes TTL through the real route, clamps at 30 days and preserves that lease on no-choice renewal', async () => {
     const grant = await issuedGrant();
     const ttlMs = 30 * 86400000;

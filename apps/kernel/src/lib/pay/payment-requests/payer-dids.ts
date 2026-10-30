@@ -111,7 +111,7 @@ export async function resolvePayerDidChoice(
 ): Promise<string | null | ServiceError> {
   if (!paidByDid) return null;
   if (!(await controlsPayerDid(personDid, paidByDid))) {
-    return { error: 'You are not authorized to pay as that identity', status: 403 };
+    return { error: 'You are not authorized to pay as that identity', status: 403, code: 'payer_not_controlled' };
   }
   return paidByDid;
 }

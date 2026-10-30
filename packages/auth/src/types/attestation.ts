@@ -5,6 +5,20 @@
  */
 
 export const ATTESTATION_TYPES = [
+  'connector.org-held',
+  'connector.external-mcp',
+  'connector.disconnected',
+  'warp.brief.recorded',
+  'warp.brief.dispatch_failed',
+  'warp.brief.storage.changed',
+  'vault.ssh-cert.issued',
+  'vault.ssh-cert.refused',
+  'vault.ssh-cert.grant-issued',
+  'vault.ssh-cert.grant-revoked',
+  'vault.ssh-ca.minted',
+  'vault.ssh-ca.rotated',
+  'vault.ssh-ca.revoked',
+  'vault.ssh-ca.retired',
   'operator.approval.expired',
   // #2997 — node-signed grant authority changes; org delegator and human actor.
   'delegation.grant.issued',
@@ -58,6 +72,8 @@ export const ATTESTATION_TYPES = [
   'app.authorized',
   'app.revoked',
   'document.created',
+  // Userspace control-plane withdrawal; the signed tombstone retains history.
+  'document.revoked',
   'agreement',
   'agreement.revoked',
   'document.signed',
@@ -166,6 +182,7 @@ export const ATTESTATION_TYPES = [
   'registry.app.registered',
   'registry.app.rotated',
   'registry.app.revoked',
+  'registry.app.expired',
   // #2638/#2641 — an operator changed the list of event types an app may emit
   // via POST /api/events (PATCH /api/admin/registry/apps/:appId). Same
   // system-class posture as the three above.
@@ -266,6 +283,8 @@ export const ATTESTATION_TYPES = [
   'apps.signing-key.claimed',
   // Value-free, node-signed app self-secret mint/grant/fetch/rotate/revoke facts.
   'apps.secret.lifecycle',
+  // #3123: declaration slots appended after an operator countersigns; no values.
+  'apps.secrets.declarations-refreshed',
 
   // Tool I/O as the committed boundary of an agent turn (#1978, epic #1758) —
   // one attestation per tool call within a turn, signed by the agent's own DID
@@ -308,6 +327,21 @@ export type AttestationType = typeof ATTESTATION_TYPES[number];
  * excluded from any "pending your countersignature" view or query.
  */
 export const MECHANICAL_ATTESTATION_TYPES = [
+  'connector.org-held',
+  'connector.external-mcp',
+  'connector.disconnected',
+  'warp.brief.recorded',
+  'warp.brief.dispatch_failed',
+  'warp.brief.storage.changed',
+  'document.revoked',
+  'vault.ssh-cert.issued',
+  'vault.ssh-cert.refused',
+  'vault.ssh-cert.grant-issued',
+  'vault.ssh-cert.grant-revoked',
+  'vault.ssh-ca.minted',
+  'vault.ssh-ca.rotated',
+  'vault.ssh-ca.revoked',
+  'vault.ssh-ca.retired',
   'operator.approval.expired',
   'agreement.revoked',
   'delegation.grant.issued',
@@ -351,6 +385,7 @@ export const MECHANICAL_ATTESTATION_TYPES = [
   'registry.app.registered',
   'registry.app.rotated',
   'registry.app.revoked',
+  'registry.app.expired',
   // #2638/#2641 — see ATTESTATION_TYPES above.
   'registry.app.emittable-events.updated',
   'registry.app.act_as.updated',
@@ -396,6 +431,7 @@ export const MECHANICAL_ATTESTATION_TYPES = [
   // successful app signing-key claim. See ATTESTATION_TYPES above.
   'apps.signing-key.claimed',
   'apps.secret.lifecycle',
+  'apps.secrets.declarations-refreshed',
   // #1978 — agent-signed, unilateral, never bilateral/countersigned (same
   // class as 'agent.turn.usage' above). See ATTESTATION_TYPES above.
   'agent.turn.evidence',

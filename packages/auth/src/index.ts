@@ -1,4 +1,5 @@
 export type { Identity, AuthResult, AuthError, IdentityType, Keypair, SignedMessage, VerificationResult } from "./types";
+export { githubCorpusOwner, resolveCorpusDid } from "./corpus-owner";
 export { requireAuth, authErrorResponse, agentCardUrl, validateActingAs } from "./require-auth";
 export type { AuthOptions, ActingAsResult } from "./require-auth";
 export { requireAdmin } from "./require-admin";

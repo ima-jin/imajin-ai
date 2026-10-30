@@ -20,6 +20,13 @@ beforeEach(async () => {
 afterEach(() => { localStorage.clear(); vi.unstubAllGlobals(); });
 
 describe('principal command wish', () => {
+  it.each([undefined, null])('signs null-canonical expiry for plugin-compatible expiry=%s', async expiresAt => {
+    const commandBody = { ...body, type: 'session.history' as const, expiresAt, payload: { loopId: 'loop' } };
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(respond({ command: { ...frame, ...commandBody } })));
+    const command = await prepareSignedSessionCommand('loop', 'session.history', commandBody.payload);
+    expect(await ed.verifyAsync(ed.etc.hexToBytes(command.countersignature!.sig),
+      new TextEncoder().encode(canonicalCommandJson({ ...commandBody, expiresAt: null })), publicKey)).toBe(true);
+  });
   it('signs the exact full canonical body, excluding grant and wish signatures', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(respond({ command: frame })));
     const command = await prepareSignedSessionCommand('loop', 'session.send', body.payload);

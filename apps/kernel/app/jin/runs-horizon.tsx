@@ -96,7 +96,7 @@ export function RunsHorizon({ loopIds, onDenied, onSelect, client = browserSessi
     {error && <p role="alert" className="text-xs text-amber-200">{error}</p>}
     {observedEmpty && <p className="break-words text-xs text-gray-400">
       {lastStepEventAt === null
-        ? <>No horizon steps published yet · the harness horizon sync (#2881) hasn't reported · last step never</>
+        ? <>No horizon steps published yet · the agent has not reported its horizon · last step never</>
         : <>{hasMore ? 'No horizon steps in loaded runs' : 'Horizon drained'} · last step <time dateTime={lastStepEventAt}>{lastStepEventAt}</time></>}
     </p>}
     {!loading && !error && items.length > 0 && depth < 12 && <p className="text-xs text-amber-200">Below target · {12 - depth} more steps to reach 12. The horizon is not full yet.</p>}
@@ -108,6 +108,7 @@ export function RunsHorizon({ loopIds, onDenied, onSelect, client = browserSessi
         <li key={`${loopId}:${step.stepId}`} className="min-w-0 space-y-1 border border-gray-800 bg-surface-card p-3" data-testid="horizon-step">
           <p className="break-words text-sm text-gray-100">{zone === 'tail' ? step.intention : step.issue?.ref ?? step.intention}</p>
           {zone !== 'tail' && step.issue?.outcome && <p className="break-words text-xs text-gray-300">{step.issue.outcome}</p>}
+          <p className="break-all font-mono text-xs text-gray-400" title={step.publisher}>Publisher · {step.publisher}</p>
           {zone === 'head' && step.claim && <div className="text-xs text-gray-300">
             <p className="break-all">Holder · {step.claim.holderDid}</p>
             <p>Lease age · <time dateTime={step.claim.acquiredAt}>{leaseAge(step.claim.acquiredAt)}</time></p>

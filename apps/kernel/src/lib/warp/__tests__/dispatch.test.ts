@@ -41,6 +41,9 @@ const {
 vi.mock('../connector', () => ({
   requireAgentKey: requireAgentKeyMock,
 }));
+vi.mock('../brief-ledger', () => ({ recordWarpBriefDispatchFailed: vi.fn(), recordWarpBrief: vi.fn().mockResolvedValue({
+  hash: 'a'.repeat(64), assetId: 'asset_brief', storage: 'full-text', browserTesting: null,
+}) }));
 
 vi.mock('../../kernel/corpus-client', () => ({
   searchCorpus: searchCorpusMock,
@@ -75,7 +78,7 @@ vi.mock('@imajin/logger', () => ({
 // `warp-run-loop-bridge.test.ts`; stubbing it here keeps this suite on the
 // light import graph.
 vi.mock('../loop-emit', () => ({
-  emitWarpRunLoopEvent: vi.fn().mockResolvedValue(undefined),
+  emitWarpRunLoopEvent: vi.fn().mockResolvedValue(true),
 }));
 
 import {
@@ -90,6 +93,9 @@ import {
   WarpApiError,
 } from '../dispatch';
 import { CorpusContextError } from '../corpus-context';
+import { recordWarpBrief } from '../brief-ledger';
+import { createHash } from 'node:crypto';
+import { emitWarpRunLoopEvent } from '../loop-emit';
 
 // #2334: every case in this file mocks `fetch`, the connector gate, the bus,
 // and the logger — nothing here waits on a real timer or real I/O. The
@@ -212,6 +218,10 @@ function respondEmpty(): void {
 const QUEUED_RUN = { run_id: RUN_ID, state: 'QUEUED' };
 
 beforeEach(() => {
+  vi.mocked(emitWarpRunLoopEvent).mockResolvedValue(true);
+  vi.mocked(recordWarpBrief).mockResolvedValue({
+    hash: 'a'.repeat(64), assetId: 'asset_brief', storage: 'full-text', browserTesting: null,
+  });
   process.env.WARP_API_BASE_URL = BASE_URL;
 
   requireAgentKeyMock.mockReset().mockResolvedValue(AGENT_KEY);
@@ -238,6 +248,33 @@ afterEach(() => {
 // ── The wire ──────────────────────────────────────────────────────────────────
 
 describe('dispatchAgentRun request shape', () => {
+  it('records exact outgoing bytes before dispatch and puts their SHA-256 and asset reference on the signed start', async () => {
+    const text = '  Browser testing: no\n今人\r\n  ';
+    const hash = createHash('sha256').update(text).digest('hex');
+    vi.mocked(recordWarpBrief).mockImplementationOnce(async (did, prompt) => {
+      expect(did).toBe(PRINCIPAL);
+      expect(prompt).toBe(text);
+      expect(globalThis.fetch).not.toHaveBeenCalled();
+      return { hash, assetId: 'asset_exact', storage: 'full-text', browserTesting: 'no' };
+    });
+    respondJson(QUEUED_RUN);
+    await dispatchAgentRun(PRINCIPAL, { prompt: text });
+    expect(lastRequestBody().prompt).toBe(text);
+    expect(emitWarpRunLoopEvent).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'loop.started', brief: { hash, assetId: 'asset_exact', storage: 'full-text', browserTesting: 'no' },
+    }));
+  });
+  it('never sends a dispatch when the ledger cannot store or sign it', async () => {
+    vi.mocked(recordWarpBrief).mockRejectedValueOnce(new Error('ledger unavailable'));
+    await expect(dispatchAgentRun(PRINCIPAL, { prompt: 'go' })).rejects.toThrow('ledger unavailable');
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+  });
+  it('never reaches the ledger without dispatch authority', async () => {
+    vi.mocked(recordWarpBrief).mockClear();
+    requireAgentKeyMock.mockRejectedValueOnce(new Error('warp_no_grant'));
+    await expect(dispatchAgentRun(PRINCIPAL, { prompt: 'go' })).rejects.toThrow('warp_no_grant');
+    expect(recordWarpBrief).not.toHaveBeenCalled();
+  });
   it('POSTs the prompt to /agent/run with the sealed key as a Bearer token', async () => {
     respondJson(QUEUED_RUN);
     await dispatchAgentRun(PRINCIPAL, { prompt: 'Fix the login error' });
@@ -1382,7 +1419,7 @@ describe('cancelAgentRun', () => {
 const INPROGRESS_RUN = { run_id: RUN_ID, state: 'INPROGRESS' };
 
 describe('sendFollowup', () => {
-  it('POSTs the trimmed message to the followups endpoint', async () => {
+  it('POSTs the exact message to the followups endpoint', async () => {
     respondJson(INPROGRESS_RUN);
     respondJson({});
 
@@ -1391,7 +1428,7 @@ describe('sendFollowup', () => {
     const { url, init } = lastFetchCall();
     expect(url).toBe(`${BASE_URL}/agent/runs/${RUN_ID}/followups`);
     expect(init.method).toBe('POST');
-    expect(lastRequestBody()).toEqual({ message: 'use pnpm, not npm' });
+    expect(lastRequestBody()).toEqual({ message: '  use pnpm, not npm  ' });
     expect(ack).toEqual({ runId: RUN_ID, accepted: true });
   });
 

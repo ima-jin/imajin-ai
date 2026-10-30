@@ -1,6 +1,6 @@
 {
   "name": "@imajin/kernel",
-  "version": "0.8.25",
+  "version": "0.8.28",
   "private": true,
   "scripts": {
     "dev": "node --env-file=.env.local server.js",
@@ -14,7 +14,7 @@
     "db:studio": "drizzle-kit studio"
   },
   "dependencies": {
-    "@ai-sdk/react": "^1.2",
+    "@ai-sdk/react": "^2.0.284",
     "@imajin/auth": "workspace:*",
     "@imajin/bus": "workspace:*",
     "@imajin/chat": "workspace:*",
@@ -44,7 +44,7 @@
     "@noble/hashes": "^2.0.1",
     "@solana/spl-token": "^0.4.0",
     "@solana/web3.js": "^1.95.0",
-    "ai": "^4.3",
+    "ai": "^5.0.281",
     "bs58": "^6.0.0",
     "date-fns": "^3",
     "drizzle-orm": "^0.45.1",
@@ -74,7 +74,7 @@
     "web-push": "^3.6.7",
     "ws": "^8.21.0",
     "yaml": "^2.8.3",
-    "zod": "^3.22.0"
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.5.8",

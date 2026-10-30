@@ -1,4 +1,4 @@
-// Text message (E2EE)
+// Text message (current chat stores plaintext; optional legacy encryption fields)
 type TextContent = { type?: "text"; text: string; encrypted?: string; nonce?: string };
 
 // Voice message

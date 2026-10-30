@@ -31,6 +31,7 @@ describe('OpenAI billing connector identity', () => {
   it('builds the factory with a distinct id so the sealed key lands in its own vault field', () => {
     expect(capturedOpts.current).toMatchObject({
       id: 'openai-billing',
+      preserveScopesOnRevoke: true,
       displayName: 'OpenAI Billing',
       connectorDid: OPENAI_CONNECTOR_DID,
       channel: OPENAI_CHANNEL,

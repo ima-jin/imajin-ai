@@ -45,7 +45,26 @@ components:
     bearerAuth:
       type: http
       scheme: bearer
+    githubOidc:
+      type: apiKey
+      in: header
+      name: x-github-oidc-token
+      description: GitHub Actions RS256 OIDC token, audience urn:imajin:vault:ssh-cert
   schemas:
+    SshCaPurpose:
+      type: string
+      pattern: "^[a-z][a-z0-9._-]{0,63}$"
+      description: Canonical reusable purpose; not tied to a particular consumer.
+    SshCa:
+      type: object
+      additionalProperties: false
+      required: [caId, purpose, status, publicKey, fingerprint]
+      properties:
+        caId: { type: string }
+        purpose: { $ref: "#/components/schemas/SshCaPurpose" }
+        status: { type: string, const: active }
+        publicKey: { type: string, description: OpenSSH ssh-ed25519 line with comment }
+        fingerprint: { type: string, description: OpenSSH SHA256 fingerprint of the public wire blob }
     CloudflareAuthority:
       type: object
       additionalProperties: false
@@ -66,6 +85,385 @@ components:
         error: { type: string }
 
 paths:
+  /vault/api/spec:
+    get:
+      tags: [vault-mint]
+      operationId: vaultApiSpec
+      summary: Read the public vault OpenAPI contract advertised by the spec catalogue
+      security: []
+      responses:
+        "200":
+          description: Vault OpenAPI source, including every SSH CA route
+          content:
+            text/yaml:
+              schema: { type: string }
+        "503": { description: Vault spec unavailable }
+  /api/vault/ssh-ca:
+    post:
+      tags: [vault-mint]
+      operationId: vaultSshCaMint
+      summary: Mint a kernel-custodied SSH CA through vault.mint
+      description: |
+        Uses the existing mintKeypair path. The private key is sealed with a
+        node-only grant in a protected namespace: no generic fetch, grant,
+        rotation export or plaintext route may disclose it, even to the node.
+        The resolved acting DID must be the vault node or its authorized delegate.
+        Tier-1 external custody is refused before generation. One active signer
+        per purpose; repeated mint returns 409. Sign with the separate sign route.
+        Commits a node-signed vault.ssh-ca.minted attestation with CA id,
+        purpose, actor, composedBy and fingerprint, never key material.
+      security: [{ cookieAuth: [] }, { bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [purpose]
+              properties:
+                purpose: { $ref: "#/components/schemas/SshCaPurpose" }
+      responses:
+        "201":
+          description: Public metadata only; Cache-Control no-store
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SshCa" }
+        "400": { description: Invalid JSON, purpose or unexpected property }
+        "401": { description: Authentication required }
+        "403": { description: Not the vault node or its delegate }
+        "409": { description: Active CA already exists or unsupported custody }
+        "503": { description: CA unavailable; generic error without secret details }
+  /api/vault/ssh-ca/rotate:
+    post:
+      tags: [vault-mint]
+      operationId: vaultSshCaRotate
+      summary: Mint a replacement signer and overlap public trust
+      description: |
+        Same authority as mint. Serializes per purpose with mint, revoke and
+        signing. Public trusted reads are lock-free. Mints through vault.mint, then atomically withdraws the
+        previous private signing grant and marks its mint record retiring.
+        revokedAt records the signing withdrawal instant. Both public keys stay
+        trusted for SSH_CA_MAX_CERT_TTL_SECONDS (900 seconds) after that instant.
+        The default certificate TTL for phase 2 is 600 seconds; phase 2 must
+        enforce the cap and use the same purpose lock, never cache a signer.
+        Further rotations preserve each older key's original deadline.
+        Emits signed minted and rotated attestations; rotated binds old/new
+        ids and fingerprints, actor, purpose and previousTrustedUntil.
+        No rows or sealed history are deleted. Host trust changes require deploy.
+      security: [{ cookieAuth: [] }, { bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [purpose]
+              properties:
+                purpose: { $ref: "#/components/schemas/SshCaPurpose" }
+      responses:
+        "201":
+          description: Replacement signer public metadata; Cache-Control no-store
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SshCa" }
+        "400": { description: Invalid JSON, purpose or unexpected property }
+        "401": { description: Authentication required }
+        "403": { description: Not the vault node or its delegate }
+        "404": { description: No active signer for this purpose }
+        "409": { description: Unsupported custody }
+        "503": { description: Rotation unavailable; old signer unchanged on rollback }
+  /api/vault/ssh-ca/revoke:
+    post:
+      tags: [vault-mint]
+      operationId: vaultSshCaRevoke
+      summary: Immediately withdraw a particular CA from public trust
+      description: |
+        Same authority as mint. Revokes an active or overlapping key by CA id
+        AND purpose. Atomically revokes its signing grant, marks the mint row
+        revoked and stores a signed vault.ssh-ca.revoked attestation with
+        CA id, purpose, actor, composedBy and fingerprint. History survives.
+        Already-revoked keys are successful no-ops with no duplicate attestation.
+        The next trusted read excludes the key immediately; one host deploy
+        removes it from TrustedUserCAKeys. Does not mint a replacement.
+      security: [{ cookieAuth: [] }, { bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [purpose, caId]
+              properties:
+                purpose: { $ref: "#/components/schemas/SshCaPurpose" }
+                caId: { type: string, pattern: "^vmk_[a-zA-Z0-9_-]{1,100}$" }
+      responses:
+        "200":
+          description: Revoked or already revoked; Cache-Control no-store
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [caId, alreadyRevoked]
+                properties:
+                  caId: { type: string }
+                  alreadyRevoked: { type: boolean }
+        "400": { description: Invalid JSON, purpose, CA id or unexpected property }
+        "401": { description: Authentication required }
+        "403": { description: Not the vault node or its delegate }
+        "404": { description: No CA with this id and purpose }
+        "503": { description: Revocation unavailable; generic error without secret details }
+  /api/vault/ssh-ca/trusted-keys:
+    get:
+      tags: [vault-mint]
+      operationId: vaultSshCaTrustedKeys
+      summary: Public OpenSSH TrustedUserCAKeys contents for one purpose
+      description: |
+        Anonymous public-only route, Cache-Control no-store. Returns newline-
+        terminated ssh-ed25519 lines (or an empty file for unknown/revoked
+        purposes). Reads are lock-free projections with no writes:
+        once the signing-withdrawal instant plus the 900-second maximum cert
+        TTL is reached, the old key drops off automatically. On the next
+        mutation or signing operation a signed
+        vault.ssh-ca.retired attestation records CA id, purpose, node actor and
+        fingerprint. No scheduler is required to exclude expired public trust.
+        Retirement and lifecycle changes commit with their signed attestations.
+        A deploy consumer ships these contents to its host; host configuration
+        is separate from certificate issuance.
+      security: []
+      parameters:
+        - in: query
+          name: purpose
+          required: true
+          schema: { $ref: "#/components/schemas/SshCaPurpose" }
+      responses:
+        "200":
+          description: Public CA lines only; never private or wrapped key material
+          content:
+            text/plain:
+              schema: { type: string }
+        "400": { description: Missing or invalid purpose }
+        "503": { description: Trust projection unavailable; generic error without secret details }
+  /api/vault/ssh-ca/sign:
+    post:
+      tags: [vault-mint]
+      operationId: vaultSshCertSign
+      summary: Sign a restricted throwaway Ed25519 user public key
+      description: |
+        Authenticated credential DID must hold the named live vault grant.
+        Alternatively x-github-oidc-token authenticates a GitHub Actions job:
+        RS256 verified against the fixed token.actions.githubusercontent.com
+        issuer/JWKS, audience urn:imajin:vault:ssh-cert, exp/iat/nbf/sub/jti,
+        max age and lifetime 10 minutes. Requires repository, repository_id,
+        repository_owner_id, environment, workflow_ref,
+        run_id and run_attempt; subject must bind that repository/environment.
+        Workflow must belong to the repository and a heads/tags ref.
+        GitHub grants bind repository/owner numeric IDs plus the exact
+        case-sensitive repository + environment, with optional allowedRefs
+        matching full workflow_ref strings exactly (no wildcards).
+        Legacy GitHub grants without IDs fail closed; operator must re-grant.
+        Each issuer-domain-separated jti fingerprint permits one successful
+        issuance across grants/processes/restarts. A Postgres transaction lock
+        serializes replay lookup with the issuance event commit. Only live exp
+        markers in the last 605 seconds are consulted; no separate replay cache
+        accumulates. Immutable signed history remains; failed issuance rolls back.
+        OIDC requests MUST OMIT job: it is derived from verified claims.
+        Invalid OIDC never falls back to cookie/DID auth. did:github principals
+        cannot use cookie/DID auth. Issuance additionally records githubJob
+        (repository, repositoryId, repositoryOwnerId, workflow, environment,
+        runId, runAttempt, jtiHash, expiresAt), never the token or raw jti.
+        Acting-for is not substituted for the grantee. Under the CA purpose
+        lock the vault rechecks the active CA, operation scope, and live private
+        custody grant. The caller provides only its public key, never its seed.
+        Returns one granted principal, the grant's force-command and NO
+        extensions: no port/agent/X11 forwarding, pty or user-rc.
+        Host is checked against allowedHosts at issuance; OpenSSH user certs
+        do not bind destination hosts, so hosts must enforce CA/principal trust.
+        TTL defaults to 600, accepts 1–900 integer seconds, refuses larger
+        requests, and validity cannot outlive either grant lease.
+        Signed vault.ssh-cert.issued commits before returning, binding job,
+        grantee, principal, host, TTL, unique serial, keyId, caId, grantId and
+        publicKeyFingerprint (OpenSSH SHA256 fingerprint of the caller's public
+        wire key, never key material). Each grant is limited to 10 issuances
+        in a rolling 60-second window, counting existing issued events inside
+        the signing transaction/lock. Over-budget requests return 429 and no cert.
+        Authenticated refusals commit vault.ssh-cert.refused with grantee and
+        HTTP status, never raw request bytes. OIDC policy failures after signature,
+        issuer, audience and algorithm verification commit a fixed refusal under
+        the node subject with status 401, authentication github-oidc and reason
+        invalid-token when a validated job grantee is not yet available.
+        Both GitHub refusal paths store only an issuer-separated jtiHash and
+        permit at most one refusal per jti for all time. A refusal-specific
+        advisory transaction lock and a partial unique hash index serialize
+        lookup/insert; duplicate refusals do not prepare or sign another audit.
+        Session-auth DID refusal auditing is unchanged. Expired, not-yet-valid,
+        stale and missing/malformed-jti tokens return generic 401 with no writes.
+        Forged, malformed, empty or wrong-origin OIDC and JWKS/key-fetch failures
+        return a generic 401 without audit preparation, signing or database writes.
+        Audit failure returns 503 and no certificate.
+        Anonymous requests without OIDC return 401 without storing an audit record.
+      security: [{ cookieAuth: [] }, { bearerAuth: [] }, { githubOidc: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [purpose, caId, grantId, publicKey, principal, host]
+              properties:
+                purpose: { $ref: "#/components/schemas/SshCaPurpose" }
+                caId: { type: string }
+                grantId: { type: string }
+                publicKey: { type: string, description: Canonical ssh-ed25519 public key line }
+                principal: { type: string, pattern: "^[a-z_][a-z0-9_-]{0,63}$" }
+                host: { type: string, description: Exact canonical host from the grant }
+                job: { type: string, minLength: 1, maxLength: 200, description: Required for DID auth; forbidden for GitHub OIDC }
+                ttl: { type: integer, minimum: 1, maximum: 900, default: 600 }
+      responses:
+        "201":
+          description: Certificate and public issuance metadata only; Cache-Control no-store
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [certificate, serial, keyId, caId, grantId, job, grantee, principal, host, ttl, purpose, validAfter, validBefore, publicKeyFingerprint]
+                properties:
+                  certificate: { type: string, pattern: "^ssh-ed25519-cert-v01@openssh.com " }
+                  serial: { type: string, description: Unsigned 64-bit integer encoded as decimal }
+                  keyId: { type: string }
+                  caId: { type: string }
+                  grantId: { type: string }
+                  job: { type: string }
+                  githubJob:
+                    type: object
+                    required: [repository, repositoryId, repositoryOwnerId, workflow, environment, runId, runAttempt, jtiHash, expiresAt]
+                    properties:
+                      repository: { type: string }
+                      repositoryId: { type: string, pattern: "^[1-9][0-9]{0,19}$" }
+                      repositoryOwnerId: { type: string, pattern: "^[1-9][0-9]{0,19}$" }
+                      workflow: { type: string }
+                      environment: { type: string }
+                      runId: { type: string }
+                      runAttempt: { type: string }
+                      jtiHash: { type: string, description: Issuer-domain-separated SHA256 of jti, pattern: "^[a-f0-9]{64}$" }
+                      expiresAt: { type: integer, description: Verified OIDC expiry in Unix seconds }
+                  grantee: { type: string }
+                  principal: { type: string }
+                  host: { type: string }
+                  purpose: { type: string }
+                  ttl: { type: integer, maximum: 900 }
+                  validAfter: { type: integer, description: Unix seconds inclusive }
+                  validBefore: { type: integer, description: Unix seconds exclusive }
+                  publicKeyFingerprint: { type: string, description: OpenSSH SHA256 fingerprint of the caller public wire key }
+        "400": { description: Invalid public key, principal, TTL, job or unexpected option }
+        "401": { description: Authentication required }
+        "403": { description: No matching live grant or active signer }
+        "429": { description: Grant has already issued 10 certificates in the last 60 seconds; signed authenticated refusal, no certificate }
+        "503": { description: Signing or signed audit unavailable; no certificate }
+  /api/vault/ssh-ca/grants:
+    post:
+      tags: [vault-mint]
+      operationId: vaultSshCertGrant
+      summary: Grant scoped SSH signing authority on an active CA
+      description: |
+        Node or its authorized delegate only, same authority as CA mint.
+        Uses vault_delegation_grants with signed SSH scope and no wrapped
+        private key. Grant binds CA, grantee, principals, force-command,
+        allowedHosts and expiry. Rotation requires a grant for the new CA.
+        Emits signed vault.ssh-cert.grant-issued. No wildcards or empty policy.
+        For GitHub Actions supply repository + environment + repositoryId +
+        repositoryOwnerId instead of grantee. IDs are positive decimal strings
+        independently confirmed by the operator, compared to verified repository_id
+        and repository_owner_id. Optionally supply allowedRefs (1-64 exact full
+        workflow_ref strings); omitted means environment-policy gating.
+        The kernel derives did:github:SHA256(JSON([repository, environment]));
+        this deterministic identity is bound by the existing owner signature.
+        The signed ssh_scope includes the GitHub binding and optional refs.
+        Grant response and signed grant-issued event name all GitHub policy fields.
+        Raw did:github grantees and mixed DID/GitHub inputs are refused.
+      security: [{ cookieAuth: [] }, { bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [purpose, caId, principals, forceCommand, allowedHosts, expiresAt]
+              oneOf:
+                - required: [grantee]
+                  not:
+                    anyOf:
+                      - required: [repository]
+                      - required: [environment]
+                      - required: [repositoryId]
+                      - required: [repositoryOwnerId]
+                      - required: [allowedRefs]
+                - required: [repository, environment, repositoryId, repositoryOwnerId]
+                  not: { required: [grantee] }
+              properties:
+                purpose: { $ref: "#/components/schemas/SshCaPurpose" }
+                caId: { type: string }
+                grantee: { type: string, description: Credential DID, not the node custody identity }
+                repository: { type: string, description: Exact case-sensitive owner/repository for GitHub OIDC }
+                repositoryId: { type: string, pattern: "^[1-9][0-9]{0,19}$", description: Immutable GitHub repository_id }
+                repositoryOwnerId: { type: string, pattern: "^[1-9][0-9]{0,19}$", description: Immutable GitHub repository_owner_id }
+                allowedRefs:
+                  type: array
+                  minItems: 1
+                  maxItems: 64
+                  items: { type: string, maxLength: 512, description: Exact full workflow_ref under this repository at refs/heads/ or refs/tags/; no glob }
+                environment: { type: string, minLength: 1, maxLength: 128, description: Exact GitHub job environment; no control characters }
+                principals:
+                  type: array
+                  minItems: 1
+                  maxItems: 16
+                  items: { type: string, pattern: "^[a-z_][a-z0-9_-]{0,63}$" }
+                forceCommand: { type: string, minLength: 1, maxLength: 2048 }
+                allowedHosts:
+                  type: array
+                  minItems: 1
+                  maxItems: 64
+                  items: { type: string, maxLength: 253, pattern: "^[a-z0-9]+(?:[.-][a-z0-9]+)*$" }
+                expiresAt: { type: string, format: date-time }
+      responses:
+        "201": { description: Grant id and public policy; Cache-Control no-store }
+        "400": { description: Invalid or empty policy or expiry }
+        "401": { description: Authentication required }
+        "403": { description: Not authorized or CA inactive }
+        "503": { description: Grant or audit unavailable }
+  /api/vault/ssh-ca/grants/revoke:
+    post:
+      tags: [vault-mint]
+      operationId: vaultSshCertGrantRevoke
+      summary: Withdraw SSH signing authority without deleting history
+      description: |
+        Same authority as grant creation. Serializes with signing, tombstones
+        the existing vault grant, and commits vault.ssh-cert.grant-revoked.
+        Repeating revocation is an idempotent no-op. Existing certs retain
+        their bounded lifetime; emergency CA revocation removes public trust.
+      security: [{ cookieAuth: [] }, { bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [purpose, grantId]
+              properties:
+                purpose: { $ref: "#/components/schemas/SshCaPurpose" }
+                grantId: { type: string }
+      responses:
+        "200": { description: Grant id and alreadyRevoked boolean; Cache-Control no-store }
+        "400": { description: Invalid purpose or grant id }
+        "401": { description: Authentication required }
+        "403": { description: Not authorized }
+        "404": { description: SSH grant not found for purpose }
+        "503": { description: Revocation or audit unavailable }
   /api/vault/import:
     get:
       tags: [vault-import]

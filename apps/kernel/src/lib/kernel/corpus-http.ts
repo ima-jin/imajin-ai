@@ -10,10 +10,44 @@
  * `CorpusServiceError` for the dashboard route-handler convention).
  */
 import { corpusAccessClaimHeader, type CorpusAccessScope } from './corpus-access-claim';
+import { authorizeCorpusOwner, resolveCorpusDid } from './corpus-owner';
+import { ConnectionRemovedError } from './connection-slots';
+
+const GITHUB_OPERATIONS = new Set(['/ingest', '/sources', '/sync', '/crawl']);
+
+async function githubCredentialHeaders(principalDid: string, ownerDid: string, path: string, body: unknown): Promise<Record<string, string>> {
+  if (!GITHUB_OPERATIONS.has(path) || !body || typeof body !== 'object') return {};
+  const input = body as { source?: unknown; credentialRef?: unknown };
+  if (typeof input.source !== 'string' || !input.source.startsWith('github:')) return {};
+  let ref = input.credentialRef;
+  // Sync/crawl always use the persisted connector, never a caller's override.
+  if (path === '/sync' || path === '/crawl' || ref === undefined) {
+    const status = await corpusHttpRequest('GET', principalDid, 'corpus:read', '/status', undefined, ownerDid);
+    const payload = status.payload as { sources?: { source: string; credentialRef?: string }[] } | null;
+    if (!status.ok || !Array.isArray(payload?.sources)) return {};
+    ref = payload?.sources?.find(source => source.source === input.source)?.credentialRef;
+  }
+  if (typeof ref !== 'string') return {};
+  try {
+    const { resolveCorpusGitHubCredential } = await import('../github/corpus-credential');
+    const token = await resolveCorpusGitHubCredential(ownerDid, input.source, ref);
+    return { 'X-Corpus-GitHub-Credential': token, 'X-Corpus-Credential-Ref': ref };
+  } catch (err) {
+    if (err instanceof ConnectionRemovedError) throw err;
+    // Corpus records a safe source error. Never forward vault/provider errors.
+    return {};
+  }
+}
 
 /** Base URL of the corpus service (internal network only). */
 export function corpusServiceUrl(): string {
   return process.env.CORPUS_SERVICE_URL || 'http://localhost:8003';
+}
+
+function corpusRequestSources(body: unknown): string[] {
+  const records = Array.isArray(body) ? body : [body];
+  return [...new Set(records.flatMap(value =>
+    value !== null && typeof value === 'object' && typeof value.source === 'string' ? [value.source] : []))];
 }
 
 export interface CorpusHttpResult {
@@ -34,16 +68,40 @@ export async function corpusHttpRequest(
   scope: CorpusAccessScope,
   path: string,
   body?: unknown,
+  targetDid?: string,
 ): Promise<CorpusHttpResult> {
-  const url = `${corpusServiceUrl()}/corpus/${encodeURIComponent(did)}${path}`;
+  const sources = corpusRequestSources(body);
+  const owners = await Promise.all(sources.map(source => resolveCorpusDid(source, did)));
+  const ownerDid = targetDid ?? owners[0] ?? did;
+  if (scope === 'corpus:write' && ownerDid !== did && owners.every(owner => owner === did)
+    && sources.some(source => source.startsWith('local:'))) {
+    return { ok: false, status: 403, statusText: 'Forbidden', payload: { error: 'Workspace sources belong to the principal corpus' } };
+  }
+  if (owners.some(owner => owner !== ownerDid)) {
+    return { ok: false, status: 400, statusText: 'Mixed corpus owners', payload: { error: 'A batch must have one corpus owner' } };
+  }
+  if (!await authorizeCorpusOwner(did, ownerDid, scope)) {
+    return { ok: false, status: 403, statusText: 'Forbidden', payload: { error: `An owner-issued ${scope} grant is required` } };
+  }
+  const url = `${corpusServiceUrl()}/corpus/${encodeURIComponent(ownerDid)}${path}`;
+  let credentialHeaders: Record<string, string>;
+  try {
+    credentialHeaders = method === 'POST' && scope === 'corpus:write'
+      ? await githubCredentialHeaders(did, ownerDid, path, body)
+      : {};
+  } catch (err) {
+    if (!(err instanceof ConnectionRemovedError)) throw err;
+    return { ok: false, status: 410, statusText: 'Connection removed', payload: { error: 'Connection removed. Select another connection explicitly.', code: 'connection_removed' } };
+  }
   const response = await fetch(url, {
     method,
     headers: {
       'Content-Type': 'application/json',
-      Authorization: await corpusAccessClaimHeader(did, scope),
+      Authorization: await corpusAccessClaimHeader(ownerDid, scope, did),
+      ...credentialHeaders,
     },
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-  });
+  }).catch(() => { throw new Error('Corpus service transport failed'); });
 
   let payload: unknown = null;
   try {

@@ -61,6 +61,14 @@ export class CorpusEngine {
     this.store.close();
   }
 
+  recordSourceState(did: string, source: string, credentialRef: string | undefined, error: string | undefined, ingesterDid: string, synced = false): void {
+    validateDid(did);
+    const identity = loadCorpusIdentity();
+    if (!identity) throw new Error('Corpus signing identity unavailable; cannot attest source configuration.');
+    this.store.recordSourceState(did, source, credentialRef, error, identity, ingesterDid, synced);
+    markCorpusIdentityUsedForSigning();
+  }
+
   /**
    * Ingests `documents`, signing+persisting an `IngestionAttestation` per
    * source when a corpus identity is configured, then fire-and-forgets a

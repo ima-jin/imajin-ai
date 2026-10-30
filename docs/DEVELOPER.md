@@ -107,7 +107,7 @@ Then use `postgresql://imajin_dev:PASSWORD@localhost:5432/imajin_dev` in your `.
 Each app needs a `.env.local` file. Start from the example:
 
 ```bash
-cp apps/auth/.env.example apps/auth/.env.local
+cp apps/kernel/.env.example apps/kernel/.env.local
 # Edit with your DATABASE_URL and secrets
 ```
 
@@ -116,8 +116,8 @@ cp apps/auth/.env.example apps/auth/.env.local
 | Variable | Where | What | How to Generate |
 |----------|-------|------|-----------------|
 | `DATABASE_URL` | All services | Postgres connection | Your local Postgres URL |
-| `AUTH_PRIVATE_KEY` | auth only | Ed25519 PKCS#8 key for signing JWTs | See below |
-| `NEXT_PUBLIC_DISABLE_INVITE_GATE` | auth only | Skip invite codes in dev | Set to `true` |
+| `AUTH_PRIVATE_KEY` | kernel only | Ed25519 node signing/custody key | Local setup script; production uses the operator's existing secure provisioning |
+| `NEXT_PUBLIC_DISABLE_INVITE_GATE` | kernel only | Skip invite codes in dev | Set to `true` for local dev only |
 | `NEXT_PUBLIC_SERVICE_PREFIX` | All services | URL pattern for cross-service links | `http://localhost:` for local dev |
 ### App secrets and import ordering (#2821)
 
@@ -127,6 +127,14 @@ Never put values in that manifest. Operator values go through the masked `/jin`
 set/rotate input and a separate verified human countersign. Sealed pending
 staging is not an active credential; responses, approval cards and diagnostics
 must not echo submitted values or underlying provider messages.
+
+For an already-claimed app, manifest sync now appends **declaration slots only**
+([#3124](https://github.com/ima-jin/imajin-ai/pull/3124)). It preserves identity,
+keys and claims; removals, kind changes and non-secret changes are not applied.
+After the sync countersignature, random kinds require a separate signed
+**Generate** action (never for prior/revoked grant history); operator-supplied
+slots require masked **Set** and its own countersignature. Sync alone neither
+generates nor grants a value. See the [operator steps](app-self-secrets-operator.md).
 
 For runtime adoption, establish the app bootstrap keystore with
 `loadAppSigningKey()`, then use `createVaultBoot<Config>({ vault, configure })`
@@ -152,7 +160,11 @@ the normal reviewed Release workflow, with no promised hard-coded version.
 
 The `.env.example` files default to `NEXT_PUBLIC_SERVICE_PREFIX=http://localhost:` which uses the canonical port map for cross-service browser links. No CORS issues, no hitting production by accident.
 
-Service-to-service (server-side) URLs use `AUTH_SERVICE_URL=http://localhost:3001` etc.
+Service-to-service URLs use kernel paths, for example
+`AUTH_SERVICE_URL=http://localhost:3000/auth` and
+`PAY_SERVICE_URL=http://localhost:3000/pay`. Corpus is a separate HTTP daemon:
+`CORPUS_SERVICE_URL` must reach its actual host/port. Do not configure removed
+split-service ports as kernel upstreams.
 
 ## Running Services
 
@@ -186,7 +198,8 @@ collision warns on both threads without preventing commands.
 
 `POST /jin/api/runs/{loopId}/commands` prepares a short-lived command with
 `action: "prepare"`, `type: "session.send" | "session.abort" | "session.spawn"`
-and a bounded `payload`. The target is `payload.loopId` (send/stop) or
+or `session.archive|reset|label|history` and a bounded `payload`.
+The target is `payload.loopId` (send/stop/lifecycle) or
 `payload.parentLoopId` (spawn); spawn also accepts task, label, group and model.
 The server resolves the verified originating agent, not a client-selected DID.
 After signing the complete prepared command in the browser, the operator
@@ -214,7 +227,7 @@ fall back to that legacy rail.
 Command correlation, signed bindings and outcomes reuse `kernel.loop_events`;
 this feature needs no new schema. A socket send means only delivery attempted.
 The UI waits for the correlated agent-signed
-`loop.session.{send,approve,deny,abort,spawn}.{completed,failed}` observation.
+`loop.session.{send,approve,deny,abort,spawn,archive,reset,label,history}.{completed,failed}` observation.
 The kernel verifies the authenticated socket DID, current agent key, principal,
 command ID, command type and payload hash before recording an outcome. Spawn
 lineage is accepted only from the signed child/parent attestation.
@@ -226,6 +239,25 @@ handoff; the agent signature is still independently required. Outbound commands
 use the local `/chat/api/internal/session-command` transport, deliberately
 separate from notification fan-out and its delegated recipients. Neither
 internal endpoint is a harness RPC or a public command bypass.
+
+Opening an active, commandable thread sends one full-body-signed
+`session.history` wish. Only the plugin reads its local history: at most
+20 recent entries, 80 redacted text/tool-call/tool-result output blocks and
+12 KiB per output, delivered through the existing signed `loop.progress`
+path. Stored history remains readable when signing or delivery is unavailable.
+Session controls send exactly `{loopId}` for archive/reset/history or
+`{loopId,label}` for label (nonblank, at most 256 characters). Unknown payload
+fields are refused both before signing and at dispatch. Prepare emits an
+explicit five-minute expiry; omitted/null expiry is canonicalized as null
+for both signatures and uses the same default TTL at verification.
+
+Archive hides only a signed `archived` lifecycle projection from active
+Threads; the loaded Archived run history disclosure reopens its retained
+events. Neither delivery nor a button click mutates a registry projection.
+Labels arrive through signed inventory updates, never an optimistic rename.
+Reset displays the plugin's signed `missing_scope` refusal with its command ID
+and issuer in History. No plugin scopes, local session references, transcript
+access, or Gateway client are added.
 
 The wire fixtures follow
 [plugin #77](https://github.com/ima-jin/openclaw-imajin-plugin/issues/77) and
@@ -277,6 +309,11 @@ Code shared across services lives in `packages/`:
 | `@imajin/trust-graph` | Trust graph queries for connection checks |
 | `@imajin/config` | Shared configuration |
 
+This is a selected list; the root README generates the complete package inventory.
+`@imajin/llm` now uses AI SDK 5, provider SDK 2 and Zod 4 (#3099):
+tools declare `inputSchema`, and streamed tool-call arguments are `input`.
+Do not reuse older AI SDK 4 `parameters`/`args` examples.
+
 ### When shared packages change
 
 If you edit a shared package (e.g., `@imajin/ui`), the consuming app may not pick it up due to Next.js incremental build caching.
@@ -314,44 +351,26 @@ Each service owns a Postgres schema within the shared database. They don't share
 
 ### Migration Discipline
 
-**Every PR that modifies a `schema.ts` file MUST include the generated migration file.**
+Kernel migrations are root `migrations/NNNN_description.sql`, not app-local
+Drizzle journal entries. Fresh init uses the generated kernel baseline and then
+all post-cut files; existing DBs verify/adopt the baseline without reinitializing.
+See [MIGRATIONS.md](MIGRATIONS.md) and the [baseline runbook](../migrations/BASELINE.md).
 
-The migration runner (`./scripts/migrate.sh`) applies SQL files from each service's `drizzle/` folder. If you change the schema without generating a migration, other developers' databases will be out of sync.
+1. Never use `drizzle-kit push` or edit an applied/archived SQL file.
+2. A schema change needs matching idempotent, schema-qualified root SQL with
+   `-- owner: kernel`, numbered above the fixed cut and latest active migration.
+   Drizzle can scaffold SQL; move/rename its output into root `migrations/`
+   and add the idempotent guards. A local journal is not the runner's authority.
+3. Run `bash scripts/check-schema-migration-sync.sh origin/main`,
+   `bash scripts/check-migrations.sh` and
+   `node scripts/check-migration-ownership.mjs`.
+4. Test the real runner twice against an isolated scratch database; the second
+   run must preserve every ledger row. Production is re-baselined, never reset.
+   Never delete rows to repair history. App-owned schema/migrations belong in
+   each independently owned app repo.
 
-**The rules:**
-
-1. **Never use `drizzle-kit push`.** It applies changes directly to the database with no migration record. The next person who runs `migrate.sh` gets errors because their tracker doesn't know the change was already applied. Push is banned.
-
-2. **Always use `drizzle-kit generate`.** Never hand-write SQL migration files. Every schema change, no matter how small:
-
-```bash
-# 1. Make your schema changes in src/db/schema.ts
-# 2. Generate the migration (from the app directory!)
-cd apps/kernel   # or apps/<userspace-app>
-npx drizzle-kit generate
-
-# 3. Verify THREE files were created/updated:
-#    - drizzle/000N_<name>.sql        (the migration SQL)
-#    - drizzle/meta/_journal.json     (migration registry)
-#    - drizzle/meta/000N_snapshot.json (schema snapshot)
-#
-# 4. Commit ALL THREE with your schema.ts change
-```
-
-**⚠️ If you drop a .sql file into drizzle/ without running `drizzle-kit generate`, the journal won't know it exists and `migrate.sh` will silently skip it.** CI will catch this — the `check-migrations` job verifies that sql/journal/snapshot counts match.
-
-3. **Make initial migrations idempotent.** Use `CREATE SCHEMA IF NOT EXISTS`, `CREATE TABLE IF NOT EXISTS`, and `CREATE INDEX IF NOT EXISTS` in `0000_*.sql` files.
-
-4. **Test your migration.** Run `./scripts/migrate.sh <service>` locally before pushing.
-
-If `drizzle-kit generate` prompts about column renames, choose **"create column"** unless you are intentionally renaming (rename loses existing data by default).
-
-To inspect the schema interactively:
-
-```bash
-cd apps/SERVICE
-npx drizzle-kit studio
-```
+v0.8.27 adds `0221_vault_ssh_scope.sql` above the unchanged baseline; it is not
+permission to move the cut or hand-normalize the migration ledger.
 
 ## Adding a New Service
 
@@ -483,6 +502,84 @@ token counts stay unpriced. Moonshot JSON and SSE use our rate card, never an
 upstream `usage.cost` or account balance. The existing OpenRouter-specific
 explicit-cost contract is unchanged. `/jin` Spend UI work remains #2725.
 ## Testing
+For org-tagged connection suspension (#3167), `/auth/members` shows the external
+connections panel while acting as an org. The session-only
+`GET/POST /auth/api/org-connections` rechecks live owner/admin role and auth access.
+The real-SQL acceptance tests live in `external-mcp.integration.test.ts` and cover
+both call paths, unchanged custody, removal/re-add, and service policies covering
+future connections. Only `authorizeMemberConnection` enforces suspension.
+With the development kernel running, `/dev/org-connections-preview` renders the
+real panel with labeled fixture transport, including simulated non-admin 403.
+It is unavailable outside development and never creates an authenticated session.
+Browser evidence from that page proves UI rendering, not live authorization.
+
+The full agent suite is `pnpm --silent test:agent`; while iterating, pass only
+affected test files. SSH certificate/deploy tests require OpenSSH client
+(`ssh-keygen`) and Python 3; CI installs both. The credential-free
+`vault-ssh-dry-run.yml` checks the action without GitHub OIDC permission or host
+access. See the [consumer/runner contract](deploy/vault-ssh-deploy.md).
+
+### Sealed bank-details API (#3075)
+
+`GET/PUT/DELETE /auth/api/bank-details` requires a human session and the same
+auth-scoped organization owner/admin authorization as legal-entity editing.
+`PUT` validates a full replacement `bank-details:v1` record. Each financial
+identifier is sealed separately; the immutable private media document and
+metadata carry only references/non-secret fields and per-field visibility.
+Generic media mutation or vault fetch cannot open this record.
+
+The trusted `readBankDetails(ownerDid)` helper returns non-secret metadata,
+visibility and `hasRail` without unsealing; external consumers must apply the
+visibility policy. Save/revoke retains documents, signed create/revoke evidence
+and superseded grant history. This is node-delegated Tier 0 custody, **not
+zero-custody**; Tier 1 saves fail closed. Bank settings UI and invoice/PDF
+disclosure are separate work. Fetch `/auth/api/spec` for validation and errors.
+
+### Corpus integration (#3089, #3090)
+
+Read the [corpus-owned runbook](../apps/corpus/README.md) before loading sources.
+GitHub partitions use their registry-resolved owner group DID; workspace sources
+remain principal-owned. Live owner-issued grants are mandatory; membership or
+stub creation is not a grant. Choose that owner's GitHub OAuth connector on
+`/auth/corpus`; credentials are resolved from the kernel vault per operation,
+never from `GITHUB_TOKEN`, `GH_TOKEN` or a `gh` CLI file. The one-shot owner
+migration retains source rows and original signatures; it is not automatic on
+deploy and must not be inferred to have run in production.
+
+### Legal-entity settings (#3071)
+
+`/auth/legal-entity` sits next to Tax and is available for both human and
+business DIDs. The page and `/auth/api/legal-entity` require a human session
+and the canonical auth-scoped owner/admin act-as check; agents, app tokens,
+ordinary members and disallowed service selections cannot edit or read its
+complete private record.
+
+The conventional source is
+`{MEDIA_ROOT}/{sanitized-DID}/assets/legal-entity.md`, with a
+`{assetId}.fair.json` sidecar, so revoke/recreate retains the old asset's mirror.
+It uses the existing YAML frontmatter and
+release header: UI `public` is header `silent`, plus `on-consent` and `never`.
+The signature binds both values and policy through the document's SHA-256
+integrity hash. It is node-witnessed on behalf of the authenticated owner,
+not proof that the owner signed with a device-held DID key.
+
+Use `getLegalEntity(did, viewerDid)` for consumer reads. Missing, revoked,
+malformed or unverifiable sources return `null`; unreleased fields are absent,
+including `never` for the owner. On-consent fields require a current raw-mode
+broker grant for purpose `legal-entity.disclosure`, scoped to the exact field
+(`legalName`, `operatingName`, or `address.line1`, `address.line2`, `address.city`,
+`address.region`, `address.postalCode`, `address.country`). Attestation-only
+consent cannot reveal raw values. An optional release-header `viewer` further
+restricts the viewer DID. No legal fields are projected anywhere.
+
+Writes reject bad fields with HTTP 400 and cap the request and serialized
+source at the existing tax-document budget (16 KiB). Fields are limited to
+200 characters, country is ISO 3166-1 alpha-2, operating name/address line 2
+are optional, and region/postal code may be empty for countries without them.
+Tax numbers stay in `profile.tax_registrations`; this record rejects them.
+Revocation writes a signed, value-free tombstone through `document.changed`
+(#1208), retains the asset row as deleted and retains change attestations and
+Lore history. Generic media mutation/read permissions cannot open the source.
 
 ### Organization document agreements (#2998)
 

@@ -894,6 +894,19 @@ describe('conversation deltas', () => {
 // ── Progress: cost and early errors (#1682) ───────────────────────────────────
 
 describe('cost accumulation', () => {
+  it('does not persist user briefs or system prompts through progress telemetry', async () => {
+    respondRun(runBody('INPROGRESS'));
+    respondRun(runBody('SUCCEEDED'));
+    respondConversation([step('step-1', [
+      textMessage('user', 'hash-only private brief'),
+      textMessage('system', 'private system instructions'),
+      textMessage('assistant', 'Working'),
+    ])]);
+    await watchRun(PRINCIPAL, RUN_ID, { sleep });
+    const messages = progressEvents()[0].payload.newMessages as Array<{ text: string | null }>;
+    expect(messages.map(message => message.text)).toEqual([null, null, 'Working']);
+    expect(JSON.stringify(publishMock.mock.calls)).not.toContain('hash-only private brief');
+  });
   it('keeps the blocker first line on usage-only progress rather than cost updated', async () => {
     const status_message = { message: 'Waiting on Postal decision\nAdditional context', error_code: 'held' };
     respondRun(runBody('BLOCKED', { status_message, request_usage: { inference_cost: 0.1 } }));

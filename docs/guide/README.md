@@ -25,6 +25,9 @@
 ## For Contributors & Coding Agents
 
 - **[Canonical Patterns](./canonical-patterns.md)** — the one correct primitive for each seam (auth, settlement, .fair, checkout identity). Read before writing code at a primitive boundary; do not re-implement these inline.
+- **[Legal entity and sealed bank details](../DEVELOPER.md#sealed-bank-details-api-3075)** — distinct private-record and per-field disclosure contracts; no generic media/vault shortcut.
+- **[Corpus ownership and credentials](../../apps/corpus/README.md)** — owner-DID partitions, live grants, OAuth connector selection and signed migration.
+- **[v0.8.28 integration delta](../../apps/kernel/README.md#pre-cut-delta-for-v0828)** — recipient-organization payer control, additive app-secret slots with separate Generate/Set approval, current chat plaintext limits and automatic release close-out.
 
 ## Security & Boundaries
 
@@ -33,15 +36,25 @@
 - **[.fair Settlement Disclosure](./fair-settlement-disclosure.md)** — the three-layer composable disclosure model for settlement lot manifests: floor, community overlay, and subject gates. How to configure per-deployment profiles and unlock on-consent fields via consent grants.
 - **[Broker Consent Vocabulary](./broker-consent-vocabulary.md)** — canonical broker purposes, fields, release modes, predicates, and term registries for consent config.
 - **[SECURITY.md](../../SECURITY.md)** — responsible disclosure + honest list of known limitations.
+- **[Domain ownership](./domain-ownership.md#domain-scoped-credentials)** — verified bindings and grantee-visible Cloudflare zone grants.
+- **[Vault SSH deploy](../deploy/vault-ssh-deploy.md)** — purpose-scoped certificates, GitHub OIDC and host/runner requirements.
+- **[Inference release deployment](../../deploy/infer-passthrough/README.md)** — exact-SHA production evidence, mint-backed health and rollback.
 
 ## Quick Links
 
 - **HTTP API reference:** [Developer Guide](../developer-guide.md) (curl-based walkthrough)
-- **Protocol RFCs:** [docs/rfcs/](../rfcs/) (the "why" behind decisions)
+- **Protocol RFCs:** [docs/canon/rfcs/](../canon/rfcs/) (the "why" behind decisions)
 - **Source code:** [github.com/ima-jin/imajin-ai](https://github.com/ima-jin/imajin-ai)
 - **.fair spec:** [github.com/ima-jin/.fair](https://github.com/ima-jin/.fair)
-- **OpenAPI specs:** `https://jin.imajin.ai/{service}/api/spec`
+- **OpenAPI specs:** `/registry/api/specs` lists configured service candidates,
+  not a complete on-disk or live deployment inventory. The generated references
+  below enumerate actual spec handlers, including `/vault/api/spec`; fetch a
+  served spec for its full schemas. Not every route group has a spec.
+- **Complete source-derived route references:** [llms.txt](../../apps/kernel/public/llms.txt)
+  and [llms-full.txt](../../apps/kernel/public/llms-full.txt), including internal
+  and dev-only handlers (presence does not grant access).
 
 ---
 
-*Imajin is open source. The reference implementation runs at [jin.imajin.ai](https://jin.imajin.ai).*
+*Imajin is source-available under [INL v1.0](../../LICENSE.md).
+The reference kernel is at [jin.imajin.ai](https://jin.imajin.ai).*

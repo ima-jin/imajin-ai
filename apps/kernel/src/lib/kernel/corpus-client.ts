@@ -14,12 +14,17 @@
 
 import type { CorpusAccessScope } from './corpus-access-claim';
 import { corpusErrorMessage, corpusHttpRequest } from './corpus-http';
+import { forEachSequential } from '../async/sequential';
+import { ConnectionRemovedError } from './connection-slots';
 
 export interface CorpusSourceFreshness {
   source: string;
+  ownerDid: string;
   lastSync: string;
   threadCount: number;
   warning?: string;
+  credentialRef?: string;
+  error?: string;
 }
 
 export interface CorpusStatus {
@@ -34,6 +39,12 @@ export interface CorpusSearchParams {
   /** Pin the query to a previously-ingested git sha for `source` (#1921). Requires `source`. */
   ref?: string;
   limit?: number;
+  budget?: number;
+  sourceType?: string;
+  state?: string | string[];
+  type?: string | string[];
+  labels?: string[];
+  author?: string;
 }
 
 /** One scored evidence hit — mirrors `CorpusSearchHit` (apps/corpus/src/engine/types.ts). */
@@ -63,6 +74,9 @@ export interface CorpusSearchResult {
   totalHits: number;
   tokensUsed: number;
   provenance?: CorpusSearchProvenance;
+  freshness?: CorpusSourceFreshness[];
+  mode?: string;
+  degraded?: string[];
 }
 
 /** Thrown when the corpus service answers with a non-2xx status. */
@@ -89,8 +103,9 @@ async function corpusRequest(
   scope: CorpusAccessScope,
   path: string,
   body?: unknown,
+  targetDid?: string,
 ): Promise<unknown> {
-  const result = await corpusHttpRequest(method, did, scope, path, body);
+  const result = await corpusHttpRequest(method, did, scope, path, body, targetDid);
   if (!result.ok) {
     throw new CorpusServiceError(result.status, corpusErrorMessage(result));
   }
@@ -98,8 +113,35 @@ async function corpusRequest(
 }
 
 /** `GET /corpus/:did/status` — sources, per-source thread counts, freshness. */
-export function fetchCorpusStatus(did: string): Promise<CorpusStatus> {
-  return corpusRequest('GET', did, 'corpus:read', '/status') as Promise<CorpusStatus>;
+async function readGrantedCorpora<T>(did: string, read: (ownerDid: string) => Promise<T>): Promise<{ ownerDid: string; value: T }[]> {
+  const { grantedCorpusOwners, authorizeCorpusOwner } = await import('./corpus-owner');
+  const owners = [did, ...await grantedCorpusOwners(did)];
+  const values: { ownerDid: string; value: T }[] = [];
+  await forEachSequential(owners, async ownerDid => {
+    if (!await authorizeCorpusOwner(did, ownerDid, 'corpus:read')) throw new CorpusServiceError(403, 'Corpus grant is no longer active');
+    values.push({ ownerDid, value: await read(ownerDid) });
+  });
+  return values;
+}
+
+export async function fetchCorpusStatus(did: string): Promise<CorpusStatus> {
+  const statuses = await readGrantedCorpora(did, ownerDid =>
+    corpusRequest('GET', did, 'corpus:read', '/status', undefined, ownerDid) as Promise<CorpusStatus>);
+  const sources = await Promise.all(statuses.flatMap(({ value, ownerDid }) => value.sources.map(async source => {
+    const bound = { ...source, ownerDid };
+    if (!source.source.startsWith('github:') || !source.credentialRef?.startsWith('github:')) return bound;
+    try {
+      const { assertConnectionNotRemoved } = await import('./connector-connection-status');
+      await assertConnectionNotRemoved(ownerDid, 'github', source.credentialRef.slice('github:'.length));
+    } catch (err) {
+      bound.error = err instanceof ConnectionRemovedError ? 'Connection removed. Select another connection explicitly.' : 'Connection status unavailable.';
+    }
+    return bound;
+  })));
+  return {
+    sources,
+    threadCount: statuses.reduce((total, { value }) => total + value.threadCount, 0),
+  };
 }
 
 /**
@@ -107,10 +149,40 @@ export function fetchCorpusStatus(did: string): Promise<CorpusStatus> {
  *
  * Used by the Warp dispatch corpus-context feature (#2021's first-consumer
  * checklist item): `did` is always the dispatch's acting principal, never a
- * caller-supplied value, so a dispatch can only ever read its own corpus.
+ * caller-supplied value. Unscoped reads also cover the same currently granted
+ * owner partitions as the status view, with the same fail-closed checks.
  */
-export function searchCorpus(did: string, params: CorpusSearchParams): Promise<CorpusSearchResult> {
-  return corpusRequest('POST', did, 'corpus:read', '/search', params) as Promise<CorpusSearchResult>;
+export async function searchCorpus(did: string, params: CorpusSearchParams): Promise<CorpusSearchResult> {
+  if (params.source) return corpusRequest('POST', did, 'corpus:read', '/search', params) as Promise<CorpusSearchResult>;
+  const responses = await readGrantedCorpora(did, ownerDid =>
+    corpusRequest('POST', did, 'corpus:read', '/search', params, ownerDid) as Promise<CorpusSearchResult>);
+  if (responses.length === 1) return responses[0].value;
+  return mergeSearchResults(responses.map(response => response.value), params);
+}
+
+function mergeSearchResults(responses: CorpusSearchResult[], params: CorpusSearchParams): CorpusSearchResult {
+  const hits = responses.flatMap(response => response.results).sort((left, right) => right.score - left.score);
+  const unique = new Map<string, CorpusSearchHit>();
+  for (const hit of hits) {
+    const key = `${hit.source}\0${hit.id}`;
+    if (!unique.has(key)) unique.set(key, hit);
+  }
+  const limit = Math.max(1, Math.min(100, Math.floor(params.limit ?? 10) || 1));
+  let remaining = Math.max(0, Math.min(100_000, Math.floor(params.budget ?? 4000) || 0));
+  const budget = remaining;
+  const results = [...unique.values()].slice(0, limit).map(hit => ({
+    ...hit,
+    evidence: hit.evidence.map(quote => {
+      const excerpt = quote.slice(0, remaining * 4);
+      remaining -= Math.ceil(excerpt.length / 4);
+      return excerpt;
+    }).filter(Boolean),
+  }));
+  return {
+    ...responses[0], results, totalHits: unique.size, tokensUsed: budget - remaining,
+    freshness: responses.flatMap(response => response.freshness ?? []),
+    degraded: [...new Set(responses.flatMap(response => response.degraded ?? []))],
+  };
 }
 
 /** `POST /corpus/:did/ingest` — load a new source into the corpus. */

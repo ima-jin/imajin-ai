@@ -3,6 +3,7 @@ import { PGlite } from '@electric-sql/pglite';
 import { drizzle, type PgliteDatabase } from 'drizzle-orm/pglite';
 import { NextRequest } from 'next/server';
 import { generateKeypair, crypto as authCrypto } from '@imajin/auth';
+import { readFileSync } from 'node:fs';
 
 const h = vi.hoisted(() => ({
   database: undefined as PgliteDatabase | undefined,
@@ -17,8 +18,9 @@ vi.mock('@/src/db', async () => {
   const auth = await import('@/src/db/schemas/auth');
   const registry = await import('@/src/db/schemas/registry');
   const oauth = await import('@/src/db/schemas/oauth');
+  const codes = await import('@/src/db/schemas/app-authorization-codes');
   return {
-    ...auth, ...registry, ...oauth,
+    ...auth, ...registry, ...oauth, ...codes,
     db: {
       select: (...args: Parameters<PgliteDatabase['select']>) => {
         const query = h.database!.select(...args);
@@ -49,6 +51,7 @@ import { POST as keypairToken } from '../token/route';
 import { POST as validate } from '../validate/route';
 import { POST as oauthToken } from '@/app/oauth/token/route';
 import { hashToken, MCP_SCOPES, pkceChallengeFromVerifier } from '@/src/lib/mcp/oauth-config';
+import { issueAppAuthorizationCode } from '@/src/lib/auth/app-authorization-code';
 
 vi.setConfig({ testTimeout: 30_000, hookTimeout: 30_000 });
 const REDIRECT = 'https://app.example.test/callback';
@@ -58,8 +61,10 @@ let client: PGlite;
 beforeAll(async () => {
   client = new PGlite();
   h.database = drizzle(client);
+  await client.exec('CREATE SCHEMA IF NOT EXISTS auth');
+  await client.exec(readFileSync('migrations/0222_app_authorization_codes.sql', 'utf8'));
   await client.exec(`
-    CREATE SCHEMA auth;
+    CREATE SCHEMA IF NOT EXISTS auth;
     CREATE SCHEMA registry;
     CREATE TABLE auth.identities (id text PRIMARY KEY, scope text);
     CREATE TABLE auth.identity_members (identity_did text, member_did text, removed_at timestamptz);
@@ -67,7 +72,8 @@ beforeAll(async () => {
       id text, app_did text, public_key text, status text, requested_scopes jsonb,
       visibility text, owner_did text, sign_in_audience text, name text,
       tier text, slug text, provides_scopes jsonb, depends_on jsonb,
-      act_as_allowed boolean, token_audiences text[]
+      act_as_allowed boolean, token_audiences text[],
+      callback_url text DEFAULT 'https://app.example.test/callback'
     );
     CREATE TABLE auth.attestations (
       id text, issuer_did text, subject_did text, type text, context_id text,
@@ -167,6 +173,97 @@ function principalBody(overrides: Record<string, unknown> = {}) {
 function mintPrincipal(overrides: Record<string, unknown> = {}) {
   return keypairToken(jsonRequest('/auth/api/apps/token', principalBody(overrides)));
 }
+
+describe('single-use app sign-in code exchange with PostgreSQL', () => {
+  const state = 's'.repeat(64);
+  async function issue(extra = {}) {
+    return issueAppAuthorizationCode({
+      appDid: 'app-did', subjectDid: 'person', attestationId: 'grant',
+      callbackUrl: REDIRECT, state, ...extra,
+    });
+  }
+  function exchange(code: string, extra = {}) {
+    return keypairToken(jsonRequest('/auth/api/apps/token', {
+      appDid: 'app-did', code, state, nonce: 'n'.repeat(16),
+      timestamp: new Date().toISOString(), signature: 'test-signature', ...extra,
+    }));
+  }
+
+  it('returns the kernel subject once, retains the consumed record and refuses reuse', async () => {
+    const code = await issue();
+    const response = await exchange(code);
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ subjectDid: 'person', attestationId: 'grant' });
+    h.mint.mockClear();
+    const reused = await exchange(code);
+    expect(reused.status).toBe(400);
+    expect(await reused.json()).toEqual({ error: 'code_used' });
+    expect(h.mint).not.toHaveBeenCalled();
+    const retained = await client.query('SELECT consumed_at FROM auth.app_authorization_codes WHERE app_did = $1', ['app-did']);
+    expect(retained.rows.some(row => row.consumed_at !== null)).toBe(true);
+  });
+
+  it('admits only one concurrent consumer', async () => {
+    const code = await issue();
+    const responses = await Promise.all([exchange(code), exchange(code)]);
+    expect(responses.map(response => response.status).toSorted()).toEqual([200, 400]);
+    expect(h.mint).toHaveBeenCalledOnce();
+  });
+
+  it('reapplies the migration idempotently without changing retained code history', async () => {
+    const code = await issue();
+    expect((await exchange(code)).status).toBe(200);
+    const before = await client.query('SELECT * FROM auth.app_authorization_codes ORDER BY code_hash');
+    await client.exec(readFileSync('migrations/0222_app_authorization_codes.sql', 'utf8'));
+    expect(await client.query('SELECT * FROM auth.app_authorization_codes ORDER BY code_hash')).toEqual(before);
+  });
+
+  it.each(['unissued', 'expired', 'foreign-app', 'state-mismatch', 'callback-mismatch'])(
+    'refuses %s with no token', async failure => {
+      const code = failure === 'unissued' ? 'f'.repeat(64) : await issue(
+        failure === 'foreign-app' ? { appDid: 'another-app' } : {},
+      );
+      if (failure === 'expired') await client.exec('UPDATE auth.app_authorization_codes SET expires_at = NOW()');
+      if (failure === 'callback-mismatch') await client.exec("UPDATE registry.apps SET callback_url = 'https://changed.test'");
+      const response = await exchange(code, failure === 'state-mismatch' ? { state: 'x'.repeat(64) } : {});
+      expect(response.status).toBe(400);
+      expect(await response.json()).toEqual({ error: 'code_invalid' });
+      expect(h.mint).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(['revoked', 'expired', 'foreign-subject', 'foreign-app', 'wrong-type'])(
+    'refuses a %s linked authorization', async failure => {
+      const code = await issue();
+      const updates = {
+        revoked: 'revoked_at = NOW()', expired: 'expires_at = NOW()',
+        'foreign-subject': "issuer_did = 'other'", 'foreign-app': "subject_did = 'other-app'",
+        'wrong-type': "type = 'other.type'",
+      };
+      await client.exec(`UPDATE auth.attestations SET ${updates[failure as keyof typeof updates]}`);
+      expect((await exchange(code)).status).toBeGreaterThanOrEqual(400);
+      expect(h.mint).not.toHaveBeenCalled();
+    },
+  );
+
+  it('checks live private-app membership at exchange time', async () => {
+    const code = await issue();
+    await client.exec('UPDATE auth.identity_members SET removed_at = NOW()');
+    expect((await exchange(code)).status).toBe(403);
+    expect(h.mint).not.toHaveBeenCalled();
+  });
+
+  it('verifies the real registered-key signature over the code', async () => {
+    const { verifySignature } = await vi.importActual<typeof import('@/src/lib/auth/crypto')>('@/src/lib/auth/crypto');
+    h.verify.mockImplementation(verifySignature);
+    const keys = generateKeypair();
+    await client.query('UPDATE registry.apps SET public_key = $1', [keys.publicKey]);
+    const code = await issue();
+    const timestamp = new Date().toISOString();
+    const signature = authCrypto.signSync(`app-did:${code}:${'n'.repeat(16)}:${timestamp}`, keys.privateKey);
+    expect((await exchange(code, { timestamp, signature })).status).toBe(200);
+  });
+});
 
 describe('live principal mint (#3040)', () => {
   it('mints the same claims and response as by ID, without narrowing or with scope/aud', async () => {

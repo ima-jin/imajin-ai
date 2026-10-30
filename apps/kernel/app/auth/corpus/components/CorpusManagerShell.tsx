@@ -10,14 +10,18 @@
  */
 
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { computeFreshness } from '../lib/freshness';
 import { iconForSource, composeSource, SOURCE_TYPE_OPTIONS } from '../lib/source-type';
 
 interface CorpusSourceFreshness {
   source: string;
+  ownerDid?: string;
   lastSync: string;
   threadCount: number;
   warning?: string;
+  credentialRef?: string;
+  error?: string;
 }
 
 interface CorpusStatus {
@@ -34,6 +38,7 @@ const FRESHNESS_DOT: Record<'green' | 'yellow' | 'red', string> = {
 };
 
 function FreshnessBadge({ lastSync }: Readonly<{ lastSync: string }>) {
+  if (!lastSync) return <span className="text-xs text-gray-500">Not synced yet</span>;
   const freshness = computeFreshness(lastSync);
   return (
     <div className="flex items-center gap-1.5">
@@ -62,20 +67,24 @@ function SourceRow({
   const [confirmingRemove, setConfirmingRemove] = useState(false);
 
   return (
-    <div className="flex items-center justify-between p-3 bg-gray-900 rounded-lg border border-gray-800">
+    <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 p-3 bg-gray-900 rounded-lg border border-gray-800">
       <div className="flex items-center gap-3 min-w-0">
         <span className="text-xl flex-shrink-0">{iconForSource(source.source)}</span>
         <div className="min-w-0">
           <p className="text-sm text-white font-medium truncate" title={source.source}>
             {source.source}
           </p>
-          <div className="flex items-center gap-3 mt-0.5">
+          <p className="text-xs text-gray-400 break-all">Owner: {source.ownerDid ?? 'unresolved'}</p>
+          <div className="flex flex-wrap items-center gap-3 mt-0.5">
             <span className="text-xs text-gray-500">{source.threadCount} threads</span>
+            {source.error && <span className="text-xs text-gray-400">Last success:</span>}
             <FreshnessBadge lastSync={source.lastSync} />
           </div>
+          {source.credentialRef && <p className="text-xs text-gray-400 mt-1">Connector: {source.credentialRef}</p>}
+          {source.error && <p role="alert" className="text-sm text-red-400 mt-1 break-words">{source.error}</p>}
         </div>
       </div>
-      <div className="flex items-center gap-2 flex-shrink-0 ml-3">
+      <div className="flex items-center gap-2 flex-shrink-0 sm:ml-3">
         <button
           type="button"
           onClick={() => onSync(source.source)}
@@ -125,12 +134,27 @@ function LoadSourceForm({
   onCancel,
   submitting,
 }: Readonly<{
-  onSubmit: (sourceType: string, identifier: string) => void;
+  onSubmit: (sourceType: string, identifier: string, credentialRef?: string) => void;
   onCancel: () => void;
   submitting: boolean;
 }>) {
   const [sourceType, setSourceType] = useState<string>(SOURCE_TYPE_OPTIONS[0].value);
   const [identifier, setIdentifier] = useState('');
+  const [connectors, setConnectors] = useState<{ ref: string; label: string }[]>([]);
+  const [credentialRef, setCredentialRef] = useState('');
+  const [connectorError, setConnectorError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    void fetch('/auth/corpus/api/connectors', { credentials: 'include' })
+      .then(async response => {
+        if (!response.ok) throw new Error('Connector status unavailable');
+        const body = await response.json() as { connectors: { ref: string; label: string }[] };
+        if (active) setConnectors(body.connectors);
+      })
+      .catch(() => { if (active) setConnectorError('Could not load GitHub connectors. Please retry.'); });
+    return () => { active = false; };
+  }, []);
 
   const selected = SOURCE_TYPE_OPTIONS.find((opt) => opt.value === sourceType) ?? SOURCE_TYPE_OPTIONS[0];
 
@@ -139,12 +163,15 @@ function LoadSourceForm({
       onSubmit={(e) => {
         e.preventDefault();
         if (!identifier.trim()) return;
-        onSubmit(sourceType, identifier.trim());
+        if (sourceType === 'github' && !credentialRef) return;
+        onSubmit(sourceType, identifier.trim(), sourceType === 'github' ? credentialRef : undefined);
       }}
       className="bg-gray-900 border border-gray-800 rounded-xl p-4 space-y-3"
     >
-      <div className="flex gap-2">
+      <div className="flex flex-col sm:flex-row gap-2">
         <select
+          aria-label="Source type"
+          style={{ colorScheme: 'dark' }}
           value={sourceType}
           onChange={(e) => setSourceType(e.target.value)}
           className="px-3 py-2 bg-gray-950 border border-gray-800 rounded-lg text-sm text-white focus:outline-none focus:ring-1 focus:ring-amber-500"
@@ -163,10 +190,30 @@ function LoadSourceForm({
           className="flex-1 px-3 py-2 bg-gray-950 border border-gray-800 rounded-lg text-sm text-white placeholder:text-gray-600 focus:outline-none focus:ring-1 focus:ring-amber-500"
         />
       </div>
+      {sourceType === 'github' && (
+        <div className="space-y-2">
+          <label htmlFor="corpus-github-connector" className="block text-sm text-gray-300">GitHub connector</label>
+          <select
+            id="corpus-github-connector"
+            style={{ colorScheme: 'dark' }}
+            value={credentialRef}
+            onChange={event => setCredentialRef(event.target.value)}
+            className="w-full px-3 py-2 bg-gray-950 border border-gray-800 rounded-lg text-sm text-white"
+            required
+          >
+            <option value="">Choose a connector</option>
+            {connectors.map(connector => <option key={connector.ref} value={connector.ref}>{connector.label}</option>)}
+          </select>
+          {connectorError && <p role="alert" className="text-sm text-red-400">{connectorError}</p>}
+          <p className="text-xs text-gray-400">
+            No token is needed here. <Link className="text-amber-400 underline" href="/auth/connectors">Manage profile connectors</Link>.
+          </p>
+        </div>
+      )}
       <div className="flex items-center gap-2">
         <button
           type="submit"
-          disabled={submitting || !identifier.trim()}
+          disabled={submitting || !identifier.trim() || (sourceType === 'github' && !credentialRef)}
           className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-black text-sm font-semibold rounded-lg transition disabled:opacity-40"
         >
           {submitting ? 'Loading…' : 'Load source'}
@@ -192,6 +239,7 @@ export default function CorpusManagerShell({ did }: Readonly<{ did: string }>) {
   const [syncingSource, setSyncingSource] = useState<string | null>(null);
   const [removingSource, setRemovingSource] = useState<string | null>(null);
   const [message, setMessage] = useState<StatusMessage | null>(null);
+  const [sourceErrors, setSourceErrors] = useState<Record<string, string | undefined>>({});
 
   useEffect(() => {
     void fetchStatus();
@@ -220,7 +268,7 @@ export default function CorpusManagerShell({ did }: Readonly<{ did: string }>) {
     }
   }
 
-  async function handleLoadSource(sourceType: string, identifier: string) {
+  async function handleLoadSource(sourceType: string, identifier: string, credentialRef?: string) {
     setSubmitting(true);
     try {
       const source = composeSource(sourceType, identifier);
@@ -228,10 +276,11 @@ export default function CorpusManagerShell({ did }: Readonly<{ did: string }>) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ sourceType, source }),
+        body: JSON.stringify({ sourceType, source, ...(credentialRef ? { credentialRef } : {}) }),
       });
       if (res.ok) {
         showMessage('success', `Started loading ${source}.`);
+        setSourceErrors(errors => ({ ...errors, [source]: undefined }));
         setShowForm(false);
         await fetchStatus();
       } else {
@@ -256,10 +305,12 @@ export default function CorpusManagerShell({ did }: Readonly<{ did: string }>) {
       });
       if (res.ok) {
         showMessage('success', `Sync started for ${source}.`);
+        setSourceErrors(errors => ({ ...errors, [source]: undefined }));
         await fetchStatus();
       } else {
         const body = await res.json().catch(() => ({}));
-        showMessage('error', body.error || 'Failed to sync source.');
+        setSourceErrors(errors => ({ ...errors, [source]: body.error || 'Failed to sync source.' }));
+        await fetchStatus();
       }
     } catch {
       showMessage('error', 'Network error. Please try again.');
@@ -312,7 +363,7 @@ export default function CorpusManagerShell({ did }: Readonly<{ did: string }>) {
         {sources.map((source) => (
           <SourceRow
             key={source.source}
-            source={source}
+            source={{ ...source, error: sourceErrors[source.source] ?? source.error }}
             onSync={handleSync}
             onRemove={handleRemove}
             syncing={syncingSource === source.source}
@@ -325,7 +376,7 @@ export default function CorpusManagerShell({ did }: Readonly<{ did: string }>) {
 
   return (
     <div className="max-w-3xl mx-auto space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-white">Corpus</h1>
           <p className="text-gray-400 text-sm mt-1">

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { updateAssetContent } from '../update-asset';
+import { updateAssetContent, withAssetContentLock } from '../update-asset';
 
 // ─── Mocks ─────────────────────────────────────────────────────────────────
 //
@@ -14,14 +14,27 @@ const mockSelectWhere = vi.fn(() => ({ limit: mockLimit }));
 const mockFrom = vi.fn(() => ({ where: mockSelectWhere }));
 const mockUpdateWhere = vi.fn().mockResolvedValue(undefined);
 const mockSet = vi.fn(() => ({ where: mockUpdateWhere }));
+const mockAttestationValues = vi.fn();
+const mockExecute = vi.fn().mockResolvedValue(undefined);
 
 vi.mock('@/src/db', () => ({
   db: {
+    transaction: vi.fn(async fn => fn({
+      execute: mockExecute,
+      update: () => ({ set: mockSet }),
+      insert: () => ({ values: mockAttestationValues }),
+    })),
     select: vi.fn(() => ({ from: mockFrom })),
     update: vi.fn(() => ({ set: mockSet })),
   },
   assets: {},
+  attestations: {},
 }));
+const legalMocks = vi.hoisted(() => ({ prepare: vi.fn() }));
+vi.mock('@/src/lib/auth/emit-mechanical-attestation', () => ({ prepareMechanicalAttestation: legalMocks.prepare }));
+import { composeLegalEntity, composeLegalEntityRevocation } from '../../profile/legal-entity-document';
+import { legalEntityFixture, ownerDid } from '../../profile/__tests__/legal-entity-fixture';
+import { canWriteAssetContent } from '../write-access';
 
 vi.mock('drizzle-orm', () => ({
   eq: vi.fn(),
@@ -37,7 +50,8 @@ vi.mock('@imajin/cid', () => ({
 }));
 
 // v1.1 guard returns false so the .fair re-sign path is skipped in tests.
-vi.mock('@imajin/fair', () => ({
+vi.mock('@imajin/fair', async importOriginal => ({
+  ...await importOriginal<typeof import('@imajin/fair')>(),
   isFairManifestV11: vi.fn(() => false),
 }));
 
@@ -75,6 +89,7 @@ import { publish } from '@imajin/bus';
 import { writeFile } from 'node:fs/promises';
 import { isFairManifestV11 } from '@imajin/fair';
 import { contentSigner } from '@/src/lib/media/content-signer';
+import { sql } from 'drizzle-orm';
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
 
@@ -102,6 +117,118 @@ function setupAsset(overrides: Record<string, unknown> = {}) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  legalMocks.prepare.mockResolvedValue({ id: 'att_legal', signature: 'fixture-signature' });
+});
+
+describe('updateAssetContent — per-DID locking', () => {
+  it.each([{}, { kind: 'legal-entity' }])('waits for the settings lock before updating metadata %j', async metadata => {
+    setupAsset({ ownerDid, metadata });
+    vi.mocked(contentSigner.sign).mockImplementation(async manifest => manifest);
+    let releaseLock!: () => void;
+    let reachedLock!: () => void;
+    const blocked = new Promise<void>(resolve => { releaseLock = resolve; });
+    const waiting = new Promise<void>(resolve => { reachedLock = resolve; });
+    mockExecute.mockResolvedValueOnce(undefined).mockImplementationOnce(async () => {
+      reachedLock();
+      await blocked;
+    });
+    const order: string[] = [];
+    const settings = withAssetContentLock(ownerDid, async () => {
+      order.push('settings');
+      await blocked;
+      order.push('settings finished');
+    });
+    const update = updateAssetContent({
+      assetId: 'asset_test', requesterDid: ownerDid,
+      content: composeLegalEntity(ownerDid, legalEntityFixture()),
+      ...(metadata.kind ? { controlDocument: 'legal-entity' as const } : {}),
+    }).then(result => { order.push('media finished'); return result; });
+    await waiting;
+    expect(writeFile).not.toHaveBeenCalled();
+    expect(mockSet).not.toHaveBeenCalled();
+    expect(vi.mocked(sql).mock.calls.filter(call => call[1] === `legal-entity:${ownerDid}`)).toHaveLength(2);
+    releaseLock();
+    await settings;
+    expect((await update).ok).toBe(true);
+    expect(order).toEqual(['settings', 'settings finished', 'media finished']);
+  });
+  it('lets the settings writer update under its existing lock without reacquiring it', async () => {
+    setupAsset({ ownerDid });
+    const result = await withAssetContentLock(ownerDid, update => update({
+      assetId: 'asset_test', requesterDid: ownerDid, content: '# settings',
+    }));
+    expect(result.ok).toBe(true);
+    expect(mockExecute).toHaveBeenCalledOnce();
+  });
+  it.each(['deleted', 'owner-changed'])('rechecks %s after acquiring the lock', async change => {
+    const asset = setupAsset({ ownerDid });
+    mockLimit.mockResolvedValueOnce([asset]).mockResolvedValueOnce([{
+      ...asset, ...(change === 'deleted' ? { status: 'deleted' } : { ownerDid: 'different-owner' }),
+    }]);
+    expect(await updateAssetContent({ assetId: asset.id, requesterDid: ownerDid, content: '# stale' }))
+      .toMatchObject({ ok: false, code: change === 'deleted' ? 'not_found' : 'forbidden' });
+    expect(writeFile).not.toHaveBeenCalled();
+  });
+  it('does not write if the advisory lock cannot be acquired', async () => {
+    setupAsset({ ownerDid });
+    mockExecute.mockRejectedValueOnce(new Error('lock unavailable'));
+    await expect(updateAssetContent({ assetId: 'asset_test', requesterDid: ownerDid, content: '# denied' }))
+      .rejects.toThrow('lock unavailable');
+    expect(writeFile).not.toHaveBeenCalled();
+  });
+});
+describe('updateAssetContent — legal control document', () => {
+  function input(content = composeLegalEntity(ownerDid, legalEntityFixture())) {
+    return { assetId: 'asset_test', requesterDid: ownerDid, composedBy: 'actual-human', content, controlDocument: 'legal-entity' as const };
+  }
+  function asset() {
+    return setupAsset({ ownerDid, immutable: true, metadata: { kind: 'legal-entity' }, hash: 'old-hash' });
+  }
+  it('blocks generic media writes even for the owner', async () => {
+    asset();
+    expect(await updateAssetContent({ ...input(), controlDocument: undefined })).toMatchObject({ ok: false, code: 'forbidden' });
+    expect(writeFile).not.toHaveBeenCalled();
+  });
+  it('preserves the canonical owner boundary even on the internal settings rail', async () => {
+    asset();
+    vi.mocked(canWriteAssetContent).mockReturnValueOnce({ allowed: false, code: 'forbidden', reason: 'Not owner' });
+    expect(await updateAssetContent({ ...input(), requesterDid: 'unrelated' })).toMatchObject({ ok: false, code: 'forbidden' });
+    expect(writeFile).not.toHaveBeenCalled();
+  });
+  it('rejects malformed or oversized source documents without modifying storage', async () => {
+    asset();
+    for (const content of ['invalid', 'a'.repeat(16385)]) {
+      expect(await updateAssetContent(input(content))).toMatchObject({ ok: false, code: 'invalid_document' });
+    }
+    expect(writeFile).not.toHaveBeenCalled();
+  });
+  it('refuses unsigned saves before writing any bytes', async () => {
+    asset();
+    vi.mocked(contentSigner.sign).mockRejectedValueOnce(new Error('unavailable'));
+    expect(await updateAssetContent(input())).toMatchObject({ ok: false, code: 'signing_failed' });
+    expect(writeFile).not.toHaveBeenCalled();
+  });
+  it('requires a durable change attestation before writing any bytes', async () => {
+    asset();
+    vi.mocked(contentSigner.sign).mockImplementationOnce(async manifest => manifest);
+    legalMocks.prepare.mockRejectedValueOnce(new Error('attestation unavailable'));
+    expect(await updateAssetContent(input())).toMatchObject({ ok: false, code: 'signing_failed' });
+    expect(writeFile).not.toHaveBeenCalled();
+  });
+  it('writes a signed tombstone, retained deleted row, and attestation before document.changed', async () => {
+    asset();
+    vi.mocked(contentSigner.sign).mockImplementationOnce(async manifest => manifest);
+    const result = await updateAssetContent(input(composeLegalEntityRevocation(ownerDid)));
+    expect(result.ok).toBe(true);
+    expect(mockSet).toHaveBeenCalledWith(expect.objectContaining({ status: 'deleted' }));
+    expect(legalMocks.prepare).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'document.amended', payload: expect.objectContaining({ operation: 'revoke', previousHash: 'old-hash', composedBy: 'actual-human' }),
+    }));
+    expect(mockAttestationValues).toHaveBeenCalledWith(expect.objectContaining({ id: 'att_legal' }));
+    expect(publish).toHaveBeenCalledWith('document.changed', expect.objectContaining({
+      issuer: ownerDid, subject: 'asset_test', payload: expect.objectContaining({ prevCid: 'bafy-old-cid' }),
+    }));
+  });
 });
 
 // ─── Tests ─────────────────────────────────────────────────────────────────

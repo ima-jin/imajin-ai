@@ -133,6 +133,13 @@ resolver uses the existing grant fetch primitive and does not fall back to a
 node-level environment token. Plaintext belongs only in the consuming
 server's memory, never an API response, log, or command line.
 
+`GET /cloudflare/api/grants` (#3094) lets the authenticated **grantee** discover
+its live exact-zone grants: canonical domain, delegator and capabilities only.
+App credentials select the app DID; acting-as/acting-for headers cannot widen
+that list. Expired/revoked grants are omitted. It makes no Cloudflare request
+and never fetches/unseals a credential. Use the resolver above only after
+selecting a valid zone/purpose grant; enumeration is not extra authority.
+
 ### DNS adapter boundary (#2920)
 
 `apps/kernel/src/lib/dns/provider.ts` provides an internal `resolveDnsProvider`

@@ -122,6 +122,8 @@ describe('POST /usage/api/billed — body validation', () => {
     expect(res.status).toBe(400);
     const body = await res.json();
     expect(body.error).toMatch(/USD/);
+    expect(body.error).toBe("currency must be 'USD' — other currencies are not supported");
+    expect(body.error).not.toMatch(/#\d+/);
     expect(mocks.insertManualBilledLine).not.toHaveBeenCalled();
   });
 

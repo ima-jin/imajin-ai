@@ -11,10 +11,14 @@
  * `anthropic-billing-api-key:${ownerDid}`. There is no raw-key release path.
  */
 import { createConnectorTokenRoutes } from '@/src/lib/kernel/connector-token-route';
-import { sealBillingKey, billingKeySealed } from '@/src/lib/anthropic/billing-connector';
+import { sealBillingKey, billingKeySealed, billingKeyPending, revokeBillingKey } from '@/src/lib/anthropic/billing-connector';
 
-export const { GET, POST, OPTIONS } = createConnectorTokenRoutes({
+export const dynamic = 'force-dynamic';
+
+export const { GET, POST, DELETE, OPTIONS } = createConnectorTokenRoutes({
   name: 'Anthropic Billing',
   sealApiKey: sealBillingKey,
   keySealed: billingKeySealed,
+  keyPending: billingKeyPending,
+  revokeApiKey: revokeBillingKey,
 });

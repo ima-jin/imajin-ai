@@ -29,6 +29,7 @@
  */
 import type { McpTool } from '../types';
 import { str, num, json } from './utils';
+import { assertWarpBriefSize, WARP_BRIEF_MAX_BYTES } from '@/src/lib/warp/brief-limit';
 import { sealWarpAgentKey, WARP_DISPATCH_SCOPE } from '@/src/lib/warp/connector';
 import { CORPUS_CONTEXT_MAX_LIMIT, type CorpusContextInput } from '@/src/lib/warp/corpus-context';
 import {
@@ -143,7 +144,7 @@ const dispatchTool: McpTool = {
     properties: {
       prompt: {
         type: 'string',
-        description: 'The task for the cloud agent to carry out',
+        description: `The task for the cloud agent to carry out; final prompt including corpus context must be at most ${WARP_BRIEF_MAX_BYTES} UTF-8 bytes`,
       },
       title: {
         type: 'string',
@@ -162,13 +163,13 @@ const dispatchTool: McpTool = {
       conversation_id: {
         type: 'string',
         description:
-          'Optional conversation id to continue (#1939) — Warp resumes from where a prior ' +
+          'Optional conversation id to continue — Warp resumes from where a prior ' +
           'run under this conversation left off',
       },
       parent_run_id: {
         type: 'string',
         description:
-          'Optional parent run id for an orchestration hierarchy (#1939). The parent run ' +
+          'Optional parent run id for an orchestration hierarchy. The parent run ' +
           'must exist and be visible to your own sealed key.',
       },
       model_id: {
@@ -195,7 +196,7 @@ const dispatchTool: McpTool = {
         type: 'object',
         description:
           'Retrieve evidence from your own corpus and prepend it to the prompt before dispatch ' +
-          '(#2021). Always searches your own corpus — there is no way to name a different DID here. ' +
+          'Always searches your own corpus — there is no way to name a different DID here. ' +
           'A search failure (corpus unreachable, unknown ref, access-claim rejection) fails the ' +
           'whole dispatch rather than silently proceeding without the requested context.',
         properties: {
@@ -203,7 +204,7 @@ const dispatchTool: McpTool = {
           query: { type: 'string', description: 'Required search query text.' },
           ref: {
             type: 'string',
-            description: 'Optional: pin to a previously-ingested git sha for source (#1921).',
+            description: 'Optional: pin to a previously-ingested git sha for source.',
           },
           limit: { type: 'number', description: 'Optional, 1–20. Defaults to 8.' },
           max_chars: { type: 'number', description: 'Optional cap on the retrieved block. Defaults to 6000.' },
@@ -215,8 +216,9 @@ const dispatchTool: McpTool = {
     additionalProperties: false,
   },
   async handler(args, ctx) {
-    const prompt = str(args, 'prompt');
-    if (prompt === undefined) throw new Error('prompt is required');
+    const prompt = args.prompt;
+    if (typeof prompt !== 'string' || prompt.trim().length === 0) throw new Error('prompt is required');
+    assertWarpBriefSize(prompt);
 
     const title = str(args, 'title');
     const skillSpec = str(args, 'skill_spec');
@@ -372,7 +374,7 @@ const listRunsTool: McpTool = {
       ancestor_run_id: {
         type: 'string',
         description:
-          'Optional run id (#1939) — lists every run spawned, directly or transitively, ' +
+          'Optional run id — lists every run spawned, directly or transitively, ' +
           "from this ancestor's parentRunId lineage",
       },
     },
@@ -463,7 +465,7 @@ const sendFollowupTool: McpTool = {
     'correction instead of cancel-and-redispatch. Returns { runId, accepted: true }: ' +
     'acceptance is not application, so observe the effect with warp_get_run. ' +
     'Delivered with your own sealed key, so you can only talk to your own runs. ' +
-    'A run that has already ended is refused unless resume is set (#1939) — pass ' +
+    'A run that has already ended is refused unless resume is set — pass ' +
     'resume: true to continue it via Warp\'s cloud-to-cloud handoff. ' +
     'Requires an active warp:dispatch grant and a key sealed via warp_seal_key.',
   inputSchema: {
@@ -475,7 +477,7 @@ const sendFollowupTool: McpTool = {
       },
       message: {
         type: 'string',
-        description: 'The message to deliver to the running agent',
+        description: `The message to deliver to the running agent, at most ${WARP_BRIEF_MAX_BYTES} UTF-8 bytes`,
       },
       mode: {
         type: 'string',
@@ -488,7 +490,7 @@ const sendFollowupTool: McpTool = {
       resume: {
         type: 'boolean',
         description:
-          'Continue a run that has already ended, via cloud-to-cloud handoff (#1939). ' +
+          'Continue a run that has already ended, via cloud-to-cloud handoff. ' +
           'Defaults to false — a terminal run is refused unless this is explicitly true.',
       },
     },
@@ -498,8 +500,9 @@ const sendFollowupTool: McpTool = {
   async handler(args, ctx) {
     const runId = requireRunIdArg(args);
 
-    const message = str(args, 'message');
-    if (message === undefined) throw new Error('message is required');
+    const message = args.message;
+    if (typeof message !== 'string' || message.trim().length === 0) throw new Error('message is required');
+    assertWarpBriefSize(message);
 
     // Cast rather than validated here: the closed set lives in the client, so the
     // HTTP and MCP callers reject an unknown mode with the same error.

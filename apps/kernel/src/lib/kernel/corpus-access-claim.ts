@@ -49,6 +49,8 @@ const CORPUS_ACCESS_CLAIM_ALG = 'Ed25519';
 export interface CorpusAccessClaim {
   /** DID this claim authorizes access to — must equal the `:did` path param on corpus. */
   did: string;
+  /** Authenticated principal, distinct from the source-owned partition. */
+  onBehalfOf?: string;
   scope: CorpusAccessScope;
   aud: typeof CORPUS_ACCESS_CLAIM_AUDIENCE;
   alg: typeof CORPUS_ACCESS_CLAIM_ALG;
@@ -66,7 +68,7 @@ export interface CorpusAccessClaim {
  * Throws if `AUTH_PRIVATE_KEY` isn't configured — callers should let this
  * fail the request rather than silently falling back to an unsigned call.
  */
-export async function mintCorpusAccessClaim(did: string, scope: CorpusAccessScope): Promise<string> {
+export async function mintCorpusAccessClaim(did: string, scope: CorpusAccessScope, onBehalfOf?: string): Promise<string> {
   const privateKey = process.env.AUTH_PRIVATE_KEY;
   if (!privateKey) {
     throw new Error('AUTH_PRIVATE_KEY not configured — cannot mint CorpusAccessClaim');
@@ -82,6 +84,7 @@ export async function mintCorpusAccessClaim(did: string, scope: CorpusAccessScop
   const issuedAt = Date.now();
   const claim: CorpusAccessClaim = {
     did,
+    ...(onBehalfOf ? { onBehalfOf } : {}),
     scope,
     aud: CORPUS_ACCESS_CLAIM_AUDIENCE,
     alg: CORPUS_ACCESS_CLAIM_ALG,
@@ -104,6 +107,6 @@ export async function mintCorpusAccessClaim(did: string, scope: CorpusAccessScop
 export const CORPUS_CLAIM_AUTH_SCHEME = 'Imajin-Claim';
 
 /** Build the full `Authorization` header value for a minted claim. */
-export async function corpusAccessClaimHeader(did: string, scope: CorpusAccessScope): Promise<string> {
-  return `${CORPUS_CLAIM_AUTH_SCHEME} ${await mintCorpusAccessClaim(did, scope)}`;
+export async function corpusAccessClaimHeader(did: string, scope: CorpusAccessScope, onBehalfOf?: string): Promise<string> {
+  return `${CORPUS_CLAIM_AUTH_SCHEME} ${await mintCorpusAccessClaim(did, scope, onBehalfOf)}`;
 }

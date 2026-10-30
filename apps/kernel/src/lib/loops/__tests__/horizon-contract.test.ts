@@ -1,12 +1,35 @@
 import { readFileSync } from 'node:fs';
 import { parse } from 'yaml';
 import { describe, expect, it } from 'vitest';
-import { STEP_EVENT_TYPES } from '../step-types';
+import { STEP_EVENT_TYPES, validateStepPayload } from '../step-types';
 
 const spec = parse(readFileSync(new URL('../../../../api-spec/jin.yaml', import.meta.url), 'utf8'));
 const detail = spec.paths['/api/loops/{loopId}'].get;
 
 describe('published horizon API contract', () => {
+  it('documents event-time holder authority separately from the current claim', () => {
+    const description = spec.components.schemas.StepEnvelope.allOf[1].description;
+    expect(description).toContain("the step lease holder at the fact's occurredAt");
+    expect(description).toContain('Authorized historical facts survive lease release/expiry');
+    const doc = readFileSync(new URL('../../../../../../docs/loops-rail-contract.md', import.meta.url), 'utf8');
+    expect(doc).toContain("lease at the fact's `occurredAt`");
+    expect(doc).not.toContain('or the current live `step:<stepId>` lease holder');
+  });
+  it('requires the declaring publisher DID as a read-only horizon field', () => {
+    const step = spec.components.schemas.HorizonStep.allOf[0];
+    expect(step.required).toContain('publisher');
+    expect(step.properties.publisher).toMatchObject({
+      type: 'string', readOnly: true, pattern: String.raw`^did:[^\s:]+:\S+$`,
+    });
+  });
+  it('validates the any-harness documentation example using the real step validator', () => {
+    const doc = readFileSync(new URL('../../../../../../docs/loops-rail-contract.md', import.meta.url), 'utf8');
+    const example = doc.split('<!-- any-harness-step-example -->')[1].match(/```json\n([\s\S]*?)\n```/)?.[1];
+    expect(example).toBeDefined();
+    const envelope = JSON.parse(example!);
+    expect(envelope.type).toBe('step.queued');
+    expect(validateStepPayload(envelope.type, envelope.payload, envelope.publisherDid)).toBe(true);
+  });
   it('requires loop/events/horizon on loop detail, not on the unchanged Record response', () => {
     const schema = detail.responses['200'].content['application/json'].schema;
     expect(schema.required).toEqual(['loop', 'events', 'horizon']);

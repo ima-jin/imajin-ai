@@ -2,11 +2,12 @@ import Database from 'better-sqlite3';
 import { createHash } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { crypto as authCrypto } from '@imajin/auth';
+import { canonicalize, crypto as authCrypto } from '@imajin/auth';
 import { buildIngestionAttestation } from './attestation';
 import { chunkThread, type ThreadChunk } from './chunker';
 import { AttestationNotFoundError, UnknownRefError } from './errors';
 import type { CorpusIdentity } from '../lib/corpus-identity';
+import { migrateOwnerSchema, transferSource } from './owner-transfer';
 import type {
   CorpusAttestationStats,
   CorpusSearchRequest,
@@ -152,11 +153,47 @@ export class CorpusStore {
     this.refRetentionDays = options.refRetentionDays ?? DEFAULT_REF_RETENTION_DAYS;
   }
 
+  /** Append-only, signed source configuration/outcome history; no credential bytes. */
+  recordSourceState(
+    did: string, source: string, credentialRef: string | undefined, error: string | undefined,
+    identity: CorpusIdentity, ingesterDid: string, synced = false,
+  ): void {
+    const payload = canonicalize({
+      type: 'corpus.source.updated', did, source, credentialRef: credentialRef ?? null,
+      error: error ?? null, synced, issuer: identity.did, ingesterDid, timestamp: new Date().toISOString(),
+    });
+    const db = this.databaseForDid(did);
+    db.prepare(`
+      INSERT INTO corpus_source_events(source, credential_ref, error, payload, signature, public_key)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run(source, credentialRef ?? null, error ?? null, payload,
+      authCrypto.signSync(payload, identity.privateKey), authCrypto.getPublicKey(identity.privateKey));
+    db.prepare('INSERT OR IGNORE INTO corpus_sources(source, last_sync, thread_count) VALUES (?, ?, 0)').run(source, '');
+    if (synced) this.refreshSource(db, source, new Date().toISOString());
+  }
+
   close(): void {
     for (const db of this.handles.values()) {
       db.close();
     }
     this.handles.clear();
+  }
+
+  transferSource(fromDid: string, toDid: string, source: string, identity: CorpusIdentity): { moved: number } {
+    if (fromDid === toDid) return { moved: 0 };
+    const legacy = this.databaseForDid(fromDid);
+    const target = this.databaseForDid(toDid);
+    const hash = createHash('sha256').update(fromDid).digest('hex');
+    // Offline transfer: rollback journals give ATTACH transactions cross-file
+    // atomicity even on power loss; WAL mode does not provide that guarantee.
+    legacy.pragma('journal_mode = DELETE');
+    target.pragma('journal_mode = DELETE');
+    try {
+      return transferSource(target, join(this.rootDir, hash, 'index.db'), source, fromDid, toDid, identity);
+    } finally {
+      legacy.pragma('journal_mode = WAL');
+      target.pragma('journal_mode = WAL');
+    }
   }
 
   /**
@@ -177,6 +214,9 @@ export class CorpusStore {
     ingesterDid: string = did,
   ): IngestionAttestation[] {
     const db = this.databaseForDid(did);
+    for (const source of new Set(documents.map(document => document.source))) {
+      this.assertSourceActive(db, source, did);
+    }
     const upsertThread = db.prepare(`
       INSERT INTO threads (
         source, doc_id, source_type, thread_type, state, labels_json, author, author_did,
@@ -336,8 +376,8 @@ export class CorpusStore {
       return [];
     }
 
-    const where: string[] = ['thread_fts MATCH @matchQuery'];
-    const params: Record<string, unknown> = { matchQuery, limit: request.limit };
+    const where: string[] = ['thread_fts MATCH @matchQuery', 't.source NOT IN (SELECT source FROM corpus_owner_transfers WHERE from_did = @ownerDid)'];
+    const params: Record<string, unknown> = { matchQuery, limit: request.limit, ownerDid: did };
 
     if (request.sourceType) {
       where.push('t.source_type = @sourceType');
@@ -421,6 +461,7 @@ export class CorpusStore {
     request: Required<Pick<CorpusSearchRequest, 'limit'>> & CorpusSearchRequest,
   ): StoredSearchRow[] {
     const db = this.databaseForDid(did);
+    this.assertSourceActive(db, source, did);
     this.assertRefIndexed(db, source, ref);
 
     const matchQuery = toFtsQuery(request.query);
@@ -467,7 +508,7 @@ export class CorpusStore {
 
   status(did: string): CorpusStatus {
     const db = this.databaseForDid(did);
-    const threadCount = (db.prepare('SELECT COUNT(*) AS count FROM threads').get() as { count: number }).count;
+    const threadCount = this.freshness(did).reduce((total, source) => total + source.threadCount, 0);
 
     return {
       sources: this.freshness(did),
@@ -541,17 +582,35 @@ export class CorpusStore {
 
   freshness(did: string): CorpusSourceFreshness[] {
     const db = this.databaseForDid(did);
-    const rows = db.prepare('SELECT source, last_sync, thread_count FROM corpus_sources ORDER BY source').all() as SourceRow[];
-
-    return rows.map(row => ({
+    const rows = db.prepare(`SELECT source, last_sync, thread_count FROM corpus_sources
+      WHERE source NOT IN (SELECT source FROM corpus_owner_transfers WHERE from_did = ?) ORDER BY source`).all(did) as SourceRow[];
+    const sources: CorpusSourceFreshness[] = rows.map(row => ({
       source: row.source,
+      ownerDid: did,
       lastSync: row.last_sync,
       threadCount: row.thread_count,
     }));
+    const states = db.prepare(`
+      SELECT source, credential_ref, error FROM corpus_source_events
+      WHERE id IN (SELECT MAX(id) FROM corpus_source_events GROUP BY source)
+        AND source IN (SELECT source FROM corpus_sources)
+        AND source NOT IN (SELECT source FROM corpus_owner_transfers WHERE from_did = ?)
+    `).all(did) as { source: string; credential_ref: string | null; error: string | null }[];
+    for (const state of states) {
+      let source = sources.find(item => item.source === state.source);
+      if (!source) {
+        source = { source: state.source, ownerDid: did, lastSync: '', threadCount: 0 };
+        sources.push(source);
+      }
+      if (state.credential_ref) source.credentialRef = state.credential_ref;
+      if (state.error) source.error = state.error;
+    }
+    return sources.sort((left, right) => left.source.localeCompare(right.source));
   }
 
   deleteSource(did: string, source: string): number {
     const db = this.databaseForDid(did);
+    this.assertSourceActive(db, source, did);
     const selectRows = db.prepare('SELECT pk FROM threads WHERE source = ?');
     const deleteFts = db.prepare('DELETE FROM thread_fts WHERE rowid = ?');
     const deleteThreads = db.prepare('DELETE FROM threads WHERE source = ?');
@@ -602,9 +661,9 @@ export class CorpusStore {
       .prepare(`
         SELECT pk, source, doc_id, source_type, thread_type, state, labels_json, author, title, body, comments_json, resolution_json, url, updated
         FROM threads
-        WHERE pk IN (${placeholders})
+        WHERE pk IN (${placeholders}) AND source NOT IN (SELECT source FROM corpus_owner_transfers WHERE from_did = ?)
       `)
-      .all(...threadPks) as ThreadByPkRow[];
+      .all(...threadPks, did) as ThreadByPkRow[];
 
     return rows.map(row => threadRowToStoredSearchRow(row));
   }
@@ -624,8 +683,15 @@ export class CorpusStore {
     loadVectorExtension(db);
     this.migrate(db);
     migrateVectorSchema(db);
+    migrateOwnerSchema(db);
     this.handles.set(didHash, db);
     return db;
+  }
+
+  private assertSourceActive(db: Database.Database, source: string, did: string): void {
+    if (db.prepare('SELECT id FROM corpus_owner_transfers WHERE source = ? AND from_did = ?').get(source, did)) {
+      throw new Error('Source ownership transferred; use the resolved corpus owner');
+    }
   }
 
   private migrate(db: Database.Database): void {
@@ -666,6 +732,16 @@ export class CorpusStore {
         source TEXT PRIMARY KEY,
         last_sync TEXT NOT NULL,
         thread_count INTEGER NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS corpus_source_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        source TEXT NOT NULL,
+        credential_ref TEXT,
+        error TEXT,
+        payload TEXT NOT NULL,
+        signature TEXT NOT NULL,
+        public_key TEXT NOT NULL
       );
 
       -- Sha-pinned snapshot queries (#1921): thread_blobs/blob_fts are an

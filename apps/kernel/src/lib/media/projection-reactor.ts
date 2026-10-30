@@ -384,6 +384,9 @@ export const projectReactor: ReactorHandler = async (event: BusEvent) => {
   }
 
   const { releasePolicy, data } = parsed;
+  // #3071 ruling: read the signed source at disclosure time. No surface may
+  // copy even public legal fields into article metadata or another projection.
+  if (data.kind === "legal-entity") return;
   const fields = Object.keys(releasePolicy);
   if (fields.length === 0) return; // No gated fields declared → no-op.
 

@@ -107,6 +107,8 @@ async function boundCard(row: OperatorApprovalRow, archivedAt: string | null = n
 
 export interface OperatorApprovalCard {
   proposalId: string;
+  /** Recorded requesting agent for DecisionCard filters; null for in-process emitters. */
+  signerDid?: string | null;
   /** Whose /jin Inbox the card lives in (#2723) — the connector owner for a connector proposal, else the node operator. */
   operatorDid: string;
   /** Open vocabulary namespace, e.g. 'system-agent', 'skill-workshop' (#2152). */
@@ -146,6 +148,7 @@ function toCard(row: OperatorApprovalRow, archivedAt: string | null = null): Ope
   const decisionRecord = row.decision as { payload?: OperatorApprovalDecidedPayload } | null;
   return {
     proposalId: row.proposalId,
+    ...(row.source === 'decision' ? { signerDid: row.signerDid ?? null } : {}),
     operatorDid: row.operatorDid,
     source: row.source,
     kind: row.kind,

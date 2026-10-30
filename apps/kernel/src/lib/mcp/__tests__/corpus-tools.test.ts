@@ -15,6 +15,11 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { McpContent, McpToolContext } from '../types';
+vi.mock('../../kernel/corpus-owner', () => ({
+  resolveCorpusDid: vi.fn(async (_source: string, did: string) => did),
+  authorizeCorpusOwner: vi.fn(async () => true),
+  grantedCorpusOwners: vi.fn(async () => []),
+}));
 
 // Swap the registry for the real corpus tools only, so the scope gate in
 // server.ts runs against them without loading every other (DB-backed) tool
@@ -39,6 +44,7 @@ vi.mock('../../kernel/node-identity', () => ({
 import { handleMcpRpc } from '../server';
 import { corpusTools } from '../tools/corpus';
 import { crypto as authCrypto } from '@imajin/auth';
+import { grantedCorpusOwners } from '../../kernel/corpus-owner';
 
 const ORIGINAL_ENV = process.env.CORPUS_SERVICE_URL;
 const ORIGINAL_AUTH_PRIVATE_KEY = process.env.AUTH_PRIVATE_KEY;
@@ -93,6 +99,7 @@ function jsonResponse(status: number, body: unknown) {
 }
 
 beforeEach(() => {
+  vi.mocked(grantedCorpusOwners).mockResolvedValue([]);
   mockResolveGrant.mockReset();
   mockResolveGrant.mockResolvedValue(false);
   fetchMock = vi.fn();
@@ -174,6 +181,20 @@ describe('CorpusAccessClaim attachment', () => {
 // ─── corpus_search ───────────────────────────────────────────────────────────
 
 describe('corpus_search', () => {
+  it('uses the shared status-view owner discovery for unscoped searches', async () => {
+    vi.mocked(grantedCorpusOwners).mockResolvedValue(['did:imajin:org']);
+    fetchMock.mockImplementation(async (url: string) => jsonResponse(200, {
+      results: url.includes(encodeURIComponent('did:imajin:org'))
+        ? [{ source: 'github:ima-jin/imajin-ai', id: '3089', score: 1, evidence: ['owner ruling'] }] : [],
+      totalHits: 1, tokensUsed: 3,
+    }));
+    const result = parseResult(await call('corpus_search', { query: 'ruling' }, ctxFor('did:imajin:alice', ['corpus:read'])));
+    expect(result.results[0].id).toBe('3089');
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(decodeClaimHeader(fetchMock.mock.calls[1][1].headers.Authorization)).toMatchObject({
+      did: 'did:imajin:org', onBehalfOf: 'did:imajin:alice', scope: 'corpus:read',
+    });
+  });
   it('resolves the acting DID and proxies to POST /corpus/:did/search', async () => {
     fetchMock.mockResolvedValue(
       jsonResponse(200, { results: [], totalHits: 0, freshness: [], tokensUsed: 0 }),
@@ -288,12 +309,16 @@ describe('corpus_load', () => {
 
 describe('corpus_sync', () => {
   it('proxies to POST /corpus/:did/sync', async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse(200, { sources: [], threadCount: 0 }));
     fetchMock.mockResolvedValue(jsonResponse(200, { synced: true }));
 
     await call('corpus_sync', { source: 'github:ima-jin/imajin-ai' }, ctxFor('did:imajin:alice', ['corpus:write']));
-
-    const [url, init] = fetchMock.mock.calls[0];
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls[0][0]).toBe('http://localhost:8003/corpus/did%3Aimajin%3Aalice/status');
+    expect(decodeClaimHeader(fetchMock.mock.calls[0][1].headers.Authorization).scope).toBe('corpus:read');
+    const [url, init] = fetchMock.mock.calls[1];
     expect(url).toBe('http://localhost:8003/corpus/did%3Aimajin%3Aalice/sync');
+    expect(decodeClaimHeader(init.headers.Authorization).scope).toBe('corpus:write');
     expect(init.method).toBe('POST');
     expect(JSON.parse(init.body)).toEqual({ source: 'github:ima-jin/imajin-ai' });
   });

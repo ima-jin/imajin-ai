@@ -45,17 +45,17 @@ const apps = [
 const registryFixture = {
   id: 'fixture-dcr', appDid: APP, name: 'Claude connector fixture', kind: 'MCP/DCR client',
   status: 'active', created: provenance.created,
-  firstConsent: { at: '2026-10-13T09:00:00Z', by: OPERATOR }, consentingPrincipals: 2,
-  lastSeen: provenance.lastSeen.at, ended: UNKNOWN_LINE,
+  firstConsent: { at: '2026-10-13T09:00:00Z', by: OPERATOR }, consentingPrincipals: 2, liveConsents: 2,
+  lastSeen: provenance.lastSeen.at, ended: UNKNOWN_LINE, revocationId: null as string | null,
 };
 const registeredApps = [
   registryFixture,
   { ...registryFixture, id: 'fixture-legacy', name: 'BrokerAgent fixture (zero consent)', kind: 'delegated app',
-    firstConsent: UNKNOWN_LINE, consentingPrincipals: 0, lastSeen: null },
+    firstConsent: UNKNOWN_LINE, consentingPrincipals: 0, liveConsents: 0, lastSeen: null },
   { ...registryFixture, id: 'fixture-seed', name: 'Links seed fixture', kind: 'first-party seed', status: 'dormant',
-    firstConsent: UNKNOWN_LINE, consentingPrincipals: 0, lastSeen: '2026-01-01T00:00:00Z' },
+    firstConsent: UNKNOWN_LINE, consentingPrincipals: 0, liveConsents: 0, lastSeen: '2026-01-01T00:00:00Z' },
   { ...registryFixture, id: 'fixture-revoked', name: 'Revoked fixture app', kind: 'delegated app',
-    status: 'revoked', ended: { at: '2026-10-20T20:00:00Z', by: OPERATOR } },
+    status: 'revoked', ended: { at: '2026-10-20T20:00:00Z', by: OPERATOR }, revocationId: 'att_fixture_revoked' },
   { ...registryFixture, id: 'fixture-expired', name: 'Expired connector fixture', status: 'expired',
     ended: { at: '2026-10-20T21:00:00Z', by: 'did:imajin:fixture-node' } },
 ];
@@ -66,6 +66,7 @@ export default function AppSecretsPreview() {
   useEffect(() => {
     if (process.env.NODE_ENV !== 'development') return;
     const originalFetch = globalThis.fetch;
+    const registryRows = structuredClone(registeredApps);
     globalThis.fetch = async (input, init) => {
       const url = input instanceof Request ? input.url : String(input);
       if (new URL(url, window.location.origin).pathname === '/jin/api/app-secrets') {
@@ -74,7 +75,16 @@ export default function AppSecretsPreview() {
         return Response.json({ apps });
       }
       if (new URL(url, window.location.origin).pathname === '/jin/api/registered-apps') {
-        return Response.json({ apps: registeredApps });
+        return Response.json({ apps: registryRows });
+      }
+      const clear = /^\/api\/admin\/registry\/apps\/([^/]+)\/revoke$/.exec(new URL(url, window.location.origin).pathname);
+      if (clear) {
+        const app = registryRows.find(row => row.id === decodeURIComponent(clear[1]));
+        if (!app) return Response.json({ error: 'Fixture not found' }, { status: 404 });
+        app.status = 'revoked';
+        app.ended = { at: '2026-10-22T00:00:00Z', by: OPERATOR };
+        app.revocationId = 'att_fixture_clear';
+        return Response.json({ ok: true, attestationId: app.revocationId });
       }
       return originalFetch(input, init);
     };

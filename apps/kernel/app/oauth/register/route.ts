@@ -134,7 +134,7 @@ export async function POST(request: NextRequest) {
       id: clientId,
       ownerDid: 'did:imajin:platform', // first-party registrar (matches the 0052 seed)
       name: clientName,
-      description: 'Dynamically registered MCP connector client (#1185, RFC 7591)',
+      description: 'Registered MCP connector',
       appDid,
       publicKey: placeholderKey,
       callbackUrl,

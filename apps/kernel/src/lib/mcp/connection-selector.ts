@@ -15,10 +15,14 @@ export async function resolveToolConnection(
   }
   const rows = (await listConnectorRegistrations(ownerDid)).filter((row) => row.provider === provider);
   const exact = rows.find((row) => row.slot === selector);
+  if (exact?.status === 'removed') throw new Error('connection_removed: Connection removed. Select another connection explicitly.');
   if (exact) return connectionSlot(exact.slot);
   // Legacy primary does not require a registry projection to have been written.
   if (selector === 'primary') return 'primary';
   const matches = rows.filter((row) => row.label === selector);
+  if (matches.some((row) => row.status === 'removed')) {
+    throw new Error('connection_removed: Connection removed. Select another connection explicitly.');
+  }
   if (matches.length === 1) return connectionSlot(matches[0].slot);
   if (matches.length > 1) {
     throw new Error(`ambiguous_connection: '${selector}' matches slots: ${matches.map((row) => row.slot).sort((left, right) => left.localeCompare(right, 'en')).join(', ')}`);

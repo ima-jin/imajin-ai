@@ -54,6 +54,97 @@ components:
       name: x-internal-key
       description: "Service-to-service key (AUTH_INTERNAL_API_KEY)"
   schemas:
+    BankDetailsVisibility:
+      type: string
+      enum: [silent, on-consent, owner-only, never]
+      default: owner-only
+    BankDetailsUsAccount:
+      type: object
+      additionalProperties: false
+      required: [routingNumber, accountNumber, accountType]
+      properties:
+        routingNumber: { type: string, pattern: '^\d{9}$', description: "Must pass the ABA weighted checksum; all-zero is rejected. Sealed, never returned." }
+        accountNumber: { type: string, pattern: '^\d{1,17}$', description: "Sealed, never returned." }
+        accountType: { type: string, enum: [checking, savings] }
+    BankDetailsInput:
+      type: object
+      additionalProperties: false
+      required: [accountHolderName, bankName, country, currency]
+      description: |
+        At least one of eft, ach, wire or swift is required. PUT replaces the
+        complete record, not individual fields. All financial identifiers are
+        sealed in-process through vault-core; only references reach the document.
+        No owner DID, vault references or secret-field visibility is accepted.
+      anyOf:
+        - required: [eft]
+        - required: [ach]
+        - required: [wire]
+        - required: [swift]
+      properties:
+        accountHolderName: { type: string, minLength: 1, maxLength: 200 }
+        bankName: { type: string, minLength: 1, maxLength: 200 }
+        country: { type: string, pattern: '^[A-Z]{2}$' }
+        currency: { type: string, pattern: '^[A-Z]{3}$' }
+        eft:
+          type: object
+          additionalProperties: false
+          required: [institutionNumber, transitNumber, accountNumber]
+          properties:
+            institutionNumber: { type: string, pattern: '^\d{3}$', description: "Sealed, including leading zeros." }
+            transitNumber: { type: string, pattern: '^\d{5}$', description: "Sealed, including leading zeros." }
+            accountNumber: { type: string, pattern: '^\d{1,34}$', description: "Sealed, never returned." }
+        ach: { $ref: "#/components/schemas/BankDetailsUsAccount" }
+        wire: { $ref: "#/components/schemas/BankDetailsUsAccount" }
+        swift:
+          type: object
+          additionalProperties: false
+          required: [bic]
+          anyOf:
+            - required: [iban]
+            - required: [accountNumber]
+          properties:
+            bic: { type: string, pattern: '^[A-Z]{6}[A-Z0-9]{2}([A-Z0-9]{3})?$' }
+            iban: { type: string, pattern: '^[A-Z]{2}\d{2}[A-Z0-9]{11,30}$', description: "Must pass mod-97. Uppercase, no spaces. Sealed." }
+            accountNumber: { type: string, pattern: '^\d{1,34}$', description: Sealed SWIFT destination for non-IBAN countries. }
+        visibility:
+          type: object
+          additionalProperties: false
+          properties:
+            accountHolderName: { $ref: "#/components/schemas/BankDetailsVisibility" }
+            bankName: { $ref: "#/components/schemas/BankDetailsVisibility" }
+            country: { $ref: "#/components/schemas/BankDetailsVisibility" }
+            currency: { $ref: "#/components/schemas/BankDetailsVisibility" }
+            rails: { $ref: "#/components/schemas/BankDetailsVisibility" }
+            accountTypes: { $ref: "#/components/schemas/BankDetailsVisibility" }
+            bic: { $ref: "#/components/schemas/BankDetailsVisibility" }
+    BankDetailsProjection:
+      type: object
+      required: [recordId, assetId, accountHolderName, bankName, country, currency, rails, accountTypes, visibility, hasRail]
+      properties:
+        recordId: { type: string }
+        assetId: { type: string }
+        accountHolderName: { type: string }
+        bankName: { type: string }
+        country: { type: string }
+        currency: { type: string }
+        rails: { type: array, items: { type: string, enum: [eft, ach, wire, swift] } }
+        accountTypes:
+          type: object
+          properties:
+            ach: { type: string, enum: [checking, savings] }
+            wire: { type: string, enum: [checking, savings] }
+        bic: { type: string }
+        visibility:
+          type: object
+          additionalProperties: { $ref: "#/components/schemas/BankDetailsVisibility" }
+        hasRail:
+          type: object
+          required: [eft, ach, wire, swift]
+          properties:
+            eft: { type: boolean }
+            ach: { type: boolean }
+            wire: { type: boolean }
+            swift: { type: boolean }
     DomainBinding:
       type: object
       required: [domain, zoneOwner, siteOwner, appDid, method, status, attestation, verifiedAt, checkedAt]
@@ -516,6 +607,8 @@ components:
       description: Shape returned by every app-token mint endpoint (#1069).
       properties:
         token: { type: string, description: "Short-lived EdDSA-signed app token" }
+        subjectDid: { type: string, description: "Kernel-verified subject; present only for sign-in code exchange" }
+        attestationId: { type: string, description: "Kernel-verified authorization; present only for sign-in code exchange" }
         expiresIn: { type: integer, example: 600, description: "Seconds until expiry" }
         scopes:
           type: array
@@ -534,6 +627,205 @@ components:
         error_description: { type: string, example: "This app is not registered with the kernel, or its registration has been revoked." }
 
 paths:
+  /api/org-connections:
+    get:
+      summary: List org-tagged member connection state and suspension history
+      tags: [auth]
+      security: [{ cookieAuth: [] }]
+      description: |
+        Human session acting as a business/community/family identity. Live owner/admin
+        membership and auth-service access required; no personal fallback or app/agent
+        authority. Returns allowlisted connection metadata, org-scoped suspension
+        policies and the latest 100 events. No sealed fields, bindings or credentials.
+        Policy memberDid and slot are empty strings for a service-wide suspension.
+        Events use null memberDid/connectionId for all members. Each event includes
+        actorDid, orgDid, provider, action, reason, createdAt and attestationId.
+      responses:
+        "200":
+          description: Private, no-store admin metadata
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [connections, suspensions, events]
+                properties:
+                  connections: { type: array, items: { type: object } }
+                  suspensions: { type: array, items: { type: object } }
+                  events: { type: array, maxItems: 100, items: { type: object } }
+        "401": { description: Human session required }
+        "403": { description: Live org owner/admin act-as with auth access required }
+        "503": { description: Organization connections unavailable }
+    post:
+      summary: Suspend or explicitly resume a member connection or org service
+      tags: [auth]
+      security: [{ cookieAuth: [] }]
+      description: |
+        Same session-only live org-admin authorization as GET. Exactly one of
+        connectionId or provider. A connection must be tagged to the acting org.
+        A provider target applies to all current and future org-tagged connections.
+        Individual and service suspensions are independent; resume each explicitly.
+        Membership removal suspends all the member's org-tagged connections with
+        remover actor and fixed reason; re-add/reconnect never clears those policies.
+        Org-scoped policies survive untagging/retagging. Personal use is unaffected.
+        Every operation atomically appends signed connector.external-mcp evidence
+        and an immutable log row; no credentials or request/provider bodies.
+        Refusal is enforced only by authorizeMemberConnection before vault access,
+        with its existing generic 403 for both MCP and app-upstream calls.
+        Already admitted calls may finish. This operation never rotates/revokes keys.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [action, reason]
+              oneOf:
+                - required: [connectionId]
+                - required: [provider]
+              properties:
+                action: { type: string, enum: [suspend, resume] }
+                reason: { type: string, minLength: 1, maxLength: 500, description: Nonblank; never enter credentials. }
+                connectionId: { type: string, minLength: 1, maxLength: 256, description: Exact identifier without surrounding whitespace. }
+                provider: { type: string, minLength: 1, maxLength: 256, description: Exact provider identifier without surrounding whitespace. }
+      responses:
+        "200":
+          description: Suspension state and signed history committed atomically
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok]
+                properties:
+                  ok: { const: true }
+        "400": { description: Invalid JSON, action, reason or target selectors }
+        "401": { description: Human session required }
+        "403": { description: Live org owner/admin act-as with auth access required }
+        "404": { description: Connection absent or not tagged to this org }
+        "503": { description: Storage or signing unavailable; no unsigned state change }
+  /api/auth/authorize:
+    servers:
+      - url: /
+        description: Kernel origin (this route is outside the /auth prefix)
+    post:
+      tags: [auth]
+      operationId: authorizeKeypairApp
+      summary: Consent to a registered keypair app and issue a single-use sign-in code
+      description: |
+        The keypair consent lane, called by /auth/authorize. Uses the authenticated
+        session subject and the registry callback URL. Issues a 256-bit random code,
+        stores its SHA-256 hash bound to app DID, subject DID, live app.authorized
+        attestation, callback URL and state, and returns the registered callback
+        redirect with code and state. TTL is 60 seconds. Responses are no-store.
+        The OAuth/MCP consent lane remains POST /oauth/authorize.
+      security: [{ cookieAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [appId, scopes, state]
+              properties:
+                appId: { type: string, minLength: 1 }
+                scopes: { type: array, items: { type: string } }
+                state: { type: string, minLength: 32, maxLength: 256 }
+      responses:
+        "201":
+          description: Kernel-issued code and state redirect
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [redirect]
+                properties:
+                  redirect: { type: string, format: uri }
+        "400":
+          description: |
+            Invalid JSON, app ID, scope selection or state; invalid_app_callback
+            when the registered callback URL is missing or invalid (not an
+            absolute URL). No consent grant or sign-in code is issued, and the
+            stored callback URL is never echoed in the error.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [error]
+                properties:
+                  error: { type: string }
+              examples:
+                invalidAppCallback:
+                  value: { error: invalid_app_callback }
+        "401": { description: Session required }
+        "403": { description: App inactive or consent not permitted }
+        "404": { description: App not found }
+        "500": { description: Authorization unavailable }
+  /api/bank-details:
+    description: |
+      Human session only, with canonical auth-scoped act-as. Group callers must
+      be active owner/admin; agents, app/service tokens and delegated actingFor
+      callers are refused. Owner DID comes solely from authenticated identity.
+      GET never unseals. Generic vault fetch/export/renewal cannot read these
+      fields; payer disclosure is a separate gated contract.
+      Custody is the existing node-delegated Tier 0 vault, not zero-custody.
+      Tier 1 saves currently fail closed (503) before any write.
+    get:
+      tags: [auth]
+      summary: Read own non-secret bank-details projection and rail capabilities
+      security: [{ cookieAuth: [] }]
+      responses:
+        "200":
+          description: Private no-store projection, without account identifiers or sealed field references
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BankDetailsProjection" }
+        "401": { description: Human session required }
+        "403": { description: Human owner/admin authority required }
+        "404": { description: No active record for this DID }
+        "503": { description: Record unavailable; diagnostics never echo financial values }
+    put:
+      tags: [auth]
+      summary: Seal and replace own bank-details record
+      security: [{ cookieAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/BankDetailsInput" }
+      responses:
+        "201":
+          description: Immutable private userspace record committed with signed provenance
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [recordId, assetId]
+                properties:
+                  recordId: { type: string }
+                  assetId: { type: string }
+        "400":
+          description: Invalid format; field is named without echoing its value
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [error, field]
+                properties:
+                  error: { type: string }
+                  field: { type: string }
+        "401": { description: Human session required }
+        "403": { description: Human owner/admin authority required }
+        "503": { description: Sealing unavailable; previous active record remains unchanged }
+    delete:
+      tags: [auth]
+      summary: Revoke own document and supersede every active vault grant for its fields
+      security: [{ cookieAuth: [] }]
+      responses:
+        "200": { description: Signed revocation committed; rows and non-secret document history retained }
+        "401": { description: Human session required }
+        "403": { description: Human owner/admin authority required }
+        "404": { description: No active record; already revoked }
+        "503": { description: Revocation unavailable; no partial DB state change }
   /api/identities/{did}/domains:
     parameters:
       - { name: did, in: path, required: true, schema: { type: string } }
@@ -1972,7 +2264,15 @@ paths:
         `${appDid}:${principalDid}:${nonce}:${timestamp}`. The kernel resolves that
         principal's single live (not revoked, not expired) `app.authorized` grant
         for this app at mint time. Re-consent on /jin replaces the grant without
-        a client change. Supply exactly one of the two selectors.
+        a client change.
+
+        For app sign-in, send `code` and `state` instead of either grant selector
+        and sign `${appDid}:${code}:${nonce}:${timestamp}`. Codes are kernel-issued,
+        SHA-256 hashed at rest, valid for 60 seconds and consumed atomically once.
+        The signing app, state and current registered callback must match the code.
+        The linked authorization must still be live and belong to the bound subject.
+        This mode additionally returns `subjectDid` and `attestationId`; apps use
+        these values for session identity. Supply exactly one of the three selectors.
 
         `nonce` must be at least 16 characters (client-generated); `timestamp` must be an
         ISO-8601 string within 60s of server time (replay-window bound). The app's public
@@ -1989,26 +2289,30 @@ paths:
               required: [appDid, nonce, timestamp, signature]
               oneOf:
                 - required: [attestationId]
-                  not: { required: [principalDid] }
+                  not: { anyOf: [{ required: [principalDid] }, { required: [code] }] }
                 - required: [principalDid]
-                  not: { required: [attestationId] }
+                  not: { anyOf: [{ required: [attestationId] }, { required: [code] }] }
+                - required: [code, state]
+                  not: { anyOf: [{ required: [attestationId] }, { required: [principalDid] }] }
               properties:
                 appDid: { type: string, description: "The app's registered DID" }
+                code: { type: string, pattern: "^[a-f0-9]{64}$", description: "Kernel-issued single-use sign-in code" }
+                state: { type: string, minLength: 32, maxLength: 256, description: "State bound to the issued code" }
                 attestationId: { type: string, minLength: 1, description: "The user's app.authorized attestation for this app (legacy by-ID path)" }
                 principalDid: { type: string, minLength: 1, description: "The consenting principal whose live app.authorized grant is resolved at mint time" }
                 scope: { type: string, description: "Optional single scope to narrow to (must already be granted)" }
                 aud: { type: string, description: "Optional target service" }
                 nonce: { type: string, minLength: 16, description: "Client-generated, >= 16 chars" }
                 timestamp: { type: string, format: date-time, description: "Must be within 60s of server time" }
-                signature: { type: string, description: "Ed25519 hex signature over `${appDid}:${attestationId}:${nonce}:${timestamp}` or, by principal, `${appDid}:${principalDid}:${nonce}:${timestamp}`" }
+                signature: { type: string, description: "Ed25519 hex signature over `${appDid}:${selector}:${nonce}:${timestamp}`, where selector is code, attestationId or principalDid" }
       responses:
         "200":
-          description: App token minted
+          description: App token minted; code exchange additionally returns subjectDid and attestationId
           content:
             application/json:
               schema: { $ref: "#/components/schemas/AppTokenMintResult" }
         "400":
-          description: Missing required field, invalid or ambiguous grant selector, or nonce shorter than 16 chars
+          description: Missing field, invalid or ambiguous selector, short nonce, code_invalid (unissued, expired or binding mismatch), or code_used (already consumed)
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
@@ -3068,6 +3372,13 @@ paths:
         preserve the original decision, and remain after a late applied receipt.
         The agreement record retains the signed document hash and unique party
         DIDs; agreement cards appear in both parties' attestation history including revocation state.
+        The mechanical registry.app.expired type records seven-day unconsented
+        DCR expiry by /api/cron/registry-app-expiry (jin spec). It is node-signed,
+        never bilateral, with subject_did=app DID, context_id=appId,
+        context_type=registry_app, and payload
+        {appId, reason: 'dcr-unconsented-ttl', ttlDays: 7, createdAt}.
+        Status changes and signed records commit together; registry rows
+        and all consent history remain retained.
       responses:
         "200": { description: "Registered types and schemas, including agreement" }
 

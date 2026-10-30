@@ -53,7 +53,7 @@ export async function POST(
   if (scheme !== "mjnx-direct") {
     return NextResponse.json(
       {
-        error: "Only mjnx-direct settlement is supported on this node. Fiat rails are tracked in #904.",
+        error: "Only mjnx-direct settlement is supported on this node.",
         scheme,
       },
       { status: 400 }

@@ -13,6 +13,7 @@ import { createLogger } from '@imajin/logger';
 import { corsHeaders } from '@/src/lib/kernel/cors';
 import { gateOperator } from '@/src/lib/jin/spend-route-gate';
 import { readSpendLane } from '@/src/lib/jin/spend-lane';
+import { readBillingConnections } from '@/src/lib/usage/billed/connection-status';
 
 const log = createLogger('kernel');
 
@@ -24,7 +25,10 @@ export async function GET(request: NextRequest) {
   if ('response' in gate) return gate.response;
 
   try {
-    const spend = await readSpendLane(gate.operatorDid);
+    const [lane, billingConnections] = await Promise.all([
+      readSpendLane(gate.operatorDid), readBillingConnections(gate.operatorDid),
+    ]);
+    const spend = { ...lane, billingConnections };
     return NextResponse.json({ isOperator: true, spend }, { headers: { ...cors, 'Cache-Control': 'no-store' } });
   } catch (err) {
     log.error({ err: String(err) }, 'jin spend lane read failed');

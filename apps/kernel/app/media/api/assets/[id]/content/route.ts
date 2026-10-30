@@ -169,6 +169,10 @@ export async function PUT(
           { error: result.message, articleProjection: null },
           { status: 400 },
         );
+      case "invalid_document":
+        return NextResponse.json({ error: result.message }, { status: 400 });
+      case "signing_failed":
+        return NextResponse.json({ error: result.message }, { status: 500 });
       case "storage_failed":
         return NextResponse.json({ error: "File write failed" }, { status: 500 });
       case "db_failed":

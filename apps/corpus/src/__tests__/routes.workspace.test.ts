@@ -144,8 +144,8 @@ describe('local:workspace routes', () => {
       .set('Authorization', authFor(did))
       .send([
         {
-          source: 'github:ima-jin/imajin-ai',
-          sourceType: 'github',
+          source: 'local:workspace',
+          sourceType: 'local',
           id: '1',
           type: 'issue',
           title: 'Test',
