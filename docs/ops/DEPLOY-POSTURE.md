@@ -3,6 +3,46 @@
 Repo-only investigation. No server access was used or attempted — every claim below is either a
 citation to a file in this repo or explicitly marked as unverifiable from the repo alone.
 
+## Release delta — v0.8.29 source, 2026-10-30
+
+Apply pending `0228`–`0229` through the normal kernel migration runner; the
+[baseline cut is unchanged](../../migrations/BASELINE.md).
+No ledger normalization or production migration is performed by this docs sweep.
+New connector revocation and org-held custody require separately reviewed operator
+action, not just a kernel deploy.
+
+Org admins can suspend, resume and remove members' org-tagged external connections;
+membership removal cascades to suspend all tagged connections with signed events.
+Org-held connector credentials are sealed under the org DID and never returned in
+value form. Both are admin-session, auth-scoped operations on `/connections/api`.
+The credential-free source tests do not prove live runner setup or org admin workflow.
+
+The inference-passthrough gateway host now bootstraps through a push workflow with
+no interactive console sudo step. Operator verification of the restricted runner
+group, reviewed bundle and authorized kernel credential delivery remain post-merge
+steps. See the [release delta](../../apps/kernel/README.md#pre-cut-delta-for-v0829).
+
+## Release delta — v0.8.28 source, 2026-10-29
+
+Apply pending `0222`–`0227` through the normal kernel migration runner; the
+[baseline cut is unchanged](../../migrations/BASELINE.md#v0828-post-cut-additions-2026-10-29-source-check).
+No ledger normalization or production migration is performed by this docs sweep.
+New sign-in callback handlers and bounded bootstrap retry require separately
+reviewed standalone SDK adoption, not just a kernel deploy.
+
+The [SSH deploy runbook](../deploy/vault-ssh-deploy.md) now requires immutable
+repository/owner IDs on GitHub grants (legacy grants fail closed until re-granted),
+optional exact workflow refs, and durable OIDC replay protection. The operator
+must provision the dedicated no-swap label and fail-closed startup orphan sweep.
+The credential-free dry run does not prove that live runner setup.
+
+Billing admin-key sealing plus explicit `:billing` consent is an operator action,
+separate from inference. Gateway loop registration still needs an exact-principal
+`loops:publish` grant; reduced warning volume is not successful authorization.
+Real-account connector checks, live session outcomes and the Warp incurred
+warning-free observation window remain post-deploy checks, not evidence supplied
+by source tests. See the [release delta](../../apps/kernel/README.md#pre-cut-delta-for-v0828).
+
 ## Release delta — v0.8.27 source, 2026-10-25
 
 The historical investigations/decisions below retain their dates. New reusable

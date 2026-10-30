@@ -12,6 +12,30 @@ pnpm --filter @imajin/kernel dev   # http://localhost:3000
 
 Full setup guide: [docs/DEVELOPER.md](../../docs/DEVELOPER.md).
 
+## Pre-cut delta for v0.8.29
+
+Merged-source snapshot **2026-10-30**, limited to `v0.8.28..4d4383bf`.
+These changes are source availability, not a production deployment claim.
+
+- **Org-tagged connection revocation:** org admins can suspend, resume and remove
+  members' org-tagged external connections through `authorizeMemberConnection`.
+  Membership removal cascades to suspend all tagged connections with signed,
+  actor-attributed events; personal (untagged) calls stay usable and non-admin
+  attempts return 403 ([#3177](https://github.com/ima-jin/imajin-ai/pull/3177)).
+- **Org-held connector custody:** orgs can load, replace, revoke and list sealed
+  connector credentials under the org DID at `/connections/api/org-held`. Values
+  are vault-sealed and never returned; the `org-held-{provider}` registry namespace
+  is separate from member-held connectors
+  ([#3189](https://github.com/ima-jin/imajin-ai/pull/3189)).
+- **Gateway-host bootstrap:** the inference-passthrough gateway host is bootstrapped
+  by a push workflow with no interactive console sudo step. It requires a restricted,
+  organization-registered runner group and verifies `ref`/`workflow_ref` before any
+  privileged action ([#3188](https://github.com/ima-jin/imajin-ai/pull/3188)).
+- **Org agent creation and adoption:** creating an agent while acting as an org is
+  refused; use the Provision agent flow, which now accepts an optional exact handle.
+  Orphaned agents can be adopted with the original key proof, preserving DID, public
+  key and handle ([#3194](https://github.com/ima-jin/imajin-ai/pull/3194)).
+
 ## Pre-cut delta for v0.8.28
 
 Merged-source snapshot **2026-10-26**, limited to `v0.8.27..8f2ebbfd`.

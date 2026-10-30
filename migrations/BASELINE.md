@@ -27,6 +27,32 @@ serial index to `auth.attestations`, not another baseline cut.
 Missing history through 0215 is never tolerated. Choose the next free number
 above the last root migration on main; do not move the cut for this check fix.
 
+### v0.8.28 post-cut additions (2026-10-29 source check)
+
+The cut is unchanged. These are ordinary root migrations, applied in filename
+order only when absent from the ledger:
+
+- `0222_app_authorization_codes.sql`: hashed single-use app sign-in codes.
+- `0223_vault_ssh_oidc_replay.sql`: SSH issuance replay lookup and unique
+  issuer-separated refusal-hash index on retained attestations.
+- `0224_product_copy_issue_refs.sql`: UPDATE-only product-copy repair, retaining
+  row identities/history; no baseline seed/checksum rewrite.
+- `0225_external_mcp_org_context.sql`: optional member connection org attribution.
+- `0226_app_upstreams.sql`: registry upstream declarations and member-bound
+  destination/path-method policy.
+- `0227_app_authorization_code_retention.sql`: expression index for the internal
+  code-retention predicate. The runtime sweep deletes only consumed/expired
+  `auth.app_authorization_codes` strictly beyond a one-hour grace; this is not
+  deletion of consent, attestation or migration-ledger history.
+
+Source evidence: [#3154](https://github.com/ima-jin/imajin-ai/pull/3154),
+[#3158](https://github.com/ima-jin/imajin-ai/pull/3158),
+[#3164](https://github.com/ima-jin/imajin-ai/pull/3164),
+[#3170](https://github.com/ima-jin/imajin-ai/pull/3170),
+[#3175](https://github.com/ima-jin/imajin-ai/pull/3175),
+[#3176](https://github.com/ima-jin/imajin-ai/pull/3176).
+This inventory is not evidence any production migration or restore ran.
+
 #2865 closed via PR #2990 (0216), but Jin's actual dev-restore run on the
 previous head failed closed on recorded checksum drift. **Jin must rerun that
 real-data proof on the revised head before enqueueing.** This agent has no
