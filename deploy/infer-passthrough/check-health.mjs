@@ -30,7 +30,7 @@ async function pollHealth(url, remaining) {
     await new Promise((resolve) => setTimeout(resolve, 3000));
     return pollHealth(url, remaining - 1);
   }
-  console.error('Mint health failed on /health; inspect route readiness and re-grant on /jin → Grants');
+  console.error('Mint health failed on /health; inspect route readiness for the cause and remedy');
   return 1;
 }
 

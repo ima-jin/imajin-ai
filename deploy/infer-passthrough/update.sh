@@ -10,8 +10,8 @@ candidate_port=${INFER_UPDATE_CANDIDATE_PORT:-8788}
 script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 mode=${1:-}
 case "$mode" in
-  ""|--dry-run|--check) ;;
-  *) printf 'Usage: update.sh [--dry-run|--check]\n' >&2; exit 2 ;;
+  ""|--dry-run|--check|--bootstrap) ;;
+  *) printf 'Usage: update.sh [--dry-run|--check|--bootstrap]\n' >&2; exit 2 ;;
 esac
 for value in "$port" "$candidate_port"; do
   if [[ ! "$value" =~ ^[1-9][0-9]{0,4}$ ]] || (( value > 65535 )); then
@@ -63,8 +63,14 @@ for value in "${tags[@]}"; do
 done
 [[ -n "$tag" ]] || { log 'no stable release tag found with main + production approval; current release unchanged'; exit 1; }
 candidate="$state/releases/$sha"
-previous=$(readlink -f -- "$state/current") || { log 'current release link is required; see one-time install'; exit 1; }
-[[ -d "$previous" && -L "$state/current" ]] || { log 'current must link to an existing checkout'; exit 1; }
+previous=
+if [[ "$mode" != --bootstrap ]]; then
+  previous=$(readlink -f -- "$state/current") || { log 'current release link is required; see one-time install'; exit 1; }
+  [[ -d "$previous" && -L "$state/current" ]] || { log 'current must link to an existing checkout'; exit 1; }
+elif [[ ! -L "$state/current" && -e "$state/current" ]]; then
+  log 'bootstrap refuses a non-symlink current; prior service unchanged'
+  exit 1
+fi
 log "latest release $tag ($sha) eligible after the production gate"
 if [[ "$mode" == --dry-run ]]; then
   log "dry-run: stage $tag; install/build; mint-check candidate /health; promote and restart; rollback to previous checkout if live /health fails"
@@ -91,11 +97,15 @@ finish() {
     systemctl stop infer-passthrough-candidate.service || log 'candidate stop failed'
   fi
   if $promoted && ! $committed; then
-    log "release $tag failed; rolling back to previous checkout"
-    if point_current "$previous" && systemctl restart infer-passthrough.service && health "$port"; then
-      log 'rollback healthy'
+    if [[ "$mode" == --bootstrap ]]; then
+      log "release $tag failed during first promotion; bootstrap must restore the saved unit and WorkingDirectory"
     else
-      log 'ROLLBACK FAILED: operator attention required'
+      log "release $tag failed; rolling back to previous checkout"
+      if point_current "$previous" && systemctl restart infer-passthrough.service && health "$port"; then
+        log 'rollback healthy'
+      else
+        log 'ROLLBACK FAILED: operator attention required'
+      fi
     fi
   elif (( result != 0 )); then
     log "release $tag failed before promotion; previous checkout unchanged"
@@ -112,12 +122,14 @@ fi
 [[ -z "$(as_user git -C "$candidate" status --porcelain)" ]] || { log 'candidate has local changes; refusing deployment'; exit 1; }
 # No lifecycle scripts or root execution of repository code.
 as_user pnpm --dir "$candidate" install --frozen-lockfile --ignore-scripts --loglevel=error
-as_user pnpm --dir "$candidate" exec turbo run build --filter=@imajin/auth --output-logs=errors-only
+as_user mkdir -p "$state/releases/.turbo"
+as_user env TURBO_CACHE_DIR="$state/releases/.turbo" pnpm --dir "$candidate" exec turbo run build --filter=@imajin/auth --output-logs=errors-only
 
 candidate_started=true
 systemd-run --unit=infer-passthrough-candidate --collect --service-type=exec \
   --uid="$runtime_user" --working-directory="$candidate" \
   --property=EnvironmentFile=/etc/imajin/infer-passthrough.env \
+  --property=TimeoutStopSec=10s --property=KillMode=control-group \
   /usr/bin/env INFER_PROXY_HOST=127.0.0.1 INFER_PROXY_PORT="$candidate_port" \
   "$candidate/node_modules/.bin/tsx" packages/openclaw-infer-passthrough/src/server.ts
 health "$candidate_port"
