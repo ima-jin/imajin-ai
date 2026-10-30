@@ -53,6 +53,7 @@ describe('adoption route', () => {
     expect(h.prepare).not.toHaveBeenCalled();
   });
   it.each([
+    null, [], 'not-an-object',
     { ...challenge, agentDid: 123 }, { ...challenge, agentDid: 'did:web:other' },
     { ...challenge, capabilities: [] }, { ...challenge, capabilities: [1] },
     { ...challenge, capabilities: 'messages:write' }, { ...challenge, capabilities: ['unknown:scope'] },

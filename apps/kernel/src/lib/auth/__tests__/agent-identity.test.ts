@@ -105,9 +105,15 @@ describe('mintAgentIdentity', () => {
     pushSelectResult([{ scope: 'business' }]);
     const update = vi.fn().mockResolvedValue(undefined);
     const lock = vi.fn().mockResolvedValue(exists ? [{ id: 'prov_1' }] : []);
+    const select = vi.fn().mockReturnValue({
+      from: vi.fn().mockReturnValue({
+        where: vi.fn().mockReturnValue({ limit: vi.fn().mockReturnValue({ for: lock }) }),
+      }),
+    });
+    const updateBuilder = vi.fn().mockReturnValue({ set: vi.fn().mockReturnValue({ where: update }) });
     mockTransaction.mockImplementationOnce(async fn => fn({
-      select: () => ({ from: () => ({ where: () => ({ limit: () => ({ for: lock }) }) }) }),
-      update: () => ({ set: () => ({ where: update }) }),
+      select,
+      update: updateBuilder,
       insert: () => ({ values: mockTxInsertValues }),
     }));
     const promise = mintAgentIdentity({ handle: 'org-agent', actingDid: ACTING_DID, provisionId: 'prov_1' });

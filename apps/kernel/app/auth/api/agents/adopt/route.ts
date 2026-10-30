@@ -5,13 +5,16 @@ import { AdoptionError, prepareAdoption, adoptAgent } from '@/src/lib/auth/agent
 
 export const dynamic = 'force-dynamic';
 
-/** Two-stage, session-only org adoption. Request bodies never carry private keys. */
+/** Two-stage principal-authenticated org adoption. Request bodies never carry private keys. */
 export async function POST(request: NextRequest) {
   const auth = await requireGrantPrincipal(request);
   if ('error' in auth) return authErrorResponse(auth);
   const principal = { actorDid: auth.identity.id, orgDid: resolveActingDid(auth.identity) };
   try {
     const body = await request.json() as Record<string, unknown>;
+    if (!body || typeof body !== 'object' || Array.isArray(body)) {
+      return NextResponse.json({ error: 'JSON object required' }, { status: 400 });
+    }
     if (body.action === 'challenge') {
       if (typeof body.agentDid !== 'string' || !body.agentDid.startsWith('did:imajin:')) {
         return NextResponse.json({ error: 'agentDid must be an Imajin DID' }, { status: 400 });

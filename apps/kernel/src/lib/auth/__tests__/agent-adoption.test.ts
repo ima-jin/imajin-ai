@@ -9,7 +9,7 @@ import * as schema from '@/src/db/schemas/auth';
 
 const h = vi.hoisted(() => ({
   database: undefined as PgliteDatabase | undefined,
-  authorized: true, failSigning: false,
+  authorized: true, failSigning: '',
 }));
 vi.mock('@/src/db', async () => ({
   ...await import('@/src/db/schemas/auth'),
@@ -22,7 +22,7 @@ vi.mock('@/src/lib/vault/import-authority', () => ({
 }));
 vi.mock('../emit-mechanical-attestation', () => ({
   prepareMechanicalAttestation: vi.fn(async (params: Record<string, unknown>) => {
-    if (h.failSigning) throw new Error('Signing unavailable');
+    if (h.failSigning === params.type) throw new Error('Signing unavailable');
     return { ...params, id: crypto.randomUUID(), issuerDid: 'did:imajin:node', signature: 'test-witness', issuedAt: new Date() };
   }),
 }));
@@ -63,7 +63,7 @@ beforeAll(async () => {
 afterAll(async () => { await client?.close(); });
 beforeEach(async () => {
   h.authorized = true;
-  h.failSigning = false;
+  h.failSigning = '';
   keys = await generateKeypair();
   intent = { actorDid: 'did:imajin:human', orgDid: `did:imajin:org-${crypto.randomUUID()}`,
     agentDid: didFromPublicKey(keys.publicKey), capabilities: ['messages:write'] };
@@ -173,14 +173,14 @@ describe('orphan adoption (#3193)', () => {
     expect(await grantRows()).toHaveLength(1);
   });
 
-  it('rolls back grant issuance and challenge consumption if signing fails', async () => {
+  it.each(['delegation.grant.issued', 'agent.adopted'])('rolls back grant issuance and challenge consumption if %s signing fails', async type => {
     const proof = await signedProof();
-    h.failSigning = true;
+    h.failSigning = type;
     await expect(adopt(proof)).rejects.toThrow('Signing unavailable');
     expect(await grantRows()).toEqual([]);
     const [challenge] = await database().select().from(schema.challenges).where(eq(schema.challenges.id, proof.challengeId));
     expect(challenge.usedAt).toBeNull();
-    h.failSigning = false;
+    h.failSigning = '';
     await adopt(proof);
   });
 });
