@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { resolve, join } from 'node:path';
 import { execFileSync, spawnSync } from 'node:child_process';
@@ -87,6 +87,64 @@ function unrelatedCommit() {
 }
 
 describe('pull-based passthrough release updater (#3041, #3082)', () => {
+  it('builds the first current only from the verified tag, never resolving a home-checkout link', () => {
+    unlinkSync(join(state, 'current'));
+    symlinkSync(join(dir, 'private-home-checkout'), join(state, 'current'));
+    stub('readlink', 'printf "unexpected readlink\\n" >> "$CALLS"\nexit 1');
+    const result = run(['--bootstrap']);
+    expect(result.status, result.stderr).toBe(0);
+    expect(current()).toBe(join(state, 'releases', sha));
+    const trace = calls();
+    expect(trace).not.toContain('unexpected readlink');
+    expect(trace.indexOf(`production ${sha}`)).toBeLessThan(trace.indexOf('worktree add'));
+    expect(trace).toContain(`worktree add --detach ${state}/releases/${sha} ${sha}`);
+    expect(trace.indexOf('check-health.mjs 8788')).toBeLessThan(trace.indexOf('restart infer-passthrough.service'));
+    expect(trace.match(/restart infer-passthrough.service/g)).toHaveLength(1);
+  });
+
+  it('bootstraps with no current at all but regular updates still refuse that state', () => {
+    unlinkSync(join(state, 'current'));
+    expect(run().status).not.toBe(0);
+    expect(calls()).not.toMatch(/pnpm |systemctl /);
+    const result = run(['--bootstrap']);
+    expect(result.status, result.stderr).toBe(0);
+    expect(current()).toBe(join(state, 'releases', sha));
+  });
+
+  it.each(['unapproved', 'api'])('bootstrap keeps the production gate on %s without requiring old code', (phase) => {
+    unlinkSync(join(state, 'current'));
+    env.FAIL_PHASE = phase;
+    expect(run(['--bootstrap']).status).not.toBe(0);
+    expect(existsSync(join(state, 'current'))).toBe(false);
+    expect(calls()).not.toMatch(/worktree add|pnpm |candidate |systemctl /);
+  });
+
+  it('refuses a non-symlink current during first bootstrap', () => {
+    unlinkSync(join(state, 'current'));
+    mkdirSync(join(state, 'current'));
+    const result = run(['--bootstrap']);
+    expect(result.status).not.toBe(0);
+    expect(result.stdout).toContain('bootstrap refuses a non-symlink current');
+    expect(calls()).not.toMatch(/worktree add|pnpm |candidate |systemctl /);
+  });
+
+  it.each(['install', 'build', 'launch', 'preflight', 'inactive'])('bootstrap does not create current or restart live on %s failure', (phase) => {
+    unlinkSync(join(state, 'current'));
+    env.FAIL_PHASE = phase;
+    expect(run(['--bootstrap']).status).not.toBe(0);
+    expect(existsSync(join(state, 'current'))).toBe(false);
+    expect(calls()).not.toContain('restart infer-passthrough.service');
+  });
+
+  it.each(['restart', 'live'])('first-promotion %s failure delegates rollback to the saved unit, not an old checkout', (phase) => {
+    unlinkSync(join(state, 'current'));
+    env.FAIL_PHASE = phase;
+    const result = run(['--bootstrap']);
+    expect(result.status).not.toBe(0);
+    expect(result.stdout).toContain('bootstrap must restore the saved unit and WorkingDirectory');
+    expect(result.stdout).not.toContain('rollback healthy');
+    expect(calls().match(/restart infer-passthrough.service/g)).toHaveLength(1);
+  });
   it('refuses tags not on freshly fetched origin/main before calling the API or staging code', () => {
     const variant = unrelatedCommit();
     for (const tag of ['v0.8.9', 'v0.8.10']) {

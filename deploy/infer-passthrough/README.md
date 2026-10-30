@@ -37,7 +37,10 @@ route**, except the explicitly reported unregistered MCP audience. Break-glass c
 stopped, `current` atomically switches to the release checkout, and the live unit
 restarts. A second `/health` check gates success. Any post-promotion failure,
 including a failed restart or TERM/INT, switches `current` back, reinstalls no
-dependencies, restarts the previous code and checks rollback health. A failed
+dependencies, restarts the previous code and checks rollback health. On the first
+bootstrap, there is no prior release checkout: bootstrap instead restores the
+saved unit/drop-ins (including the original WorkingDirectory), env and prior
+link text, and restarts that service only if promotion changed its invocation. A failed
 preflight never restarts live. All old release directories are retained.
 Failures exit nonzero and log the failed phase and rollback outcome in journald.
 A failed mint names its route and a cause-specific remedy in `/health`. Only a
@@ -53,9 +56,54 @@ the existing `production` approval gate. No gateway changes are performed by thi
 PR. Subsequent migration is pushed via the **Bootstrap inference gateway**
 workflow (`infer-passthrough-bootstrap.yml`), not an interactive sudo session.
 The workflow has `permissions: {}` and only starts a fixed root-owned systemd
-entry point on the dedicated `infer-passthrough-gateway` host runner. Configure
-that runner to accept only protected production workflows, never PR jobs.
+entry point on the dedicated `infer-passthrough-gateway` host runner. The runner
+must have the organization-level runner-group restrictions below before the
+narrow sudo rule is usable by automation.
 Do not dispatch it from a feature branch or install a mutable checkout as root.
+
+### Required runner-group boundary (operator setup and verification)
+
+Register the self-hosted gateway runner at **organization level**, not repository
+level: a repo-level runner cannot be placed in a restricted organization group.
+In **Org settings → Actions → Runner groups**, create/select its dedicated group:
+
+- Repository access: **Selected repositories**, containing **only
+  `ima-jin/imajin-ai`** (`visibility: selected`). Other repositories must not see it.
+- Workflow access: enable **Selected workflows** (`restricted_to_workflows: true`)
+  and allow **exactly** this one entry, with no other branch, tag or workflow:
+  `ima-jin/imajin-ai/.github/workflows/infer-passthrough-bootstrap.yml@refs/heads/main`.
+- Disable public-repository access (`allows_public_repositories: false`); do not
+  permit public-repository or fork pull request jobs.
+- Place the gateway runner in this group only, never the default or another
+  unrestricted group. The `infer-passthrough-gateway` label alone is not access
+  control.
+
+**The runner group is the real control.** An environment gates only a job that
+names it; without the group, a branch workflow could omit `environment:` and
+reach the same NOPASSWD command. Keep the `production` environment restricted to
+main and `v*`, required reviewer `veteze`, and no admin bypass. The workflow's
+first step also compares `github.ref` and `github.workflow_ref` (passed through
+`env:`, never interpolated into shell code) against main and the exact selected
+workflow. This is a **second layer only**: a branch copy could remove that step,
+so it cannot replace the runner-group restriction.
+
+The operator runs these **read-only** verification calls once; this PR does not
+run them or claim the group exists. Replace `<id>` with the group's numeric ID:
+
+```bash
+gh api orgs/ima-jin/actions/runner-groups
+gh api 'orgs/ima-jin/actions/runner-groups/<id>/repositories'
+gh api 'orgs/ima-jin/actions/runner-groups/<id>/runners'
+```
+
+From the first response, find the group and confirm `visibility` is `selected`,
+`allows_public_repositories` is false, `restricted_to_workflows` is true and
+`selected_workflows` contains exactly the single full workflow entry above.
+The repositories response must contain only `imajin-ai` under owner `ima-jin`.
+The runners response must contain the gateway runner. Using the IDs from the
+first response, repeat the runners call for every other group and confirm that
+the gateway runner ID appears in none of them. Record that operator evidence
+before dispatch; labels and a prose assertion are not sufficient.
 
 ### One root grant, once
 
@@ -129,10 +177,10 @@ fetch needs no token; only the deployment API consumes the restricted credential
 
 1. Confirms the trusted bundle and successful production deployment, then creates
    the account and bare repository without running package code as root.
-2. Copies the running checkout (including installed dependencies, excluding
-   `.env*`, `.npmrc`, `.netrc`, `.ssh`, git metadata and logs) into a root-owned, world-readable
-   `releases/initial-v<version>-<unique>` rollback seed. It never points `current`
-   at the inaccessible home checkout. Earlier seeds and releases are retained.
+2. Does **not read, copy or walk the running home checkout** or widen any of its
+   file modes. Its rollback target is the saved unit/drop-ins and their original
+   WorkingDirectory, not a copied seed. The first `current` is created only from
+   the updater's verified-tag release after candidate mint health passes.
 3. Captures **all** effective inline `Environment=` assignments in memory, merges
    them with the existing root-only app env (file values win), and removes
    `INFER_PROXY_ROUTES_CONFIG`. This retains KERNEL_BASE_URL, INFER_PROXY_HOST,
@@ -144,18 +192,28 @@ fetch needs no token; only the deployment API consumes the restricted credential
    under the state directory (trash, **not deletion**), installs the trusted
    units, writes the non-secret updater port, and runs daemon-reload. The routes
    path must be directly under `/etc/imajin`; no arbitrary file move is accepted.
-5. Starts the existing updater: main ancestry + production approval, unprivileged
+5. Invokes the trusted updater's internal `--bootstrap` mode, inheriting the
+   bootstrap unit's `LoadCredential` and passing only the non-secret health port:
+   the same main ancestry + production approval guard, unprivileged
    install/build with `TURBO_CACHE_DIR` under `releases/.turbo`, candidate mint
    health, atomic promotion, **one live restart** and live health/rollback.
    Candidate and live stop are bounded by `TimeoutStopSec=10s` and
    `KillMode=control-group`. Only then enable the service and
    `systemctl enable --now infer-passthrough-update.timer` and mark completion.
+   This mode needs no pre-existing `current`. If first promotion fails, the
+   bootstrap transaction restores the prior unit/WorkingDirectory and link text;
+   regular timer updates still require `current` and retain release-to-release
+   rollback. Do not invoke this internal first-install mode by hand.
 
-The pushed workflow, initial trusted bundle/root grant and #3190 delivery must
-all be available before claiming #3171 is verified. After release, the operator
+The operator checklist before dispatch is: manually verify/install the reviewed
+bundle and narrow root grant; verify the **Org settings → Actions → Runner groups**
+boundary and all three read-only checks above (repo-only, exact selected main
+workflow, no public/fork PR jobs, gateway in no other group); then arrange #3190
+credential delivery. Neither that group nor a bootstrapped host is claimed here.
+These prerequisites must all be available before claiming #3171 is verified. After release, the operator
 only dispatches the gated workflow and verifies WorkingDirectory, absent routes,
-`/healthz`, active timer, and a no-op second invocation. Do not close #3171 or
-perform /jin consent (#3172) from this PR. Missing grants require consent, not
+`/healthz`, active timer, and a no-op second invocation. Tracker #3171 and
+operator consent #3172 remain pending their post-release host proofs. Missing grants require consent, not
 host file edits; an unregistered MCP audience requires registration, not consent.
 
 ## Release check and diagnosis

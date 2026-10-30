@@ -24,6 +24,7 @@ class BootstrapTests(unittest.TestCase):
         self.units = self.root / "units"
         self.bundle = ROOT / "deploy/infer-passthrough"
         self.source = self.root / "private-home" / "checkout"
+        self.release = self.state / "releases" / ("f" * 40)
         for path in (self.state / "releases", self.etc, self.units, self.source):
             path.mkdir(parents=True)
         (self.source / "package.json").write_text(json.dumps({"version": "0.8.23"}))
@@ -38,8 +39,9 @@ class BootstrapTests(unittest.TestCase):
         self.env.chmod(0o600)
         self.route = self.etc / "routes.prod.json"
         self.route.write_text("{}")
+        self.prior_unit = f"prior-unit\nWorkingDirectory={self.source}\n"
         for name in bootstrap.UNIT_NAMES:
-            (self.units / name).write_text("prior-unit")
+            (self.units / name).write_text(self.prior_unit if name == bootstrap.SERVICE else "prior-unit")
         dropins = self.units / f"{bootstrap.SERVICE}.d"
         dropins.mkdir()
         (dropins / "override.conf").write_text("prior-dropin")
@@ -62,12 +64,19 @@ class BootstrapTests(unittest.TestCase):
         if "--property=EnvironmentFiles" in args:
             return f"{self.env} (ignore_errors=no)"
         if "--property=WorkingDirectory" in args:
-            return str(self.source)
+            raise AssertionError("Bootstrap must not inspect the home checkout")
         if "--property=InvocationID" in args:
             return self.invocation
-        if args == ("systemctl", "start", "infer-passthrough-update.service"):
+        if args == self.updater_command():
+            self.release.mkdir(exist_ok=True)
+            temporary = self.state / "current.test"
+            temporary.symlink_to(self.release)
+            temporary.replace(self.state / "current")
             self.invocation = "b" * 32
         return ""
+
+    def updater_command(self):
+        return ("env", "INFER_UPDATE_PORT=8787", str(self.bundle / "update.sh"), "--bootstrap")
 
     def migrate(self):
         with patch.object(bootstrap, "run", self.fake_run), patch.object(
@@ -87,22 +96,54 @@ class BootstrapTests(unittest.TestCase):
         self.assertEqual(trash.stat().st_mode & 0o777, 0o700)
         self.assertEqual(self.env.stat().st_mode & 0o777, 0o600)
         current = (self.state / "current").resolve()
-        self.assertEqual(current.parent, self.state / "releases")
-        self.assertTrue(current.name.startswith("initial-v0.8.23-"))
-        self.assertEqual(current.stat().st_mode & 0o777, 0o755)
-        self.assertEqual((current / "server.js").stat().st_mode & 0o777, 0o644)
+        self.assertEqual(current, self.release)
+        self.assertFalse((current / "server.js").exists())
         self.assertFalse((current / ".env.local").exists())
         self.assertFalse((current / ".npmrc").exists())
         self.assertFalse((current / ".netrc").exists())
-        self.assertIn(("systemctl", "start", "infer-passthrough-update.service"), self.trace)
+        self.assertIn(self.updater_command(), self.trace)
         self.assertIn(("systemctl", "enable", "--now", "infer-passthrough-update.timer"), self.trace)
         self.assertFalse(any("restart" in call for call in self.trace))
         self.assertTrue((self.state / "bootstrap-complete").exists())
         self.assertIn("WorkingDirectory=/var/lib/imajin/infer-passthrough/current",
                       (self.units / bootstrap.SERVICE).read_text())
         self.assertFalse((self.units / f"{bootstrap.SERVICE}.d").exists())
-        if os.geteuid() == 0:
-            self.assertEqual(current.stat().st_uid, 0)
+
+    def test_never_reads_walks_or_copies_home_checkout_or_follows_its_symlinks(self):
+        private = self.source / "server.js"
+        target = self.source.parent / "private-target"
+        target.write_text("private-fixture")
+        target.chmod(0o600)
+        (self.source / "link").symlink_to(target)
+        original_open = Path.open
+        original_copytree = bootstrap.shutil.copytree
+        original_scandir = os.scandir
+
+        def reject_home(path):
+            if Path(path).is_relative_to(self.source.parent):
+                raise AssertionError("Root accessed the user-writable home tree")
+
+        def guarded_open(path, *args, **kwargs):
+            reject_home(path)
+            return original_open(path, *args, **kwargs)
+
+        def guarded_copytree(source, *args, **kwargs):
+            reject_home(source)
+            return original_copytree(source, *args, **kwargs)
+
+        def guarded_scandir(path):
+            reject_home(path)
+            return original_scandir(path)
+
+        with patch.object(Path, "open", guarded_open), patch.object(
+                bootstrap.shutil, "copytree", guarded_copytree), patch.object(
+                os, "scandir", guarded_scandir), patch.object(
+                os, "walk", side_effect=AssertionError("Root must not walk the checkout")):
+            self.migrate()
+        self.assertEqual(private.stat().st_mode & 0o777, 0o600)
+        self.assertEqual(target.stat().st_mode & 0o777, 0o600)
+        self.assertFalse((self.release / "server.js").exists())
+        self.assertFalse((self.release / "link").exists())
 
     def test_file_values_win_and_rewriting_is_idempotent(self):
         first, route = bootstrap.migrated_environment("A=inline B=keep", 'A="file"\n')
@@ -129,13 +170,13 @@ class BootstrapTests(unittest.TestCase):
         previous.mkdir()
         (self.state / "current").symlink_to(previous)
         before = self.env.read_bytes()
-        self.failure = ("systemctl", "start", "infer-passthrough-update.service")
+        self.failure = self.updater_command()
         with self.assertRaises(subprocess.CalledProcessError):
             self.migrate()
         self.assertEqual(self.env.read_bytes(), before)
         self.assertEqual(self.route.read_text(), "{}")
         self.assertEqual((self.state / "current").resolve(), previous)
-        self.assertEqual((self.units / bootstrap.SERVICE).read_text(), "prior-unit")
+        self.assertEqual((self.units / bootstrap.SERVICE).read_text(), self.prior_unit)
         self.assertEqual((self.units / f"{bootstrap.SERVICE}.d/override.conf").read_text(), "prior-dropin")
         self.assertFalse((self.state / "bootstrap-complete").exists())
         self.assertNotIn(("systemctl", "restart", bootstrap.SERVICE), self.trace)
@@ -151,6 +192,17 @@ class BootstrapTests(unittest.TestCase):
         self.assertTrue(self.route.exists())
         self.assertFalse((self.state / "bootstrap-complete").exists())
         self.assertIn(("systemctl", "restart", bootstrap.SERVICE), self.trace)
+        self.assertEqual((self.units / bootstrap.SERVICE).read_text(), self.prior_unit)
+
+    def test_rollback_preserves_home_link_text_without_resolving_it(self):
+        previous = self.source / "unreadable-target"
+        (self.state / "current").symlink_to(previous)
+        self.failure = ("systemctl", "enable", "--now", "infer-passthrough-update.timer")
+        with patch.object(Path, "resolve", side_effect=AssertionError("Must not resolve home links")):
+            with self.assertRaises(subprocess.CalledProcessError):
+                self.migrate()
+        self.assertEqual(os.readlink(self.state / "current"), str(previous))
+        self.assertEqual((self.units / bootstrap.SERVICE).read_text(), self.prior_unit)
 
     def test_missing_or_empty_credential_fails_before_any_mutation(self):
         with patch.object(bootstrap.os, "geteuid", return_value=0), patch.object(
@@ -196,10 +248,6 @@ class BootstrapTests(unittest.TestCase):
                 self.migrate()
             self.assertFalse((self.state / "bootstrap-complete").exists())
 
-    def test_invalid_seed_version_is_rejected(self):
-        (self.source / "package.json").write_text('{"version":"../../outside"}')
-        with self.assertRaises(ValueError):
-            bootstrap.seed_current(self.source, self.state)
 
     def test_missing_service_invocation_refuses_without_mutation(self):
         self.invocation = ""

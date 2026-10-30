@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Trusted installer, not an entry point for arbitrary paths or commands."""
 import fcntl
-import json
 import os
 from pathlib import Path
 import pwd
@@ -82,30 +81,6 @@ def migrated_environment(inline, existing):
     return "".join(f"{key}={quote(value)}\n" for key, value in sorted(merged.items())), route
 
 
-def seed_current(source, state):
-    version = json.loads((source / "package.json").read_text())["version"]
-    if not re.fullmatch(r"\d+\.\d+\.\d+", version):
-        raise ValueError("Invalid running version")
-    # Stage outside the service-writable releases directory. Root never walks
-    # a tree an unprivileged process can rename or replace during copying.
-    staging = Path(tempfile.mkdtemp(prefix=f"initial-v{version}-", dir=state))
-    initial = state / RELEASES / staging.name
-    # Carry installed dependencies, not home-directory secrets or git metadata.
-    shutil.copytree(source, staging, symlinks=True, dirs_exist_ok=True,
-                    ignore=shutil.ignore_patterns(".git", ".env*", "*.log", ".npmrc", ".netrc", ".ssh"))
-    for directory, dirs, files in os.walk(staging):
-        Path(directory).chmod(0o755)
-        for name in dirs + files:
-            item = Path(directory) / name
-            if not item.is_symlink():
-                item.chmod(0o755 if item.is_dir() or item.stat().st_mode & 0o111 else 0o644)
-    staging.rename(initial)
-    if (state / CURRENT).is_symlink():
-        (state / CURRENT).unlink()
-    (state / CURRENT).symlink_to(initial)
-    return initial
-
-
 def backup_files(backup):
     paths = [ETC / ENV, ETC / "infer-passthrough-update.env"]
     for name in UNIT_NAMES:
@@ -146,13 +121,10 @@ def migration_config():
     route_path = Path(route) if route else ETC / "routes.prod.json"
     if route_path.parent != ETC or route_path.is_symlink():
         raise ValueError("Routes file must be directly under /etc/imajin")
-    source = Path(run(SYSTEMCTL, "show", SERVICE, "--property=WorkingDirectory", VALUE_ARG))
-    if not source.is_absolute() or not source.is_dir():
-        raise ValueError("Running checkout is unavailable")
     port = assignments(content).get("INFER_PROXY_PORT", "8787")
     if not re.fullmatch(r"[1-9]\d{0,4}", port) or int(port) > 65535 or port == "8788":
         raise ValueError("Invalid or colliding service port")
-    return env_path, content, route_path, source, port
+    return env_path, content, route_path, port
 
 
 def install_units(backup):
@@ -185,20 +157,21 @@ def rollback(saved, backup, route_path, previous, timer_active, moved_route, inv
 
 
 def migrate():
-    env_path, content, route_path, source, port = migration_config()
+    env_path, content, route_path, port = migration_config()
     invocation = run(SYSTEMCTL, "show", SERVICE, "--property=InvocationID", VALUE_ARG)
     if not re.fullmatch(r"[a-f0-9]{32}", invocation):
         raise ValueError("Running service invocation is unavailable")
     backup = Path(tempfile.mkdtemp(prefix="bootstrap-", dir=STATE))
     backup.chmod(0o700)
     saved = backup_files(backup)
-    previous = (STATE / CURRENT).resolve() if (STATE / CURRENT).is_symlink() else None
+    # Retain only the link text, never resolve/traverse the old home checkout.
+    # The saved unit/drop-ins retain its WorkingDirectory for rollback.
+    previous = os.readlink(STATE / CURRENT) if (STATE / CURRENT).is_symlink() else None
     timer_active = subprocess.run([SYSTEMCTL, "is-active", "--quiet", TIMER],
                                   capture_output=True).returncode == 0
     moved_route = False
     try:
         run(SYSTEMCTL, "stop", TIMER)
-        seed_current(source, STATE)
         env_path.write_text(content)
         env_path.chmod(0o600)
         if route_path.exists():
@@ -207,8 +180,10 @@ def migrate():
         install_units(backup)
         (ETC / "infer-passthrough-update.env").write_text(f"INFER_UPDATE_PORT={port}\n")
         run(SYSTEMCTL, "daemon-reload")
-        # Reuse exactly the updater's candidate health, promotion and rollback.
-        run(SYSTEMCTL, "start", UPDATER)
+        # This trusted helper inherits the bootstrap unit's LoadCredential.
+        # First promotion has no release rollback target; this transaction
+        # restores the saved unit/WorkingDirectory instead of copying old code.
+        run("env", f"INFER_UPDATE_PORT={port}", str(BUNDLE / "update.sh"), "--bootstrap")
         run(SYSTEMCTL, "enable", SERVICE)
         run(SYSTEMCTL, "enable", NOW_ARG, TIMER)
         (STATE / COMPLETE).write_text("1\n")
