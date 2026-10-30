@@ -73,7 +73,7 @@ vi.mock('@/src/lib/vault/vault-repository', () => ({
 }));
 import { identities, identityMembers, attestations, channelLinks } from '@/src/db/schemas/auth';
 import { registryApps } from '@/src/db/schemas/registry';
-import { connectors } from '@/src/db/schemas/connectors';
+import { connectors, orgConnectionSuspensions, orgConnectionEvents } from '@/src/db/schemas/connectors';
 import { vaultDelegationGrants, vaultOwnerEnvelopes, vaultGrantRequests } from '@/src/db/schemas/vault';
 import { canonicalize, crypto, generateKeypair, requireAuth, requireAppAuth } from '@imajin/auth';
 import { _resetSealingCache, getNodeSigningIdentity } from '@/src/lib/vault/sealing';
@@ -88,8 +88,10 @@ import { GET as CONNECTION_STATUS, POST as CONNECT_UPSTREAM, DELETE as DISCONNEC
 import { POST as UPSTREAM, OPTIONS as UPSTREAM_OPTIONS } from '@/app/connections/api/upstreams/call/route';
 import { UPSTREAM_READ_SCOPE, UPSTREAM_WRITE_SCOPE, upstreamProvider } from '../app-upstream-policy';
 import { invokeAppUpstream } from '../app-upstream';
+import { GET as ORG_STATUS, POST as ORG_CHANGE } from '@/app/auth/api/org-connections/route';
+import { removeGroupController } from '@/src/lib/auth/remove-group-controller';
 
-const tables = [identities, identityMembers, attestations, channelLinks, registryApps, connectors,
+const tables = [identities, identityMembers, attestations, channelLinks, registryApps, connectors, orgConnectionSuspensions, orgConnectionEvents,
   vaultDelegationGrants, vaultOwnerEnvelopes, vaultGrantRequests];
 const keys = generateKeypair();
 let client: PGlite;
@@ -178,6 +180,9 @@ beforeAll(async () => {
   const upstreamMigration = readFileSync('migrations/0226_app_upstreams.sql', 'utf8');
   await client.exec(upstreamMigration);
   await client.exec(upstreamMigration);
+  const suspensionMigration = readFileSync('migrations/0228_org_connection_suspensions.sql', 'utf8');
+  await client.exec(suspensionMigration);
+  await client.exec(suspensionMigration);
 });
 beforeEach(async () => {
   vi.clearAllMocks();
@@ -480,6 +485,212 @@ describe('personal external MCP: real SQL, signatures and vault crypto', () => {
     expect(parseExternalMcpCall(rpcCall()).params?.name).toBe('getCollections');
     expect(() => connectExternalMcp(member, { secret: 'fake', orgContextDid: 'did:imajin:fake' })).toThrow('Invalid organization');
     await disconnectExternalMcp(member);
+  });
+});
+
+describe('org-admin suspension (#3167)', () => {
+  const admin = () => `did:imajin:admin${sequence}`;
+  async function asAdmin(role = 'admin', allowedServices: string[] | null = null) {
+    await database.insert(identityMembers).values({
+      id: `admin_${sequence}`, identityDid: org, memberDid: admin(), role, allowedServices,
+    });
+    h.identity = { id: admin(), scope: 'actor', subtype: 'human', actingAs: org, actingAsRole: 'admin' };
+  }
+  const asMember = () => { h.identity = { id: member, scope: 'actor', subtype: 'human' }; };
+  async function connectionRow(provider?: string) {
+    const rows = await database.select().from(connectors).where(eq(connectors.ownerDid, member));
+    return rows.find(row => provider === undefined || row.provider === provider)!;
+  }
+  async function change(target: { connectionId: string } | { provider: string }, action = 'suspend', reason = 'Organization policy') {
+    return call(ORG_CHANGE, 'POST', { ...target, action, reason });
+  }
+  async function orgEvents() { return database.select().from(orgConnectionEvents).where(eq(orgConnectionEvents.orgDid, org)); }
+  const unavailable = { error: 'No active personal external MCP connection or grant' };
+
+  it('suspends/resumes one member connection without changing custody; next MCP call refuses before vault read', async () => {
+    await connect();
+    const before = await connectionRow();
+    const vaultBefore = JSON.stringify(h.vault);
+    const grantsBefore = await database.select().from(vaultDelegationGrants);
+    await asAdmin();
+    expect((await change({ connectionId: before.id })).status).toBe(200);
+    expect((await connectionRow()).orgSuspendedAt).toBeInstanceOf(Date);
+    const get = vi.spyOn(vaultService, 'get');
+    asMember();
+    expect(await call(RPC, 'POST', rpcCall())).toMatchObject({ status: 403, body: unavailable });
+    expect(get).not.toHaveBeenCalled();
+    get.mockRestore();
+    expect(h.fetch).not.toHaveBeenCalled();
+    expect(JSON.stringify(h.vault)).toBe(vaultBefore);
+    expect(await database.select().from(vaultDelegationGrants)).toEqual(grantsBefore);
+    h.identity = { id: admin(), scope: 'actor', subtype: 'human', actingAs: org, actingAsRole: 'admin' };
+    expect((await change({ connectionId: before.id }, 'resume', 'Approved again')).status).toBe(200);
+    asMember();
+    expect((await call(RPC, 'POST', rpcCall())).status).toBe(200);
+    const events = await orgEvents();
+    expect(events.map(event => event.action)).toEqual(['suspend', 'resume']);
+    for (const event of events) {
+      expect(event).toMatchObject({ actorDid: admin(), memberDid: member, orgDid: org, provider: before.provider });
+      const [attestation] = await database.select().from(attestations).where(eq(attestations.id, event.attestationId));
+      const signed = canonicalize({
+        subject_did: attestation.subjectDid, type: attestation.type, context_id: attestation.contextId,
+        context_type: attestation.contextType, payload: attestation.payload, issued_at: attestation.issuedAt.getTime(),
+      });
+      expect(crypto.verifySync(attestation.signature, signed, keys.publicKey)).toBe(true);
+      expect(attestation.payload).toMatchObject({ actorDid: admin(), reason: event.reason });
+    }
+  });
+
+  it('service suspension catches later connections and personal use of the same sealed key remains untouched', async () => {
+    await connect();
+    const row = await connectionRow();
+    await asAdmin();
+    expect((await change({ provider: row.provider })).status).toBe(200);
+    asMember();
+    expect((await call(RPC, 'POST', rpcCall())).status).toBe(403);
+    // Untag the same row without rotating its sealed key: this is personal use.
+    await database.update(connectors).set({ orgContextDid: null }).where(eq(connectors.id, row.id));
+    expect((await call(RPC, 'POST', rpcCall())).status).toBe(200);
+    expect((await connectionRow()).sealedKeyField).toBe(row.sealedKeyField);
+    expect((await connect()).status).toBe(201);
+    expect((await call(RPC, 'POST', rpcCall())).status).toBe(403);
+    const later = `did:imajin:later${sequence}`;
+    await database.insert(identities).values({ id: later, publicKey: keys.publicKey, scope: 'actor' });
+    await database.insert(identityMembers).values({ identityDid: org, memberDid: later, role: 'member' });
+    h.identity = { id: later, scope: 'actor', subtype: 'human' };
+    expect((await connect()).status).toBe(201);
+    expect((await call(RPC, 'POST', rpcCall())).status).toBe(403);
+    expect((await orgEvents())[0]).toMatchObject({ memberDid: null, provider: row.provider, actorDid: admin() });
+  });
+
+  it('refuses both proxy paths generically and service resume does not clear an individual suspension', async () => {
+    await connect(); await installUpstream();
+    const postman = await connectionRow('external-mcp-postman');
+    const upstream = await connectionRow(upstreamProvider(appDid, 'catalog'));
+    await asAdmin();
+    expect((await change({ connectionId: postman.id })).status).toBe(200);
+    expect((await change({ connectionId: upstream.id })).status).toBe(200);
+    expect((await change({ provider: upstream.provider })).status).toBe(200);
+    expect((await change({ provider: upstream.provider }, 'resume')).status).toBe(200);
+    asMember();
+    expect(await call(RPC, 'POST', rpcCall())).toMatchObject({ status: 403, body: unavailable });
+    expect((await expectUpstreamRefused(403)).body).toEqual(unavailable);
+    expect(h.fetch).not.toHaveBeenCalled(); expect(h.upstream).not.toHaveBeenCalled();
+  });
+
+  it('membership removal persists suspensions, actor/reason and logs; re-add/reconnect does not resume', async () => {
+    await connect(); await installUpstream();
+    await database.insert(connectors).values({
+      id: `personal_${sequence}`, ownerDid: member, provider: 'personal-fixture', slot: 'primary',
+      channel: 'fixture', connectorDid: h.nodeDid, orgContextDid: null,
+    });
+    await asAdmin('owner');
+    await removeGroupController(org, { id: admin() }, member);
+    const events = await orgEvents();
+    expect(events).toHaveLength(2);
+    expect(events.every(event => event.actorDid === admin() && event.memberDid === member
+      && event.reason === 'Organization membership removed')).toBe(true);
+    const rows = (await database.select().from(connectors).where(eq(connectors.ownerDid, member)))
+      .filter(row => row.orgContextDid === org);
+    expect(rows.every(row => row.orgSuspendedAt)).toBe(true);
+    expect((await connectionRow('personal-fixture')).orgSuspendedAt).toBeNull();
+    await database.update(identityMembers).set({ removedAt: null }).where(eq(identityMembers.memberDid, member));
+    asMember();
+    expect((await connect()).status).toBe(201);
+    expect((await call(RPC, 'POST', rpcCall())).status).toBe(403);
+    await expectUpstreamRefused(403);
+    h.identity = { id: admin(), scope: 'actor', subtype: 'human', actingAs: org, actingAsRole: 'admin' };
+    for (const row of rows) expect((await change({ connectionId: row.id }, 'resume')).status).toBe(200);
+    asMember();
+    expect((await call(RPC, 'POST', rpcCall())).status).toBe(200);
+    expect((await call(UPSTREAM, 'POST', upstreamCall(), serviceHeaders)).status).toBe(200);
+    expect(await orgEvents()).toHaveLength(4);
+  });
+  it('suspends and resumes an app-upstream service before vault access and retains policy/history on replayed migration', async () => {
+    await installUpstream();
+    const row = await connectionRow();
+    await asAdmin();
+    expect((await change({ provider: row.provider })).status).toBe(200);
+    const events = await orgEvents();
+    const migration = readFileSync('migrations/0228_org_connection_suspensions.sql', 'utf8');
+    await client.exec(migration);
+    expect(await orgEvents()).toEqual(events);
+    const get = vi.spyOn(vaultService, 'get');
+    await expectUpstreamRefused(403);
+    expect(get).not.toHaveBeenCalled();
+    get.mockRestore();
+    expect((await change({ provider: row.provider }, 'resume')).status).toBe(200);
+    asMember();
+    expect((await call(UPSTREAM, 'POST', upstreamCall(), serviceHeaders)).status).toBe(200);
+    expect(await orgEvents()).toHaveLength(2);
+  });
+
+  it('isolates org policies and rejects personal/foreign connection targets without leaking custody metadata', async () => {
+    await connect(false);
+    const row = await connectionRow();
+    await asAdmin();
+    expect((await change({ connectionId: row.id })).status).toBe(404);
+    expect((await change({ connectionId: 'conn_foreign' })).status).toBe(404);
+    expect((await change({ provider: row.provider })).status).toBe(200);
+    const status = await call(ORG_STATUS);
+    expect(status.body.connections).toEqual([]);
+    expect(JSON.stringify(status.body)).not.toContain('sealedKeyField');
+    await database.update(connectors).set({ orgContextDid: `${org}other` }).where(eq(connectors.id, row.id));
+    await database.insert(identities).values({ id: `${org}other`, publicKey: keys.publicKey, scope: 'business' });
+    await database.insert(identityMembers).values({ identityDid: `${org}other`, memberDid: member, role: 'member' });
+    asMember();
+    expect((await call(RPC, 'POST', rpcCall())).status).toBe(200);
+  });
+
+  it.each(['member', 'maintainer', 'agent'])('returns 403 for live %s despite stale admin claims', async role => {
+    await asAdmin(role);
+    expect((await call(ORG_STATUS)).status).toBe(403);
+    expect((await change({ provider: 'external-mcp:postman' })).status).toBe(403);
+    expect(await orgEvents()).toHaveLength(0);
+  });
+  it.each(['personal', 'delegated', 'agent', 'removed', 'restricted', 'suspended-org', 'not-org', 'unknown-org'])('rejects the %s admin boundary', async boundary => {
+    await asAdmin();
+    if (boundary === 'personal') delete h.identity.actingAs;
+    if (boundary === 'delegated') h.identity.actingFor = org;
+    if (boundary === 'agent') h.identity.subtype = 'agent';
+    if (boundary === 'removed') await database.update(identityMembers).set({ removedAt: new Date() }).where(eq(identityMembers.memberDid, admin()));
+    if (boundary === 'restricted') await database.update(identityMembers).set({ allowedServices: ['pay'] }).where(eq(identityMembers.memberDid, admin()));
+    if (boundary === 'suspended-org') await database.update(identities).set({ suspendedAt: new Date() }).where(eq(identities.id, org));
+    if (boundary === 'not-org') await database.update(identities).set({ scope: 'actor' }).where(eq(identities.id, org));
+    if (boundary === 'unknown-org') h.identity.actingAs = 'did:imajin:missing';
+    expect((await call(ORG_STATUS)).status).toBe(403);
+    expect((await change({ provider: 'external-mcp:postman' })).status).toBe(403);
+    expect(await orgEvents()).toHaveLength(0);
+  });
+
+  it.each([null, [], {}, { action: 'delete', reason: 'Policy', provider: 'postman' },
+    { action: 'suspend', reason: '', provider: 'postman' }, { action: 'resume', reason: ' ', provider: 'postman' },
+    { action: 'suspend', reason: 'x'.repeat(501), provider: 'postman' }, { action: 'suspend', reason: 1, provider: 'postman' },
+    { action: 'suspend', reason: 'Policy' }, { action: 'suspend', reason: 'Policy', provider: 'a', connectionId: 'b' },
+    { action: 'suspend', reason: 'Policy', provider: '' }, { action: 'suspend', reason: 'Policy', provider: ' a ' },
+    { action: 'suspend', reason: 'Policy', provider: 'a'.repeat(257) }, { action: 'suspend', reason: 'Policy', provider: 1 },
+    { action: 'suspend', reason: 'Policy', provider: 'postman', orgDid: 'spoof' },
+  ])('refuses malformed admin input %j', async raw => {
+    await asAdmin();
+    expect((await call(ORG_CHANGE, 'POST', raw)).status).toBe(400);
+    expect(await orgEvents()).toHaveLength(0);
+  });
+  it('requires a session, handles invalid JSON and rolls back suspension/removal if signed history fails', async () => {
+    await connect(); await asAdmin('owner');
+    const row = await connectionRow();
+    h.authError = true;
+    expect((await call(ORG_STATUS)).status).toBe(401);
+    expect((await change({ connectionId: row.id })).status).toBe(401);
+    h.authError = false;
+    expect((await call(ORG_CHANGE, 'POST', undefined, {}, '{')).status).toBe(400);
+    vi.stubEnv('AUTH_PRIVATE_KEY', '');
+    expect((await change({ connectionId: row.id })).status).toBe(503);
+    await expect(removeGroupController(org, { id: admin() }, member)).rejects.toThrow();
+    expect((await connectionRow()).orgSuspendedAt).toBeNull();
+    expect(await orgEvents()).toHaveLength(0);
+    const memberships = await database.select().from(identityMembers).where(eq(identityMembers.memberDid, member));
+    expect(memberships[0].removedAt).toBeNull();
+    expect(requireAuth).toHaveBeenCalledWith(expect.anything(), { service: 'auth', sessionOnly: true });
   });
 });
 

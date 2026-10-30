@@ -45,7 +45,7 @@ License: Imajin Network License (INL) v1.0, source-available, not MIT.
   Authorized upstream failures are recorded too; refusals write nothing permanent.
   Admission limits run before any database read.
   Shared authorizeMemberConnection gates both this path and personal Postman MCP;
-  #3167 extends it for org-admin suspension. No UI or suspension-management API here.
+  org-admin suspension is enforced only inside that gate, before vault access.
   See /connections/api/spec for the full contract and custody/deadline semantics.
 - Personal Postman MCP: GET/POST/DELETE /connections/api/external-mcp/postman
   requires the member's own human session, never org act-as or app lifecycle access.
@@ -56,10 +56,22 @@ License: Imajin Network License (INL) v1.0, source-available, not MIT.
   app-service calls also need operator scope approval and memberDid. Tagged org
   standing is checked each call. The kernel injects credentials only to the fixed
   official Postman target; only reviewed saved-data reads are allowed, no writes
-  or runCollection/live requests. See /connections/api/spec. No UI or org controls implied.
+  or runCollection/live requests. See /connections/api/spec.
   Admission is per process: 20/member/minute, 60/app/minute and 4 calls in flight;
   429/503 admission refusals write nothing permanent. No transaction spans Postman I/O.
   Signed audit follows the exchange; reconnect tombstones the prior sealed field.
+- Org connection administration: GET/POST /auth/api/org-connections,
+  UI /auth/members while acting as the org. Human session + live owner/admin +
+  auth-service access required; non-admin/app/agent requests refuse. POST takes
+  {action:suspend|resume,reason,connectionId} or {action,reason,provider}, never both
+  selectors. Reason is nonblank, at most 500 characters; never enter credentials.
+  Provider suspension covers future connections too. Individual/service policies
+  resume separately. Removal persists per-connection suspensions with remover
+  actor/reason; re-add and reconnect do not resume. Policies are org-scoped;
+  personal use is untouched. Signed history is retained, keys never handed out.
+  Both proxy paths return the same generic 403 before custody access. Already
+  admitted calls may finish. GET returns metadata and latest 100 audit events only.
+  See /auth/api/spec; no credentials, fields or bindings in admin responses.
 - MCP cycle_status and cycle_run require cycle:run plus the live connector grant.
   Both return the caller's registry horizon {depth,targetDepth:12,deficit,zones:
   {tail,middle,near,head,past},noStepsPublished}; belowDepth:{deficit} is present
@@ -474,6 +486,7 @@ are omitted from the implemented reference and reported in the #2028 run-log.
 - GET, OPTIONS /auth/api/onboard/poll — apps/kernel/app/auth/api/onboard/poll/route.ts
 - OPTIONS, POST /auth/api/onboard/send — apps/kernel/app/auth/api/onboard/send/route.ts
 - GET /auth/api/onboard/verify — apps/kernel/app/auth/api/onboard/verify/route.ts
+- GET, POST /auth/api/org-connections — apps/kernel/app/auth/api/org-connections/route.ts (human org-admin act-as only; auth spec)
 - GET, OPTIONS /auth/api/recovery-codes/challenge — apps/kernel/app/auth/api/recovery-codes/challenge/route.ts
 - OPTIONS, POST /auth/api/recovery-codes/generate — apps/kernel/app/auth/api/recovery-codes/generate/route.ts
 - GET, OPTIONS /auth/api/recovery-codes/status — apps/kernel/app/auth/api/recovery-codes/status/route.ts

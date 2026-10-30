@@ -627,6 +627,82 @@ components:
         error_description: { type: string, example: "This app is not registered with the kernel, or its registration has been revoked." }
 
 paths:
+  /api/org-connections:
+    get:
+      summary: List org-tagged member connection state and suspension history
+      tags: [auth]
+      security: [{ cookieAuth: [] }]
+      description: |
+        Human session acting as a business/community/family identity. Live owner/admin
+        membership and auth-service access required; no personal fallback or app/agent
+        authority. Returns allowlisted connection metadata, org-scoped suspension
+        policies and the latest 100 events. No sealed fields, bindings or credentials.
+        Policy memberDid and slot are empty strings for a service-wide suspension.
+        Events use null memberDid/connectionId for all members. Each event includes
+        actorDid, orgDid, provider, action, reason, createdAt and attestationId.
+      responses:
+        "200":
+          description: Private, no-store admin metadata
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [connections, suspensions, events]
+                properties:
+                  connections: { type: array, items: { type: object } }
+                  suspensions: { type: array, items: { type: object } }
+                  events: { type: array, maxItems: 100, items: { type: object } }
+        "401": { description: Human session required }
+        "403": { description: Live org owner/admin act-as with auth access required }
+        "503": { description: Organization connections unavailable }
+    post:
+      summary: Suspend or explicitly resume a member connection or org service
+      tags: [auth]
+      security: [{ cookieAuth: [] }]
+      description: |
+        Same session-only live org-admin authorization as GET. Exactly one of
+        connectionId or provider. A connection must be tagged to the acting org.
+        A provider target applies to all current and future org-tagged connections.
+        Individual and service suspensions are independent; resume each explicitly.
+        Membership removal suspends all the member's org-tagged connections with
+        remover actor and fixed reason; re-add/reconnect never clears those policies.
+        Org-scoped policies survive untagging/retagging. Personal use is unaffected.
+        Every operation atomically appends signed connector.external-mcp evidence
+        and an immutable log row; no credentials or request/provider bodies.
+        Refusal is enforced only by authorizeMemberConnection before vault access,
+        with its existing generic 403 for both MCP and app-upstream calls.
+        Already admitted calls may finish. This operation never rotates/revokes keys.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [action, reason]
+              oneOf:
+                - required: [connectionId]
+                - required: [provider]
+              properties:
+                action: { type: string, enum: [suspend, resume] }
+                reason: { type: string, minLength: 1, maxLength: 500, description: Nonblank; never enter credentials. }
+                connectionId: { type: string, minLength: 1, maxLength: 256, description: Exact identifier without surrounding whitespace. }
+                provider: { type: string, minLength: 1, maxLength: 256, description: Exact provider identifier without surrounding whitespace. }
+      responses:
+        "200":
+          description: Suspension state and signed history committed atomically
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok]
+                properties:
+                  ok: { const: true }
+        "400": { description: Invalid JSON, action, reason or target selectors }
+        "401": { description: Human session required }
+        "403": { description: Live org owner/admin act-as with auth access required }
+        "404": { description: Connection absent or not tagged to this org }
+        "503": { description: Storage or signing unavailable; no unsigned state change }
   /api/auth/authorize:
     servers:
       - url: /
