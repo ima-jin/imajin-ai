@@ -113,6 +113,7 @@ export const ATTESTATION_TYPES = [
   // Never used as an auth basis — auth root stays homogeneous (did:imajin +
   // challenge-response); this is provenance only.
   'agent.external_identity',
+  'agent.adopted',
 
   // Off-platform value-realization fact (#1886) — the intro-attribution
   // .fair template's second trigger class. One party claims value was
@@ -366,6 +367,7 @@ export const MECHANICAL_ATTESTATION_TYPES = [
   'media.uploaded',
   'agent.turn.usage',
   'agent.external_identity',
+  'agent.adopted',
   // #1147/#1148 attestationClass: 'system' facts — see ATTESTATION_TYPES above.
   'usage.incurred',
   'usage.rollup',
