@@ -25,7 +25,7 @@ async function authorize(tx: Transaction, actor: OrgConnectionActor) {
     isNull(identityMembers.removedAt),
   )).for('share');
   if (!org || !['business', 'community', 'family'].includes(org.scope) || org.suspendedAt
-    || !person || person.scope !== 'actor' || person.subtype === 'agent' || person.suspendedAt
+    || person?.scope !== 'actor' || person.subtype === 'agent' || person.suspendedAt
     || !membership || !['owner', 'admin'].includes(membership.role)
     || (membership.allowedServices !== null && !membership.allowedServices.includes('connections'))) throw refused();
 }
@@ -50,7 +50,7 @@ async function audit(tx: Transaction, actor: OrgConnectionActor, provider: strin
     payload: { orgDid: actor.orgDid, actorDid: actor.actorDid, provider, action },
   }));
 }
-async function locked<T>(actor: OrgConnectionActor, work: (tx: Transaction) => Promise<T>) {
+function locked<T>(actor: OrgConnectionActor, work: (tx: Transaction) => Promise<T>) {
   return db.transaction(async tx => {
     const key = `org-held-connection:${actor.orgDid}`;
     await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${key}, 0))`);
