@@ -39,6 +39,14 @@ exists or a complete live deployment inventory. Not every route group has a spec
 The generated [route index](../apps/kernel/public/llms.txt) and
 [contract reference](../apps/kernel/public/llms-full.txt) cover the current handler tree.
 
+### v0.8.29 integration delta (2026-10-30 source)
+
+Since v0.8.28, [kernel-owned details](../apps/kernel/README.md#pre-cut-delta-for-v0829)
+add org-scoped connection revocation and org-held connector custody, push-based
+inference gateway-host bootstrap, and the refusal of plain org agent creation in
+favor of provisioned/orphan-adopted agents. Source availability is not proof of
+deployment.
+
 ### v0.8.28 integration delta (2026-10-26 source)
 
 Since v0.8.27, [kernel-owned details](../apps/kernel/README.md#pre-cut-delta-for-v0828)
