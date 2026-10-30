@@ -81,8 +81,8 @@ vi.mock('@/src/db', () => ({
       },
     }),
     select: () => ({
-      from: () => ({
-        where: (predicate: Predicate) => queryable([...store.values()].filter(predicate)),
+      from: (table: unknown) => ({
+        where: (predicate: Predicate) => queryable(table === AGENT_PROVISIONS_TABLE ? [...store.values()].filter(predicate) : []),
       }),
     }),
     update: () => ({
@@ -97,6 +97,7 @@ vi.mock('@/src/db', () => ({
     }),
   },
   agentProvisions: AGENT_PROVISIONS_TABLE,
+  identities: { id: 'id', handle: 'handle' },
 }));
 
 vi.mock('@/src/lib/kernel/id', () => {
@@ -106,7 +107,8 @@ vi.mock('@/src/lib/kernel/id', () => {
 
 vi.mock('@imajin/logger', () => ({ createLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }) }));
 
-vi.mock('@/src/lib/auth/agent-identity', () => ({
+vi.mock('@/src/lib/auth/agent-identity', async importOriginal => ({
+  ...await importOriginal<typeof import('../agent-identity')>(),
   mintAgentIdentity: (...args: unknown[]) => mintAgentIdentityMock(...args),
   MintAgentIdentityError: MintAgentIdentityErrorMock,
 }));
@@ -137,6 +139,22 @@ beforeEach(() => {
 });
 
 describe('createProvision — happy path', () => {
+  it.each([undefined, ''])('derives the existing handle when custom handle is %j', async handle => {
+    const result = await createProvision({ servingDid: SERVING_DID, name: 'Travel Agent', handle, harness: 'nanoclaw', placement: 'local', scopes: [] });
+    expect(result.handle).toMatch(/^travel-agent-/);
+  });
+
+  it('passes an exact custom handle to minting', async () => {
+    const result = await createProvision({ servingDid: SERVING_DID, name: 'Artifact Jin', handle: 'artifact-jin', harness: 'nanoclaw', placement: 'local', scopes: [] });
+    expect(result.handle).toBe('artifact-jin');
+    expect(mintAgentIdentityMock).toHaveBeenCalledWith(expect.objectContaining({ handle: 'artifact-jin', provisionId: result.id }));
+  });
+
+  it.each(['ab', 'a'.repeat(65), 'Bad Handle!', 123, null])('refuses invalid custom handle %j before mint', async handle => {
+    await expect(createProvision({ servingDid: SERVING_DID, name: 'Agent', handle: handle as string, harness: 'nanoclaw', placement: 'local', scopes: [] })).rejects.toThrow();
+    expect(mintAgentIdentityMock).not.toHaveBeenCalled();
+    expect(store.size).toBe(0);
+  });
   it('mints identity, issues grants, renders the envelope, and emits the bus event', async () => {
     const provision = await createProvision({
       servingDid: SERVING_DID,

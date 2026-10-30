@@ -26,6 +26,7 @@ const { mockDbSelect, mockTxInsertValues, mockTransaction, pushSelectResult, res
     return fn(tx);
   });
 
+
   return { mockDbSelect, mockTxInsertValues, mockTransaction, pushSelectResult, resetSelectQueue };
 });
 
@@ -33,10 +34,13 @@ vi.mock('@/src/db', () => ({
   db: { select: mockDbSelect, transaction: mockTransaction },
   identities: { id: 'identities.id', handle: 'identities.handle', scope: 'identities.scope' },
   identityMembers: {},
+  agentProvisions: {},
 }));
 
 vi.mock('drizzle-orm', () => ({
   eq: (...args: unknown[]) => ({ eq: args }),
+  and: (...args: unknown[]) => ({ and: args }),
+  isNull: (...args: unknown[]) => ({ isNull: args }),
 }));
 
 vi.mock('@imajin/auth', () => ({
@@ -96,6 +100,34 @@ describe('validateHandle', () => {
 });
 
 describe('mintAgentIdentity', () => {
+  it.each([true, false])('requires a matching locked provision before org mint (exists=%s)', async exists => {
+    pushSelectResult([]);
+    pushSelectResult([{ scope: 'business' }]);
+    const update = vi.fn().mockResolvedValue(undefined);
+    const lock = vi.fn().mockResolvedValue(exists ? [{ id: 'prov_1' }] : []);
+    const select = vi.fn().mockReturnValue({
+      from: vi.fn().mockReturnValue({
+        where: vi.fn().mockReturnValue({ limit: vi.fn().mockReturnValue({ for: lock }) }),
+      }),
+    });
+    const updateBuilder = vi.fn().mockReturnValue({ set: vi.fn().mockReturnValue({ where: update }) });
+    mockTransaction.mockImplementationOnce(async fn => fn({
+      select,
+      update: updateBuilder,
+      insert: () => ({ values: mockTxInsertValues }),
+    }));
+    const promise = mintAgentIdentity({ handle: 'org-agent', actingDid: ACTING_DID, provisionId: 'prov_1' });
+    if (exists) {
+      const result = await promise;
+      expect(update).toHaveBeenCalledOnce();
+      expect(mockTxInsertValues).toHaveBeenCalledTimes(1);
+      expect(result.did).toBe('did:imajin:pub-hex');
+    } else {
+      await expect(promise).rejects.toMatchObject({ status: 403 });
+      expect(mockTxInsertValues).not.toHaveBeenCalled();
+    }
+    expect(lock).toHaveBeenCalledWith('update');
+  });
   it('throws a 409 MintAgentIdentityError when the handle is already taken', async () => {
     pushSelectResult([{ id: 'existing' }]);
 
@@ -152,17 +184,13 @@ describe('mintAgentIdentity', () => {
     expect(identityRow.metadata).toEqual({});
   });
 
-  it.each(['business', 'community', 'family'])('mints for stored %s scope with no membership rows in either direction', async (scope) => {
+  it.each(['business', 'community', 'family'])('refuses unprovisioned stored %s scope without minting', async (scope) => {
     pushSelectResult([]);
     pushSelectResult([{ scope }]);
 
-    const result = await mintAgentIdentity({ handle: 'org-agent', actingDid: ACTING_DID });
-
-    expect(result.did).toBe('did:imajin:pub-hex');
-    expect(mockTxInsertValues).toHaveBeenCalledTimes(1);
-    expect(mockTxInsertValues).toHaveBeenCalledWith(expect.objectContaining({
-      id: result.did, scope: 'actor', subtype: 'agent',
-    }));
+    await expect(mintAgentIdentity({ handle: 'org-agent', actingDid: ACTING_DID }))
+      .rejects.toMatchObject({ status: 403, message: expect.stringContaining('Provision agent') });
+    expect(mockTxInsertValues).not.toHaveBeenCalled();
     expect(mockDbSelect).toHaveBeenLastCalledWith({ scope: 'identities.scope' });
   });
 

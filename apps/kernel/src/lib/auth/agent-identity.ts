@@ -10,8 +10,8 @@
  * rows (owner + reverse role='agent') atomically. Organization agents have
  * no membership links in either direction: their authority is only a grant.
  */
-import { db, identities, identityMembers } from '@/src/db';
-import { eq } from 'drizzle-orm';
+import { db, identities, identityMembers, agentProvisions } from '@/src/db';
+import { eq, and, isNull } from 'drizzle-orm';
 import { generateKeypair } from '@imajin/auth';
 import { didFromPublicKey } from '@/src/lib/auth/crypto';
 
@@ -23,6 +23,8 @@ export interface MintAgentIdentityInput {
   bio?: string | null;
   /** Serving principal. Stored organization scope suppresses both legacy membership links. */
   actingDid: string;
+  /** Internal provision record; public create callers cannot supply this. */
+  provisionId?: string;
 }
 
 export interface MintAgentIdentityResult {
@@ -84,6 +86,11 @@ export async function mintAgentIdentity(input: MintAgentIdentityInput): Promise<
     throw new MintAgentIdentityError('Serving identity not found', 404);
   }
   const isOrganization = ['business', 'community', 'family'].includes(servingIdentity.scope);
+  // #3193: plain create has no operator-selected scopes/provision lifecycle.
+  // Refuse instead of inventing authority or minting another orphan.
+  if (isOrganization && !input.provisionId) {
+    throw new MintAgentIdentityError('Organizations must use Provision agent to select delegation capabilities', 403);
+  }
 
   const { privateKey, publicKey } = generateKeypair();
   const agentDid = didFromPublicKey(publicKey);
@@ -94,6 +101,14 @@ export async function mintAgentIdentity(input: MintAgentIdentityInput): Promise<
   }
 
   await db.transaction(async (tx) => {
+    if (isOrganization) {
+      const [provision] = await tx.select({ id: agentProvisions.id }).from(agentProvisions)
+        .where(and(eq(agentProvisions.id, input.provisionId!), eq(agentProvisions.servingDid, input.actingDid),
+          eq(agentProvisions.handle, handle), isNull(agentProvisions.agentDid))).limit(1).for('update');
+      if (!provision) throw new MintAgentIdentityError('Valid Provision agent record required', 403);
+      // Bind before commit: a crash cannot leave an untracked org identity.
+      await tx.update(agentProvisions).set({ agentDid }).where(eq(agentProvisions.id, provision.id));
+    }
     await tx.insert(identities).values({
       id: agentDid,
       scope: 'actor',

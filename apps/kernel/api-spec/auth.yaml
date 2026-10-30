@@ -2631,6 +2631,123 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
 
+  /api/agents:
+    post:
+      tags: [auth]
+      operationId: createAgentIdentity
+      summary: Create a personal agent and return its keypair once
+      description: |
+        Personal creation retains both legacy owner/agent membership rows.
+        Business, community and family principals are refused with HTTP 403
+        directing the operator to Provision agent. No identity is minted.
+        Resolves X-Acting-As through the auth-service owner/admin gate;
+        agent-delegated and non-admin callers cannot create grants or agents.
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [handle]
+              properties:
+                handle: { type: string, minLength: 3, maxLength: 64, pattern: "^[a-z0-9_-]+$" }
+                displayName: { type: string }
+                bio: { type: string }
+      responses:
+        "201": { description: Agent created; save the returned keypair immediately }
+        "400": { description: Invalid handle or JSON }
+        "401": { description: Authentication required }
+        "403": { description: Organization must use Provision agent, or caller lacks principal authority }
+        "409": { description: Handle already taken }
+
+  /api/agents/provision:
+    post:
+      tags: [auth]
+      operationId: provisionAgentIdentity
+      summary: Provision an agent with operator-selected delegation scopes
+      description: |
+        servingDid must equal the authenticated acting identity. Org owner/admin
+        authorization requires auth-service access. Agent authority comes only
+        from issueGrant, never organization membership. Optional handle uses
+        the same global uniqueness and syntax rules as personal agent creation.
+        Omitted or empty handle retains the name-derived randomized default.
+        Org identity minting binds the provision record in the same transaction.
+        No scopes means no authority; pipeline failures remain visible in steps.
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [servingDid, name, harness, placement, scopes]
+              properties:
+                servingDid: { type: string }
+                name: { type: string }
+                handle: { type: string, description: "Empty or omitted derives from name; otherwise 3–64 lowercase letters, digits, underscores or hyphens" }
+                harness: { type: string, enum: [nanoclaw, openclaw] }
+                placement: { type: string, enum: [hosted, local] }
+                scopes: { type: array, items: { type: string } }
+                model: { type: object }
+                idempotencyKey: { type: string }
+      responses:
+        "201": { description: Provision with status and step history }
+        "400": { description: Invalid handle or provision input }
+        "401": { description: Authentication required }
+        "403": { description: Caller cannot provision for the selected principal }
+        "409": { description: Handle already taken }
+
+  /api/agents/adopt:
+    post:
+      tags: [auth]
+      operationId: adoptOrphanAgent
+      summary: Adopt an orphan agent into the acting organization with original-key proof
+      description: |
+        On /auth/agents while acting as an org, use Adopt orphaned agent.
+        Requires an org owner/admin with auth-service access, rechecked live
+        during both stages. Agents and delegated callers are refused.
+        First send action=challenge with agentDid and nonempty registered
+        capabilities. Returns challengeId, exact UTF-8 challenge and expiresAt
+        (five minutes). Sign that exact challenge with the existing agent
+        Ed25519 private key locally, then send action=adopt, challengeId,
+        signature (128 hex characters). Never send a private key.
+        The single-use proof binds org, human, target DID and capabilities.
+        Both stages require actor/agent subtype, no membership rows in either
+        direction (including removed history), no active unexpired delegation
+        grants, and no agent_provisions. Redemption locks the challenge and
+        agent and atomically commits the provision flow's grant issuer,
+        signed issuance history, agent.adopted attestation and challenge use.
+        DID, handle and public key remain unchanged; no org membership is added.
+        Production adoption is an explicit post-deploy operator action, not a migration.
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [action]
+              properties:
+                action: { type: string, enum: [challenge, adopt] }
+                agentDid: { type: string }
+                capabilities: { type: array, minItems: 1, items: { type: string } }
+                challengeId: { type: string }
+                signature: { type: string, pattern: "^[a-fA-F0-9]{128}$" }
+      responses:
+        "200": { description: Challenge prepared or adoption committed with did, publicKey and grant }
+        "400": { description: Invalid action, DID, capabilities or JSON }
+        "401": { description: Authentication required }
+        "403": { description: Unauthorized org, missing/expired/used proof, mismatched principal or invalid signature }
+        "409": { description: Target is not an active orphan agent }
+        "500": { description: Adoption unavailable; transaction rolled back }
+
   /api/identity/{did}:
     get:
       tags: [auth]

@@ -18,9 +18,9 @@
  * log), never a silent no-op.
  */
 import { desc, eq, and } from 'drizzle-orm';
-import { db, agentProvisions, type AgentProvisionRow, type AgentProvisionStep, type AgentProvisionEnvelopeManifest } from '@/src/db';
+import { db, identities, agentProvisions, type AgentProvisionRow, type AgentProvisionStep, type AgentProvisionEnvelopeManifest } from '@/src/db';
 import { generateId } from '@/src/lib/kernel/id';
-import { mintAgentIdentity, MintAgentIdentityError } from './agent-identity';
+import { mintAgentIdentity, validateHandle, MintAgentIdentityError } from './agent-identity';
 import { issueGrant, revokeGrant } from './grants';
 import { generateEnvelope, renderNanoClaw, renderOpenClaw, validateIntentScopes, type ContextEnvelopeInput, type BrainVia, type RenderedTree } from '@imajin/claw-envelope';
 import { publish } from '@imajin/bus';
@@ -50,6 +50,7 @@ export interface CreateProvisionInput {
   /** Human who authenticated, not the effective org delegator. */
   actorDid?: string;
   name: string;
+  handle?: string;
   harness: ProvisionHarness;
   placement: ProvisionPlacement;
   scopes: readonly string[];
@@ -149,6 +150,18 @@ export async function listProvisions(servingDid: string): Promise<AgentProvision
     .where(eq(agentProvisions.servingDid, servingDid))
     .orderBy(desc(agentProvisions.createdAt));
 }
+async function resolveProvisionHandle(input: Pick<CreateProvisionInput, 'name' | 'handle'>): Promise<string> {
+  const handle = input.handle === undefined || input.handle === '' ? deriveHandle(input.name) : input.handle;
+  try {
+    validateHandle(handle);
+  } catch (error) {
+    if (error instanceof MintAgentIdentityError) throw new ProvisionError(error.message, error.status);
+    throw error;
+  }
+  const [taken] = await db.select({ id: identities.id }).from(identities).where(eq(identities.handle, handle)).limit(1);
+  if (taken) throw new ProvisionError('Handle already taken', 409);
+  return handle;
+}
 
 /**
  * Create (or, for a repeated idempotency key, return) a provision. Mutates
@@ -178,7 +191,7 @@ export async function createProvision(input: CreateProvisionInput): Promise<Agen
   }
 
   const id = generateId('prov');
-  const handle = deriveHandle(input.name);
+  const handle = await resolveProvisionHandle(input);
   const model = { provider: input.model?.provider ?? 'anthropic:claude', via: input.model?.via ?? 'kernel-passthrough' };
 
   await db.insert(agentProvisions).values({
@@ -201,7 +214,7 @@ export async function createProvision(input: CreateProvisionInput): Promise<Agen
   // Step 1: identity mint.
   let agentDid: string;
   try {
-    const agent = await mintAgentIdentity({ handle, displayName: input.name, actingDid: input.servingDid });
+    const agent = await mintAgentIdentity({ handle, displayName: input.name, actingDid: input.servingDid, provisionId: id });
     agentDid = agent.did;
     steps = await appendStep(id, steps, { step: 'mint_identity', status: 'ok', at: nowIso() }, { agentDid, status: 'identity_minted' });
   } catch (err) {

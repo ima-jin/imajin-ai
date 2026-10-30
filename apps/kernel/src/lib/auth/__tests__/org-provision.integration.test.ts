@@ -10,6 +10,7 @@ import { NextRequest } from 'next/server';
 import { canonicalize, crypto, provideInternalApiKey, requireAuth, validateActingAs } from '@imajin/auth';
 import * as schema from '@/src/db/schemas/auth';
 import * as vaultSchema from '@/src/db/schemas/vault';
+import { didFromPublicKey } from '../crypto';
 
 const fixture = vi.hoisted(() => ({ db: null as unknown, nodeDid: vi.fn() }));
 vi.mock('@/src/db', async () => ({
@@ -28,7 +29,8 @@ vi.mock('@imajin/bus', () => ({
 // Provisioning, minting, controller membership queries, grant signing, authority
 // resolution and even the controller route's vault-backed internal key are real.
 import { POST as provision } from '@/app/auth/api/agents/provision/route';
-import { POST as createAgent } from '@/app/auth/api/agents/route';
+import { POST as createAgent, GET as listAgents } from '@/app/auth/api/agents/route';
+import { POST as adoption } from '@/app/auth/api/agents/adopt/route';
 import { GET as controller } from '@/app/auth/api/groups/[groupDid]/controllers/[controllerDid]/route';
 import { POST as introspect } from '@/app/auth/api/internal/grants/introspect/route';
 import { POST as verifyDelegation } from '@/app/auth/api/internal/verify-delegation/route';
@@ -51,6 +53,7 @@ let internalKey: string;
 const authTables = [
   schema.identities, schema.identityMembers, schema.attestations, schema.agentProvisions,
   schema.delegationGrants, schema.delegationGrantCapabilities, schema.delegationGrantEvents,
+  schema.challenges, schema.agentKnocks,
 ];
 
 /** Derive columns/defaults from production, including any new grant outbox column. */
@@ -67,6 +70,7 @@ function createTable(table: PgTable) {
     }
     return `"${column.name}" ${column.getSQLType()}${column.primary ? ' PRIMARY KEY' : ''}${column.notNull ? ' NOT NULL' : ''}${column.isUnique ? ' UNIQUE' : ''}${defaultSql}`;
   });
+
   return `CREATE TABLE "${config.schema}"."${config.name}" (${columns.join(', ')})`;
 }
 
@@ -178,6 +182,59 @@ async function execute(agentDid: string, capability: string) {
 }
 
 describe('real organization provisioning (#3001 ruling a)', () => {
+  it('provisions an exact org handle, lists its grant under the org, and rejects a taken handle', async () => {
+    const body = { servingDid: ORG, name: 'Artifact Jin', handle: 'artifact-jin', harness: 'nanoclaw', placement: 'local', scopes: ['messages:write'] };
+    const response = await provision(request('agents/provision', { actingAs: ORG, body }));
+    const { provision: row } = await response.json();
+    expect(row).toMatchObject({ handle: 'artifact-jin', status: 'envelope_rendered' });
+    const listed = await listAgents(request('agents', { method: 'GET', actingAs: ORG }));
+    expect((await listed.json()).agents).toEqual([expect.objectContaining({ did: row.agentDid, role: 'grant', hasLegacyMembership: false })]);
+    const personal = await listAgents(request('agents', { method: 'GET' }));
+    expect((await personal.json()).agents).toEqual([]);
+    const conflict = await provision(request('agents/provision', { actingAs: ORG, body }));
+    expect(conflict.status).toBe(409);
+    expect((await conflict.json()).error).toBe('Handle already taken');
+  });
+
+  it('adopts a historical orphan through real org auth, original key proof, grant signing and org listing', async () => {
+    const agentKeys = crypto.generateKeypair();
+    const agentDid = didFromPublicKey(agentKeys.publicKey);
+    await database.insert(schema.identities).values({ id: agentDid, scope: 'actor', subtype: 'agent', publicKey: agentKeys.publicKey, handle: 'artifact-jin' });
+    const challengeResponse = await adoption(request('agents/adopt', { actingAs: ORG,
+      body: { action: 'challenge', agentDid, capabilities: ['messages:write'] } }));
+    expect(challengeResponse.status).toBe(200);
+    const proof = await challengeResponse.json();
+    const response = await adoption(request('agents/adopt', { actingAs: ORG, body: {
+      action: 'adopt', challengeId: proof.challengeId, signature: crypto.signSync(proof.challenge, agentKeys.privateKey),
+    } }));
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ did: agentDid, publicKey: agentKeys.publicKey, grant: { delegatorDid: ORG } });
+    expect(await membershipsFor(agentDid)).toEqual([]);
+    const [agent] = await database.select().from(schema.identities).where(eq(schema.identities.id, agentDid));
+    expect(agent).toMatchObject({ id: agentDid, publicKey: agentKeys.publicKey, handle: 'artifact-jin' });
+    const proofs = await database.select().from(schema.attestations);
+    expect(proofs.map(row => row.type).sort()).toEqual(['agent.adopted', 'delegation.grant.issued']);
+    for (const audit of proofs) {
+      expect(crypto.verifySync(audit.signature, canonicalize({
+        subject_did: audit.subjectDid, type: audit.type, context_id: audit.contextId,
+        context_type: audit.contextType, payload: audit.payload, issued_at: audit.issuedAt.getTime(),
+      }), nodeKeys.publicKey)).toBe(true);
+    }
+    const list = await listAgents(request('agents', { method: 'GET', actingAs: ORG }));
+    expect((await list.json()).agents).toEqual([expect.objectContaining({ did: agentDid, role: 'grant', hasLegacyMembership: false })]);
+  });
+
+  it.each(['member', 'auth-excluded', 'removed'])('refuses adoption by a live %s org controller', async boundary => {
+    await database.update(schema.identityMembers).set({
+      ...(boundary === 'member' ? { role: 'member' } : {}),
+      ...(boundary === 'auth-excluded' ? { allowedServices: ['pay'] } : {}),
+      ...(boundary === 'removed' ? { removedAt: new Date() } : {}),
+    }).where(eq(schema.identityMembers.memberDid, HUMAN));
+    const response = await adoption(request('agents/adopt', { actingAs: ORG,
+      body: { action: 'challenge', agentDid: 'did:imajin:historical', capabilities: ['messages:write'] } }));
+    expect(response.status).toBe(403);
+    expect(await database.select().from(schema.challenges)).toEqual([]);
+  });
   it.each(['business', 'community', 'family'])('mints a stored %s serving identity with zero agent memberships', async scope => {
     await database.update(schema.identities).set({ scope }).where(eq(schema.identities.id, ORG));
     const { agentDid, grantId } = await mintProvision();
@@ -238,14 +295,13 @@ describe('real organization provisioning (#3001 ruling a)', () => {
     expect(await validateActingAs(agentDid, ORG)).toEqual({ valid: false });
   });
 
-  it('also protects direct minting using stored org scope, ignoring a client personal-scope flag', async () => {
+  it('refuses direct org minting using stored org scope, ignoring a client personal-scope flag', async () => {
     const response = await createAgent(request('agents', {
       actingAs: ORG, body: { handle: 'direct-org-agent', scope: 'actor', isOrganization: false },
     }));
-    expect(response.status).toBe(201);
-    const agent = await response.json();
-    expect(await membershipsFor(agent.did)).toEqual([]);
-    expect(await validateActingAs(agent.did, ORG)).toEqual({ valid: false });
+    expect(response.status).toBe(403);
+    expect((await response.json()).error).toContain('Provision agent');
+    expect(await database.select().from(schema.identities).where(eq(schema.identities.handle, 'direct-org-agent'))).toEqual([]);
   });
 
   it('preserves both legacy personal-agent rows through the real provision POST', async () => {

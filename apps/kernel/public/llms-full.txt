@@ -19,6 +19,16 @@ the generated package table in README.md links checked public registry metadata.
 License: Imajin Network License (INL) v1.0, source-available, not MIT.
 
 ## Integration and safety
+- Org agent creation (#3193): POST /auth/api/agents refuses org principals
+  with 403 and directs to Provision agent; personal memberships are unchanged.
+  POST /auth/api/agents/provision accepts optional handle (same create syntax
+  and uniqueness; empty derives from name). /auth/agents exposes Adopt orphaned
+  agent while acting as an org. POST /auth/api/agents/adopt takes action=challenge
+  with agentDid/capabilities, then action=adopt with challengeId/signature.
+  A live org admin and original agent-key signature are required. The five-minute
+  single-use proof binds org/human/agent/scopes. True orphans only: no memberships,
+  active grants or provisions. Same grant issuer and signed attestations; no
+  DID/key changes or org membership. Private key stays local. See /auth/api/spec.
 - Org-held service keys: GET /connections/api/org-held lists loaded metadata;
   GET/POST/DELETE /connections/api/org-held/{provider} reads, loads/replaces or
   revokes. Human session acting as the org plus live identity_members owner/admin
@@ -396,6 +406,7 @@ are omitted from the implemented reference and reported in the #2028 run-log.
 - OPTIONS, POST /auth/api/access/knock — apps/kernel/app/auth/api/access/knock/route.ts
 - GET, OPTIONS /auth/api/account/methods — apps/kernel/app/auth/api/account/methods/route.ts
 - GET, POST /auth/api/agents — apps/kernel/app/auth/api/agents/route.ts
+- POST /auth/api/agents/adopt — apps/kernel/app/auth/api/agents/adopt/route.ts (org admin plus original agent-key proof)
 - DELETE /auth/api/agents/{did} — apps/kernel/app/auth/api/agents/[did]/route.ts
 - POST /auth/api/agents/{did}/reach — apps/kernel/app/auth/api/agents/[did]/reach/route.ts
 - POST /auth/api/agents/{did}/reach/{reachId}/status — apps/kernel/app/auth/api/agents/[did]/reach/[reachId]/status/route.ts
