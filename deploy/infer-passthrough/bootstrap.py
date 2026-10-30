@@ -51,7 +51,7 @@ def assignments(text):
     result = {}
     for entry in shlex.split(text, comments=False):
         key, separator, value = entry.partition("=")
-        if not separator or not re.fullmatch(r"[A-Za-z_][A-Za-z_0-9]*", key):
+        if not separator or not re.fullmatch(r"[A-Za-z_]\w*", key, flags=re.ASCII):
             raise ValueError("Invalid environment assignment")
         result[key] = value
     return result
@@ -222,7 +222,7 @@ def prerequisites():
     for name in (*UNIT_NAMES, "bootstrap.sh", "bootstrap.py", "update.sh",
                  "check-health.mjs", "production-deployment.mjs", "release.sha"):
         trusted(BUNDLE / name)
-    # TODO #3190 (parent #3039): kernel vault/seal must provision this credential. No manual
+    # Blocked by #3190 (parent #3039); see the runbook's delivery prerequisite. No manual
     # token input, environment fallback, or copy-from-Actions workaround.
     credential = ETC / "infer-passthrough-github-token"
     trusted(credential)

@@ -181,7 +181,7 @@ class BootstrapTests(unittest.TestCase):
             bootstrap.trusted(link)
 
     def test_invalid_environment_is_rejected(self):
-        for text in ('not-an-assignment', 'BAD-NAME=x', 'A="unterminated', 'GH_TOKEN=fixture',
+        for text in ('not-an-assignment', 'BAD-NAME=x', 'Aé=x', 'A="unterminated', 'GH_TOKEN=fixture',
                      'GITHUB_TOKEN=fixture', 'INFER_UPDATE_GITHUB_TOKEN=fixture', 'A="line\nbreak"'):
             with self.subTest(text=text), self.assertRaises(ValueError):
                 bootstrap.migrated_environment(text, "")

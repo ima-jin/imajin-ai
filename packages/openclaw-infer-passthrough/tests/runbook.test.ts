@@ -15,6 +15,7 @@ describe('principal migration runbook (#3041)', () => {
     expect(runbook).toContain('Deployments: read');
     expect(runbook).toContain('no write');
     expect(runbook).toContain('bootstrap.sh');
+    expect(runbook).toContain('TODO #3190');
     expect(runbook).toContain('production-deployment.mjs');
     expect(runbook).toContain('Keep the existing unit as-is until this change lands');
     expect(runbook).not.toContain('independent of the production');
