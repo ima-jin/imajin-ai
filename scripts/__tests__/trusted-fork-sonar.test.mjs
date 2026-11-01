@@ -410,8 +410,9 @@ describe('workflow boundary and same-repo compatibility', () => {
     expect(workflow.on).toEqual({ workflow_run: { workflows: ['CI'], types: ['completed'] } });
     expect(workflow.permissions).toEqual({});
     expect(workflow.jobs.scan.permissions).toEqual({
-      contents: 'read', actions: 'read', 'pull-requests': 'read', statuses: 'write',
+      contents: 'read', actions: 'read', 'pull-requests': 'read', statuses: 'write', packages: 'read',
     });
+    expect(workflow.jobs.scan.container.credentials.password).toBe('${{ secrets.GITHUB_TOKEN }}');
     expect(workflow.jobs.scan['runs-on']).toBe('ubuntu-latest');
     expect(workflow.jobs.scan.container.volumes).toBeUndefined();
   });

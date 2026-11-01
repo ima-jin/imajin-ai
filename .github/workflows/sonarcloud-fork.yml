@@ -22,9 +22,13 @@ jobs:
       actions: read
       pull-requests: read
       statuses: write
+      packages: read # Required only to pull the existing private CI image.
     # Ephemeral host, no shared self-hosted caches or volumes. Same image as CI.
     container:
       image: ghcr.io/ima-jin/ci-runner@sha256:fcc0fb4320e709976a93ac9f940bb2f532a82d3e7f953798c48dc4b0d8435681
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - name: Check out trusted orchestration only
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
