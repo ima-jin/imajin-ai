@@ -110,6 +110,13 @@ export function parseTree(tree) {
   return files;
 }
 
+export function gitArguments(args) {
+  // The numeric hosted UID need not exist in the image's passwd database.
+  // Ephemeral refs need no reflogs (or committer identity lookup); source commit
+  // history and original author/committer metadata remain untouched.
+  return ['-c', 'core.hooksPath=/dev/null', '-c', 'core.logAllRefUpdates=false', ...args];
+}
+
 // No checkout is performed. Read the validated tree and blobs with core Git
 // plumbing, bypassing PR .gitattributes filters, hooks and executable file modes.
 // Git metadata stays available for scanner blame, but is created only by Git.
@@ -118,15 +125,14 @@ export async function materializeSource(runGit) {
   assert(SHA.test(state.sha), 'Invalid source SHA');
   const source = join(root(), 'source');
   await mkdir(source);
-  const git = runGit ?? ((args, input) => execFileSync('/usr/bin/git',
-    ['-c', 'core.hooksPath=/dev/null', ...args], {
-      cwd: source, input, maxBuffer: 256 * 1024 * 1024,
-      env: {
-        PATH: '/usr/bin:/bin', HOME: process.env.HOME,
-        GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: '/dev/null', GIT_TERMINAL_PROMPT: '0',
-      },
-      stdio: ['pipe', 'pipe', 'pipe'],
-    }));
+  const git = runGit ?? ((args, input) => execFileSync('/usr/bin/git', gitArguments(args), {
+    cwd: source, input, maxBuffer: 256 * 1024 * 1024,
+    env: {
+      PATH: '/usr/bin:/bin', HOME: process.env.HOME,
+      GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: '/dev/null', GIT_TERMINAL_PROMPT: '0',
+    },
+    stdio: ['pipe', 'pipe', 'pipe'],
+  }));
   git(['init']);
   git(['remote', 'add', 'origin', 'https://github.com/ima-jin/imajin-ai.git']);
   git(['fetch', '--no-tags', '--no-recurse-submodules', 'origin',

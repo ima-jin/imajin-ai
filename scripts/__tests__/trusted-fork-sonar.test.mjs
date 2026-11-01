@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import YAML from 'yaml';
 import {
   coverageSource, finishScan, prepareScan, property, resolveRun, selectPr,
-  validateLcov, validateSource, verifyGate, materializeSource, parseTree,
+  validateLcov, validateSource, verifyGate, materializeSource, parseTree, gitArguments,
 } from '../sonar/trusted-fork.mjs';
 
 const sha = 'a'.repeat(40);
@@ -175,6 +175,11 @@ describe('CI and unique PR authentication', () => {
 });
 
 describe('untrusted source, properties and artifact', () => {
+  it('disables hooks and ephemeral reflog identity lookup for the non-root hosted UID', () => {
+    expect(gitArguments(['fetch', 'origin', sha])).toEqual([
+      '-c', 'core.hooksPath=/dev/null', '-c', 'core.logAllRefUpdates=false', 'fetch', 'origin', sha,
+    ]);
+  });
   it('reads exact-SHA blobs without checkout, shell execution, filters or executable modes', async () => {
     await resolveCi();
     await rm(join(dir, 'source'), { recursive: true });
@@ -441,6 +446,7 @@ describe('workflow boundary and same-repo compatibility', () => {
       contents: 'read', actions: 'read', 'pull-requests': 'read', statuses: 'write', packages: 'read',
     });
     expect(workflow.jobs.scan.container.credentials.password).toBe('${{ secrets.GITHUB_TOKEN }}');
+    expect(workflow.jobs.scan.container.options).toBe('--user 1001:1001');
     expect(workflow.jobs.scan['runs-on']).toBe('ubuntu-latest');
     expect(workflow.jobs.scan.container.volumes).toBeUndefined();
   });
@@ -458,6 +464,7 @@ describe('workflow boundary and same-repo compatibility', () => {
       }
     }
     const checkout = jobs.scan.steps.find((step) => step.with?.path === 'trusted');
+    expect(checkout.with.repository).toBe('ima-jin/imajin-ai');
     expect(checkout.with.ref).toBe('main');
     expect(jobs.scan.steps.filter((step) => step.uses.startsWith('actions/checkout@'))).toHaveLength(1);
     const source = jobs.scan.steps.find((step) => step.name.startsWith('Materialize'));
@@ -477,6 +484,7 @@ describe('workflow boundary and same-repo compatibility', () => {
       }
     }
     const scan = jobs.scan.steps.find((step) => step.id === 'scan');
+    expect(scan.env.SONAR_USER_HOME).toBe('${{ github.workspace }}/trusted/sonar-home');
     expect(scan.with).toEqual({
       projectBaseDir: 'source', args: '-Dproject.settings=trusted/fork-scan.properties',
     });
