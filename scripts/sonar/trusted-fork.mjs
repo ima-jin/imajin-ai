@@ -3,9 +3,15 @@
 import { lstat, readdir, readFile, writeFile, mkdir } from 'node:fs/promises';
 import { join, resolve, relative, posix, dirname } from 'node:path';
 import { execFileSync } from 'node:child_process';
+import { mkdirSync, writeFileSync } from 'node:fs';
 
 const PROJECT = 'ima-jin_imajin-ai';
 const HOST = 'https://sonarcloud.io';
+const STATUS_DESCRIPTIONS = {
+  success: 'Exact-head trusted scan: quality gate OK',
+  pending: 'Trusted fork scan in progress',
+  failure: 'Trusted scan failed or CI/PR could not be authenticated',
+};
 const SHA = /^[a-f0-9]{40}$/;
 const MAX_LCOV = 50 * 1024 * 1024;
 const LCOV_COUNTS = new Set(['FNF', 'FNH', 'LF', 'LH', 'BRF', 'BRH']);
@@ -53,8 +59,7 @@ async function prsFor(github, context, sha) {
 async function postStatus(github, context, sha, state, number) {
   await github.rest.repos.createCommitStatus({
     ...context.repo, sha, state, context: 'sonarcloud/trusted',
-    description: state === 'success' ? 'Exact-head trusted scan: quality gate OK' :
-      state === 'pending' ? 'Trusted fork scan in progress' : 'Trusted scan failed or CI/PR could not be authenticated',
+    description: STATUS_DESCRIPTIONS[state],
     target_url: number ? `${HOST}/dashboard?id=${PROJECT}&pullRequest=${number}` :
       `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
   });
@@ -139,8 +144,8 @@ export async function materializeSource(runGit) {
     assert(Number.isSafeInteger(size) && offset + size < blobs.length &&
       blobs[offset + size] === 10, 'Truncated Git blob');
     const destination = join(source, path);
-    await mkdir(dirname(destination), { recursive: true });
-    await writeFile(destination, blobs.subarray(offset, offset + size), { flag: 'wx', mode: 0o644 });
+    mkdirSync(dirname(destination), { recursive: true });
+    writeFileSync(destination, blobs.subarray(offset, offset + size), { flag: 'wx', mode: 0o644 });
     offset += size + 1;
   }
   assert(offset === blobs.length, 'Unexpected trailing Git data');
@@ -148,17 +153,17 @@ export async function materializeSource(runGit) {
 // Reject rather than follow links: neither analyzers nor coverage may read files
 // outside the source tree (runner credentials, trusted scripts or settings).
 export async function validateSource(directory, repositoryRoot = true) {
-  for (const entry of await readdir(directory, { withFileTypes: true })) {
+  await Promise.all((await readdir(directory, { withFileTypes: true })).map(async (entry) => {
     assert(!entry.isSymbolicLink(), 'Source symlinks are not allowed in trusted scans');
     if (repositoryRoot && entry.name === '.git') {
       assert(entry.isDirectory(), 'Expected Git-owned metadata directory');
-      continue;
+      return;
     }
     assert(entry.name !== '.scannerwork', 'PR-supplied scanner work directories are forbidden');
     const path = join(directory, entry.name);
     if (entry.isDirectory()) await validateSource(path, false);
     else assert(entry.isFile(), 'Only regular source files are allowed');
-  }
+  }));
 }
 
 export function coverageSource(value) {
@@ -186,6 +191,7 @@ function validMetric(line) {
 export async function validateLcov(text, source) {
   assert(text.length > 0 && Buffer.byteLength(text) <= MAX_LCOV, 'Empty or oversized lcov');
   const result = [];
+  const sources = [];
   let inRecord = false;
   let records = 0;
   for (const line of text.split(/\r?\n/)) {
@@ -196,7 +202,7 @@ export async function validateLcov(text, source) {
       const path = coverageSource(line.slice(3));
       const file = resolve(source, path);
       assert(!relative(source, file).startsWith('..'), 'Coverage escaped source');
-      assert((await lstat(file)).isFile(), 'Coverage source must be a regular source file');
+      sources.push(file);
       result.push(`SF:${path}`);
       inRecord = true;
       records++;
@@ -213,6 +219,9 @@ export async function validateLcov(text, source) {
     }
   }
   assert(records > 0 && !inRecord, 'Missing or incomplete lcov records');
+  await Promise.all(sources.map(async (file) => {
+    assert((await lstat(file)).isFile(), 'Coverage source must be a regular source file');
+  }));
   return `${result.join('\n')}\n`;
 }
 
@@ -220,8 +229,10 @@ export async function validateLcov(text, source) {
 // args, output commands, filenames, or executable JavaScript.
 export function property(value) {
   assert(typeof value === 'string' && value.length > 0, 'Empty scan property');
-  return value.replaceAll('\\', '\\\\').replaceAll('\r', '\\r').replaceAll('\n', '\\n')
-    .replaceAll('\t', '\\t').replaceAll('=', '\\=').replaceAll(':', '\\:').replaceAll(' ', '\\ ');
+  return value.replaceAll(String.fromCodePoint(92), String.raw`\\`)
+    .replaceAll('\r', String.raw`\r`).replaceAll('\n', String.raw`\n`)
+    .replaceAll('\t', String.raw`\t`).replaceAll('=', String.raw`\=`)
+    .replaceAll(':', String.raw`\:`).replaceAll(' ', String.raw`\ `);
 }
 
 export async function prepareScan({ github, context }) {
@@ -265,8 +276,8 @@ export async function prepareScan({ github, context }) {
     compilerOptions: { allowJs: true, noEmit: true },
     include: ['../source/**/*.ts', '../source/**/*.tsx', '../source/**/*.js'],
   }));
-  await writeFile(join(root(), 'trusted', 'fork-scan.properties'),
-    `${baseConfig}\n${Object.entries(overrides).map(([key, value]) => `${key}=${property(value)}`).join('\n')}\n`);
+  const settings = Object.entries(overrides).map(([key, value]) => `${key}=${property(value)}`).join('\n');
+  await writeFile(join(root(), 'trusted', 'fork-scan.properties'), `${baseConfig}\n${settings}\n`);
 }
 
 export async function verifyGate(report, request) {

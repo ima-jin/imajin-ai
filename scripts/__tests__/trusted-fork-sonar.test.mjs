@@ -458,7 +458,7 @@ describe('workflow boundary and same-repo compatibility', () => {
       }
     }
     const checkout = jobs.scan.steps.find((step) => step.with?.path === 'trusted');
-    expect(checkout.with.ref).toBe('${{ github.sha }}');
+    expect(checkout.with.ref).toBe('main');
     expect(jobs.scan.steps.filter((step) => step.uses.startsWith('actions/checkout@'))).toHaveLength(1);
     const source = jobs.scan.steps.find((step) => step.name.startsWith('Materialize'));
     expect(source.with.script).toContain('await materializeSource()');
