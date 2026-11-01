@@ -1,7 +1,8 @@
 // Only imported from the workflow_run default-branch checkout. PR data is never
 // imported, spawned, installed, or interpolated into shell/scanner arguments.
-import { lstat, readdir, readFile, writeFile } from 'node:fs/promises';
-import { join, resolve, relative, posix } from 'node:path';
+import { lstat, readdir, readFile, writeFile, mkdir } from 'node:fs/promises';
+import { join, resolve, relative, posix, dirname } from 'node:path';
+import { execFileSync } from 'node:child_process';
 
 const PROJECT = 'ima-jin_imajin-ai';
 const HOST = 'https://sonarcloud.io';
@@ -24,7 +25,7 @@ export function selectPr(prs, sha, repository) {
   assert(Number.isSafeInteger(pr.number) && pr.number > 0, 'Invalid API PR number');
   // Scanner properties expand ${...}, including environment variables. Fail
   // closed on unusual refs rather than permit PR-controlled interpolation.
-  assert(/^[A-Za-z0-9][A-Za-z0-9._/-]*$/.test(pr.head.ref), 'Unsafe PR branch name');
+  assert(typeof pr.head.ref === 'string' && /^[A-Za-z0-9][A-Za-z0-9._/-]*$/.test(pr.head.ref), 'Unsafe PR branch name');
   return pr;
 }
 
@@ -80,6 +81,62 @@ export async function resolveRun({ github, context, core }) {
   }
 }
 
+export function parseTree(tree) {
+  const files = tree.split('\0').filter(Boolean).map((entry) => {
+    const match = /^(100644|100755) blob ([a-f0-9]{40})\t([^\x00-\x1f]+)$/.exec(entry);
+    assert(match, 'Only regular Git blobs may be scanned (no symlinks or submodules)');
+    const [, , oid, path] = match;
+    assert(!path.includes('\\') && !path.includes(':') && !posix.isAbsolute(path), 'Unsafe Git path');
+    const parts = path.split('/');
+    assert(parts.every((part) => part && !['.', '..', '.git', '.scannerwork'].includes(part)), 'Unsafe Git path');
+    return { oid, path };
+  });
+  assert(files.length > 0 && files.length <= 20_000, 'Empty or oversized Git tree');
+  return files;
+}
+
+// No checkout is performed. Read the validated tree and blobs with core Git
+// plumbing, bypassing PR .gitattributes filters, hooks and executable file modes.
+// Git metadata stays available for scanner blame, but is created only by Git.
+export async function materializeSource(runGit) {
+  const state = JSON.parse(await readFile(statePath(), 'utf8'));
+  assert(SHA.test(state.sha), 'Invalid source SHA');
+  const source = join(root(), 'source');
+  await mkdir(source);
+  const git = runGit ?? ((args, input) => execFileSync('/usr/bin/git',
+    ['-c', 'core.hooksPath=/dev/null', ...args], {
+      cwd: source, input, maxBuffer: 256 * 1024 * 1024,
+      env: {
+        PATH: '/usr/bin:/bin', HOME: process.env.HOME,
+        GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: '/dev/null', GIT_TERMINAL_PROMPT: '0',
+      },
+      stdio: ['pipe', 'pipe', 'pipe'],
+    }));
+  git(['init']);
+  git(['remote', 'add', 'origin', 'https://github.com/ima-jin/imajin-ai.git']);
+  git(['fetch', '--no-tags', '--no-recurse-submodules', 'origin',
+    state.sha, '+refs/heads/main:refs/remotes/origin/main']);
+  git(['update-ref', 'HEAD', state.sha]);
+  git(['read-tree', state.sha]); // Index only; never populates a worktree.
+  const files = parseTree(git(['ls-tree', '-r', '-z', '--full-tree', state.sha]).toString('utf8'));
+  const blobs = git(['cat-file', '--batch'], files.map(({ oid }) => `${oid}\n`).join(''));
+  let offset = 0;
+  for (const { oid, path } of files) {
+    const end = blobs.indexOf(10, offset);
+    const header = blobs.subarray(offset, end).toString('ascii');
+    const match = /^([a-f0-9]{40}) blob (\d+)$/.exec(header);
+    assert(match && match[1] === oid, 'Unexpected Git blob response');
+    const size = Number(match[2]);
+    offset = end + 1;
+    assert(Number.isSafeInteger(size) && offset + size < blobs.length &&
+      blobs[offset + size] === 10, 'Truncated Git blob');
+    const destination = join(source, path);
+    await mkdir(dirname(destination), { recursive: true });
+    await writeFile(destination, blobs.subarray(offset, offset + size), { flag: 'wx', mode: 0o644 });
+    offset += size + 1;
+  }
+  assert(offset === blobs.length, 'Unexpected trailing Git data');
+}
 // Reject rather than follow links: neither analyzers nor coverage may read files
 // outside the source tree (runner credentials, trusted scripts or settings).
 export async function validateSource(directory, checkoutRoot = true) {
@@ -177,6 +234,8 @@ export async function prepareScan({ github, context }) {
     'sonar.pullrequest.branch': state.branch,
     'sonar.pullrequest.base': state.base,
     'sonar.scm.revision': state.sha,
+    // PR .gitignore edits must not narrow the trusted base's scan scope.
+    'sonar.scm.exclusions.disabled': 'true',
     'sonar.javascript.lcov.reportPaths': join(root(), 'trusted', 'fork-lcov.info'),
     'sonar.scanner.metadataFilePath': join(root(), 'trusted', 'fork-report-task.txt'),
     'sonar.working.directory': join(root(), 'trusted', 'scannerwork'),

@@ -228,9 +228,12 @@ The required **SonarCloud** CI job stays green on forks for compatibility, but
 warns **NOT SCANNED**: forks do not receive `SONAR_TOKEN`. The separate
 `sonarcloud-fork.yml` workflow runs from the default branch after CI completes.
 It authenticates the CI run and a unique open PR by exact head SHA through the
-GitHub API, then scans source files without installing or executing PR code.
+GitHub API, then reads regular Git blobs as non-executable scan data without
+checking out, installing or executing PR code (no hooks, filters or submodules).
 Settings come from the PR's trusted main base, not its `sonar-project.properties`;
-coverage is validated as untrusted data. PR workflow edits cannot alter this job.
+coverage is validated as untrusted data. PR workflow edits cannot alter this job,
+and PR `.gitignore` edits cannot narrow its scan scope. Unusual branch names with
+scanner-property interpolation characters fail closed rather than enter settings.
 
 Use **`sonarcloud/trusted` on the exact head SHA** as fork scan evidence. Success
 requires the submitted analysis task's quality gate to be OK; failed/cancelled CI,

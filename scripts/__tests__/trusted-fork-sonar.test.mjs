@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import YAML from 'yaml';
 import {
   coverageSource, finishScan, prepareScan, property, resolveRun, selectPr,
-  validateLcov, validateSource, verifyGate,
+  validateLcov, validateSource, verifyGate, materializeSource, parseTree,
 } from '../sonar/trusted-fork.mjs';
 
 const sha = 'a'.repeat(40);
@@ -167,7 +167,7 @@ describe('CI and unique PR authentication', () => {
     expect(statuses().at(-1).state).toBe('failure');
   });
 
-  it.each(['${env.SONAR_TOKEN}', 'branch\nsonar.host.url=evil', 'branch\\escape', 'branch"quote'])(
+  it.each(['${env.SONAR_TOKEN}', 'branch\nsonar.host.url=evil', 'branch\\escape', 'branch"quote', undefined, 123])(
     'rejects branch property-substitution or argument injection %s', (ref) => {
       expect(() => selectPr([{ ...pr(), head: { ...pr().head, ref } }], sha, repository)).toThrow('branch');
     },
@@ -175,6 +175,44 @@ describe('CI and unique PR authentication', () => {
 });
 
 describe('untrusted source, properties and artifact', () => {
+  it('reads exact-SHA blobs without checkout, shell execution, filters or executable modes', async () => {
+    await resolveCi();
+    await rm(join(dir, 'source'), { recursive: true });
+    const oid = 'd'.repeat(40);
+    const content = Buffer.from('export const safe = 1;\n');
+    const runGit = vi.fn((args) => {
+      if (args[0] === 'ls-tree') return Buffer.from(`100755 blob ${oid}\tpath/file.ts\0`);
+      if (args[0] === 'cat-file') return Buffer.concat([Buffer.from(`${oid} blob ${content.length}\n`), content, Buffer.from('\n')]);
+      return Buffer.alloc(0);
+    });
+    await materializeSource(runGit);
+    expect(await readFile(join(dir, 'source', 'path', 'file.ts'), 'utf8')).toBe(content.toString());
+    expect(runGit.mock.calls.map(([args]) => args[0])).toEqual([
+      'init', 'remote', 'fetch', 'update-ref', 'read-tree', 'ls-tree', 'cat-file',
+    ]);
+    expect(runGit).toHaveBeenCalledWith(['ls-tree', '-r', '-z', '--full-tree', sha]);
+    expect(runGit).toHaveBeenCalledWith(['cat-file', '--batch'], `${oid}\n`);
+  });
+
+  it.each([
+    `120000 blob ${sha}\tlink\0`, `160000 commit ${sha}\tsubmodule\0`,
+    `100644 blob ${sha}\t../trusted/secret\0`, `100644 blob ${sha}\t.git/config\0`,
+    `100644 blob ${sha}\t/scanner\0`, `100644 blob ${sha}\ta\\b\0`,
+    `100644 blob ${sha}\t.scannerwork/report-task.txt\0`, '',
+  ])('rejects unsafe Git trees before writing any PR data %j', (tree) => {
+    expect(() => parseTree(tree)).toThrow();
+  });
+
+  it.each(['wrong header\n', `${sha} blob 100\nshort\n`])('rejects corrupt blob data %s', async (blob) => {
+    await resolveCi();
+    await rm(join(dir, 'source'), { recursive: true });
+    const runGit = vi.fn((args) => {
+      if (args[0] === 'ls-tree') return Buffer.from(`100644 blob ${sha}\tfile.ts\0`);
+      if (args[0] === 'cat-file') return Buffer.from(blob);
+      return Buffer.alloc(0);
+    });
+    await expect(materializeSource(runGit)).rejects.toThrow('Git blob');
+  });
   it('uses base SHA properties and validated lcov, never the PR properties', async () => {
     await seedScan();
     await writeFile(join(dir, 'source', 'sonar-project.properties'),
@@ -190,6 +228,7 @@ describe('untrusted source, properties and artifact', () => {
     expect(config).toContain('sonar.pullrequest.key=3200');
     expect(config).toContain('sonar.qualitygate.wait=true');
     expect(config).toContain('sonar.nodejs.executable=/usr/bin/node');
+    expect(config).toContain('sonar.scm.exclusions.disabled=true');
     expect(config).not.toContain('evil');
     expect(config).not.toContain('sonar.exclusions=**');
     expect(await readFile(join(dir, 'trusted', 'fork-lcov.info'), 'utf8')).toBe(lcov());
@@ -391,10 +430,9 @@ describe('workflow boundary and same-repo compatibility', () => {
     }
     const checkout = jobs.scan.steps.find((step) => step.with?.path === 'trusted');
     expect(checkout.with.ref).toBe('${{ github.sha }}');
-    const source = jobs.scan.steps.find((step) => step.with?.path === 'source');
-    expect(source.with.ref).toBe('${{ steps.resolve.outputs.sha }}');
-    expect(source.with.submodules).toBe(false);
-    expect(source.with.lfs).toBe(false);
+    expect(jobs.scan.steps.filter((step) => step.uses.startsWith('actions/checkout@'))).toHaveLength(1);
+    const source = jobs.scan.steps.find((step) => step.name.startsWith('Materialize'));
+    expect(source.with.script).toContain('await materializeSource()');
   });
 
   it('downloads coverage by authenticated run ID and isolates token to scan/finalization', async () => {

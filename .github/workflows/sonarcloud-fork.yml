@@ -51,19 +51,15 @@ jobs:
           github-token: ${{ github.token }}
           repository: ${{ github.repository }}
 
-      # Files only. No install/build, submodules, LFS, local actions or scripts
-      # from this checkout. Its sonar-project.properties is never loaded.
-      - name: Check out exact PR source as data
+      # Read Git objects, not a PR checkout: no hooks, checkout filters, executable
+      # modes, symlinks, submodules, LFS, local actions or PR scripts.
+      - name: Materialize exact PR source as validated data
         if: steps.resolve.outputs.scan == 'true'
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
         with:
-          repository: ${{ github.repository }}
-          ref: ${{ steps.resolve.outputs.sha }}
-          path: source
-          fetch-depth: 0
-          persist-credentials: false
-          submodules: false
-          lfs: false
+          script: |
+            const { materializeSource } = await import(`${process.env.GITHUB_WORKSPACE}/trusted/scripts/sonar/trusted-fork.mjs`);
+            await materializeSource();
 
       - name: Validate source and lcov; load base-branch scan settings
         if: steps.resolve.outputs.scan == 'true'
