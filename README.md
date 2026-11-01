@@ -216,6 +216,7 @@ not a guessed network total.
   the post-v0.8.27 release diff and builds on #3108/#3110.
 
 ## Contributing
+Fork PR Sonar evidence will be reported by the trusted `sonarcloud/trusted` status (#3204).
 
 Read [AGENTS.md](AGENTS.md), [canonical patterns](docs/guide/canonical-patterns.md)
 and the [PR checklist](docs/PR-CHECKLIST.md). Work in an isolated worktree.
