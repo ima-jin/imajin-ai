@@ -1,0 +1,96 @@
+name: Trusted Fork SonarCloud
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+
+permissions: {}
+
+# Serialize attempts for a head; cancelled/failed CI must not leave an old green
+# result behind. Eligibility is re-read through the API, not event PR metadata.
+concurrency:
+  group: sonarcloud-trusted-${{ github.event.workflow_run.head_sha }}
+  cancel-in-progress: false
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: read
+      statuses: write
+    # Ephemeral host, no shared self-hosted caches or volumes. Same image as CI.
+    container:
+      image: ghcr.io/ima-jin/ci-runner@sha256:fcc0fb4320e709976a93ac9f940bb2f532a82d3e7f953798c48dc4b0d8435681
+    steps:
+      - name: Check out trusted orchestration only
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.sha }}
+          path: trusted
+          persist-credentials: false
+
+      - name: Resolve and authenticate CI and PR
+        id: resolve
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+        with:
+          script: |
+            const { resolveRun } = await import(`${process.env.GITHUB_WORKSPACE}/trusted/scripts/sonar/trusted-fork.mjs`);
+            await resolveRun({ github, context, core });
+
+      - name: Download untrusted coverage from the authenticated CI run
+        if: steps.resolve.outputs.scan == 'true'
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: coverage-lcov
+          path: incoming-coverage
+          run-id: ${{ steps.resolve.outputs.run_id }}
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+
+      # Files only. No install/build, submodules, LFS, local actions or scripts
+      # from this checkout. Its sonar-project.properties is never loaded.
+      - name: Check out exact PR source as data
+        if: steps.resolve.outputs.scan == 'true'
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          repository: ${{ github.repository }}
+          ref: ${{ steps.resolve.outputs.sha }}
+          path: source
+          fetch-depth: 0
+          persist-credentials: false
+          submodules: false
+          lfs: false
+
+      - name: Validate source and lcov; load base-branch scan settings
+        if: steps.resolve.outputs.scan == 'true'
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+        with:
+          script: |
+            const { prepareScan } = await import(`${process.env.GITHUB_WORKSPACE}/trusted/scripts/sonar/trusted-fork.mjs`);
+            await prepareScan({ github, context });
+
+      - name: Scan data only with trusted settings and wait for this task's gate
+        id: scan
+        if: steps.resolve.outputs.scan == 'true'
+        uses: SonarSource/sonarqube-scan-action@fd88b7d7ccbaefd23d8f36f73b59db7a3d246602 # v6.0.0, same as CI
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: https://sonarcloud.io
+        with:
+          projectBaseDir: source
+          args: -Dproject.settings=trusted/fork-scan.properties
+
+      - name: Publish exact-task gate result (fail closed)
+        if: always() && steps.resolve.outputs.scan == 'true'
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SCAN_OUTCOME: ${{ steps.scan.outcome }}
+        with:
+          script: |
+            const { finishScan } = await import(`${process.env.GITHUB_WORKSPACE}/trusted/scripts/sonar/trusted-fork.mjs`);
+            await finishScan({ github, context, core });

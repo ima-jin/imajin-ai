@@ -216,12 +216,33 @@ not a guessed network total.
   the post-v0.8.27 release diff and builds on #3108/#3110.
 
 ## Contributing
-Fork PR Sonar evidence will be reported by the trusted `sonarcloud/trusted` status (#3204).
 
 Read [AGENTS.md](AGENTS.md), [canonical patterns](docs/guide/canonical-patterns.md)
 and the [PR checklist](docs/PR-CHECKLIST.md). Work in an isolated worktree.
 Use `pnpm lint:agent`, `pnpm typecheck:agent`, `pnpm test:agent`, `pnpm build:agent`;
 while iterating, run affected tests only. Release workflows alone bump versions.
+
+### SonarCloud on fork PRs
+
+The required **SonarCloud** CI job stays green on forks for compatibility, but
+warns **NOT SCANNED**: forks do not receive `SONAR_TOKEN`. The separate
+`sonarcloud-fork.yml` workflow runs from the default branch after CI completes.
+It authenticates the CI run and a unique open PR by exact head SHA through the
+GitHub API, then scans source files without installing or executing PR code.
+Settings come from the PR's trusted main base, not its `sonar-project.properties`;
+coverage is validated as untrusted data. PR workflow edits cannot alter this job.
+
+Use **`sonarcloud/trusted` on the exact head SHA** as fork scan evidence. Success
+requires the submitted analysis task's quality gate to be OK; failed/cancelled CI,
+ambiguous PRs, malformed coverage, scan failures and stale heads cannot succeed.
+This status is not yet a required branch-protection context. Same-repo PR and
+push-to-main scans still use the existing CI path. Gate OK alone does not prove
+Sonar 0: also verify zero OPEN/CONFIRMED issues for the PR and the analysis revision.
+
+Workflow-run changes only activate after merge. For #3204's live verification,
+re-run CI on #3200 and #3201 after merge, then check each head SHA's trusted status,
+SonarCloud PR analysis revision, quality gate and OPEN/CONFIRMED issue count.
+Never push fork branches to the org or expose the token to PR code to bypass this.
 
 ## Security
 

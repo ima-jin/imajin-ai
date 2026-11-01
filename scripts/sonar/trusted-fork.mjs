@@ -1,0 +1,235 @@
+// Only imported from the workflow_run default-branch checkout. PR data is never
+// imported, spawned, installed, or interpolated into shell/scanner arguments.
+import { lstat, readdir, readFile, writeFile } from 'node:fs/promises';
+import { join, resolve, relative, posix } from 'node:path';
+
+const PROJECT = 'ima-jin_imajin-ai';
+const HOST = 'https://sonarcloud.io';
+const SHA = /^[a-f0-9]{40}$/;
+const MAX_LCOV = 50 * 1024 * 1024;
+const root = () => process.env.GITHUB_WORKSPACE;
+const statePath = () => join(root(), 'trusted', 'fork-state.json');
+
+function assert(condition, message) {
+  if (!condition) throw new Error(message);
+}
+
+export function selectPr(prs, sha, repository) {
+  const matches = prs.filter((pr) =>
+    pr.state === 'open' && pr.head?.sha === sha && pr.base?.repo?.full_name === repository);
+  assert(matches.length === 1, 'Expected exactly one open PR for the exact CI head SHA');
+  const pr = matches[0];
+  assert(pr.head.repo?.fork === true && pr.head.repo.full_name !== repository, 'Not a fork PR');
+  assert(pr.base.ref === 'main' && SHA.test(pr.base.sha), 'Expected a trusted main base');
+  assert(Number.isSafeInteger(pr.number) && pr.number > 0, 'Invalid API PR number');
+  // Scanner properties expand ${...}, including environment variables. Fail
+  // closed on unusual refs rather than permit PR-controlled interpolation.
+  assert(/^[A-Za-z0-9][A-Za-z0-9._/-]*$/.test(pr.head.ref), 'Unsafe PR branch name');
+  return pr;
+}
+
+async function getRun(github, context, id) {
+  const { data: run } = await github.rest.actions.getWorkflowRun({ ...context.repo, run_id: id });
+  const { data: ci } = await github.rest.actions.getWorkflow({ ...context.repo, workflow_id: 'ci.yml' });
+  assert(run.workflow_id === ci.id && run.path === '.github/workflows/ci.yml', 'Not the canonical CI workflow');
+  assert(run.repository.full_name === `${context.repo.owner}/${context.repo.repo}`, 'Wrong run repository');
+  return run;
+}
+
+async function prsFor(github, context, sha) {
+  return github.paginate(github.rest.repos.listPullRequestsAssociatedWithCommit,
+    { ...context.repo, commit_sha: sha, per_page: 100 });
+}
+
+async function postStatus(github, context, sha, state, number) {
+  await github.rest.repos.createCommitStatus({
+    ...context.repo, sha, state, context: 'sonarcloud/trusted',
+    description: state === 'success' ? 'Exact-head trusted scan: quality gate OK' :
+      state === 'pending' ? 'Trusted fork scan in progress' : 'Trusted scan failed or CI/PR could not be authenticated',
+    target_url: number ? `${HOST}/dashboard?id=${PROJECT}&pullRequest=${number}` :
+      `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+  });
+}
+
+export async function resolveRun({ github, context, core }) {
+  const event = context.payload.workflow_run;
+  const sha = event.head_sha;
+  assert(SHA.test(sha), 'Invalid triggering SHA');
+  let number;
+  try {
+    const run = await getRun(github, context, event.id);
+    assert(run.head_sha === sha, 'CI run SHA differs from triggering SHA');
+    // Same-repo/push scans remain owned entirely by ci.yml.
+    if (run.event !== 'pull_request' || run.head_repository?.full_name === run.repository.full_name) return;
+    const pr = selectPr(await prsFor(github, context, sha), sha, run.repository.full_name);
+    number = pr.number;
+    assert(run.head_repository?.id === pr.head.repo.id, 'CI head repository differs from PR');
+    assert(run.status === 'completed' && run.conclusion === 'success', 'CI did not complete successfully');
+    assert(run.run_attempt === event.run_attempt, 'Superseded CI attempt');
+    await postStatus(github, context, sha, 'pending', number);
+    await writeFile(statePath(), JSON.stringify({
+      sha, number, branch: pr.head.ref, base: pr.base.ref, baseSha: pr.base.sha,
+      runId: run.id, attempt: run.run_attempt, headRepoId: pr.head.repo.id,
+    }));
+    core.setOutput('sha', sha);
+    core.setOutput('run_id', String(run.id));
+    core.setOutput('scan', 'true');
+  } catch (error) {
+    await postStatus(github, context, sha, 'failure', number);
+    throw error;
+  }
+}
+
+// Reject rather than follow links: neither analyzers nor coverage may read files
+// outside the source tree (runner credentials, trusted scripts or settings).
+export async function validateSource(directory, checkoutRoot = true) {
+  for (const entry of await readdir(directory, { withFileTypes: true })) {
+    assert(!entry.isSymbolicLink(), 'Source symlinks are not allowed in trusted scans');
+    if (checkoutRoot && entry.name === '.git') {
+      assert(entry.isDirectory(), 'Expected checkout-owned git metadata');
+      continue;
+    }
+    assert(entry.name !== '.scannerwork', 'PR-supplied scanner work directories are forbidden');
+    const path = join(directory, entry.name);
+    if (entry.isDirectory()) await validateSource(path, false);
+    else assert(entry.isFile(), 'Only regular source files are allowed');
+  }
+}
+
+export function coverageSource(value) {
+  // Vitest normally emits relative SF paths. Accept only the two known GitHub
+  // runner roots as well; never arbitrary absolute paths, URLs or traversal.
+  const normalized = value.replaceAll('\\', '/');
+  const prefixes = ['/__w/imajin-ai/imajin-ai/', '/home/runner/work/imajin-ai/imajin-ai/'];
+  const prefix = prefixes.find((candidate) => normalized.startsWith(candidate));
+  const path = prefix ? normalized.slice(prefix.length) : normalized;
+  assert(path && !posix.isAbsolute(path) && !/[:\x00-\x1f]/.test(path), 'Unsafe lcov source path');
+  assert(path.split('/').every((part) => part && part !== '.' && part !== '..' && part !== '.git'),
+    'Unsafe lcov source path');
+  return path;
+}
+
+export async function validateLcov(text, source) {
+  assert(text.length > 0 && Buffer.byteLength(text) <= MAX_LCOV, 'Empty or oversized lcov');
+  const result = [];
+  let inRecord = false;
+  let records = 0;
+  for (const line of text.split(/\r?\n/)) {
+    if (!line) continue;
+    assert(!/[\x00-\x08\x0b-\x1f\x7f]/.test(line), 'Control characters in lcov');
+    if (line.startsWith('SF:')) {
+      assert(!inRecord, 'Nested lcov record');
+      const path = coverageSource(line.slice(3));
+      const file = resolve(source, path);
+      assert(!relative(source, file).startsWith('..'), 'Coverage escaped source');
+      assert((await lstat(file)).isFile(), 'Coverage source must be a regular checked-out file');
+      result.push(`SF:${path}`);
+      inRecord = true;
+      records++;
+    } else if (line === 'end_of_record') {
+      assert(inRecord, 'Unexpected lcov record end');
+      inRecord = false;
+      result.push(line);
+    } else if (line.startsWith('TN:')) {
+      assert(!inRecord, 'Unexpected lcov test name');
+      result.push('TN:'); // No PR-controlled labels are needed.
+    } else {
+      assert(inRecord && /^(?:DA:\d+,\d+(?:,[a-fA-F0-9]+)?|BRDA:\d+,\d+,\d+,(?:\d+|-)|(?:FNF|FNH|LF|LH|BRF|BRH):\d+|FN:\d+,.+|FNDA:\d+,.+)$/.test(line),
+        'Invalid lcov record');
+      result.push(line);
+    }
+  }
+  assert(records > 0 && !inRecord, 'Missing or incomplete lcov records');
+  return `${result.join('\n')}\n`;
+}
+
+// Java properties escaping, not shell quoting. Branch names never become CLI
+// args, output commands, filenames, or executable JavaScript.
+export function property(value) {
+  assert(typeof value === 'string' && value.length > 0, 'Empty scan property');
+  return value.replaceAll('\\', '\\\\').replaceAll('\r', '\\r').replaceAll('\n', '\\n')
+    .replaceAll('\t', '\\t').replaceAll('=', '\\=').replaceAll(':', '\\:').replaceAll(' ', '\\ ');
+}
+
+export async function prepareScan({ github, context }) {
+  const state = JSON.parse(await readFile(statePath(), 'utf8'));
+  const source = join(root(), 'source');
+  await validateSource(source);
+  const incoming = join(root(), 'incoming-coverage');
+  const entries = await readdir(incoming);
+  assert(entries.length === 1 && entries[0] === 'lcov.info', 'Expected only lcov.info in artifact');
+  const info = await lstat(join(incoming, 'lcov.info'));
+  assert(info.isFile() && !info.isSymbolicLink() && info.size <= MAX_LCOV, 'Unsafe lcov artifact');
+  const lcov = await validateLcov(await readFile(join(incoming, 'lcov.info'), 'utf8'), source);
+  await writeFile(join(root(), 'trusted', 'fork-lcov.info'), lcov);
+  const { data: config } = await github.rest.repos.getContent({
+    ...context.repo, path: 'sonar-project.properties', ref: state.baseSha,
+  });
+  assert(config.type === 'file' && config.encoding === 'base64', 'Missing trusted base config');
+  const baseConfig = Buffer.from(config.content, 'base64').toString('utf8');
+  // Explicit settings bypass PR sonar-project.properties. Last values win in
+  // Java properties; sensitive paths/settings cannot come from the fork.
+  const overrides = {
+    'sonar.projectKey': PROJECT,
+    'sonar.organization': 'ima-jin',
+    'sonar.host.url': HOST,
+    'sonar.pullrequest.key': String(state.number),
+    'sonar.pullrequest.branch': state.branch,
+    'sonar.pullrequest.base': state.base,
+    'sonar.scm.revision': state.sha,
+    'sonar.javascript.lcov.reportPaths': join(root(), 'trusted', 'fork-lcov.info'),
+    'sonar.scanner.metadataFilePath': join(root(), 'trusted', 'fork-report-task.txt'),
+    'sonar.working.directory': join(root(), 'trusted', 'scannerwork'),
+    'sonar.qualitygate.wait': 'true',
+    'sonar.qualitygate.timeout': '300',
+    // Do not resolve PR-supplied tsconfig extends/plugins or Node executables.
+    'sonar.typescript.tsconfigPaths': join(root(), 'trusted', 'fork-tsconfig.json'),
+    'sonar.nodejs.executable': '/usr/bin/node',
+  };
+  await writeFile(join(root(), 'trusted', 'fork-tsconfig.json'), JSON.stringify({
+    compilerOptions: { allowJs: true, noEmit: true },
+    include: ['../source/**/*.ts', '../source/**/*.tsx', '../source/**/*.js'],
+  }));
+  await writeFile(join(root(), 'trusted', 'fork-scan.properties'),
+    `${baseConfig}\n${Object.entries(overrides).map(([key, value]) => `${key}=${property(value)}`).join('\n')}\n`);
+}
+
+export async function verifyGate(report, request) {
+  const taskId = /^ceTaskId=([A-Za-z0-9_-]+)$/m.exec(report)?.[1];
+  assert(taskId, 'Missing scanner task id');
+  // Never follow ceTaskUrl/serverUrl supplied in a report: host is fixed.
+  const { task } = await request(`/api/ce/task?id=${encodeURIComponent(taskId)}`);
+  assert(task?.status === 'SUCCESS' && task.componentKey === PROJECT &&
+    /^[A-Za-z0-9_-]+$/.test(task.analysisId ?? ''), 'Analysis task did not succeed for this project');
+  const { projectStatus } = await request(`/api/qualitygates/project_status?analysisId=${encodeURIComponent(task.analysisId)}`);
+  assert(projectStatus?.status === 'OK', 'Exact analysis quality gate is not OK');
+}
+
+export async function finishScan({ github, context, core, request = sonarRequest }) {
+  const state = JSON.parse(await readFile(statePath(), 'utf8'));
+  try {
+    assert(process.env.SCAN_OUTCOME === 'success', 'Scanner did not succeed');
+    await verifyGate(await readFile(join(root(), 'trusted', 'fork-report-task.txt'), 'utf8'), request);
+    const run = await getRun(github, context, state.runId);
+    assert(run.head_sha === state.sha && run.conclusion === 'success' && run.status === 'completed' &&
+      run.run_attempt === state.attempt, 'CI was rerun or is no longer green');
+    const pr = selectPr(await prsFor(github, context, state.sha), state.sha,
+      `${context.repo.owner}/${context.repo.repo}`);
+    assert(pr.number === state.number && pr.head.repo.id === state.headRepoId, 'PR changed during scan');
+    await postStatus(github, context, state.sha, 'success', state.number);
+  } catch {
+    await postStatus(github, context, state.sha, 'failure', state.number);
+    // Do not log remote response bodies, PR-controlled data or credentials.
+    core.setFailed('Trusted fork analysis failed; inspect scanner and CI eligibility steps');
+  }
+}
+
+async function sonarRequest(path) {
+  assert(process.env.SONAR_TOKEN, 'SONAR_TOKEN is required');
+  const response = await fetch(`${HOST}${path}`, {
+    headers: { Authorization: `Bearer ${process.env.SONAR_TOKEN}` },
+    redirect: 'error', signal: AbortSignal.timeout(30_000),
+  });
+  assert(response.ok, 'Sonar API request failed');
+  return response.json();
+}
