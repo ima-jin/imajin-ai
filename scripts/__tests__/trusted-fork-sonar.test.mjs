@@ -198,12 +198,25 @@ describe('untrusted source, properties and artifact', () => {
     `120000 blob ${sha}\tlink\0`, `160000 commit ${sha}\tsubmodule\0`,
     `100644 blob ${sha}\t../trusted/secret\0`, `100644 blob ${sha}\t.git/config\0`,
     `100644 blob ${sha}\t/scanner\0`, `100644 blob ${sha}\ta\\b\0`,
-    `100644 blob ${sha}\t.scannerwork/report-task.txt\0`, '',
+    `100644 blob ${sha}\t.scannerwork/report-task.txt\0`, `100644 blob ${sha}\tC:escape\0`,
+    `100644 blob ${sha}\tcontrol\nname\0`, '',
   ])('rejects unsafe Git trees before writing any PR data %j', (tree) => {
     expect(() => parseTree(tree)).toThrow();
   });
 
-  it.each(['wrong header\n', `${sha} blob 100\nshort\n`])('rejects corrupt blob data %s', async (blob) => {
+  it('rejects oversized Git trees', () => {
+    expect(() => parseTree(`100644 blob ${sha}\tfile.ts\0`.repeat(20_001))).toThrow('oversized');
+  });
+
+  it('rejects invalid source SHA before invoking Git', async () => {
+    await writeFile(join(dir, 'trusted', 'fork-state.json'), JSON.stringify({ sha: '--unsafe' }));
+    const runGit = vi.fn();
+    await expect(materializeSource(runGit)).rejects.toThrow('source SHA');
+    expect(runGit).not.toHaveBeenCalled();
+  });
+
+  it.each(['wrong header\n', `${sha} blob 100\nshort\n`, `${'c'.repeat(40)} blob 1\nx\n`,
+    `${sha} blob 1\nx!`, `${sha} blob 9007199254740992\nx\n`])('rejects corrupt blob data %s', async (blob) => {
     await resolveCi();
     await rm(join(dir, 'source'), { recursive: true });
     const runGit = vi.fn((args) => {
@@ -212,6 +225,17 @@ describe('untrusted source, properties and artifact', () => {
       return Buffer.alloc(0);
     });
     await expect(materializeSource(runGit)).rejects.toThrow('Git blob');
+  });
+
+  it('rejects unexpected trailing blob data', async () => {
+    await resolveCi();
+    await rm(join(dir, 'source'), { recursive: true });
+    const runGit = vi.fn((args) => {
+      if (args[0] === 'ls-tree') return Buffer.from(`100644 blob ${sha}\tfile.ts\0`);
+      if (args[0] === 'cat-file') return Buffer.from(`${sha} blob 1\nx\nunexpected`);
+      return Buffer.alloc(0);
+    });
+    await expect(materializeSource(runGit)).rejects.toThrow('trailing');
   });
   it('uses base SHA properties and validated lcov, never the PR properties', async () => {
     await seedScan();
@@ -260,6 +284,10 @@ describe('untrusted source, properties and artifact', () => {
     'SF:file.ts\nSF:file.ts\nend_of_record\n', 'SF:file.ts\nDA:bad\nend_of_record\n',
     'SF:file.ts\nsonar.host.url=evil\nend_of_record\n', 'SF:file.ts\nTN:nested\nend_of_record\n',
     'SF:file.ts\nDA:1,1\0\nend_of_record\n',
+    'SF:file.ts\nLF:bad\nend_of_record\n',
+    'SF:file.ts\nBRDA:1,0,a,-\nend_of_record\n',
+    'SF:file.ts\nFN:bad,name\nend_of_record\n',
+    'SF:file.ts\nnot-even-a-record\nend_of_record\n',
   ])('rejects malformed lcov %j', async (text) => {
     await writeFile(join(dir, 'source', 'file.ts'), '');
     await expect(validateLcov(text, join(dir, 'source'))).rejects.toThrow();
@@ -289,12 +317,12 @@ describe('untrusted source, properties and artifact', () => {
     await expect(validateSource(join(dir, 'source'))).rejects.toThrow('scanner');
   });
 
-  it('accepts checkout-owned git metadata but rejects a .git file', async () => {
+  it('accepts Git-owned metadata but rejects a .git file', async () => {
     await mkdir(join(dir, 'source', '.git'));
     await expect(validateSource(join(dir, 'source'))).resolves.toBeUndefined();
     await rm(join(dir, 'source', '.git'), { recursive: true });
     await writeFile(join(dir, 'source', '.git'), 'gitdir: ../trusted');
-    await expect(validateSource(join(dir, 'source'))).rejects.toThrow('checkout-owned');
+    await expect(validateSource(join(dir, 'source'))).rejects.toThrow('Git-owned');
   });
 
   it('rejects artifact extras instead of trusting filenames or PR metadata', async () => {

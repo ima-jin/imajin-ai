@@ -8,6 +8,14 @@ const PROJECT = 'ima-jin_imajin-ai';
 const HOST = 'https://sonarcloud.io';
 const SHA = /^[a-f0-9]{40}$/;
 const MAX_LCOV = 50 * 1024 * 1024;
+const LCOV_COUNTS = new Set(['FNF', 'FNH', 'LF', 'LH', 'BRF', 'BRH']);
+const FUNCTION_METRIC = /^\d+,.+$/;
+const LCOV_METRICS = new Map([
+  ['DA', /^\d+,\d+(?:,[a-fA-F0-9]+)?$/],
+  ['BRDA', /^\d+,\d+,\d+,(?:\d+|-)$/],
+  ['FN', FUNCTION_METRIC],
+  ['FNDA', FUNCTION_METRIC],
+]);
 const root = () => process.env.GITHUB_WORKSPACE;
 const statePath = () => join(root(), 'trusted', 'fork-state.json');
 
@@ -139,11 +147,11 @@ export async function materializeSource(runGit) {
 }
 // Reject rather than follow links: neither analyzers nor coverage may read files
 // outside the source tree (runner credentials, trusted scripts or settings).
-export async function validateSource(directory, checkoutRoot = true) {
+export async function validateSource(directory, repositoryRoot = true) {
   for (const entry of await readdir(directory, { withFileTypes: true })) {
     assert(!entry.isSymbolicLink(), 'Source symlinks are not allowed in trusted scans');
-    if (checkoutRoot && entry.name === '.git') {
-      assert(entry.isDirectory(), 'Expected checkout-owned git metadata');
+    if (repositoryRoot && entry.name === '.git') {
+      assert(entry.isDirectory(), 'Expected Git-owned metadata directory');
       continue;
     }
     assert(entry.name !== '.scannerwork', 'PR-supplied scanner work directories are forbidden');
@@ -166,6 +174,15 @@ export function coverageSource(value) {
   return path;
 }
 
+function validMetric(line) {
+  const separator = line.indexOf(':');
+  if (separator < 0) return false;
+  const kind = line.slice(0, separator);
+  const value = line.slice(separator + 1);
+  if (LCOV_COUNTS.has(kind)) return /^\d+$/.test(value);
+  return LCOV_METRICS.get(kind)?.test(value) ?? false;
+}
+
 export async function validateLcov(text, source) {
   assert(text.length > 0 && Buffer.byteLength(text) <= MAX_LCOV, 'Empty or oversized lcov');
   const result = [];
@@ -179,7 +196,7 @@ export async function validateLcov(text, source) {
       const path = coverageSource(line.slice(3));
       const file = resolve(source, path);
       assert(!relative(source, file).startsWith('..'), 'Coverage escaped source');
-      assert((await lstat(file)).isFile(), 'Coverage source must be a regular checked-out file');
+      assert((await lstat(file)).isFile(), 'Coverage source must be a regular source file');
       result.push(`SF:${path}`);
       inRecord = true;
       records++;
@@ -191,8 +208,7 @@ export async function validateLcov(text, source) {
       assert(!inRecord, 'Unexpected lcov test name');
       result.push('TN:'); // No PR-controlled labels are needed.
     } else {
-      assert(inRecord && /^(?:DA:\d+,\d+(?:,[a-fA-F0-9]+)?|BRDA:\d+,\d+,\d+,(?:\d+|-)|(?:FNF|FNH|LF|LH|BRF|BRH):\d+|FN:\d+,.+|FNDA:\d+,.+)$/.test(line),
-        'Invalid lcov record');
+      assert(inRecord && validMetric(line), 'Invalid lcov record');
       result.push(line);
     }
   }
