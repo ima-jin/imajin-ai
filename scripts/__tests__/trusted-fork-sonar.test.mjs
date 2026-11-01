@@ -484,7 +484,7 @@ describe('workflow boundary and same-repo compatibility', () => {
       }
     }
     const scan = jobs.scan.steps.find((step) => step.id === 'scan');
-    expect(scan.env.SONAR_USER_HOME).toBe('${{ github.workspace }}/trusted/sonar-home');
+    expect(scan.env.SONAR_USER_HOME).toBe('/github/home/.sonar');
     expect(scan.with).toEqual({
       projectBaseDir: 'source', args: '-Dproject.settings=trusted/fork-scan.properties',
     });

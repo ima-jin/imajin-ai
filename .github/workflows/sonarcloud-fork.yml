@@ -84,7 +84,7 @@ jobs:
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: https://sonarcloud.io
-          SONAR_USER_HOME: ${{ github.workspace }}/trusted/sonar-home
+          SONAR_USER_HOME: /github/home/.sonar
         with:
           projectBaseDir: source
           args: -Dproject.settings=trusted/fork-scan.properties
