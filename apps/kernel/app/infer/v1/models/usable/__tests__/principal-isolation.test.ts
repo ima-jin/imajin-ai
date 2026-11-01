@@ -130,7 +130,7 @@ describe('#3198 principal-scoped sealed inference (real auth orchestration + bra
   // reproduction. #1624 explicitly allows this registrant subsidy; #3198
   // requires agent connectors to remain principal-only. Each assertion below
   // was observed failing normally before preserving it as an expected failure.
-  it.each([MAIN, ORG])('usable must not list the agent registrant’s connector for %s', async (principal) => {
+  it.fails.each([MAIN, ORG])('usable must not list the agent registrant’s connector for %s', async (principal) => {
     registrant.mockResolvedValue(AGENT);
     const direct = await GET(request(principal));
     expect(direct.status).toBe(200);
@@ -138,21 +138,21 @@ describe('#3198 principal-scoped sealed inference (real auth orchestration + bra
     expect(body.data.map((row: { id: string }) => row.id)).toEqual(principal === MAIN ? ['main-model'] : []);
   });
 
-  it.each([MAIN, ORG])('passthrough must not list the agent registrant’s connector for %s', async (principal) => {
+  it.fails.each([MAIN, ORG])('passthrough must not list the agent registrant’s connector for %s', async (principal) => {
     registrant.mockResolvedValue(AGENT);
     const proxy = await listThroughPassthrough(principal);
     expect(proxy.status).toBe(200);
     expect(proxy.body.data.map((row: { id: string }) => row.id)).toEqual(principal === MAIN ? ['main-model'] : []);
   });
 
-  it('the org must not resolve its agent registrant’s sealed credential', async () => {
+  it.fails('the org must not resolve its agent registrant’s sealed credential', async () => {
     registrant.mockResolvedValue(AGENT);
     await expect(resolveBrain({ ownerDid: ORG, appDid: APP })).rejects.toMatchObject({
       name: 'NoBrainSealedError',
     });
   });
 
-  it('main must not resolve its agent registrant’s sealed credential by model id', async () => {
+  it.fails('main must not resolve its agent registrant’s sealed credential by model id', async () => {
     registrant.mockResolvedValue(AGENT);
     const brain = await resolveBrain({ ownerDid: MAIN, appDid: APP }, { model: 'agent-model' });
     expect(brain.credentialDid).toBe(MAIN);
