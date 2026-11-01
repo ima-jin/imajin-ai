@@ -451,22 +451,25 @@ describe('workflow boundary and same-repo compatibility', () => {
     expect(workflow.jobs.scan.container.volumes).toBeUndefined();
   });
 
-  it('pins actions, never persists checkout credentials, and has no PR execution steps', async () => {
+  it('pins actions, performs no checkouts, and has no PR execution steps', async () => {
     const { jobs } = await load('sonarcloud-fork.yml');
     for (const step of jobs.scan.steps) {
       expect(step.uses).toMatch(/@[a-f0-9]{40}$/);
       expect(step.run).toBeUndefined();
       expect(step.uses).not.toMatch(/^\.\//);
-      if (step.uses.startsWith('actions/checkout@')) expect(step.with['persist-credentials']).toBe(false);
       if (step.with?.script) {
-        expect(step.with.script).toContain('/trusted/scripts/sonar/trusted-fork.mjs');
         expect(step.with.script).not.toContain('${{');
+        if (step.id !== 'bootstrap') {
+          expect(step.with.script).toContain('/trusted/scripts/sonar/trusted-fork.mjs');
+        }
       }
     }
-    const checkout = jobs.scan.steps.find((step) => step.with?.path === 'trusted');
-    expect(checkout.with.repository).toBe('ima-jin/imajin-ai');
-    expect(checkout.with.ref).toBe('main');
-    expect(jobs.scan.steps.filter((step) => step.uses.startsWith('actions/checkout@'))).toHaveLength(1);
+    expect(jobs.scan.steps.some((step) => step.uses.startsWith('actions/checkout@'))).toBe(false);
+    const bootstrap = jobs.scan.steps.find((step) => step.id === 'bootstrap');
+    expect(bootstrap.with.script).toContain("owner: 'ima-jin', repo: 'imajin-ai'");
+    expect(bootstrap.with.script).toContain("path: 'scripts/sonar/trusted-fork.mjs', ref: 'main'");
+    expect(bootstrap.with.script).toContain("data.type !== 'file' || data.encoding !== 'base64'");
+    expect(bootstrap.with.script).toContain("flag: 'wx'");
     const source = jobs.scan.steps.find((step) => step.name.startsWith('Materialize'));
     expect(source.with.script).toContain('await materializeSource()');
   });

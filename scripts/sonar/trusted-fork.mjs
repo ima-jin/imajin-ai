@@ -1,4 +1,4 @@
-// Only imported from the workflow_run default-branch checkout. PR data is never
+// Only loaded from the org repo's trusted main through the GitHub API. PR data is never
 // imported, spawned, installed, or interpolated into shell/scanner arguments.
 import { lstat, readdir, readFile, writeFile, mkdir } from 'node:fs/promises';
 import { join, resolve, relative, posix, dirname } from 'node:path';

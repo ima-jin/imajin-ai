@@ -27,19 +27,30 @@ jobs:
     container:
       image: ghcr.io/ima-jin/ci-runner@sha256:fcc0fb4320e709976a93ac9f940bb2f532a82d3e7f953798c48dc4b0d8435681
       # Hosted Ubuntu mounts belong to UID 1001; the image defaults to 1000.
-      # Stay non-root while allowing checkout, outputs and tool-cache writes.
+      # Stay non-root while allowing workspace, outputs and tool-cache writes.
       options: --user 1001:1001
       credentials:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
     steps:
-      - name: Check out trusted orchestration only
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Load reviewed main helper only (no checkout)
+        id: bootstrap
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
         with:
-          repository: ima-jin/imajin-ai
-          ref: main
-          path: trusted
-          persist-credentials: false
+          script: |
+            const { mkdir, writeFile } = require('node:fs/promises');
+            const { join } = require('node:path');
+            const { data } = await github.rest.repos.getContent({
+              owner: 'ima-jin', repo: 'imajin-ai',
+              path: 'scripts/sonar/trusted-fork.mjs', ref: 'main',
+            });
+            if (data.type !== 'file' || data.encoding !== 'base64') {
+              throw new Error('Trusted main helper is not a regular file');
+            }
+            const directory = join(process.env.GITHUB_WORKSPACE, 'trusted', 'scripts', 'sonar');
+            await mkdir(directory, { recursive: true });
+            await writeFile(join(directory, 'trusted-fork.mjs'), Buffer.from(data.content, 'base64'),
+              { flag: 'wx', mode: 0o644 });
 
       - name: Resolve and authenticate CI and PR
         id: resolve

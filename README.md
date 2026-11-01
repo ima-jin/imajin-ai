@@ -227,6 +227,8 @@ while iterating, run affected tests only. Release workflows alone bump versions.
 The required **SonarCloud** CI job stays green on forks for compatibility, but
 warns **NOT SCANNED**: forks do not receive `SONAR_TOKEN`. The separate
 `sonarcloud-fork.yml` workflow runs from the default branch after CI completes.
+It loads only its dependency-free helper from the org repo's trusted main via
+the GitHub API; the privileged job performs no checkout at all.
 It authenticates the CI run and a unique open PR by exact head SHA through the
 GitHub API, then reads regular Git blobs as non-executable scan data without
 checking out, installing or executing PR code (no hooks, filters or submodules).
