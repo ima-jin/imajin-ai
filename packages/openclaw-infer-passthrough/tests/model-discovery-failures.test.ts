@@ -15,6 +15,12 @@ const CATALOG = `${BASE}/infer/v1/models/usable`;
 const MODEL_LIST = { object: 'list', data: [{ id: 'fixture-anthropic-model', object: 'model' }] };
 
 type Fault = 'network' | 'timeout' | 'malformed' | number;
+interface MintBody {
+  principalDid: string;
+  signature: string;
+  nonce: string;
+  timestamp: string;
+}
 
 /** Match server.ts's error boundary without binding an HTTP listener. */
 async function withHttpErrorMapping(operation: () => Promise<ProxyResponse>): Promise<ProxyResponse> {
@@ -51,24 +57,18 @@ describe.each(PRINCIPALS)('#3198 discovery failure classification for %s', (prin
     // Fresh, disposable test signing key only; no live credentials or fixtures from disk.
     const keypair = generateKeypair();
     const provider = new RouteTokenProvider(BASE, APP, keypair.privateKey, principal, undefined, undefined, undefined, undefined, 50);
-    const mintBodies: Record<string, unknown>[] = [];
+    const mintBodies: MintBody[] = [];
     const urls: string[] = [];
+    const catalogRequests: RequestInit[] = [];
     vi.stubGlobal('fetch', vi.fn(async (url: string, init: RequestInit) => {
       urls.push(url);
       if (url === MINT) {
         const body = JSON.parse(init.body as string);
         mintBodies.push(body);
-        expect(body.principalDid).toBe(principal);
-        expect(body).not.toHaveProperty('attestationId');
-        expect(await crypto.verify(
-          body.signature, `${APP}:${principal}:${body.nonce}:${body.timestamp}`, keypair.publicKey,
-        )).toBe(true);
         if (stage === 'mint') return injectedResponse(fault, init);
         return Response.json({ token: 'fixture-app-token', expiresIn: 600, scopes: ['infer:completions'] });
       }
-      expect(url).toBe(CATALOG);
-      expect(init.method).toBe('GET');
-      expect(new Headers(init.headers).get('authorization')).toBe('Bearer fixture-app-token');
+      catalogRequests.push(init);
       return injectedResponse(fault, init);
     }));
     const response = await withHttpErrorMapping(() => handleModels({
@@ -77,6 +77,18 @@ describe.each(PRINCIPALS)('#3198 discovery failure classification for %s', (prin
       kernelTimeoutMs: 50,
       getTokenProvider: () => provider,
     }));
+    expect(mintBodies.length).toBeGreaterThan(0);
+    for (const body of mintBodies) {
+      expect(body.principalDid).toBe(principal);
+      expect(body).not.toHaveProperty('attestationId');
+      expect(await crypto.verify(
+        body.signature, `${APP}:${principal}:${body.nonce}:${body.timestamp}`, keypair.publicKey,
+      )).toBe(true);
+    }
+    for (const init of catalogRequests) {
+      expect(init.method).toBe('GET');
+      expect(new Headers(init.headers).get('authorization')).toBe('Bearer fixture-app-token');
+    }
     return { response, body: await new Response(response.body).json(), urls, mintBodies };
   }
 
