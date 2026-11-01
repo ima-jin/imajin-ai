@@ -73,7 +73,7 @@ vi.mock('@/src/lib/vault/vault-repository', () => ({
 }));
 import { identities, identityMembers, attestations, channelLinks } from '@/src/db/schemas/auth';
 import { registryApps } from '@/src/db/schemas/registry';
-import { connectors, orgConnectionSuspensions, orgConnectionEvents } from '@/src/db/schemas/connectors';
+import { connectors, orgConnectionSuspensions, orgConnectionEvents, orgConnectionMemberGrants } from '@/src/db/schemas/connectors';
 import { vaultDelegationGrants, vaultOwnerEnvelopes, vaultGrantRequests } from '@/src/db/schemas/vault';
 import { canonicalize, crypto, generateKeypair, requireAuth, requireAppAuth } from '@imajin/auth';
 import { _resetSealingCache, getNodeSigningIdentity } from '@/src/lib/vault/sealing';
@@ -92,9 +92,12 @@ import { GET as ORG_LIST, OPTIONS as ORG_OPTIONS } from '@/app/connections/api/o
 import { GET as ORG_GET, POST as ORG_LOAD, DELETE as ORG_REMOVE, OPTIONS as ORG_PROVIDER_OPTIONS } from '@/app/connections/api/org-held/[provider]/route';
 import { GET as ORG_STATUS, POST as ORG_CHANGE } from '@/app/auth/api/org-connections/route';
 import { removeGroupController } from '@/src/lib/auth/remove-group-controller';
+import { GET as MEMBER_GRANTS, POST as GRANT_MEMBER, DELETE as REVOKE_MEMBER, OPTIONS as GRANT_OPTIONS } from '@/app/connections/api/org-held/[provider]/grants/route';
+import { requireOrgConnectionMemberGrant, listOrgConnectionMemberGrants } from '../org-connection-member-grants';
+import { orgConnectionMemberGrantRoute } from '../org-connection-member-grant-route';
 
 const tables = [identities, identityMembers, attestations, channelLinks, registryApps, connectors, orgConnectionSuspensions, orgConnectionEvents,
-  vaultDelegationGrants, vaultOwnerEnvelopes, vaultGrantRequests];
+  vaultDelegationGrants, vaultOwnerEnvelopes, vaultGrantRequests, orgConnectionMemberGrants];
 const keys = generateKeypair();
 let client: PGlite;
 let database: ReturnType<typeof drizzle>;
@@ -167,7 +170,7 @@ beforeAll(async () => {
   client = new PGlite();
   await client.waitReady;
   await client.exec('CREATE SCHEMA auth; CREATE SCHEMA kernel; CREATE SCHEMA registry;');
-  for (const table of tables) await client.exec(tableSql(table));
+  for (const table of tables.filter(table => table !== orgConnectionMemberGrants)) await client.exec(tableSql(table));
   await client.exec(`
     CREATE UNIQUE INDEX conn_tuple ON kernel.connectors (owner_did,provider,slot);
     CREATE UNIQUE INDEX owner_envelope ON kernel.vault_owner_envelopes (field,key_id);
@@ -188,6 +191,9 @@ beforeAll(async () => {
   const orgHeldMigration = readFileSync('migrations/0229_org_held_connections.sql', 'utf8');
   await client.exec(orgHeldMigration);
   await client.exec(orgHeldMigration);
+  const memberGrantMigration = readFileSync('migrations/0230_org_connection_member_grants.sql', 'utf8');
+  await client.exec(memberGrantMigration);
+  await client.exec(memberGrantMigration);
 });
 beforeEach(async () => {
   vi.clearAllMocks();
@@ -1049,6 +1055,226 @@ async function changeOrgBoundary(boundary: string) {
   };
   await changes[boundary]();
 }
+describe('org-held member grants: durable lifecycle and live metadata contract', () => {
+  const grantee = () => `${member}grantee`;
+  const context = (provider = 'anthropic') => ({ memberDid: grantee(), orgDid: org, actingDid: org, provider });
+  async function prepare(provider = 'anthropic') {
+    await asOrg('owner');
+    await orgRequest('POST', provider, orgKey());
+    await database.insert(identities).values({ id: grantee(), publicKey: keys.publicKey, scope: 'actor' });
+    await database.insert(identityMembers).values({ identityDid: org, memberDid: grantee(), role: 'member' });
+  }
+  async function grantRequest(method = 'POST', provider = 'anthropic', input: unknown = { memberDid: grantee(), reason: 'Approved service access' }, raw?: string) {
+    const handler = method === 'GET' ? MEMBER_GRANTS : method === 'DELETE' ? REVOKE_MEMBER : GRANT_MEMBER;
+    const response = await handler(new NextRequest(`https://kernel.test/connections/api/org-held/${provider}/grants`, {
+      method, ...(method === 'GET' ? {} : { body: raw ?? JSON.stringify(input) }),
+    }), { params: Promise.resolve({ provider }) });
+    const body = await response.json();
+    h.outputs.push(body);
+    return { status: response.status, body, headers: response.headers };
+  }
+  async function grants() {
+    return database.select().from(orgConnectionMemberGrants).where(eq(orgConnectionMemberGrants.orgDid, org));
+  }
+  async function expectDenied(overrides: Partial<ReturnType<typeof context>> = {}) {
+    await expect(requireOrgConnectionMemberGrant({ ...context(), ...overrides })).rejects.toMatchObject({
+      status: 403, message: expect.stringContaining('org-connection member grant'),
+    });
+  }
+
+  it.each(['anthropic', 'warp'])('grants %s without custody access, retains signed provenance and idempotent revoke/regrant history', async provider => {
+    await prepare(provider);
+    const vaultBefore = structuredClone(h.vault);
+    const custodyBefore = await database.select().from(vaultDelegationGrants);
+    const read = vi.spyOn(vaultService, 'get');
+    try {
+      expect(await grantRequest('POST', provider)).toMatchObject({ status: 200, body: { changed: true } });
+      expect(await grantRequest('POST', provider)).toMatchObject({ status: 200, body: { changed: false } });
+      const [grant] = await grants();
+      expect(grant).toMatchObject({ orgDid: org, memberDid: grantee(), provider, grantedByDid: member, revokedAt: null });
+      const authorization = await requireOrgConnectionMemberGrant(context(provider));
+      expect(Object.keys(authorization).sort()).toEqual(['connectionId', 'grantId', 'grantedAt', 'memberDid', 'orgDid', 'provider']);
+      expect(authorization).toMatchObject({ grantId: grant.id, memberDid: grantee(), orgDid: org, provider });
+      const listed = await grantRequest('GET', provider);
+      expect(listed.status).toBe(200);
+      expect(listed.body.grants).toHaveLength(1);
+      expect(listed.headers.get('cache-control')).toBe('private, no-store');
+      expect(await grantRequest('DELETE', provider)).toMatchObject({ status: 200, body: { changed: true } });
+      await expect(requireOrgConnectionMemberGrant(context(provider))).rejects.toMatchObject({ status: 403 });
+      const [revoked] = await grants();
+      expect(revoked).toMatchObject({ revokedByDid: member, revocationReason: 'Approved service access', revokedAt: expect.any(Date) });
+      expect(await grantRequest('DELETE', provider)).toMatchObject({ status: 200, body: { changed: false } });
+      expect(await grantRequest('POST', provider)).toMatchObject({ status: 200, body: { changed: true } });
+      const history = await grants();
+      expect(history).toHaveLength(2);
+      expect(history.find(row => row.id === revoked.id)).toEqual(revoked);
+      expect(history.find(row => !row.revokedAt)?.id).not.toBe(revoked.id);
+      const events = await database.select().from(orgConnectionEvents).where(eq(orgConnectionEvents.orgDid, org));
+      expect(events.map(event => event.action)).toEqual(['granted', 'grant-revoked', 'granted']);
+      for (const event of events) {
+        const [proof] = await database.select().from(attestations).where(eq(attestations.id, event.attestationId));
+        expect(proof.payload).toMatchObject({ actorDid: member, memberDid: grantee(), orgDid: org, grantId: expect.any(String) });
+        expect(crypto.verifySync(proof.signature, canonicalize({
+          subject_did: proof.subjectDid, type: proof.type, context_id: proof.contextId,
+          context_type: proof.contextType, payload: proof.payload, issued_at: proof.issuedAt.getTime(),
+        }), keys.publicKey)).toBe(true);
+      }
+      const beforeReplay = await permanentState();
+      await client.exec(readFileSync('migrations/0230_org_connection_member_grants.sql', 'utf8'));
+      expect(await permanentState()).toBe(beforeReplay);
+      expect(read).not.toHaveBeenCalled();
+      expect(h.vault).toEqual(vaultBefore);
+      expect(await database.select().from(vaultDelegationGrants)).toEqual(custodyBefore);
+    } finally { read.mockRestore(); }
+  });
+
+  it('cascade revokes only the removed member across org-held services and preserves other members, org custody and personal access', async () => {
+    await prepare();
+    await orgRequest('POST', 'warp', orgKey());
+    await grantRequest();
+    await grantRequest('POST', 'warp');
+    await grantRequest('POST', 'anthropic', { memberDid: member, reason: 'Owner also granted' });
+    h.identity = { id: grantee(), scope: 'actor', subtype: 'human' };
+    expect((await connect()).status).toBe(201);
+    h.identity = { id: member, scope: 'actor', subtype: 'human', actingAs: org, actingAsRole: 'owner' };
+    const orgBefore = await orgRows();
+    const custodyBefore = await database.select().from(vaultDelegationGrants);
+    const vaultBefore = structuredClone(h.vault);
+    await removeGroupController(org, { id: member }, grantee());
+    const history = await grants();
+    expect(history.filter(row => row.memberDid === grantee())).toHaveLength(2);
+    expect(history.filter(row => row.memberDid === grantee()).every(row =>
+      row.revokedAt && row.revokedByDid === member && row.revocationReason === 'Organization membership removed')).toBe(true);
+    expect(history.find(row => row.memberDid === member)?.revokedAt).toBeNull();
+    await expectDenied();
+    expect(await requireOrgConnectionMemberGrant({ ...context(), memberDid: member })).toMatchObject({ memberDid: member });
+    expect(await orgRows()).toEqual(orgBefore);
+    expect(h.vault).toEqual(vaultBefore);
+    expect(await database.select().from(vaultDelegationGrants)).toEqual(custodyBefore);
+    await database.update(identityMembers).set({ removedAt: null }).where(eq(identityMembers.memberDid, grantee()));
+    await expectDenied();
+    h.identity = { id: grantee(), scope: 'actor', subtype: 'human' };
+    const [personal] = await database.select().from(connectors).where(eq(connectors.ownerDid, grantee()));
+    await database.update(connectors).set({ orgContextDid: null }).where(eq(connectors.id, personal.id));
+    expect((await call(RPC, 'POST', rpcCall())).status).toBe(200);
+  });
+
+  it.each(['member', 'maintainer', 'agent', 'removed', 'restricted', 'suspended-org', 'suspended-actor', 'foreign-org',
+    'missing-org', 'personal', 'delegated', 'agent-session', 'agent-in-db', 'no-act-as', 'session-member', 'unauthenticated'])(
+    'rejects %s for grant/revoke/list with stale session claims and no writes', async boundary => {
+      await prepare();
+      await grantRequest();
+      await changeOrgBoundary(boundary);
+      const before = await permanentState();
+      for (const method of ['POST', 'DELETE', 'GET']) {
+        expect((await grantRequest(method)).status).toBe(boundary === 'unauthenticated' ? 401 : 403);
+      }
+      expect(await permanentState()).toBe(before);
+    });
+
+  it.each([null, [], {}, { memberDid: 'bad', reason: 'Policy' }, { memberDid: 'did:imajin:bad value', reason: 'Policy' },
+    { memberDid: `did:imajin:${'a'.repeat(257)}`, reason: 'Policy' }, { memberDid: 3, reason: 'Policy' },
+    { reason: 'Policy' }, { memberDid: 'did:imajin:member' }, { memberDid: 'did:imajin:member', reason: '' },
+    { memberDid: 'did:imajin:member', reason: ' ' }, { memberDid: 'did:imajin:member', reason: 3 },
+    { memberDid: 'did:imajin:member', reason: 'a'.repeat(501) },
+    { memberDid: 'did:imajin:member', reason: 'Policy', orgDid: 'did:imajin:spoof' },
+  ])('rejects invalid grant body %# without writes', async raw => {
+    await prepare();
+    const before = await permanentState();
+    for (const method of ['POST', 'DELETE']) expect((await grantRequest(method, 'anthropic', raw)).status).toBe(400);
+    expect(await permanentState()).toBe(before);
+  });
+
+  it('rejects invalid JSON, oversized bodies and unsupported methods; exposes no internal failures', async () => {
+    await prepare();
+    expect((await grantRequest('POST', 'anthropic', undefined, '{')).status).toBe(400);
+    expect((await grantRequest('POST', 'anthropic', { reason: 'a'.repeat(17000) })).status).toBe(413);
+    const response = await orgConnectionMemberGrantRoute(new NextRequest('https://kernel.test', { method: 'PATCH' }), 'anthropic');
+    expect(response.status).toBe(405);
+    expect((await GRANT_OPTIONS(new NextRequest('https://kernel.test', { method: 'OPTIONS' }))).status).toBe(204);
+    expect(await grants()).toEqual([]);
+    expect(requireAuth).toHaveBeenCalledWith(expect.anything(), { sessionOnly: true, service: 'connections' });
+  });
+
+  it.each(['missing-member', 'removed-member', 'agent-member', 'suspended-member', 'no-connection', 'revoked-connection', 'expired-connection',
+    'removed-connection', 'no-field', 'no-provenance'])('cannot grant against %s', async boundary => {
+    await prepare();
+    if (boundary === 'missing-member') await database.update(identityMembers).set({ memberDid: `${grantee()}other` }).where(eq(identityMembers.memberDid, grantee()));
+    if (boundary === 'removed-member') await database.update(identityMembers).set({ removedAt: new Date() }).where(eq(identityMembers.memberDid, grantee()));
+    if (boundary === 'agent-member') await database.update(identities).set({ subtype: 'agent' }).where(eq(identities.id, grantee()));
+    if (boundary === 'suspended-member') await database.update(identities).set({ suspendedAt: new Date() }).where(eq(identities.id, grantee()));
+    if (boundary === 'no-connection') await database.update(connectors).set({ ownerDid: `${org}other` }).where(eq(connectors.ownerDid, org));
+    if (boundary === 'revoked-connection') await database.update(connectors).set({ status: 'revoked', revokedAt: new Date() }).where(eq(connectors.ownerDid, org));
+    if (boundary === 'expired-connection') await database.update(connectors).set({ expiresAt: new Date(0) }).where(eq(connectors.ownerDid, org));
+    if (boundary === 'removed-connection') await database.update(connectors).set({ status: 'removed' }).where(eq(connectors.ownerDid, org));
+    if (boundary === 'no-field') await database.update(connectors).set({ sealedKeyField: null }).where(eq(connectors.ownerDid, org));
+    if (boundary === 'no-provenance') await database.update(connectors).set({ loadedAt: null }).where(eq(connectors.ownerDid, org));
+    const before = await permanentState();
+    const response = await grantRequest();
+    expect([403, 404, 409]).toContain(response.status);
+    expect(await permanentState()).toBe(before);
+  });
+
+  it('fails closed on each live boundary, without caching across grant, suspension or membership changes', async () => {
+    await prepare();
+    await expectDenied();
+    await grantRequest();
+    await expectDenied({ actingDid: member });
+    await expectDenied({ memberDid: org });
+    await expectDenied({ memberDid: '' });
+    await expectDenied({ orgDid: '' });
+    await expectDenied({ orgDid: `${org}foreign`, actingDid: `${org}foreign` });
+    await expectDenied({ provider: 'warp' });
+    for (const column of ['scope', 'suspendedAt'] as const) {
+      await database.update(identities).set(column === 'scope' ? { scope: 'actor' } : { suspendedAt: new Date() }).where(eq(identities.id, org));
+      await expectDenied();
+      await database.update(identities).set({ scope: 'business', suspendedAt: null }).where(eq(identities.id, org));
+    }
+    await database.update(identityMembers).set({ removedAt: new Date() }).where(eq(identityMembers.memberDid, grantee()));
+    await expectDenied();
+    await database.update(identityMembers).set({ removedAt: null }).where(eq(identityMembers.memberDid, grantee()));
+    await database.update(identities).set({ suspendedAt: new Date() }).where(eq(identities.id, grantee()));
+    await expectDenied();
+    await database.update(identities).set({ suspendedAt: null }).where(eq(identities.id, grantee()));
+    await call(ORG_CHANGE, 'POST', { provider: 'anthropic', action: 'suspend', reason: 'Service paused' });
+    await expectDenied();
+    await call(ORG_CHANGE, 'POST', { provider: 'anthropic', action: 'resume', reason: 'Service resumed' });
+    expect(await requireOrgConnectionMemberGrant(context())).toMatchObject({ memberDid: grantee() });
+    await orgRequest('DELETE');
+    await expectDenied();
+  });
+
+  it('preserves history and authority atomically when signing fails during grant, revoke or removal', async () => {
+    await prepare();
+    vi.stubEnv('AUTH_PRIVATE_KEY', '');
+    const beforeGrant = await permanentState();
+    expect(await grantRequest()).toMatchObject({ status: 503, body: { error: 'Organization member grants unavailable' } });
+    expect(await permanentState()).toBe(beforeGrant);
+    vi.stubEnv('AUTH_PRIVATE_KEY', keys.privateKey);
+    await grantRequest();
+    vi.stubEnv('AUTH_PRIVATE_KEY', '');
+    const beforeRevoke = await permanentState();
+    expect((await grantRequest('DELETE')).status).toBe(503);
+    await expect(removeGroupController(org, { id: member }, grantee())).rejects.toThrow();
+    expect(await permanentState()).toBe(beforeRevoke);
+  });
+
+  it('isolates provider/org/connection rows and enforces the active uniqueness index while retaining revoked rows', async () => {
+    await prepare();
+    await grantRequest();
+    const [row] = await grants();
+    await expect(database.insert(orgConnectionMemberGrants).values({ ...row, id: `${row.id}duplicate` })).rejects.toThrow();
+    expect((await grantRequest('GET', 'warp')).body).toEqual({ grants: [] });
+    await database.update(orgConnectionMemberGrants).set({ connectionId: `${row.connectionId}foreign` }).where(eq(orgConnectionMemberGrants.id, row.id));
+    await expectDenied();
+    await database.update(orgConnectionMemberGrants).set({ connectionId: row.connectionId, orgDid: `${org}foreign` }).where(eq(orgConnectionMemberGrants.id, row.id));
+    await expectDenied();
+    expect((await grantRequest('GET')).body).toEqual({ grants: [] });
+    await database.update(identityMembers).set({ role: 'member' }).where(eq(identityMembers.memberDid, member));
+    await expect(listOrgConnectionMemberGrants({ orgDid: org, actorDid: member }, 'anthropic')).rejects.toMatchObject({ status: 403 });
+  });
+});
+
 describe('org-held service keys: real SQL, signatures and private vault custody', () => {
   it('isolates org custody from the existing generic provider registration and revoke writers', async () => {
     await asOrg();
