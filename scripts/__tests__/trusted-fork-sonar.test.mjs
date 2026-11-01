@@ -39,8 +39,8 @@ beforeEach(async () => {
         getWorkflowRun: vi.fn().mockResolvedValue({ data: run() }),
         getWorkflow: vi.fn().mockResolvedValue({ data: { id: 7 } }),
       },
+      pulls: { list: vi.fn() },
       repos: {
-        listPullRequestsAssociatedWithCommit: vi.fn(),
         createCommitStatus: vi.fn().mockResolvedValue({}),
         getContent: vi.fn().mockResolvedValue({ data: {
           type: 'file', encoding: 'base64',
@@ -85,8 +85,8 @@ describe('CI and unique PR authentication', () => {
     expect(core.setOutput).toHaveBeenCalledWith('sha', sha);
     expect(core.setOutput).toHaveBeenCalledWith('run_id', '123');
     expect(statuses()).toEqual([expect.objectContaining({ sha, state: 'pending', context: 'sonarcloud/trusted' })]);
-    expect(github.paginate).toHaveBeenCalledWith(github.rest.repos.listPullRequestsAssociatedWithCommit,
-      expect.objectContaining({ commit_sha: sha, per_page: 100 }));
+    expect(github.paginate).toHaveBeenCalledWith(github.rest.pulls.list,
+      expect.objectContaining({ state: 'open', per_page: 100 }));
   });
 
   it('ignores spoofed event PR number, branch, repository and conclusion', async () => {

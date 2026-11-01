@@ -51,9 +51,11 @@ async function getRun(github, context, id) {
   return run;
 }
 
-async function prsFor(github, context, sha) {
-  return github.paginate(github.rest.repos.listPullRequestsAssociatedWithCommit,
-    { ...context.repo, commit_sha: sha, per_page: 100 });
+async function openPrs(github, context) {
+  // Commit-to-PR association also returns [] for the live fork repros. Enumerate
+  // open PRs in the base repo, then enforce exact-SHA uniqueness in selectPr.
+  return github.paginate(github.rest.pulls.list,
+    { ...context.repo, state: 'open', per_page: 100 });
 }
 
 async function postStatus(github, context, sha, state, number) {
@@ -75,7 +77,7 @@ export async function resolveRun({ github, context, core }) {
     assert(run.head_sha === sha, 'CI run SHA differs from triggering SHA');
     // Same-repo/push scans remain owned entirely by ci.yml.
     if (run.event !== 'pull_request' || run.head_repository?.full_name === run.repository.full_name) return;
-    const pr = selectPr(await prsFor(github, context, sha), sha, run.repository.full_name);
+    const pr = selectPr(await openPrs(github, context), sha, run.repository.full_name);
     number = pr.number;
     assert(run.head_repository?.id === pr.head.repo.id, 'CI head repository differs from PR');
     assert(run.status === 'completed' && run.conclusion === 'success', 'CI did not complete successfully');
@@ -299,7 +301,7 @@ export async function finishScan({ github, context, core, request = sonarRequest
     const run = await getRun(github, context, state.runId);
     assert(run.head_sha === state.sha && run.conclusion === 'success' && run.status === 'completed' &&
       run.run_attempt === state.attempt, 'CI was rerun or is no longer green');
-    const pr = selectPr(await prsFor(github, context, state.sha), state.sha,
+    const pr = selectPr(await openPrs(github, context), state.sha,
       `${context.repo.owner}/${context.repo.repo}`);
     assert(pr.number === state.number && pr.head.repo.id === state.headRepoId, 'PR changed during scan');
     await postStatus(github, context, state.sha, 'success', state.number);
