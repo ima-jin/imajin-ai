@@ -11,7 +11,7 @@ export async function authenticateLeaseReader(raw: unknown): Promise<string | nu
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
   const message = raw as SignedMessage;
   if (message.type !== 'agent' || typeof message.from !== 'string'
-    || !Number.isFinite(message.timestamp) || !message.payload
+    || !Number.isSafeInteger(message.timestamp) || !message.payload
     || typeof message.payload !== 'object' || Array.isArray(message.payload)
     || (message.payload as Record<string, unknown>).operation !== APPROVALS_LEASE_OPERATION) return null;
 
