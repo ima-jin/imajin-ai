@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { credentials, registrant, appAuth, sessionAuth } = vi.hoisted(() => ({
-  credentials: new Map<string, { apiKey: string; modelId: string }>(),
+  credentials: new Map<string, { apiKey: string; modelId?: string }>(),
   registrant: vi.fn(),
   appAuth: vi.fn(),
   sessionAuth: vi.fn(),
@@ -55,7 +55,6 @@ vi.mock('@/src/lib/kernel/openai-compatible-model-picker', () => ({
 vi.mock('@/src/lib/openrouter/model-handlers', () => ({ createOpenrouterModelHandlers: vi.fn() }));
 
 import { GET } from '../route';
-import { resolveBrain } from '@/src/lib/inference/brain';
 import { handleModels } from '../../../../../../../../packages/openclaw-infer-passthrough/src/handle-models';
 
 const MAIN = 'did:imajin:main-fixture';
@@ -126,35 +125,25 @@ describe('#3198 principal-scoped sealed inference (real auth orchestration + bra
     expect(body.data.map((row: { id: string }) => row.id)).toEqual(actingAs ? [] : ['main-model']);
   });
 
-  // Known policy conflict, NOT an implemented isolation fix and NOT a live 502
-  // reproduction. #1624 explicitly allows this registrant subsidy; #3198
-  // requires agent connectors to remain principal-only. Each assertion below
-  // was observed failing normally before preserving it as an expected failure.
-  it.fails.each([MAIN, ORG])('usable must not list the agent registrant’s connector for %s', async (principal) => {
-    registrant.mockResolvedValue(AGENT);
+  it.each([MAIN, AGENT, ORG])('missing own connector for %s yields an empty catalog, not a 502 or another principal’s connector', async (principal) => {
+    credentials.delete(principal);
     const direct = await GET(request(principal));
     expect(direct.status).toBe(200);
-    const body = await direct.json();
-    expect(body.data.map((row: { id: string }) => row.id)).toEqual(principal === MAIN ? ['main-model'] : []);
-  });
-
-  it.fails.each([MAIN, ORG])('passthrough must not list the agent registrant’s connector for %s', async (principal) => {
-    registrant.mockResolvedValue(AGENT);
+    expect((await direct.json()).data).toEqual([]);
     const proxy = await listThroughPassthrough(principal);
     expect(proxy.status).toBe(200);
-    expect(proxy.body.data.map((row: { id: string }) => row.id)).toEqual(principal === MAIN ? ['main-model'] : []);
+    expect(proxy.body.data).toEqual([]);
   });
-
-  it.fails('the org must not resolve its agent registrant’s sealed credential', async () => {
-    registrant.mockResolvedValue(AGENT);
-    await expect(resolveBrain({ ownerDid: ORG, appDid: APP })).rejects.toMatchObject({
-      name: 'NoBrainSealedError',
-    });
-  });
-
-  it.fails('main must not resolve its agent registrant’s sealed credential by model id', async () => {
-    registrant.mockResolvedValue(AGENT);
-    const brain = await resolveBrain({ ownerDid: MAIN, appDid: APP }, { model: 'agent-model' });
-    expect(brain.credentialDid).toBe(MAIN);
+  it('a sealed agent connector with no selected model does not 502 or affect main', async () => {
+    credentials.set(AGENT, { apiKey: 'fixture-agent' });
+    const direct = await GET(request(AGENT));
+    expect(direct.status).toBe(200);
+    expect((await direct.json()).data).toEqual([]);
+    const proxy = await listThroughPassthrough(AGENT);
+    expect(proxy.status).toBe(200);
+    expect(proxy.body.data).toEqual([]);
+    const main = await listThroughPassthrough(MAIN);
+    expect(main.status).toBe(200);
+    expect(main.body.data.map((row: { id: string }) => row.id)).toEqual(['main-model']);
   });
 });
