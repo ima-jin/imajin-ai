@@ -18,6 +18,27 @@ Workspace imports use @imajin/*. private:true is not evidence of publication;
 the generated package table in README.md links checked public registry metadata.
 License: Imajin Network License (INL) v1.0, source-available, not MIT.
 
+## v0.8.30 source addendum (2026-11-02)
+
+Reviewed v0.8.29..2342115f5 (PR #3205, PR #3207, PR #3200, PR #3201);
+the older generated inventory provenance above is retained, not regenerated.
+Org-held member-grant authentication and metadata-only limits are described below.
+Runtime org-key injection (#3202/#3203) remains v0.9.0 work. #3206's prod-jin
+pm2-online hang is not fixed here; an operator restart may still be needed.
+
+- POST /auth/api/grants/received/operator-approvals is a read-only, no-store
+  snapshot authenticated solely by the registered agent's own Ed25519 signature.
+  Sign canonicalize({from,type,timestamp,payload}); send that envelope plus the
+  hex signature. type=agent; payload.operation=operator:approvals:lease;
+  timestamp is Unix milliseconds, at most five minutes old or 30 seconds ahead.
+  Sessions, bearers and internal keys cannot substitute; acting overlays and
+  query selectors cannot widen the signer-scoped read. Unknown/suspended/non-agent
+  identities and invalid signatures are denied. Response: {lease:null} or
+  {lease:{grantId,capability:"operator:approvals",expiresAt}}. Latest unexpired
+  active grant with active capability and audience covering this node's operator
+  wins; no operator or eligible grant means null. Re-read after renewal/revocation;
+  warning scheduling/deduplication is consumer-side. See /auth/api/spec.
+
 ## Integration and safety
 - Org agent creation (#3193): POST /auth/api/agents refuses org principals
   with 403 and directs to Provision agent; personal memberships are unchanged.

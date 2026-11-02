@@ -347,7 +347,8 @@ paths:
         Replacement revokes previous custody and writes a signed vault tombstone.
         Signed connector.org-held attestations record org, actor, provider and
         loaded/replaced/revoked action; never credentials or raw exceptions.
-        No rows deleted. Per-member grants, proxy injection and UI are separate.
+        No rows deleted. Per-member grants use /api/org-held/{provider}/grants;
+        proxy injection and UI remain separate.
       security:
         - cookieAuth: []
       requestBody:

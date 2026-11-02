@@ -12,6 +12,38 @@ pnpm --filter @imajin/kernel dev   # http://localhost:3000
 
 Full setup guide: [docs/DEVELOPER.md](../../docs/DEVELOPER.md).
 
+## Pre-cut delta for v0.8.30
+
+Merged-source snapshot **2026-11-02**, limited to `v0.8.29..2342115f5`:
+PR #3205, PR #3207, PR #3200 and PR #3201. This patch cut follows Ryan's
+2026-11-01 ruling; source availability is not a production deployment claim.
+
+- **Org-held member grants:** `GET/POST/DELETE /connections/api/org-held/{provider}/grants`
+  lists active provenance, grants or
+  revokes one member. Requires a human session acting as the org, live owner/admin
+  membership and `connections` service access; agents/apps cannot administer grants.
+  Writes take `{memberDid, reason}`, retain signed history and never expose keys.
+  Membership removal revokes that member's grants atomically; rejoining does not
+  restore them. Migration `0230` adds authority metadata only. Runtime org-key
+  injection is **not** included: #3202 (inference) and #3203 (Warp HTTP/MCP) remain
+  v0.9.0 work; grant-members UI is separate (#3181).
+  See the [connections spec](api-spec/connections.yaml) (PR #3200, #3180 part 1).
+- **Agent-readable approvals lease:** read-only
+  `POST /auth/api/grants/received/operator-approvals` requires the registered agent's own
+  Ed25519-signed envelope, not a session, bearer or internal key. It returns only
+  `{lease: {grantId, capability, expiresAt}}` or `{lease: null}`, scoped to the signer;
+  act-as headers cannot widen it. Effective expiry is the latest eligible live
+  grant covering this node's operator. Re-read after renewal/revocation; warning
+  scheduling remains consumer-side. See the [auth spec](api-spec/auth.yaml)
+  (PR #3201, #3018).
+- **Trusted fork Sonar:** after CI, the privileged follow-up uses reviewed `main`,
+  never PR-controlled workflows/helpers. Check `sonarcloud/trusted` on the exact
+  head plus Sonar total 0; workflow edits need post-merge verification.
+  See [contributor guidance](../../README.md#sonarcloud-on-fork-prs)
+  (PR #3205 and PR #3207).
+- **Not fixed by this cut:** #3206's `prod-jin` hang can recur while pm2 reports
+  `online`; an operator may still need a manual restart after deployment.
+
 ## Pre-cut delta for v0.8.29
 
 Merged-source snapshot **2026-10-30**, limited to `v0.8.28..4d4383bf`.
