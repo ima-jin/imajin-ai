@@ -1,7 +1,7 @@
 // Only loaded from the org repo's trusted main through the GitHub API. PR data is never
 // imported, spawned, installed, or interpolated into shell/scanner arguments.
 import { lstat, readdir, readFile, writeFile, mkdir } from 'node:fs/promises';
-import { join, resolve, relative, posix, dirname } from 'node:path';
+import { join, resolve, relative, posix, dirname, isAbsolute } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, writeFileSync } from 'node:fs';
 
@@ -14,6 +14,7 @@ const STATUS_DESCRIPTIONS = {
 };
 const SHA = /^[a-f0-9]{40}$/;
 const MAX_LCOV = 50 * 1024 * 1024;
+const ROOT_SCAN_SETTINGS = 'sonar-project.properties';
 const LCOV_COUNTS = new Set(['FNF', 'FNH', 'LF', 'LH', 'BRF', 'BRH']);
 const FUNCTION_METRIC = /^\d+,.+$/;
 const LCOV_METRICS = new Map([
@@ -24,6 +25,10 @@ const LCOV_METRICS = new Map([
 ]);
 const root = () => process.env.GITHUB_WORKSPACE;
 const statePath = () => join(root(), 'trusted', 'fork-state.json');
+export function scanSettingsPath(workspace = root()) {
+  assert(typeof workspace === 'string' && isAbsolute(workspace), 'Container workspace must be absolute');
+  return join(workspace, 'trusted', 'fork-scan.properties');
+}
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);
@@ -104,6 +109,7 @@ export function parseTree(tree) {
     assert(!path.includes('\\') && !path.includes(':') && !posix.isAbsolute(path), 'Unsafe Git path');
     const parts = path.split('/');
     assert(parts.every((part) => part && !['.', '..', '.git', '.scannerwork'].includes(part)), 'Unsafe Git path');
+    assert(parts[0] !== 'trusted', 'Top-level trusted paths are reserved for scan orchestration');
     return { oid, path };
   });
   assert(files.length > 0 && files.length <= 20_000, 'Empty or oversized Git tree');
@@ -151,9 +157,13 @@ export async function materializeSource(runGit) {
     offset = end + 1;
     assert(Number.isSafeInteger(size) && offset + size < blobs.length &&
       blobs[offset + size] === 10, 'Truncated Git blob');
-    const destination = join(source, path);
-    mkdirSync(dirname(destination), { recursive: true });
-    writeFileSync(destination, blobs.subarray(offset, offset + size), { flag: 'wx', mode: 0o644 });
+    // Every normal fork inherits this tracked file. Consume its blob but never
+    // put PR-side root settings in the scan tree, even as a fallback config.
+    if (path !== ROOT_SCAN_SETTINGS) {
+      const destination = join(source, path);
+      mkdirSync(dirname(destination), { recursive: true });
+      writeFileSync(destination, blobs.subarray(offset, offset + size), { flag: 'wx', mode: 0o644 });
+    }
     offset += size + 1;
   }
   assert(offset === blobs.length, 'Unexpected trailing Git data');
@@ -163,6 +173,8 @@ export async function materializeSource(runGit) {
 export async function validateSource(directory, repositoryRoot = true) {
   await Promise.all((await readdir(directory, { withFileTypes: true })).map(async (entry) => {
     assert(!entry.isSymbolicLink(), 'Source symlinks are not allowed in trusted scans');
+    assert(!repositoryRoot || !['trusted', ROOT_SCAN_SETTINGS].includes(entry.name),
+      'Fork-controlled root scan settings are forbidden');
     if (repositoryRoot && entry.name === '.git') {
       assert(entry.isDirectory(), 'Expected Git-owned metadata directory');
       return;
@@ -244,6 +256,7 @@ export function property(value) {
 }
 
 export async function prepareScan({ github, context }) {
+  const settingsPath = scanSettingsPath();
   const state = JSON.parse(await readFile(statePath(), 'utf8'));
   const source = join(root(), 'source');
   await validateSource(source);
@@ -255,7 +268,7 @@ export async function prepareScan({ github, context }) {
   const lcov = await validateLcov(await readFile(join(incoming, 'lcov.info'), 'utf8'), source);
   await writeFile(join(root(), 'trusted', 'fork-lcov.info'), lcov);
   const { data: config } = await github.rest.repos.getContent({
-    ...context.repo, path: 'sonar-project.properties', ref: state.baseSha,
+    ...context.repo, path: ROOT_SCAN_SETTINGS, ref: state.baseSha,
   });
   assert(config.type === 'file' && config.encoding === 'base64', 'Missing trusted base config');
   const baseConfig = Buffer.from(config.content, 'base64').toString('utf8');
@@ -285,7 +298,8 @@ export async function prepareScan({ github, context }) {
     include: ['../source/**/*.ts', '../source/**/*.tsx', '../source/**/*.js'],
   }));
   const settings = Object.entries(overrides).map(([key, value]) => `${key}=${property(value)}`).join('\n');
-  await writeFile(join(root(), 'trusted', 'fork-scan.properties'), `${baseConfig}\n${settings}\n`);
+  await writeFile(settingsPath, `${baseConfig}\n${settings}\n`);
+  return settingsPath;
 }
 
 export async function verifyGate(report, request) {

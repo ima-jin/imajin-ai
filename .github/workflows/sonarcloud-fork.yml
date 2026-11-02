@@ -81,12 +81,14 @@ jobs:
             await materializeSource();
 
       - name: Validate source and lcov; load base-branch scan settings
+        id: prepare
         if: steps.resolve.outputs.scan == 'true'
         uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
         with:
           script: |
             const { prepareScan } = await import(`${process.env.GITHUB_WORKSPACE}/trusted/scripts/sonar/trusted-fork.mjs`);
-            await prepareScan({ github, context });
+            const settings = await prepareScan({ github, context });
+            core.setOutput('settings', settings);
 
       - name: Scan data only with trusted settings and wait for this task's gate
         id: scan
@@ -98,7 +100,7 @@ jobs:
           SONAR_USER_HOME: /github/home/.sonar
         with:
           projectBaseDir: source
-          args: -Dproject.settings=trusted/fork-scan.properties
+          args: -Dproject.settings="${{ steps.prepare.outputs.settings }}"
 
       - name: Publish exact-task gate result (fail closed)
         if: always() && steps.resolve.outputs.scan == 'true'

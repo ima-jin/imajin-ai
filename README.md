@@ -232,8 +232,10 @@ the GitHub API; the privileged job performs no checkout at all.
 It authenticates the CI run and a unique open PR by exact head SHA through the
 GitHub API, then reads regular Git blobs as non-executable scan data without
 checking out, installing or executing PR code (no hooks, filters or submodules).
-Settings come from the PR's trusted main base, not its `sonar-project.properties`;
-coverage is validated as untrusted data. PR workflow edits cannot alter this job,
+Settings come from the PR's trusted main base through an absolute container path
+outside `source/`. Fork-side root `sonar-project.properties` is never materialized,
+and top-level `trusted/` entries are rejected. Coverage is validated as untrusted
+data. PR workflow edits cannot alter this job,
 and PR `.gitignore` edits cannot narrow its scan scope. Unusual branch names with
 scanner-property interpolation characters fail closed rather than enter settings.
 

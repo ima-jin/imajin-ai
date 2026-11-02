@@ -1,12 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mkdtemp, mkdir, readFile, writeFile, symlink, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, isAbsolute, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import YAML from 'yaml';
 import {
   coverageSource, finishScan, prepareScan, property, resolveRun, selectPr,
-  validateLcov, validateSource, verifyGate, materializeSource, parseTree, gitArguments,
+  validateLcov, validateSource, verifyGate, materializeSource, parseTree, gitArguments, scanSettingsPath,
 } from '../sonar/trusted-fork.mjs';
 
 const sha = 'a'.repeat(40);
@@ -205,12 +205,23 @@ describe('untrusted source, properties and artifact', () => {
     `100644 blob ${sha}\t/scanner\0`, `100644 blob ${sha}\ta\\b\0`,
     `100644 blob ${sha}\t.scannerwork/report-task.txt\0`, `100644 blob ${sha}\tC:escape\0`,
     `100644 blob ${sha}\tcontrol\nname\0`, '',
+    `100644 blob ${sha}\ttrusted/fork-scan.properties\0`, `100644 blob ${sha}\ttrusted\0`,
   ])('rejects unsafe Git trees before writing any PR data %j', (tree) => {
     expect(() => parseTree(tree)).toThrow();
   });
 
   it('rejects oversized Git trees', () => {
     expect(() => parseTree(`100644 blob ${sha}\tfile.ts\0`.repeat(20_001))).toThrow('oversized');
+  });
+
+  it('rejects shadow settings during materialization before reading any blobs', async () => {
+    await resolveCi();
+    await rm(join(dir, 'source'), { recursive: true });
+    const runGit = vi.fn((args) => args[0] === 'ls-tree'
+      ? Buffer.from(`100644 blob ${sha}\ttrusted/fork-scan.properties\0`)
+      : Buffer.alloc(0));
+    await expect(materializeSource(runGit)).rejects.toThrow('Top-level trusted');
+    expect(runGit.mock.calls.some(([args]) => args[0] === 'cat-file')).toBe(false);
   });
 
   it('rejects invalid source SHA before invoking Git', async () => {
@@ -244,10 +255,12 @@ describe('untrusted source, properties and artifact', () => {
   });
   it('uses base SHA properties and validated lcov, never the PR properties', async () => {
     await seedScan();
-    await writeFile(join(dir, 'source', 'sonar-project.properties'),
-      'sonar.projectKey=evil\nsonar.host.url=https://evil.invalid\nsonar.exclusions=**\n');
     await writeFile(join(dir, 'source', 'package.json'), '{"scripts":{"install":"exit 99"}}');
-    await prepareScan({ github, context });
+    const settings = await prepareScan({ github, context });
+    expect(isAbsolute(settings)).toBe(true);
+    expect(relative(join(dir, 'source'), settings)).toBe(join('..', 'trusted', 'fork-scan.properties'));
+    expect(await readFile(resolve(join(dir, 'source'), settings), 'utf8'))
+      .toBe(await readFile(join(dir, 'trusted', 'fork-scan.properties'), 'utf8'));
     expect(github.rest.repos.getContent).toHaveBeenCalledWith(expect.objectContaining({
       path: 'sonar-project.properties', ref: baseSha,
     }));
@@ -265,6 +278,45 @@ describe('untrusted source, properties and artifact', () => {
     expect(tsconfig.extends).toBeUndefined();
     expect(tsconfig.compilerOptions.plugins).toBeUndefined();
     expect(tsconfig.include).toContain('../source/**/*.ts');
+  });
+  it('never materializes inherited or malicious root scanner settings', async () => {
+    await resolveCi();
+    await rm(join(dir, 'source'), { recursive: true });
+    const sourceOid = 'd'.repeat(40);
+    const configOid = 'e'.repeat(40);
+    const content = Buffer.from('export const example = 1;\n');
+    const malicious = Buffer.from('sonar.host.url=https://evil.invalid\nsonar.exclusions=**\n');
+    const blob = (oid, bytes) => Buffer.concat([Buffer.from(`${oid} blob ${bytes.length}\n`), bytes, Buffer.from('\n')]);
+    const runGit = vi.fn((args) => {
+      if (args[0] === 'ls-tree') {
+        return Buffer.from(`100644 blob ${configOid}\tsonar-project.properties\0` +
+          `100644 blob ${sourceOid}\tfile.ts\0`);
+      }
+      if (args[0] === 'cat-file') return Buffer.concat([blob(configOid, malicious), blob(sourceOid, content)]);
+      return Buffer.alloc(0);
+    });
+    await materializeSource(runGit);
+    await expect(readFile(join(dir, 'source', 'sonar-project.properties'))).rejects.toMatchObject({ code: 'ENOENT' });
+    expect(await readFile(join(dir, 'source', 'file.ts'), 'utf8')).toBe(content.toString());
+    await writeFile(join(dir, 'incoming-coverage', 'lcov.info'), lcov());
+    const settings = await prepareScan({ github, context });
+    const config = await readFile(settings, 'utf8');
+    expect(config).toContain('sonar.exclusions=base-only');
+    expect(config).not.toContain('evil.invalid');
+    expect(config).not.toContain('sonar.exclusions=**');
+  });
+
+  it.each(['trusted', 'sonar-project.properties'])('rejects reserved root source entry %s', async (name) => {
+    if (name === 'trusted') await mkdir(join(dir, 'source', name));
+    else await writeFile(join(dir, 'source', name), 'sonar.host.url=https://evil.invalid');
+    await expect(validateSource(join(dir, 'source'))).rejects.toThrow('root scan settings');
+  });
+
+  it('rejects a relative workspace before preparing any scanner settings', async () => {
+    vi.stubEnv('GITHUB_WORKSPACE', 'relative-workspace');
+    expect(() => scanSettingsPath()).toThrow('absolute');
+    await expect(prepareScan({ github, context })).rejects.toThrow('absolute');
+    expect(github.rest.repos.getContent).not.toHaveBeenCalled();
   });
 
   it('escapes property injection and never turns branch text into scanner arguments', () => {
@@ -488,9 +540,16 @@ describe('workflow boundary and same-repo compatibility', () => {
     }
     const scan = jobs.scan.steps.find((step) => step.id === 'scan');
     expect(scan.env.SONAR_USER_HOME).toBe('/github/home/.sonar');
-    expect(scan.with).toEqual({
-      projectBaseDir: 'source', args: '-Dproject.settings=trusted/fork-scan.properties',
-    });
+    expect(scan.with.projectBaseDir).toBe('source');
+    const prepare = jobs.scan.steps.find((step) => step.id === 'prepare');
+    expect(prepare.with.script).toContain("core.setOutput('settings', settings)");
+    await seedScan();
+    const settings = await prepareScan({ github, context });
+    const args = scan.with.args.replaceAll('${{ steps.prepare.outputs.settings }}', settings);
+    const configuredPath = /^-Dproject.settings="([^"]+)"$/.exec(args)?.[1];
+    expect(isAbsolute(configuredPath)).toBe(true);
+    expect(relative(join(dir, 'source'), configuredPath)).toBe(join('..', 'trusted', 'fork-scan.properties'));
+    expect(await readFile(resolve(join(dir, 'source'), configuredPath), 'utf8')).toContain('sonar.exclusions=base-only');
     const final = jobs.scan.steps.at(-1);
     expect(final.if).toContain('always()');
     expect(final.env.SCAN_OUTCOME).toBe('${{ steps.scan.outcome }}');
