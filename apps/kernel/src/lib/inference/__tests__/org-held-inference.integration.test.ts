@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { PGlite } from '@electric-sql/pglite';
 import { drizzle } from 'drizzle-orm/pglite';
 import { getTableConfig } from 'drizzle-orm/pg-core';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { NextRequest } from 'next/server';
 
 const h = vi.hoisted(() => ({
@@ -59,6 +59,7 @@ import { resolveOrgHeldBrain } from '../org-held-brain';
 import { resolveBrain } from '../brain';
 import { authorizeExternalMcp } from '@/src/lib/kernel/external-mcp';
 import { GET as warpRuns } from '@/app/warp/api/runs/route';
+import { resolveAgentAuthority } from '@/src/lib/auth/agent-authority';
 
 vi.setConfig({ testTimeout: 30_000, hookTimeout: 30_000 });
 const MEMBER = 'did:imajin:member';
@@ -175,9 +176,10 @@ describe('assigned agents use only the assigned DID keys, without member-grant r
       id: 'assignment', agentDid: AGENT, delegatorDid: ORG, audience: { type: 'all' },
       issuedAt: new Date(), expiresAt: new Date(Date.now() + 60_000), status: 'active',
     });
-    expect((await POST(agentSession(undefined, ORG))).status).toBe(200);
+    h.tokenDid = AGENT;
+    expect((await POST(request())).status).toBe(200);
     await database.update(delegationGrants).set({ revokedAt: new Date(), status: 'revoked' });
-    expect((await POST(agentSession(undefined, ORG))).status).toBe(403);
+    expect((await POST(request())).status).toBe(403);
   });
   it('uses a human principal key onBehalfOf that human, not the org or agent key', async () => {
     await assign(MEMBER);
@@ -280,6 +282,7 @@ beforeEach(async () => {
   h.personal.mockResolvedValue({ apiKey: randomUUID(), modelId: 'personal-model' });
   provideInternalApiKey(randomUUID());
   vi.stubEnv('AUTH_SERVICE_URL', 'https://auth.test/auth');
+  vi.stubEnv('AUTH_INTERNAL_API_KEY', randomUUID());
   await database.insert(identities).values([
     { id: MEMBER, publicKey: 'member-public', scope: 'actor', subtype: 'human' },
     { id: ORG, publicKey: 'org-public', scope: 'business' },
@@ -299,9 +302,19 @@ beforeEach(async () => {
       return h.deniedScope ? Response.json({ error: 'Scope not granted' }, { status: 403 })
         : Response.json({ appDid: APP, userDid: h.tokenDid, scopes: ['infer:completions', 'warp:dispatch'], attestationId: 'app-grant' });
     }
-    if (input.includes('/controllers/')) return Response.json({
-      valid: true, role: input.endsWith(encodeURIComponent(AGENT)) ? 'agent' : 'member',
-    });
+    if (input.endsWith('/api/internal/verify-delegation')) {
+      const { agentDid, principalDid } = JSON.parse(String(init?.body));
+      return Response.json(await resolveAgentAuthority(agentDid, principalDid));
+    }
+    if (input.includes('/controllers/')) {
+      const path = new URL(input).pathname.split('/');
+      const [membership] = await database.select().from(identityMembers).where(and(
+        eq(identityMembers.identityDid, decodeURIComponent(path.at(-3)!)),
+        eq(identityMembers.memberDid, decodeURIComponent(path.at(-1)!)),
+      ));
+      return Response.json({ valid: !!membership && !membership.removedAt, role: membership?.role,
+        allowedServices: membership?.allowedServices ?? null });
+    }
     if (input.startsWith('https://app.warp.dev/api/v1/')) {
       upstreamCalls++;
       expect(new Headers(init?.headers).get('authorization')).toBe(`Bearer ${h.key}`);
@@ -452,7 +465,7 @@ describe('org-held Anthropic inference through real auth, grant SQL and route', 
       if (boundary === 'suspension') await database.insert(orgConnectionSuspensions).values({
         orgDid: ORG, memberDid: MEMBER, provider: 'anthropic', slot: '', suspendedAt: new Date(),
       });
-      await denyNext(!['suspended-member', 'suspended-org'].includes(boundary));
+      await denyNext(!['removed-member', 'suspended-member', 'suspended-org'].includes(boundary));
     },
   );
   it('denies absent human grants but allows an assigned agent without a member grant', async () => {

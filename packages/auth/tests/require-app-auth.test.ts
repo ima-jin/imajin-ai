@@ -37,6 +37,7 @@ beforeEach(() => {
 afterEach(() => {
   setVaultInternalApiKey(undefined);
   vi.unstubAllGlobals();
+  vi.unstubAllEnvs();
 });
 
 describe('requireAppAuth — live act-as selector (#3202)', () => {
@@ -96,6 +97,19 @@ describe('requireAppAuth — live act-as selector (#3202)', () => {
     expect(await requireAppAuth(request(), { service: 'infer' })).toHaveProperty('status', 403);
     expect(await requireAppAuth(request(), { service: 'infer', allowMemberActAs: true }))
       .toHaveProperty('appAuth.actingAs', org);
+  });
+  it.each(['active', 'revoked', 'unavailable', 'error'])('checks delegation-only act-as authority per call: %s', async state => {
+    setVaultInternalApiKey(randomUUID());
+    vi.stubEnv('AUTH_INTERNAL_API_KEY', randomUUID());
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (url.endsWith('/api/apps/token/verify')) return Response.json(appAuth);
+      if (url.includes('/controllers/')) return Response.json({ valid: false });
+      if (state === 'error') throw new Error('Authority service unavailable');
+      return Response.json({ allowed: state === 'active' }, { status: state === 'unavailable' ? 503 : 200 });
+    }));
+    const result = await requireAppAuth(request(), { service: 'infer', allowMemberActAs: true });
+    if (state === 'active') expect(result).toHaveProperty('appAuth.actingAs', org);
+    else expect(result).toEqual({ error: 'Not authorized to act as this group', status: 403 });
   });
   it('revalidates the same token on the very next call after authority removal', async () => {
     let valid = true;

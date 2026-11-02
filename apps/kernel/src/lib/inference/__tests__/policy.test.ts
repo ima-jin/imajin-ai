@@ -104,6 +104,26 @@ describe('infer — inference policy layer', () => {
    * the vocabulary and never from an env var. The vocab no longer carries
    * modelProvider/modelId at all.
    */
+  it('redacts an org credential echoed into candidate metadata', async () => {
+    const brain = { ...GEMINI_BRAIN, orgUsage: { memberDid: OWNER, orgDid: OWNER, connectionId: 'org-card' } };
+    mockResolveBrain.mockResolvedValueOnce(brain);
+    mockGenerateText.mockResolvedValueOnce({
+      text: JSON.stringify([{ intentType: 'supply.received', confidence: 1, metadata: { echo: brain.apiKey } }]),
+    });
+    const candidates = await infer(CTX, VOCAB, { ownerDid: OWNER });
+    expect(candidates[0].metadata.echo).toBe('[redacted]');
+  });
+  it('sanitizes org upstream failures instead of propagating credential-bearing exceptions', async () => {
+    mockResolveBrain.mockResolvedValueOnce({
+      ...GEMINI_BRAIN, orgUsage: { memberDid: OWNER, orgDid: OWNER, connectionId: 'org-card' },
+    });
+    mockGenerateText.mockRejectedValueOnce(new Error(GEMINI_BRAIN.apiKey));
+    await expect(infer(CTX, VOCAB, { ownerDid: OWNER })).rejects.toMatchObject({
+      status: 502, message: 'Organization inference upstream unavailable',
+    });
+    expect(mockUpdateSet).toHaveBeenCalledWith(expect.objectContaining({ status: 'failed' }));
+  });
+
   it('builds the model from the brain resolved for the acting DID', async () => {
     mockGenerateText.mockResolvedValueOnce({
       text: JSON.stringify([{ intentType: 'supply.received', confidence: 0.95, metadata: { product: 'maize' } }]),

@@ -214,7 +214,9 @@ describe('POST /api/inference/capture — session auth', () => {
 
     await POST(makeReq());
 
-    expect(mockInfer).toHaveBeenCalledWith(expect.anything(), VOCAB, { ownerDid: OWNER_DID });
+    expect(mockInfer).toHaveBeenCalledWith(expect.anything(), VOCAB, {
+      ownerDid: OWNER_DID, caller: { actorDid: 'did:imajin:agent', actingFor: OWNER_DID },
+    });
   });
 
   it('returns 401 when neither app nor session auth succeeds', async () => {
@@ -234,7 +236,7 @@ describe('POST /api/inference/capture — app-provided credentials (#1624)', () 
 
     await POST(makeReq());
 
-    expect(mockRequireAppAuth).toHaveBeenCalledWith(expect.anything(), { scope: 'infer:provide' });
+    expect(mockRequireAppAuth).toHaveBeenCalledWith(expect.anything(), { scope: 'infer:provide', service: 'infer', allowMemberActAs: true });
   });
 
   it('captures onBehalfOf the delegating user while carrying the app DID', async () => {
@@ -249,21 +251,27 @@ describe('POST /api/inference/capture — app-provided credentials (#1624)', () 
     expect(mockInfer).toHaveBeenCalledWith(expect.anything(), VOCAB, {
       ownerDid: OWNER_DID,
       appDid: APP_DID,
+      caller: { actorDid: OWNER_DID },
     });
     // Attribution stays with the supplier, never the app.
     expect(mockGatherContext).toHaveBeenCalledWith('session_abc', 'asset_xyz', OWNER_DID);
     expect(mockRequireAuth).not.toHaveBeenCalled();
   });
 
-  it('falls back to X-Acting-For for service tokens with no delegating user', async () => {
+  it('refuses a service token with an unverified X-Acting-For selector', async () => {
     mockRequireAppAuth.mockResolvedValueOnce(appAuth({ userDid: '', isServiceToken: true }));
-
     const res = await POST(makeReq({ headers: { 'x-acting-for': OWNER_DID } }));
+    expect(res.status).toBe(400);
+    expect(mockInfer).not.toHaveBeenCalled();
+  });
 
-    expect(res.status).toBe(200);
+  it('preserves an assigned agent and selected org all the way into brain resolution', async () => {
+    const org = 'did:imajin:org';
+    mockRequireAppAuth.mockResolvedValueOnce(appAuth({ userDid: 'did:imajin:agent', actingAs: org }));
+    expect((await POST(makeReq())).status).toBe(200);
     expect(mockInfer).toHaveBeenCalledWith(expect.anything(), VOCAB, {
-      ownerDid: OWNER_DID,
-      appDid: APP_DID,
+      ownerDid: org, appDid: APP_DID, caller: { actorDid: 'did:imajin:agent', actingAs: org },
+      orgContext: { memberDid: 'did:imajin:agent', orgDid: org },
     });
   });
 

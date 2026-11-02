@@ -37,6 +37,21 @@ function nodeOrigin(): string {
   return `${scheme}://${host}`;
 }
 
+/** Connector-only selection may use the existing live agent-delegation record. */
+async function delegatedActingAs(callerDid: string, principalDid: string): Promise<ActingAsResult> {
+  const internalKey = process.env.AUTH_INTERNAL_API_KEY;
+  if (!internalKey) return { valid: false };
+  const response = await internalFetch(`${getAuthUrl()}/api/internal/verify-delegation`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "x-internal-key": internalKey },
+    body: JSON.stringify({ agentDid: callerDid, principalDid }),
+    cache: "no-store",
+  });
+  if (!response.ok) return { valid: false };
+  const data = await response.json();
+  return data.allowed === true ? { valid: true, role: 'agent', allowedServices: null } : { valid: false };
+}
+
 /**
  * Trim trailing slashes without a regex — `/\/+$/` was flagged as
  * super-linear on attacker-controlled input (SonarCloud typescript:S8786).
@@ -191,7 +206,10 @@ export async function validateActingAs(
     if (!res.ok) return { valid: false };
     const data = await res.json();
     const roles = options?.allowMember ? ["owner", "admin", "maintainer", "agent", "member"] : ["owner", "admin", "maintainer", "agent"];
-    if (data.valid !== true || !roles.includes(data.role)) {
+    if (data.valid !== true) {
+      return options?.allowMember ? await delegatedActingAs(callerDid, groupDid) : { valid: false };
+    }
+    if (!roles.includes(data.role)) {
       return { valid: false };
     }
 
