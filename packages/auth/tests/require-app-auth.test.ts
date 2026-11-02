@@ -27,6 +27,7 @@ function bearerRequest(token = 'some-bearer-token'): Request {
   return new Request('https://kernel.test/connections/api/connections', {
     headers: { authorization: `Bearer ${token}` },
   });
+
 }
 
 beforeEach(() => {
@@ -64,6 +65,31 @@ describe('requireAppAuth — live act-as selector (#3202)', () => {
       `${AUTH_SERVICE_URL}/api/apps/token/verify`,
       `${AUTH_SERVICE_URL}/api/groups/${encodeURIComponent(org)}/controllers/${encodeURIComponent(member)}`,
     ]);
+  });
+  it.each([{ allowedServices: [] }, { allowedServices: ['pay'] }])('refuses an inference selector excluded by allowed_services %j', async ({ allowedServices }) => {
+    transport(() => ({ valid: true, role: 'agent', allowedServices }));
+    expect(await requireAppAuth(request(), { scope: 'infer:completions', service: 'infer' }))
+      .toEqual({ error: 'Not authorized to act as this group', status: 403 });
+  });
+  it('accepts a selector restricted to the current service', async () => {
+    transport(() => ({ valid: true, role: 'agent', allowedServices: ['infer'] }));
+    expect(await requireAppAuth(request(), { scope: 'infer:completions', service: 'infer' }))
+      .toHaveProperty('appAuth.actingAs', org);
+  });
+  it('verifies onBehalfOf rather than trusting x-acting-for', async () => {
+    transport(() => ({ valid: true, role: 'agent' }));
+    const req = request();
+    req.headers.delete('x-acting-as');
+    req.headers.set('x-acting-for', member);
+    expect(await requireAppAuth(req, { service: 'infer' })).toHaveProperty('appAuth.actingFor', member);
+  });
+  it('rejects an unassigned onBehalfOf selector and an excluded delegation service', async () => {
+    transport(() => ({ valid: true, role: 'agent', allowedServices: ['pay'] }));
+    const req = request();
+    req.headers.delete('x-acting-as');
+    req.headers.set('x-acting-for', member);
+    expect(await requireAppAuth(req, { service: 'infer' }))
+      .toEqual({ error: 'Not authorized to act for this identity', status: 403 });
   });
   it('revalidates the same token on the very next call after authority removal', async () => {
     let valid = true;

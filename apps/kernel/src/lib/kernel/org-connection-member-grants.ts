@@ -21,7 +21,8 @@ export function parseMemberGrantInput(raw: unknown): MemberGrantInput {
   return { memberDid: value.memberDid, reason: value.reason.trim() };
 }
 
-const denied = (provider: string) => new ExternalMcpError(403, `Active org-connection member grant required for ${provider}`);
+const denied = (provider: string) => new ExternalMcpError(403,
+  `Active org-connection member grant required for ${provider}. Ask an org admin to grant access on the org's connector card on /auth/connectors while acting as the org`);
 type GrantReader = Pick<ConnectionTransaction, 'select'>;
 
 async function requireMember(tx: GrantReader, orgDid: string, memberDid: string, provider: string) {

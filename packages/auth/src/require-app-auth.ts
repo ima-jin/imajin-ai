@@ -1,7 +1,7 @@
 import { internalFetch } from './internal-fetch.cjs';
 import { createLogger } from '@imajin/logger';
 import { getVaultInternalApiKey } from './internal-post';
-import { validateActingAs } from './require-auth';
+import { resolveAgentDelegationAuthority, validateActingAs } from './require-auth';
 const log = createLogger('auth');
 
 export interface AppAuthContext {
@@ -12,6 +12,8 @@ export interface AppAuthContext {
   isServiceToken?: boolean; // true when minted via /auth/api/apps/token/service
   /** Header selector, verified against current group authority on this request. */
   actingAs?: string;
+  /** Agent delegation selector verified on this request, not asserted by the header. */
+  actingFor?: string;
 }
 
 export type AppAuthResult =
@@ -81,20 +83,26 @@ async function verifyBearerAppToken(token: string, scope?: string): Promise<AppA
  */
 export async function requireAppAuth(
   request: Request,
-  options?: { scope?: string }
+  options?: { scope?: string; service?: string }
 ): Promise<AppAuthResult> {
   const result = await authenticateApp(request, options);
   if (!('appAuth' in result)) return result;
   // The token contract is unchanged. A selector never supplies authority.
   const actingAs = request.headers.get('x-acting-as');
-  if (!actingAs) return result;
+  const actingFor = request.headers.get('x-acting-for');
+  if (!actingAs && !actingFor) return result;
   const { userDid, isServiceToken } = result.appAuth;
   if (!userDid || isServiceToken) {
     return { error: 'Not authorized to act as this group', status: 403 };
   }
-  const verified = await validateActingAs(userDid, actingAs);
-  if (!verified.valid) return { error: 'Not authorized to act as this group', status: 403 };
-  return { appAuth: { ...result.appAuth, actingAs } };
+  if (actingFor && !await resolveAgentDelegationAuthority(userDid, actingFor, options?.service)) {
+    return { error: 'Not authorized to act for this identity', status: 403 };
+  }
+  if (actingAs) {
+    const verified = await validateActingAs(actingFor ?? userDid, actingAs, options?.service);
+    if (!verified.valid) return { error: 'Not authorized to act as this group', status: 403 };
+  }
+  return { appAuth: { ...result.appAuth, ...(actingAs ? { actingAs } : {}), ...(actingFor ? { actingFor } : {}) } };
 }
 
 async function authenticateApp(

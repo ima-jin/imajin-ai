@@ -27,7 +27,7 @@ function makeRequest(headers: Record<string, string>): Request {
 }
 
 beforeEach(() => {
-  vi.clearAllMocks();
+  vi.resetAllMocks();
 });
 
 describe('resolveInferenceAuth — x-api-key bearer fallback (#1959)', () => {
@@ -36,7 +36,7 @@ describe('resolveInferenceAuth — x-api-key bearer fallback (#1959)', () => {
       appAuth: { appDid: APP_DID, userDid: OWNER_DID, actingAs: 'did:imajin:org' },
     });
     expect(await resolveInferenceAuth(makeRequest({ 'x-api-key': 'token', 'x-acting-as': 'did:imajin:org' }))).toEqual({
-      ok: true, context: { ownerDid: 'did:imajin:org', appDid: APP_DID, orgContext: { memberDid: OWNER_DID, orgDid: 'did:imajin:org' } },
+      ok: true, context: { ownerDid: 'did:imajin:org', appDid: APP_DID, caller: { actorDid: OWNER_DID, actingAs: 'did:imajin:org' }, orgContext: { memberDid: OWNER_DID, orgDid: 'did:imajin:org' } },
     });
   });
   it('retains a verified session member and acting org', async () => {
@@ -44,7 +44,7 @@ describe('resolveInferenceAuth — x-api-key bearer fallback (#1959)', () => {
     mockRequireAuth.mockResolvedValueOnce({ identity: { id: OWNER_DID, actingAs: 'did:imajin:org' } });
     mockResolveActingDid.mockReturnValueOnce('did:imajin:org');
     expect(await resolveInferenceAuth(makeRequest({}))).toEqual({
-      ok: true, context: { ownerDid: 'did:imajin:org', orgContext: { memberDid: OWNER_DID, orgDid: 'did:imajin:org' } },
+      ok: true, context: { ownerDid: 'did:imajin:org', caller: { actorDid: OWNER_DID, actingAs: 'did:imajin:org' }, orgContext: { memberDid: OWNER_DID, orgDid: 'did:imajin:org' } },
     });
   });
   it('never degrades an app act-as or scope denial to session auth', async () => {
@@ -55,7 +55,7 @@ describe('resolveInferenceAuth — x-api-key bearer fallback (#1959)', () => {
   it('does not derive org authority from an unverified header', async () => {
     mockRequireAppAuth.mockResolvedValueOnce({ appAuth: { appDid: APP_DID, userDid: OWNER_DID } });
     expect(await resolveInferenceAuth(makeRequest({ 'x-acting-as': 'did:imajin:spoof', 'x-acting-for': 'did:imajin:spoof' }))).toEqual({
-      ok: true, context: { ownerDid: OWNER_DID, appDid: APP_DID },
+      ok: true, context: { ownerDid: OWNER_DID, appDid: APP_DID, caller: { actorDid: OWNER_DID } },
     });
   });
   it('rejects conflicting verified session act-as and act-for targets', async () => {
@@ -71,10 +71,10 @@ describe('resolveInferenceAuth — x-api-key bearer fallback (#1959)', () => {
 
     const result = await resolveInferenceAuth(makeRequest({ 'x-api-key': 'minted-app-token' }), 'infer:completions');
 
-    expect(result).toEqual({ ok: true, context: { ownerDid: OWNER_DID, appDid: APP_DID } });
+    expect(result).toEqual({ ok: true, context: { ownerDid: OWNER_DID, appDid: APP_DID, caller: { actorDid: OWNER_DID } } });
     expect(mockRequireAppAuth).toHaveBeenCalledWith(
       expect.objectContaining({ headers: expect.any(Headers) }),
-      { scope: 'infer:completions' },
+      { scope: 'infer:completions', service: 'infer' },
     );
     const forwardedRequest = mockRequireAppAuth.mock.calls[0][0] as Request;
     expect(forwardedRequest.headers.get('authorization')).toBe('Bearer minted-app-token');
@@ -101,7 +101,7 @@ describe('resolveInferenceAuth — x-api-key bearer fallback (#1959)', () => {
 
     const result = await resolveInferenceAuth(makeRequest({ authorization: 'Bearer real-token' }), 'infer:completions');
 
-    expect(result).toEqual({ ok: true, context: { ownerDid: OWNER_DID, appDid: APP_DID } });
+    expect(result).toEqual({ ok: true, context: { ownerDid: OWNER_DID, appDid: APP_DID, caller: { actorDid: OWNER_DID } } });
   });
 
   it('does not mutate the original request object', async () => {
@@ -121,7 +121,7 @@ describe('resolveInferenceAuth — x-api-key bearer fallback (#1959)', () => {
 
     const result = await resolveInferenceAuth(makeRequest({ 'x-api-key': 'bad-key' }), 'infer:completions');
 
-    expect(result).toEqual({ ok: false, error: 'No credentials supplied', status: 401 });
+    expect(result).toEqual({ ok: false, error: 'Invalid or expired app token', status: 401 });
   });
 
   it('falls back to session auth when neither Authorization nor x-api-key is present', async () => {

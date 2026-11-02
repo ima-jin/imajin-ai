@@ -15,16 +15,30 @@ export async function personalMember(request: NextRequest): Promise<ExternalMcpC
 }
 async function invocationCaller(request: NextRequest, selected?: string): Promise<ExternalMcpCaller> {
   if (request.headers.has('authorization') || request.headers.has('x-app-did')) {
-    const auth = await requireAppAuth(request, { scope: EXTERNAL_MCP_SCOPE });
+    const auth = await requireAppAuth(request, { scope: EXTERNAL_MCP_SCOPE, service: 'connections' });
     if ('error' in auth) throw new ExternalMcpError(auth.status, 'Scoped app authentication required');
     const app = auth.appAuth;
     const memberDid = app.isServiceToken ? selected : app.userDid;
     if (!memberDidSchema.safeParse(memberDid).success || (!app.isServiceToken && selected && selected !== memberDid)) {
       throw new ExternalMcpError(403, 'A consenting member DID is required');
     }
-    return { memberDid: memberDid!, appDid: app.appDid, serviceToken: app.isServiceToken };
+    return {
+      memberDid: memberDid!, appDid: app.appDid, serviceToken: app.isServiceToken,
+      ...(!app.isServiceToken ? { caller: {
+        actorDid: app.userDid,
+        ...(app.actingAs ? { actingAs: app.actingAs } : {}),
+        ...(app.actingFor ? { actingFor: app.actingFor } : {}),
+      } } : {}),
+    };
   }
-  const caller = await personalMember(request);
+  const auth = await requireAuth(request, { sessionOnly: true, service: 'connections' });
+  if ('error' in auth) throw new ExternalMcpError(auth.status, 'Member session required');
+  const { identity } = auth;
+  const caller: ExternalMcpCaller = { memberDid: identity.id, caller: {
+    actorDid: identity.id,
+    ...(identity.actingAs ? { actingAs: identity.actingAs } : {}),
+    ...(identity.actingFor ? { actingFor: identity.actingFor } : {}),
+  } };
   if (selected && selected !== caller.memberDid) throw new ExternalMcpError(403, 'Member selector does not match caller');
   return caller;
 }

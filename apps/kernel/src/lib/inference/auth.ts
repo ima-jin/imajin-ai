@@ -1,11 +1,13 @@
 import { requireAppAuth, requireAuth, resolveActingDid } from '@imajin/auth';
+import type { ConnectionCaller } from '@/src/lib/kernel/connection-principal';
 
 export interface InferenceAuthContext {
   ownerDid: string;
   appDid?: string;
   orgContext?: VerifiedInferenceOrgContext;
+  caller?: ConnectionCaller;
 }
-export interface VerifiedInferenceOrgContext { memberDid: string; orgDid: string }
+export interface VerifiedInferenceOrgContext { memberDid: string; orgDid: string; assignedAgentDid?: string }
 
 export type InferenceAuthResult =
   | { ok: true; context: InferenceAuthContext }
@@ -44,27 +46,36 @@ export async function resolveInferenceAuth(
   request: Request,
   scope: string = 'infer:provide',
 ): Promise<InferenceAuthResult> {
-  const appResult = await requireAppAuth(withApiKeyBearerFallback(request), { scope });
+  const appResult = await requireAppAuth(withApiKeyBearerFallback(request), { scope, service: 'infer' });
   if ('appAuth' in appResult) {
-    const ownerDid = appResult.appAuth.userDid || request.headers.get('x-acting-for') || '';
+    const ownerDid = appResult.appAuth.actingFor || appResult.appAuth.userDid;
     if (!ownerDid) {
       return {
         ok: false,
-        error: 'App-authenticated inference requires a delegating user DID or X-Acting-For header',
+        error: 'App-authenticated inference requires an authenticated caller DID',
         status: 400,
       };
     }
     const orgDid = appResult.appAuth.actingAs;
-    const memberDid = appResult.appAuth.userDid;
+    const memberDid = ownerDid;
     return { ok: true, context: {
       ownerDid: orgDid ?? ownerDid, appDid: appResult.appAuth.appDid,
+      caller: {
+        actorDid: appResult.appAuth.userDid,
+        ...(appResult.appAuth.actingFor ? { actingFor: appResult.appAuth.actingFor } : {}),
+        ...(orgDid ? { actingAs: orgDid } : {}),
+      },
       ...(orgDid && memberDid && orgDid !== memberDid ? { orgContext: { memberDid, orgDid } } : {}),
     } };
   }
 
   // A verified app denied scope or act-as must not degrade to a cookie session.
-  if (appResult.status === 403) return { ok: false, error: appResult.error, status: 403 };
-  const authResult = await requireAuth(request);
+  const credentialHint = request.headers.get('x-api-key') || request.headers.get('x-app-did')
+    || request.headers.get('x-app-authorization');
+  if (appResult.status === 403 || credentialHint || (!appResult.notAppToken && appResult.status !== 401)) {
+    return { ok: false, error: appResult.error, status: appResult.status };
+  }
+  const authResult = await requireAuth(request, { service: 'infer' });
   if ('error' in authResult) {
     const hasAppAuthHint = Boolean(
       request.headers.get('x-app-did') ||
@@ -80,12 +91,17 @@ export async function resolveInferenceAuth(
   const { identity } = authResult;
   const ownerDid = resolveActingDid(identity);
   const orgDid = identity.actingAs;
-  if (orgDid && identity.actingFor && identity.actingFor !== orgDid) {
+  if (orgDid && identity.actingFor && identity.actingFor !== orgDid && identity.subtype !== 'agent') {
     return { ok: false, error: 'Conflicting acting identity context', status: 403 };
   }
   return { ok: true, context: {
-    ownerDid,
-    ...(orgDid && orgDid !== identity.id ? { orgContext: { memberDid: identity.id, orgDid } } : {}),
+    ownerDid: orgDid ?? ownerDid,
+    ...(identity.subtype === 'agent' || orgDid || identity.actingFor ? { caller: {
+      actorDid: identity.id,
+      ...(identity.actingFor ? { actingFor: identity.actingFor } : {}),
+      ...(orgDid ? { actingAs: orgDid } : {}),
+    } } : {}),
+    ...(orgDid && orgDid !== identity.id ? { orgContext: { memberDid: identity.actingFor ?? identity.id, orgDid } } : {}),
   } };
 }
 

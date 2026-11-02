@@ -41,7 +41,7 @@ vi.mock('@imajin/config', async original => ({
   ...await original<typeof import('@imajin/config')>(), rateLimit: () => ({ limited: false }), getClientIP: () => '127.0.0.1',
 }));
 
-import { identities, identityMembers } from '@/src/db/schemas/auth';
+import { delegationGrants, identities, identityMembers } from '@/src/db/schemas/auth';
 import { connectors, orgConnectionMemberGrants, orgConnectionSuspensions } from '@/src/db/schemas/connectors';
 import { vaultDelegationGrants } from '@/src/db/schemas/vault';
 import { provideInternalApiKey, provideSessionResolver } from '@imajin/auth';
@@ -54,13 +54,16 @@ import { POST as countTokens } from '@/app/infer/v1/messages/count_tokens/route'
 import { GET as models } from '@/app/infer/v1/models/route';
 import { GET as usableModels } from '@/app/infer/v1/models/usable/route';
 import { resolveOrgHeldBrain } from '../org-held-brain';
+import { resolveBrain } from '../brain';
+import { authorizeExternalMcp } from '@/src/lib/kernel/external-mcp';
 
 vi.setConfig({ testTimeout: 30_000, hookTimeout: 30_000 });
 const MEMBER = 'did:imajin:member';
 const ORG = 'did:imajin:artifact';
 const APP = 'did:imajin:app';
+const AGENT = 'did:imajin:agent';
 const FIELD = `${EXTERNAL_MCP_NAMESPACE}:org-fixture:${ORG}`;
-const tables = [identities, identityMembers, connectors, orgConnectionMemberGrants, orgConnectionSuspensions, vaultDelegationGrants];
+const tables = [identities, identityMembers, delegationGrants, connectors, orgConnectionMemberGrants, orgConnectionSuspensions, vaultDelegationGrants];
 let client: PGlite;
 let database: ReturnType<typeof drizzle>;
 let upstreamCalls = 0;
@@ -79,13 +82,15 @@ async function assertPrivate(response: Response) {
   expect(JSON.stringify(h.usage.mock.calls)).not.toContain(h.key);
   expect(JSON.stringify(h.usage.mock.calls)).not.toContain(FIELD);
 }
-async function denyNext() {
+async function denyNext(grantError = true) {
   h.get.mockClear();
   h.unseal.mockClear();
   const before = upstreamCalls;
   const response = await POST(request());
   expect(response.status).toBe(403);
-  expect(await response.json()).toEqual({ error: 'Active org-connection member grant required for anthropic' });
+  const body = await response.json();
+  expect(typeof body.error).toBe('string');
+  if (grantError) expect(body.error).toContain('/auth/connectors');
   expect(h.get).not.toHaveBeenCalled();
   expect(h.unseal).not.toHaveBeenCalled();
   expect(h.personal).not.toHaveBeenCalled();
@@ -106,6 +111,102 @@ beforeAll(async () => {
   database = drizzle(client);
   h.db = database;
 });
+
+describe('assigned agents use only the assigned DID keys, without member-grant rows', () => {
+  async function assign(principal = ORG, allowedServices: string[] | null = null) {
+    await database.insert(identityMembers).values({
+      identityDid: principal, memberDid: AGENT, role: 'agent', allowedServices,
+    });
+  }
+  function agentSession(actingAs?: string, actingFor?: string) {
+    h.session.mockResolvedValue({ identity: { id: AGENT, scope: 'actor', subtype: 'agent', actingAs, actingFor } });
+    return new NextRequest('https://kernel.test/infer/v1/messages', {
+      method: 'POST', body: JSON.stringify({ model: 'claude-test', messages: [], max_tokens: 8 }),
+    });
+  }
+  it('uses the org key and bills the org with the signing agent as actor', async () => {
+    await assign();
+    expect(await database.select().from(orgConnectionMemberGrants)).toEqual([]);
+    const response = await POST(agentSession(ORG));
+    expect(response.status).toBe(200);
+    expect(h.usage).toHaveBeenCalledWith(expect.objectContaining({ principalDid: ORG, agentDid: AGENT }));
+    expect(h.personal).not.toHaveBeenCalled();
+    expect(h.fallback).not.toHaveBeenCalled();
+    await assertPrivate(response);
+  });
+  it('accepts an active delegation from the target DID without an identity membership', async () => {
+    await database.insert(delegationGrants).values({
+      id: 'assignment', agentDid: AGENT, delegatorDid: ORG, audience: { type: 'all' },
+      issuedAt: new Date(), expiresAt: new Date(Date.now() + 60_000), status: 'active',
+    });
+    expect((await POST(agentSession(undefined, ORG))).status).toBe(200);
+    await database.update(delegationGrants).set({ revokedAt: new Date(), status: 'revoked' });
+    expect((await POST(agentSession(undefined, ORG))).status).toBe(403);
+  });
+  it('uses a human principal key onBehalfOf that human, not the org or agent key', async () => {
+    await assign(MEMBER);
+    h.personal.mockImplementation(async did => did === MEMBER ? { apiKey: h.key, modelId: 'personal-model' } : undefined);
+    const brain = await resolveBrain({ appDid: APP, caller: { actorDid: AGENT, actingFor: MEMBER } }, { connectors: ['anthropic'] });
+    expect(brain).toMatchObject({ apiKey: h.key, credentialDid: MEMBER, actorDid: AGENT });
+    expect(h.personal.mock.calls).toEqual([[MEMBER]]);
+    expect(h.fallback).not.toHaveBeenCalled();
+  });
+  it('uses only its own key when acting as itself, even when assigned to an org', async () => {
+    await assign();
+    const brain = await resolveBrain({ appDid: APP, caller: { actorDid: AGENT } }, { connectors: ['anthropic'] });
+    expect(brain.credentialDid).toBe(AGENT);
+    expect(h.personal.mock.calls).toEqual([[AGENT]]);
+    expect(h.get).not.toHaveBeenCalled();
+    expect(h.fallback).not.toHaveBeenCalled();
+  });
+  it.each(['unassigned', 'removed', 'wrong-role', 'excluded-service', 'empty-services'])(
+    'refuses %s agents before unsealing, without fallback', async boundary => {
+      if (boundary !== 'unassigned') await assign();
+      if (boundary === 'removed') await database.update(identityMembers).set({ removedAt: new Date() }).where(eq(identityMembers.memberDid, AGENT));
+      if (boundary === 'wrong-role') await database.update(identityMembers).set({ role: 'member' }).where(eq(identityMembers.memberDid, AGENT));
+      if (boundary === 'excluded-service' || boundary === 'empty-services') {
+        await database.update(identityMembers).set({ allowedServices: boundary === 'empty-services' ? [] : ['pay'] })
+          .where(eq(identityMembers.memberDid, AGENT));
+      }
+      expect((await POST(agentSession(ORG))).status).toBe(403);
+      expect(h.get).not.toHaveBeenCalled();
+      expect(h.personal).not.toHaveBeenCalled();
+      expect(h.fallback).not.toHaveBeenCalled();
+    },
+  );
+  it('fails closed on a missing assigned principal connection, naming that DID and its connectors page', async () => {
+    await assign(MEMBER);
+    h.personal.mockResolvedValue(undefined);
+    await expect(resolveBrain({ caller: { actorDid: AGENT, actingFor: MEMBER } }, { connectors: ['anthropic'] }))
+      .rejects.toMatchObject({ status: 403, message: expect.stringContaining(MEMBER) });
+    expect(h.personal.mock.calls).toEqual([[MEMBER]]);
+    expect(h.fallback).not.toHaveBeenCalled();
+  });
+  it('keeps the usable-model route consistent with org agent resolution and revocation', async () => {
+    await assign();
+    agentSession(ORG);
+    const req = () => new NextRequest('https://kernel.test/infer/v1/models/usable');
+    const response = await usableModels(req());
+    expect(response.status).toBe(200);
+    expect((await response.json()).data[0].imajin.credentialDid).toBe(ORG);
+    await database.update(identityMembers).set({ removedAt: new Date() }).where(eq(identityMembers.memberDid, AGENT));
+    expect((await usableModels(req())).status).toBe(403);
+  });
+  it('resolves org-held Warp MCP custody for an assigned agent and refuses an unassigned agent or ungranted member', async () => {
+    await database.update(connectors).set({ provider: 'org-held-warp' });
+    const target = { provider: 'warp', scope: 'warp:dispatch' };
+    const agent = { memberDid: AGENT, caller: { actorDid: AGENT, actingAs: ORG } };
+    await expect(authorizeExternalMcp(agent, target)).rejects.toMatchObject({ status: 403 });
+    await assign();
+    const context = await authorizeExternalMcp(agent, target);
+    expect(context).toMatchObject({ ownerDid: ORG, credential: h.key });
+    expect(await database.select().from(orgConnectionMemberGrants)).toEqual([]);
+    await expect(authorizeExternalMcp({ memberDid: MEMBER, caller: { actorDid: MEMBER, actingAs: ORG } }, target))
+      .rejects.toMatchObject({ status: 403, message: expect.stringContaining('/auth/connectors') });
+    await database.update(identityMembers).set({ allowedServices: ['infer'] }).where(eq(identityMembers.memberDid, AGENT));
+    await expect(authorizeExternalMcp(agent, target)).rejects.toMatchObject({ status: 403 });
+  });
+});
 afterAll(async () => { await client.close(); });
 afterEach(() => {
   Reflect.deleteProperty(globalThis, Symbol.for('@imajin/auth/session-resolver/v1'));
@@ -114,7 +215,7 @@ afterEach(() => {
   vi.unstubAllEnvs();
 });
 beforeEach(async () => {
-  await client.exec('TRUNCATE auth.identities, auth.identity_members, kernel.connectors, kernel.org_connection_member_grants, kernel.org_connection_suspensions, kernel.vault_delegation_grants');
+  await client.exec('TRUNCATE auth.identities, auth.identity_members, auth.delegation_grants, kernel.connectors, kernel.org_connection_member_grants, kernel.org_connection_suspensions, kernel.vault_delegation_grants');
   vi.clearAllMocks();
   h.key = randomUUID();
   upstreamCalls = 0;
@@ -130,15 +231,12 @@ beforeEach(async () => {
   await database.insert(identities).values([
     { id: MEMBER, publicKey: 'member-public', scope: 'actor', subtype: 'human' },
     { id: ORG, publicKey: 'org-public', scope: 'business' },
+    { id: AGENT, publicKey: 'agent-public', scope: 'actor', subtype: 'agent' },
   ]);
   await database.insert(identityMembers).values({ identityDid: ORG, memberDid: MEMBER, role: 'agent' });
   await database.insert(connectors).values({
     id: 'org-connection', ownerDid: ORG, provider: 'org-held-anthropic', slot: 'primary',
     status: 'active', sealedKeyField: FIELD, loadedByDid: MEMBER, loadedAt: new Date(),
-  });
-  await database.insert(orgConnectionMemberGrants).values({
-    id: 'member-grant', orgDid: ORG, memberDid: MEMBER, connectionId: 'org-connection',
-    provider: 'anthropic', grantedAt: new Date(), grantedByDid: MEMBER,
   });
   await database.insert(vaultDelegationGrants).values({
     id: 'custody', field: FIELD, subject: ORG, grantedTo: 'did:imajin:node', status: 'active', oneTime: false,
@@ -172,6 +270,12 @@ beforeEach(async () => {
 });
 
 describe('org-held Anthropic inference through real auth, grant SQL and route', () => {
+  beforeEach(async () => {
+    await database.insert(orgConnectionMemberGrants).values({
+      id: 'member-grant', orgDid: ORG, memberDid: MEMBER, connectionId: 'org-connection',
+      provider: 'anthropic', grantedAt: new Date(), grantedByDid: MEMBER,
+    });
+  });
   it('lists org models through real in-process session auth and live grant SQL, without self-HTTP or personal fallback', async () => {
     const resolver = vi.fn(async () => ({ did: MEMBER, scope: 'actor', subtype: 'human' }));
     provideSessionResolver(resolver);
@@ -195,7 +299,7 @@ describe('org-held Anthropic inference through real auth, grant SQL and route', 
     await database.update(orgConnectionMemberGrants).set({ revokedAt: new Date() });
     const denied = await usableModels(new NextRequest(req));
     expect(denied.status).toBe(403);
-    expect(await denied.json()).toEqual({ error: 'Active org-connection member grant required for anthropic' });
+    expect(await denied.json()).toEqual({ error: expect.stringContaining('/auth/connectors') });
     expect(upstreamCalls).toBe(1);
   });
   it('serves an acting-org call through the in-process session resolver without session self-HTTP', async () => {
@@ -255,7 +359,7 @@ describe('org-held Anthropic inference through real auth, grant SQL and route', 
     expect(response.status).toBe(200);
     expect(h.unseal).toHaveBeenCalledTimes(1);
     expect(h.usage).toHaveBeenCalledWith(expect.objectContaining({
-      principalDid: MEMBER, agentDid: APP,
+      principalDid: MEMBER, agentDid: MEMBER,
       metadata: { orgDid: ORG, grantId: 'member-grant', connectionId: 'org-connection', format: 'anthropic-messages' },
     }));
     expect(h.personal).not.toHaveBeenCalled();
@@ -273,15 +377,15 @@ describe('org-held Anthropic inference through real auth, grant SQL and route', 
       if (boundary === 'suspension') await database.insert(orgConnectionSuspensions).values({
         orgDid: ORG, memberDid: MEMBER, provider: 'anthropic', slot: '', suspendedAt: new Date(),
       });
-      await denyNext();
+      await denyNext(!['suspended-member', 'suspended-org'].includes(boundary));
     },
   );
-  it('denies absent grants and agent-identity grantees using the unchanged grant contract', async () => {
+  it('denies absent human grants but allows an assigned agent without a member grant', async () => {
     await database.update(orgConnectionMemberGrants).set({ revokedAt: new Date() });
     await denyNext();
     await database.update(orgConnectionMemberGrants).set({ revokedAt: null });
     await database.update(identities).set({ subtype: 'agent' }).where(eq(identities.id, MEMBER));
-    await denyNext();
+    expect((await POST(request())).status).toBe(200);
   });
   it('checks app scope before reading custody and never falls back to session', async () => {
     h.deniedScope = true;

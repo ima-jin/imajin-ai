@@ -27,10 +27,10 @@ export const dynamic = 'force-dynamic';
 export async function POST(request: NextRequest) {
   const guarded = await guardAnthropicRequest(request);
   if (!guarded.ok) return guarded.response;
-  const { cors, ownerDid, appDid, bodyText, orgContext } = guarded.value;
+  const { cors, ownerDid, appDid, bodyText, orgContext, caller } = guarded.value;
 
   try {
-    const brain = await resolveAnthropicBrain(ownerDid, appDid, extractRequestedModel(bodyText), orgContext);
+    const brain = await resolveAnthropicBrain(ownerDid, appDid, extractRequestedModel(bodyText), orgContext, caller);
 
     const prepared = applySealedModel(bodyText, brain.modelId);
     if (!prepared.ok) {

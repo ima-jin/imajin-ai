@@ -111,7 +111,7 @@ export function authorizeExternalMcp(
     if (!row.sealedKeyField || !isExternalMcpField(row.sealedKeyField)) throw unavailable();
     const node = getNodeSigningIdentity();
     const [custody] = await tx.select().from(vaultDelegationGrants).where(and(
-      eq(vaultDelegationGrants.field, row.sealedKeyField), eq(vaultDelegationGrants.subject, caller.memberDid),
+      eq(vaultDelegationGrants.field, row.sealedKeyField), eq(vaultDelegationGrants.subject, row.ownerDid),
       eq(vaultDelegationGrants.grantedTo, node.senderDid), eq(vaultDelegationGrants.status, 'active'),
     )).limit(1).for('update');
     if (!custody || !live(custody) || custody.oneTime) throw unavailable();
@@ -121,7 +121,7 @@ export function authorizeExternalMcp(
     }
     const credential = await _applyDelegationGrant(entry, custody, getNodeXPrivateKey(), node.senderPubkey);
     if (!live(custody)) throw unavailable();
-    return { credential, orgContextDid: row.orgContextDid };
+    return { credential, ownerDid: row.ownerDid, orgContextDid: caller.caller?.actingAs ?? row.orgContextDid };
   });
 }
 
@@ -136,7 +136,8 @@ export async function invokeExternalMcp(caller: ExternalMcpCaller, call: Externa
     catch { result = { error: 'External MCP upstream unavailable' as const }; }
     finally { context.credential = ''; }
     // A second short transaction records the admitted attempt, never provider bytes or arguments.
-    await db.transaction(tx => auditMemberConnection(tx, caller.memberDid, context.orgContextDid, 'call', {
+    await db.transaction(tx => auditMemberConnection(tx, context.ownerDid, context.orgContextDid, 'call', {
+      actorDid: caller.caller?.actorDid ?? caller.memberDid,
       appDid: caller.appDid ?? null, method: call.method, tool: call.params?.name ?? null,
     }));
     return result;
