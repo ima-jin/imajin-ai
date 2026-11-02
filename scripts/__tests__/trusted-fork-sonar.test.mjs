@@ -544,6 +544,15 @@ describe('exact-task quality gate and final status', () => {
 
 describe('workflow boundary and same-repo compatibility', () => {
   const load = async (name) => YAML.parse(await readFile(fileURLToPath(new URL(`../../.github/workflows/${name}`, import.meta.url)), 'utf8'));
+  it.each(['push', 'merge_group', 'workflow_dispatch', 'pull_request'])(
+    'gates %s before any resolver, scanner or status-posting step', async (event) => {
+      const workflow = await load('sonarcloud-fork.yml');
+      const condition = workflow.jobs.scan.if;
+      expect(condition).toBe("github.event.workflow_run.event == 'pull_request'");
+      const eligibleEvent = /^github\.event\.workflow_run\.event == '([^']+)'$/.exec(condition)?.[1];
+      expect(event === eligibleEvent).toBe(event === 'pull_request');
+    },
+  );
 
   it('uses only default-branch workflow_run with least job permissions and ephemeral runner', async () => {
     const workflow = await load('sonarcloud-fork.yml');
