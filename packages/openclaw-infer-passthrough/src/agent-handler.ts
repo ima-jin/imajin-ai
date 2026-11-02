@@ -33,10 +33,12 @@ function isAgentJwt(token: string): boolean {
 /** Never reads a route principal or a configured host key. Authorization, if present, wins. */
 export function readAgentCredential(headers: IncomingHttpHeaders, allowApiKey: boolean): AgentCredential | ProxyResponse {
   const authorization = headers.authorization;
-  const token = authorization === undefined && allowApiKey
-    ? headers['x-api-key']
-    : typeof authorization === 'string' && authorization.startsWith('Bearer ')
-      ? authorization.slice(7) : undefined;
+  let token: string | string[] | undefined;
+  if (authorization === undefined && allowApiKey) {
+    token = headers['x-api-key'];
+  } else if (typeof authorization === 'string' && authorization.startsWith('Bearer ')) {
+    token = authorization.slice(7);
+  }
   if (typeof token !== 'string' || !isAgentJwt(token)) {
     return jsonError(401, 'invalid_agent_credential', 'Missing or invalid calling agent credential: expected the agent’s own app+jwt');
   }
