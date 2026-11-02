@@ -243,12 +243,18 @@ Use **`sonarcloud/trusted` on the exact head SHA** as fork scan evidence. Succes
 requires the submitted analysis task's quality gate to be OK; failed/cancelled CI,
 ambiguous PRs, malformed coverage, scan failures and stale heads cannot succeed.
 This status is not yet a required branch-protection context. Same-repo PR and
-push-to-main scans still use the existing CI path. Gate OK alone does not prove
-Sonar 0: also verify zero OPEN/CONFIRMED issues for the PR and the analysis revision.
+push-to-main scans still use the existing CI path. Main-push runs have **no open
+PR by design**: a "no open PR" report there is expected, not evidence of a failed
+fork scan. The trusted follow-up skips non-PR and same-repo runs. Gate OK alone
+does not prove Sonar 0: also verify zero OPEN/CONFIRMED issues for the PR and the
+analysis revision.
 
-Workflow-run changes only activate after merge. For #3204's live verification,
-re-run CI on #3200 and #3201 after merge, then check each head SHA's trusted status,
-SonarCloud PR analysis revision, quality gate and OPEN/CONFIRMED issue count.
+Workflow-run changes only activate after merge: a PR changing this workflow or
+helper cannot prove its own candidate privileged path pre-merge. PR #3200 and
+PR #3201 supplied post-merge live evidence for #3204; both final heads passed
+trusted scans with Sonar total 0 before their 2026-11-02 merges. For future
+changes, re-run CI on an intended open fork PR after merge, then check its exact
+head SHA's trusted status, SonarCloud analysis revision, gate and issue count.
 Never push fork branches to the org or expose the token to PR code to bypass this.
 
 ## Security

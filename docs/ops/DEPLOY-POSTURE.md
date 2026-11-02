@@ -3,6 +3,39 @@
 Repo-only investigation. No server access was used or attempted — every claim below is either a
 citation to a file in this repo or explicitly marked as unverifiable from the repo alone.
 
+## Release delta — v0.8.30 source, 2026-11-02
+
+Ryan's 2026-11-01 ruling is **v0.8.30, patch**, not v0.9.0. `release.yml` remains
+`workflow_dispatch` only, with `bump: patch` as default. The source delta from
+v0.8.29 through `2342115f5` is PR #3205, PR #3207, PR #3200 and PR #3201,
+followed by this docs sweep. The release still requires Ryan to merge the release
+PR and separately approve the `production` environment; this document is not
+evidence that either has happened.
+
+Apply pending `0230_org_connection_member_grants.sql` through the normal kernel
+migration runner. It adds grant/revocation provenance and indexes, not key
+material; the [baseline cut is unchanged](../../migrations/BASELINE.md).
+Human org-admin sessions with `connections` service access can list, grant and
+revoke through `/connections/api/org-held/{provider}/grants`. Membership removal
+revokes that member's grants atomically. This is authority metadata only:
+runtime org-key injection (#3202/#3203) remains v0.9.0 work.
+
+The agent's own signed read at
+`POST /auth/api/grants/received/operator-approvals` exposes effective lease expiry
+without operator credentials or another agent's grants. No migration is required
+for this endpoint. See the [kernel delta](../../apps/kernel/README.md#pre-cut-delta-for-v0830)
+and its linked API/auth contracts.
+
+Trusted fork Sonar now runs after CI using reviewed main workflow/helper code.
+Exact-head `sonarcloud/trusted` and Sonar total 0 are separate acceptance evidence;
+workflow edits need post-merge verification. Main-push runs have no open PR by
+design; normal main analysis stays in CI and the fork follow-up skips that event.
+
+**Known production risk, not fixed in this release:** #3206's `prod-jin` hang
+recurred on 2026-11-02 while pm2 reported `online`. If it recurs after deploy,
+an operator may still need a manual restart using the existing runbook.
+No server operation, restart or code fix is performed by this sweep.
+
 ## Release delta — v0.8.29 source, 2026-10-30
 
 Apply pending `0228`–`0229` through the normal kernel migration runner; the

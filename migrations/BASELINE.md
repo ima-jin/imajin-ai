@@ -27,6 +27,22 @@ serial index to `auth.attestations`, not another baseline cut.
 Missing history through 0215 is never tolerated. Choose the next free number
 above the last root migration on main; do not move the cut for this check fix.
 
+### v0.8.30 post-cut addition (2026-11-02 source check)
+
+The only SQL migration added since v0.8.29 is
+`0230_org_connection_member_grants.sql` (PR #3200, #3180 part 1), owned by
+`kernel` in `ownership.json`. It adds `kernel.org_connection_member_grants`
+with org/member/connection/provider identity, grant actor/time and retained
+revocation actor/time/reason. A partial unique index permits one active grant
+per org/member/connection; an org/member index supports membership-removal
+cascade. It contains authority metadata, never credentials or vault material.
+
+Apply it in ordinary filename order when absent from the ledger, after pending
+`0228`–`0229` from v0.8.29. The fixed cut through `0215`, baseline inventory,
+historical checksums and existing ledger rows are unchanged. PR #3201's signed
+lease read and PR #3205/PR #3207's CI changes add no migrations. This inventory
+does not assert production migration, restore or runtime org-key injection.
+
 ### v0.8.28 post-cut additions (2026-10-29 source check)
 
 The cut is unchanged. These are ordinary root migrations, applied in filename
