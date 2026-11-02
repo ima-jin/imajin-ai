@@ -100,7 +100,7 @@ function isVaultDegraded(vault: VaultHealth): boolean {
   return vault.status === 'empty' && process.env.NODE_ENV === 'production';
 }
 
-export async function GET(request?: Request) {
+export async function GET(request: Request) {
   // Process liveness is not aggregate dependency readiness. In particular,
   // never make a local watchdog wait for this route's own HTTP fan-out.
   if (request && new URL(request.url).searchParams.get('liveness') === '1') {
