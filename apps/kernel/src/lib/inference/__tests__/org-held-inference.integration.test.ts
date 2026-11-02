@@ -33,8 +33,9 @@ vi.mock('@/src/lib/kernel/connector-registry-store', () => ({
   readConnectorRegistration: vi.fn().mockResolvedValue(undefined), connectorRegistryId: () => 'connector-fixture',
 }));
 vi.mock('@/src/lib/kernel/app-registrant', () => ({ lookupAppRegistrantDid: h.fallback }));
-vi.mock('@/src/lib/anthropic/connector', () => ({ loadAnthropicCredentials: h.personal }));
-vi.mock('@/src/lib/inference/model-catalog', () => ({ expandUsableModels: vi.fn(), resolvePickerModel: vi.fn() }));
+vi.mock('@/src/lib/anthropic/connector', () => ({
+  loadAnthropicCredentials: h.personal, ANTHROPIC_BASE_URL: 'https://api.anthropic.com/v1',
+}));
 vi.mock('@/src/lib/kernel/cors', () => ({ corsHeaders: () => ({}), corsOptions: vi.fn() }));
 vi.mock('@imajin/config', async original => ({
   ...await original<typeof import('@imajin/config')>(), rateLimit: () => ({ limited: false }), getClientIP: () => '127.0.0.1',
@@ -43,12 +44,15 @@ vi.mock('@imajin/config', async original => ({
 import { identities, identityMembers } from '@/src/db/schemas/auth';
 import { connectors, orgConnectionMemberGrants, orgConnectionSuspensions } from '@/src/db/schemas/connectors';
 import { vaultDelegationGrants } from '@/src/db/schemas/vault';
-import { provideInternalApiKey } from '@imajin/auth';
+import { provideInternalApiKey, provideSessionResolver } from '@imajin/auth';
+import { SESSION_COOKIE_NAME } from '@imajin/config';
+import { requireAuth as requireSessionAuth } from '../../../../../../packages/auth/src/require-auth';
 import { setVaultInternalApiKey } from '../../../../../../packages/auth/tests/support/internal-post-test-env';
 import { EXTERNAL_MCP_NAMESPACE } from '@/src/lib/vault/field-grammar';
 import { POST } from '@/app/infer/v1/messages/route';
 import { POST as countTokens } from '@/app/infer/v1/messages/count_tokens/route';
 import { GET as models } from '@/app/infer/v1/models/route';
+import { GET as usableModels } from '@/app/infer/v1/models/usable/route';
 import { resolveOrgHeldBrain } from '../org-held-brain';
 
 vi.setConfig({ testTimeout: 30_000, hookTimeout: 30_000 });
@@ -103,7 +107,12 @@ beforeAll(async () => {
   h.db = database;
 });
 afterAll(async () => { await client.close(); });
-afterEach(() => { setVaultInternalApiKey(undefined); vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
+afterEach(() => {
+  Reflect.deleteProperty(globalThis, Symbol.for('@imajin/auth/session-resolver/v1'));
+  setVaultInternalApiKey(undefined);
+  vi.unstubAllGlobals();
+  vi.unstubAllEnvs();
+});
 beforeEach(async () => {
   await client.exec('TRUNCATE auth.identities, auth.identity_members, kernel.connectors, kernel.org_connection_member_grants, kernel.org_connection_suspensions, kernel.vault_delegation_grants');
   vi.clearAllMocks();
@@ -144,6 +153,7 @@ beforeEach(async () => {
     expect(input.startsWith('https://api.anthropic.com/v1/')).toBe(true);
     upstreamCalls++;
     expect(new Headers(init?.headers).get('x-api-key')).toBe(h.key);
+    if (input.endsWith('/models')) return Response.json({ data: [{ id: 'claude-org-model', display_name: 'Org model' }] });
     if (h.upstreamMode === 'error') throw new Error(h.key);
     if (h.upstreamMode === 'echo') return Response.json({ id: h.key, content: h.key }, {
       headers: { 'x-api-key': h.key, 'content-type': `application/json; echo=${h.key}` },
@@ -162,6 +172,73 @@ beforeEach(async () => {
 });
 
 describe('org-held Anthropic inference through real auth, grant SQL and route', () => {
+  it('lists org models through real in-process session auth and live grant SQL, without self-HTTP or personal fallback', async () => {
+    const resolver = vi.fn(async () => ({ did: MEMBER, scope: 'actor', subtype: 'human' }));
+    provideSessionResolver(resolver);
+    h.session.mockImplementation(requireSessionAuth);
+    const req = new NextRequest('https://kernel.test/infer/v1/models/usable', {
+      headers: { cookie: `${SESSION_COOKIE_NAME}=fixture-session`, 'x-acting-as': ORG },
+    });
+    const response = await usableModels(req);
+    expect(response.status).toBe(200);
+    const body = await response.clone().json();
+    expect(body.data.map((row: { id: string }) => row.id)).toEqual(['claude-org-model']);
+    expect(body.data[0].imajin.credentialDid).toBe(ORG);
+    expect(resolver).toHaveBeenCalledWith('fixture-session');
+    expect(h.personal).not.toHaveBeenCalled();
+    expect(h.fallback).not.toHaveBeenCalled();
+    expect(vi.mocked(fetch).mock.calls.map(([url]) => String(url))).toEqual([
+      `https://auth.test/auth/api/groups/${encodeURIComponent(ORG)}/controllers/${encodeURIComponent(MEMBER)}`,
+      'https://api.anthropic.com/v1/models',
+    ]);
+    await assertPrivate(response);
+    await database.update(orgConnectionMemberGrants).set({ revokedAt: new Date() });
+    const denied = await usableModels(new NextRequest(req));
+    expect(denied.status).toBe(403);
+    expect(await denied.json()).toEqual({ error: 'Active org-connection member grant required for anthropic' });
+    expect(upstreamCalls).toBe(1);
+  });
+  it('serves an acting-org call through the in-process session resolver without session self-HTTP', async () => {
+    const resolver = vi.fn(async () => ({ did: MEMBER, scope: 'actor', subtype: 'human' }));
+    provideSessionResolver(resolver);
+    h.session.mockImplementation(requireSessionAuth);
+    const req = new NextRequest('https://kernel.test/infer/v1/messages', {
+      method: 'POST', headers: { cookie: `${SESSION_COOKIE_NAME}=fixture-session`, 'x-acting-as': ORG },
+      body: JSON.stringify({ model: 'claude-test', messages: [], max_tokens: 8 }),
+    });
+    const response = await POST(req);
+    expect(response.status).toBe(200);
+    expect(resolver).toHaveBeenCalledWith('fixture-session');
+    expect(h.usage).toHaveBeenCalledWith(expect.objectContaining({
+      principalDid: MEMBER, metadata: expect.objectContaining({ orgDid: ORG }),
+    }));
+    const urls = vi.mocked(fetch).mock.calls.map(([url]) => String(url));
+    expect(urls).toEqual([
+      `https://auth.test/auth/api/groups/${encodeURIComponent(ORG)}/controllers/${encodeURIComponent(MEMBER)}`,
+      'https://api.anthropic.com/v1/messages',
+    ]);
+    await assertPrivate(response);
+    await database.update(orgConnectionMemberGrants).set({ revokedAt: new Date() });
+    expect((await POST(new NextRequest(req.url, {
+      method: 'POST', headers: req.headers, body: JSON.stringify({ model: 'claude-test', messages: [] }),
+    }))).status).toBe(403);
+    expect(resolver).toHaveBeenCalledTimes(2);
+    expect(upstreamCalls).toBe(1);
+  });
+  it('rejects an acting-org session when live acting authority disappears, even with an in-process session', async () => {
+    provideSessionResolver(async () => ({ did: MEMBER, scope: 'actor', subtype: 'human' }));
+    h.session.mockImplementation(requireSessionAuth);
+    vi.mocked(fetch).mockResolvedValue(Response.json({ valid: false }));
+    const response = await POST(new NextRequest('https://kernel.test/infer/v1/messages', {
+      method: 'POST', headers: { cookie: `${SESSION_COOKIE_NAME}=fixture-session`, 'x-acting-as': ORG },
+      body: JSON.stringify({ model: 'claude-test', messages: [] }),
+    }));
+    expect(response.status).toBe(403);
+    expect(await response.json()).toEqual({ error: 'Not authorized to act as this group' });
+    expect(h.get).not.toHaveBeenCalled();
+    expect(h.unseal).not.toHaveBeenCalled();
+    expect(upstreamCalls).toBe(0);
+  });
   it.each(['echo', 'stream', 'error'])('keeps keys out of responses, headers, captured logs and metering after upstream %s', async mode => {
     h.upstreamMode = mode;
     const response = await POST(request({ model: 'claude-test', messages: [], stream: mode === 'stream' }));

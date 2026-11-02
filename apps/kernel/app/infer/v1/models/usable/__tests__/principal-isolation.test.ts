@@ -1,10 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { credentials, registrant, appAuth, sessionAuth } = vi.hoisted(() => ({
+const { credentials, registrant, appAuth, sessionAuth, orgBrain, picker } = vi.hoisted(() => ({
   credentials: new Map<string, { apiKey: string; modelId?: string }>(),
   registrant: vi.fn(),
   appAuth: vi.fn(),
   sessionAuth: vi.fn(),
+  orgBrain: vi.fn(),
+  picker: vi.fn(),
 }));
 
 vi.mock('@imajin/auth', () => ({
@@ -24,6 +26,7 @@ vi.mock('@/src/lib/kernel/cors', () => ({
   corsOptions: () => new Response(null, { status: 204 }),
 }));
 vi.mock('@/src/lib/kernel/app-registrant', () => ({ lookupAppRegistrantDid: registrant }));
+vi.mock('@/src/lib/inference/org-held-brain', () => ({ resolveOrgHeldBrain: orgBrain }));
 vi.mock('@/src/lib/gemini/connector', () => ({ loadGeminiCredentials: async () => undefined }));
 vi.mock('@/src/lib/anthropic/connector', () => ({
   loadAnthropicCredentials: async (did: string) => credentials.get(did),
@@ -45,7 +48,7 @@ vi.mock('@/src/lib/openrouter/connector', () => ({
   loadOpenrouterCredentials: async () => undefined, OPENROUTER_BASE_URL: 'https://openrouter.test',
 }));
 vi.mock('@/src/lib/anthropic/model-handlers', () => ({
-  listModels: async () => ({ ok: true, models: [] }),
+  listModels: picker,
 }));
 vi.mock('@/src/lib/gemini/model-handlers', () => ({ listModels: vi.fn() }));
 vi.mock('@/src/lib/local/model-handlers', () => ({ listModels: vi.fn() }));
@@ -55,6 +58,7 @@ vi.mock('@/src/lib/kernel/openai-compatible-model-picker', () => ({
 vi.mock('@/src/lib/openrouter/model-handlers', () => ({ createOpenrouterModelHandlers: vi.fn() }));
 
 import { GET } from '../route';
+import { ExternalMcpError } from '@/src/lib/kernel/external-mcp-policy';
 import { handleModels } from '../../../../../../../../packages/openclaw-infer-passthrough/src/handle-models';
 
 const MAIN = 'did:imajin:main-fixture';
@@ -90,6 +94,11 @@ beforeEach(() => {
   // Synthetic, non-authority-bearing fixtures; no live provider key or token.
   credentials.set(MAIN, { apiKey: 'fixture-main', modelId: 'main-model' });
   credentials.set(AGENT, { apiKey: 'fixture-agent', modelId: 'agent-model' });
+  picker.mockResolvedValue({ ok: true, models: [] });
+  orgBrain.mockResolvedValue({
+    connector: 'anthropic', provider: 'anthropic', credentialDid: ORG, modelId: '', apiKey: 'fixture-org-held',
+    orgUsage: { memberDid: MAIN, orgDid: ORG, grantId: 'fixture-grant', connectionId: 'fixture-connection' },
+  });
   registrant.mockResolvedValue(ORG);
   appAuth.mockImplementation(async (req: Request) => ({
     appAuth: { userDid: req.headers.get('authorization')?.slice('Bearer '.length), appDid: APP },
@@ -116,13 +125,42 @@ describe('#3198 principal-scoped sealed inference (real auth orchestration + bra
     expect(proxy.body).toEqual(body);
   });
 
-  it.each([undefined, ORG])('uses the personal or acting-as-org session context: %s', async (actingAs) => {
+  it('uses only the personal session context when no acting org is selected', async () => {
     appAuth.mockResolvedValue({ error: 'Not an app token', status: 401 });
-    sessionAuth.mockResolvedValue({ identity: { id: MAIN, actingAs } });
+    sessionAuth.mockResolvedValue({ identity: { id: MAIN } });
     const response = await GET(request(MAIN));
     expect(response.status).toBe(200);
     const body = await response.json();
-    expect(body.data.map((row: { id: string }) => row.id)).toEqual(actingAs ? [] : ['main-model']);
+    expect(body.data.map((row: { id: string }) => row.id)).toEqual(['main-model']);
+    expect(orgBrain).not.toHaveBeenCalled();
+  });
+
+  it('lists the granted org catalog for a verified acting-org session without personal/app fallback', async () => {
+    appAuth.mockResolvedValue({ error: 'Not an app token', status: 401 });
+    sessionAuth.mockResolvedValue({ identity: { id: MAIN, actingAs: ORG } });
+    picker.mockResolvedValue({ ok: true, models: [{ id: 'org-model' }] });
+    const response = await GET(request(MAIN));
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.data.map((row: { id: string }) => row.id)).toEqual(['org-model']);
+    expect(body.data[0].imajin.credentialDid).toBe(ORG);
+    expect(orgBrain).toHaveBeenCalledWith({ memberDid: MAIN, orgDid: ORG }, undefined);
+    expect(registrant).not.toHaveBeenCalled();
+    expect(JSON.stringify(body)).not.toContain('fixture-org-held');
+    expect(await listThroughPassthrough(MAIN)).toEqual({ status: 200, body });
+  });
+
+  it('returns a grant-naming 403 for an ungranted acting-org session, never a personal catalog or a 500', async () => {
+    appAuth.mockResolvedValue({ error: 'Not an app token', status: 401 });
+    sessionAuth.mockResolvedValue({ identity: { id: MAIN, actingAs: ORG } });
+    const error = 'Active org-connection member grant required for anthropic';
+    orgBrain.mockRejectedValue(new ExternalMcpError(403, error));
+    const response = await GET(request(MAIN));
+    expect(response.status).toBe(403);
+    expect(await response.json()).toEqual({ error });
+    expect(picker).not.toHaveBeenCalled();
+    expect(registrant).not.toHaveBeenCalled();
+    expect(await listThroughPassthrough(MAIN)).toEqual({ status: 403, body: { error } });
   });
 
   it.each([MAIN, AGENT, ORG])('missing own connector for %s yields an empty catalog, not a 502 or another principal’s connector', async (principal) => {
