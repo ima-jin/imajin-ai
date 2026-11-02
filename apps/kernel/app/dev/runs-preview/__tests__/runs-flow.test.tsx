@@ -7,6 +7,21 @@ import { dispatchSessionCommand, prepareSignedSessionCommand, type SessionComman
 import { createRunsPreviewTransport } from '../transport';
 
 vi.mock('next/navigation', () => ({ useSearchParams: () => new URLSearchParams() }));
+
+async function createFlowFixture() {
+  const pending: (() => Promise<void>)[] = [];
+  const fixture = await createRunsPreviewTransport('active', undefined, complete => pending.push(complete));
+  return {
+    ...fixture,
+    async completeOutcomes(count: number) {
+      // Wait for dispatch/signing, not wall-clock agent latency. Delivery and
+      // execution remain separate, and every outcome is really signed/verified.
+      await vi.waitFor(() => expect(pending.length + fixture.proofs.length).toBe(count));
+      await act(async () => { await Promise.all(pending.splice(0).map(complete => complete())); });
+      expect(fixture.proofs).toHaveLength(count);
+    },
+  };
+}
 beforeEach(() => {
   vi.useRealTimers();
   localStorage.clear();
@@ -27,11 +42,10 @@ afterEach(() => {
 
 describe('real Runs components on exact-contract fixture transport', () => {
   it('signs send/spawn and inline native approve/deny through the shared endpoint, then displays attested results', async () => {
-    // Only polling is virtual: Ed25519 signing and the fixture's delayed
-    // outcomes must finish before we advance the components' refresh clocks.
+    // Only polling is virtual; outcomes are released explicitly after delivery.
     vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
     const storage = vi.spyOn(Storage.prototype, 'setItem');
-    const fixture = await createRunsPreviewTransport();
+    const fixture = await createFlowFixture();
     const client: SessionCommandClient = {
       prepare: (loopId, type, payload) =>
         prepareSignedSessionCommand(loopId, type, payload, fixture.keypair),
@@ -68,7 +82,8 @@ describe('real Runs components on exact-contract fixture transport', () => {
       await waitFor(() => expect(transport.mock.calls.filter(([url, options]) => String(url).endsWith('/commands') && JSON.parse(String(options?.body)).action === 'dispatch')).toHaveLength(3));
       await waitFor(() => expect(within(session).queryByText('Preparing your signed wish…')).toBeNull());
       // Delivery does not await the fixture's asynchronously signed outcome.
-      await vi.waitFor(() => expect(fixture.proofs).toHaveLength(5));
+      expect(fixture.proofs).toHaveLength(0);
+      await fixture.completeOutcomes(5);
       await act(async () => { await vi.advanceTimersByTimeAsync(6000); });
       await waitFor(() => expect(screen.getAllByTestId('run-card')).toHaveLength(3));
       expect(await screen.findByText('Signed outcome: completed')).toBeDefined();
@@ -84,7 +99,7 @@ describe('real Runs components on exact-contract fixture transport', () => {
   });
   it('labels, shows signed reset scope denial, archives only after outcome and keeps typed history', async () => {
     vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
-    const fixture = await createRunsPreviewTransport();
+    const fixture = await createFlowFixture();
     const client: SessionCommandClient = {
       prepare: (loopId, type, payload) => prepareSignedSessionCommand(loopId, type, payload, fixture.keypair),
       dispatch: dispatchSessionCommand,
@@ -96,21 +111,21 @@ describe('real Runs components on exact-contract fixture transport', () => {
       const session = (await screen.findAllByTestId('run-card')).find(card => card.textContent?.includes('openclaw.session'))!;
       fireEvent.click(within(session).getByRole('button', { expanded: false }));
       await screen.findByTestId('run-session-controls');
-      await vi.waitFor(() => expect(fixture.proofs).toHaveLength(1));
+      await fixture.completeOutcomes(1);
       await act(async () => { await vi.advanceTimersByTimeAsync(3000); });
       expect(await screen.findByText('Recent redacted history from signed session.history')).toBeDefined();
       fireEvent.change(screen.getByLabelText('Session label'), { target: { value: 'Operator-labelled session' } });
       fireEvent.click(screen.getByRole('button', { name: 'Sign & label' }));
       await screen.findByText('Delivered · awaiting signed agent outcome');
       expect(within(session).queryByText('Operator-labelled session')).toBeNull();
-      await vi.waitFor(() => expect(fixture.proofs).toHaveLength(2));
+      await fixture.completeOutcomes(2);
       await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
       expect(await within(session).findByText('Operator-labelled session')).toBeDefined();
       fireEvent.click(screen.getByRole('button', { name: 'Sign & reset' }));
       expect(screen.getByRole('heading', { name: 'Confirm reset: Operator-labelled session' })).toBeDefined();
       expect(fixture.proofs).toHaveLength(2);
       fireEvent.click(screen.getByRole('button', { name: 'Confirm reset' }));
-      await vi.waitFor(() => expect(fixture.proofs).toHaveLength(3));
+      await fixture.completeOutcomes(3);
       await act(async () => { await vi.advanceTimersByTimeAsync(3000); });
       expect(await screen.findByText('Signed outcome: failed · missing_scope')).toBeDefined();
       expect(screen.getByText('loop.session.reset.failed')).toBeDefined();
@@ -120,7 +135,7 @@ describe('real Runs components on exact-contract fixture transport', () => {
       fireEvent.click(screen.getByRole('button', { name: 'Confirm archive' }));
       await screen.findByText('Delivered · awaiting signed agent outcome');
       expect(screen.getAllByTestId('run-card')).toHaveLength(2);
-      await vi.waitFor(() => expect(fixture.proofs).toHaveLength(4));
+      await fixture.completeOutcomes(4);
       await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
       expect(screen.getAllByTestId('run-card')).toHaveLength(1);
       expect(await screen.findByRole('button', { name: 'Close run history' })).toBeDefined();
