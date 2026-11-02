@@ -79,6 +79,7 @@ describe('requireHardDIDOrAppToken — app token path', () => {
     expect(result).toEqual({ auth: { did: DID, scopes: [], via: 'token', actingAs: GROUP } });
     expect(fetchMock).toHaveBeenCalledWith(`${AUTH_SERVICE_URL}/api/identity/${encodeURIComponent(DID)}`, {
       cache: 'no-store',
+      signal: expect.any(AbortSignal),
     });
   });
 
@@ -88,6 +89,7 @@ describe('requireHardDIDOrAppToken — app token path', () => {
     expect(result).toEqual({ auth: { did: DID, scopes: ['market:purchase'], via: 'token' } });
     expect(fetchMock).toHaveBeenCalledWith(`${AUTH_SERVICE_URL}/api/identity/${encodeURIComponent(DID)}`, {
       cache: 'no-store',
+      signal: expect.any(AbortSignal),
     });
   });
 

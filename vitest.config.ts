@@ -51,6 +51,7 @@ export default defineConfig({
         'apps/*/middleware.ts',
         'packages/*/src/**/*.ts',
         'packages/*/src/**/*.tsx',
+        'packages/*/src/**/*.cjs',
         // Shared test-utility modules (e.g. env/fetch stubbing helpers) that live
         // alongside *.test.ts under packages/*/tests/ instead of src/. Excluded
         // again below via the `**/*.test.ts` pattern — without this, SonarCloud

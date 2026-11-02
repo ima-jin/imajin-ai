@@ -1,3 +1,4 @@
+import { internalFetch } from './internal-fetch.cjs';
 import { createLogger } from '@imajin/logger';
 import {
   authenticateSessionOrAppToken,
@@ -42,7 +43,7 @@ async function lookupTier(did: string): Promise<string | null> {
   if (!authUrl) return null;
 
   try {
-    const res = await fetch(`${authUrl}/api/identity/${encodeURIComponent(did)}`, {
+    const res = await internalFetch(`${authUrl}/api/identity/${encodeURIComponent(did)}`, {
       cache: 'no-store',
     });
     if (!res.ok) return null;

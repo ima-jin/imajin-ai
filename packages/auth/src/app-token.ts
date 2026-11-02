@@ -1,3 +1,4 @@
+import { internalFetch } from './internal-fetch.cjs';
 import { createLogger } from '@imajin/logger';
 import { isAppAudienceSlug } from './app-audience';
 const log = createLogger('auth');
@@ -50,7 +51,7 @@ export async function verifyAppToken(
     return null;
   }
   try {
-    const res = await fetch(`${authUrl}/api/tokens/app/verify`, {
+    const res = await internalFetch(`${authUrl}/api/tokens/app/verify`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ token, aud: options?.aud }),

@@ -10,6 +10,7 @@
  */
 
 import { createLogger } from '@imajin/logger';
+import { internalFetch } from './internal-fetch.cjs';
 const log = createLogger('auth');
 
 export type Action =
@@ -94,7 +95,7 @@ export async function canDo(
     }
 
     try {
-      const response = await fetch(`${connectionsServiceUrl}/api/connections/status/${encodeURIComponent(did)}`);
+      const response = await internalFetch(`${connectionsServiceUrl}/api/connections/status/${encodeURIComponent(did)}`);
       if (!response.ok) {
         return false;
       }

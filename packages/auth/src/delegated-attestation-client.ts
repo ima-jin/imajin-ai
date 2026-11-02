@@ -16,6 +16,7 @@
  * issue was filed for that, refs #2394).
  */
 import { canonicalize } from './sign';
+import { internalFetch } from './internal-fetch.cjs';
 import { signSync } from './crypto';
 
 export interface DelegatedAttestationInput {
@@ -74,7 +75,7 @@ export async function submitDelegatedAttestation(
   const signature = signSync(canonicalPayload, input.appPrivateKey);
 
   try {
-    const res = await fetch(`${input.authUrl}/api/attestations`, {
+    const res = await internalFetch(`${input.authUrl}/api/attestations`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

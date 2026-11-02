@@ -1,3 +1,4 @@
+import { internalFetch } from './internal-fetch.cjs';
 /**
  * `loadFromVault` — fetch-at-boot helper for a service to pull its own
  * credentials out of the kernel vault at process start (#2243, child of
@@ -220,7 +221,7 @@ interface ChallengeResponse {
 
 /** `POST /api/challenge` — obtain a challenge string for `identity.did` to sign. */
 async function requestChallenge(authServiceUrl: string, did: string): Promise<ChallengeResponse> {
-  const res = await fetch(`${authServiceUrl}/api/challenge`, {
+  const res = await internalFetch(`${authServiceUrl}/api/challenge`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ id: did }),
@@ -243,7 +244,7 @@ async function exchangeChallengeForToken(
   challenge: string,
 ): Promise<string> {
   const signature = crypto.signSync(challenge, identity.privateKey);
-  const res = await fetch(`${authServiceUrl}/api/authenticate`, {
+  const res = await internalFetch(`${authServiceUrl}/api/authenticate`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ id: identity.did, challengeId, signature }),
@@ -275,7 +276,7 @@ type FetchGrantResult =
 
 /** `POST /api/vault/delegation/grants/{grantId}/fetch` (#2231). Never throws for an ordinary refusal (404/409/410/403) — those come back as `{ ok: false, ... }`. */
 async function fetchGrant(authServiceUrl: string, grantId: string, token: string): Promise<FetchGrantResult> {
-  const res = await fetch(`${authServiceUrl}/api/vault/delegation/grants/${encodeURIComponent(grantId)}/fetch`, {
+  const res = await internalFetch(`${authServiceUrl}/api/vault/delegation/grants/${encodeURIComponent(grantId)}/fetch`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}` },
   });
@@ -323,7 +324,7 @@ type GrantResolution =
  */
 async function resolveActiveGrantId(authServiceUrl: string, token: string, purpose: string): Promise<GrantResolution> {
   try {
-    const res = await fetch(`${authServiceUrl}/api/vault/delegation/grants?purpose=${encodeURIComponent(purpose)}`, {
+    const res = await internalFetch(`${authServiceUrl}/api/vault/delegation/grants?purpose=${encodeURIComponent(purpose)}`, {
       headers: { Authorization: `Bearer ${token}` },
     });
     if (!res.ok) {
@@ -361,7 +362,7 @@ async function sendGrantAck(
   evidenceKind: string | undefined,
 ): Promise<void> {
   try {
-    const res = await fetch(`${authServiceUrl}/api/vault/delegation/grants/${encodeURIComponent(grantId)}/ack`, {
+    const res = await internalFetch(`${authServiceUrl}/api/vault/delegation/grants/${encodeURIComponent(grantId)}/ack`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
       body: JSON.stringify({

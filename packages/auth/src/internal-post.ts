@@ -1,3 +1,4 @@
+import { internalFetch } from './internal-fetch.cjs';
 import { createLogger } from '@imajin/logger';
 import { loadFromVault, type GrantAckHandle } from './vault-client';
 
@@ -147,7 +148,7 @@ export async function postInternal<T>(path: string, body: unknown): Promise<Inte
   const internalApiKey = resolveInternalApiKey();
   if (!authServiceUrl || !internalApiKey) return null;
 
-  const res = await fetch(`${authServiceUrl}${path}`, {
+  const res = await internalFetch(`${authServiceUrl}${path}`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',

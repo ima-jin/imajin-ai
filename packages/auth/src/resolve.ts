@@ -8,6 +8,8 @@
  *  - HTTP mode: GET AUTH_SERVICE_URL/api/identity/:did
  */
 
+import { internalFetch } from './internal-fetch.cjs';
+
 export interface ResolvedIdentity {
   did: string;
   publicKey: string;
@@ -32,7 +34,7 @@ export function createHttpResolver(serviceUrl: string): PublicKeyResolver {
   return async (did: string): Promise<ResolvedIdentity | null> => {
     try {
       const encodedDid = encodeURIComponent(did);
-      const res = await fetch(`${serviceUrl}/registry/api/identity/${encodedDid}`, {
+      const res = await internalFetch(`${serviceUrl}/registry/api/identity/${encodedDid}`, {
         cache: 'no-store',
       });
 

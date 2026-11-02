@@ -1,8 +1,7 @@
 import { withSessionCookie } from '@/src/lib/auth/session-cookie';
 import { NextRequest, NextResponse } from 'next/server';
-import { verifySessionToken, getSessionCookieOptions } from '@/src/lib/auth/jwt';
-import { db, identities, identityChains, credentials } from '@/src/db';
-import { eq, and } from 'drizzle-orm';
+import { getSessionCookieOptions } from '@/src/lib/auth/jwt';
+import { resolveKernelSession } from '@/src/lib/auth/session-resolver';
 import { corsHeaders } from '@imajin/config';
 import { withLogger } from '@imajin/logger';
 
@@ -20,50 +19,16 @@ export const GET = withLogger('kernel', async (request: NextRequest, { log }) =>
       );
     }
 
-    const session = await verifySessionToken(token);
-    if (!session) {
+    const result = await resolveKernelSession(token);
+    if ('error' in result) {
       const response = NextResponse.json(
-        { error: 'Invalid or expired session' },
+        { error: result.error },
         { status: 401, headers: cors }
       );
       return withSessionCookie(response, null, cookieConfig);
     }
 
-    const identity = await db.select().from(identities).where(eq(identities.id, session.sub)).limit(1);
-    if (identity.length === 0) {
-      const response = NextResponse.json(
-        { error: 'Identity not found' },
-        { status: 401, headers: cors }
-      );
-      return withSessionCookie(response, null, cookieConfig);
-    }
-
-    const metadata = identity[0].metadata as Record<string, unknown> || {};
-    const tier = (identity[0] as any).tier || 'soft';
-
-    const [chain, emailCred] = await Promise.all([
-      db.select({ did: identityChains.did })
-        .from(identityChains)
-        .where(eq(identityChains.did, session.sub))
-        .limit(1),
-      db.select({ value: credentials.value })
-        .from(credentials)
-        .where(and(eq(credentials.did, session.sub), eq(credentials.type, 'email')))
-        .limit(1),
-    ]);
-    const chainVerified = chain.length > 0;
-
-    return NextResponse.json({
-      did: session.sub,
-      handle: identity[0].handle || session.handle,
-      scope: identity[0].scope || session.scope,
-      subtype: identity[0].subtype || session.subtype || undefined,
-      name: identity[0].name || session.name,
-      email: emailCred[0]?.value ?? null,
-      role: metadata.role || 'member',
-      tier,
-      chainVerified,
-    }, { headers: cors });
+    return NextResponse.json(result.data, { headers: cors });
 
   } catch (error) {
     log.error({ err: String(error) }, 'Session error');

@@ -1,4 +1,5 @@
 const { WebSocketServer } = require('ws');
+const { internalFetch } = require('../../packages/auth/src/internal-fetch.cjs');
 const { createAlsoRegistry } = require('./src/lib/ws/also-registry');
 const { createNotificationBacklogReplayer } = require('./src/lib/ws/notification-backlog');
 const { createPrivateNotifications, isPrivateReachFrame } = require('./src/lib/ws/private-notifications');
@@ -47,7 +48,7 @@ async function authenticateWithCookie(req) {
 async function authenticateToken(cookieName, token) {
   const port = process.env.PORT || '3000';
   try {
-    const res = await fetch(`http://localhost:${port}/auth/api/session`, {
+    const res = await internalFetch(`http://localhost:${port}/auth/api/session`, {
       headers: { Cookie: `${cookieName}=${token}` },
     });
     if (!res.ok) return null;
@@ -65,7 +66,7 @@ async function authenticateToken(cookieName, token) {
 async function authenticateWsToken(token) {
   const port = process.env.PORT || '3000';
   try {
-    const res = await fetch(`http://localhost:${port}/chat/api/ws-token/validate`, {
+    const res = await internalFetch(`http://localhost:${port}/chat/api/ws-token/validate`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ token }),
@@ -85,7 +86,7 @@ async function authenticateWsToken(token) {
 async function updateLastSeen(did) {
   try {
     const port = process.env.PORT || '3000';
-    await fetch(`http://localhost:${port}/profile/api/presence/update`, {
+    await internalFetch(`http://localhost:${port}/profile/api/presence/update`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ did, lastSeenAt: new Date().toISOString() }),
@@ -173,7 +174,7 @@ function broadcastToConversation(conversationId, payload, excludeDid = null) {
 async function broadcastPresenceChange(did, isOnline) {
   try {
     const port = process.env.PORT || '3000';
-    const res = await fetch(`http://localhost:${port}/chat/api/participants/${encodeURIComponent(did)}/conversations`);
+    const res = await internalFetch(`http://localhost:${port}/chat/api/participants/${encodeURIComponent(did)}/conversations`);
     if (!res.ok) return;
     const data = await res.json();
     const conversationIds = data.conversationIds || [];
@@ -212,7 +213,7 @@ async function verifyAgentDelegation(agentDid, principalDid, purpose) {
     return false;
   }
   try {
-    const res = await fetch(`http://localhost:${port}/auth/api/internal/verify-delegation`, {
+    const res = await internalFetch(`http://localhost:${port}/auth/api/internal/verify-delegation`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -257,7 +258,7 @@ async function fetchNotificationBacklog(did, privateReachOnly = false) {
   const port = process.env.PORT || '3000';
   const key = process.env.AUTH_INTERNAL_API_KEY;
   if (!key) return { frames: [], truncated: false };
-  const res = await fetch(`http://localhost:${port}/notify/api/internal/backlog`, {
+  const res = await internalFetch(`http://localhost:${port}/notify/api/internal/backlog`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -349,7 +350,7 @@ async function releaseWsClaims(did) {
   const key = process.env.AUTH_INTERNAL_API_KEY;
   if (!key) return;
   try {
-    await fetch(`http://localhost:${port}/notify/api/internal/release`, {
+    await internalFetch(`http://localhost:${port}/notify/api/internal/release`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -377,7 +378,7 @@ async function ackNotification(id, did) {
   const key = process.env.AUTH_INTERNAL_API_KEY;
   if (!key) return;
   try {
-    await fetch(`http://localhost:${port}/notify/api/internal/ack`, {
+    await internalFetch(`http://localhost:${port}/notify/api/internal/ack`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
