@@ -86,8 +86,10 @@ jobs:
         uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
         with:
           script: |
-            const { prepareScan } = await import(`${process.env.GITHUB_WORKSPACE}/trusted/scripts/sonar/trusted-fork.mjs`);
+            const { prepareScan, checkScanSettings } = await import(`${process.env.GITHUB_WORKSPACE}/trusted/scripts/sonar/trusted-fork.mjs`);
             const settings = await prepareScan({ github, context });
+            await checkScanSettings(settings);
+            core.info(`Verified trusted scanner settings file: ${settings}`);
             core.setOutput('settings', settings);
 
       - name: Scan data only with trusted settings and wait for this task's gate
@@ -100,7 +102,9 @@ jobs:
           SONAR_USER_HOME: /github/home/.sonar
         with:
           projectBaseDir: source
-          args: -Dproject.settings="${{ steps.prepare.outputs.settings }}"
+          # v6 preserves quotes inside a value; quote the entire argv item instead.
+          args: >-
+            "-Dproject.settings=${{ steps.prepare.outputs.settings }}"
 
       - name: Publish exact-task gate result (fail closed)
         if: always() && steps.resolve.outputs.scan == 'true'
