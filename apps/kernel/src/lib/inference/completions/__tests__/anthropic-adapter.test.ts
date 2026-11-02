@@ -38,6 +38,10 @@ const ANTHROPIC_BRAIN: ResolvedBrain = {
 const FAKE_MODEL = { modelId: 'fake-model' };
 
 describe('forwardAnthropic', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockGetModel.mockReturnValue(FAKE_MODEL);
+  });
   it('uses member attribution and org provenance for a generated org completion, without credential echoes', async () => {
     const apiKey = randomUUID();
     const orgUsage = { memberDid: 'did:imajin:member', orgDid: 'did:imajin:org', grantId: 'grant', connectionId: 'connection' };
@@ -74,10 +78,6 @@ describe('forwardAnthropic', () => {
     if (failure === 'stream') mockStreamText.mockImplementationOnce(() => { throw new Error(apiKey); });
     await expect(forwardAnthropic({ ...ANTHROPIC_BRAIN, apiKey, orgUsage }, { messages: [], stream: failure === 'stream' }, {}))
       .rejects.toMatchObject({ status: 502, message: 'Organization inference upstream unavailable' });
-  });
-  beforeEach(() => {
-    vi.clearAllMocks();
-    mockGetModel.mockReturnValue(FAKE_MODEL);
   });
 
   it('resolves the model via getModel with the sealed key and no baseURL override', async () => {
