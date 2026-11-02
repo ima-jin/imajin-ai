@@ -27,7 +27,7 @@ export async function resolveKernelSession(token: string): Promise<KernelSession
     name: identity.name || session.name,
     email: emailCred[0]?.value ?? null,
     role: typeof metadata.role === 'string' && metadata.role ? metadata.role : 'member',
-    tier: identity.tier || 'soft',
+    tier: (identity.tier || 'soft') as SessionData['tier'],
     chainVerified: chain.length > 0,
   } };
 }

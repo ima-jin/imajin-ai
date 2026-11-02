@@ -83,6 +83,7 @@ import { and, desc, eq, exists, gte, inArray, ne, not, or, sql } from 'drizzle-o
 import { db, delegationGrants, identities, identityMembers, operatorApprovals, systemEvents } from '@/src/db';
 import { DECISION_APPROVAL_KIND } from '@/src/lib/decisions/view';
 import { resolveApprovalAddressee } from '@/src/lib/notify/approval-addressing';
+import { OPS_LIVENESS_ACTION } from './ops-liveness-contract';
 import {
   LETTER_NOT_COUNTERSIGNED_LABEL,
   assessDecidedModeCountersignature,
@@ -333,9 +334,18 @@ export async function listRecordEventsForPrincipal(
   // joined here.
   const proposalIdJoin = sql`${operatorApprovals.proposalId} = (${systemEvents.payload}->>'proposalId')`;
 
-  const scopeCondition = scope.organization
+  const identityScope = scope.organization
     ? organizationScope(principalDid)
     : personalScope(principalDid, ownedAgentDids);
+  // The node is the honest issuer of watchdog receipts; its configured
+  // operator is the addressee. Never widen other node or agent activity.
+  const scopeCondition = or(identityScope, and(
+    eq(systemEvents.service, 'ops'),
+    eq(systemEvents.action, OPS_LIVENESS_ACTION),
+    sql`left(${systemEvents.id}, 4) = 'ops_'`,
+    sql`${systemEvents.payload}->>'operatorDid' = ${principalDid}`,
+    sql`${systemEvents.payload}->>'attestationId' IS NOT NULL`,
+  ));
 
   const agentFilter = filters.agent
     ? or(eq(systemEvents.did, filters.agent), sql`${systemEvents.payload}->>'agentDid' = ${filters.agent}`)

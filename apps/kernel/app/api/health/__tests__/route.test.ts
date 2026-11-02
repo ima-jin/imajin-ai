@@ -88,6 +88,17 @@ afterEach(() => {
 });
 
 describe('GET /api/health', () => {
+  it('answers liveness without database, vault, registry or HTTP dependencies', async () => {
+    registryWhere.mockRejectedValue(new Error('database unavailable'));
+    const { GET } = await import('../route');
+    const response = await GET(new Request('http://localhost:7000/api/health?liveness=1'));
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ status: 'alive' });
+    expect(registryWhere).not.toHaveBeenCalled();
+    expect(fetch).not.toHaveBeenCalled();
+    expect(checkAppMigrationsMock).not.toHaveBeenCalled();
+    expect(getVaultHealthMock).not.toHaveBeenCalled();
+  });
   it('reports an unavailable registry explicitly instead of claiming a partial inventory is operational', async () => {
     registryWhere.mockRejectedValue(new Error('private database details'));
     const { GET } = await import('../route');
