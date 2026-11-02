@@ -18,7 +18,7 @@ export async function authenticateLeaseReader(raw: unknown): Promise<string | nu
   const [identity] = await db.select({
     publicKey: identities.publicKey, subtype: identities.subtype, suspendedAt: identities.suspendedAt,
   }).from(identities).where(eq(identities.id, message.from)).limit(1);
-  if (!identity || identity.subtype !== 'agent' || identity.suspendedAt) return null;
+  if (identity?.subtype !== 'agent' || identity.suspendedAt) return null;
   const result = await verify(message, identity.publicKey);
   return result.valid ? message.from : null;
 }
