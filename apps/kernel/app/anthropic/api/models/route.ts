@@ -34,10 +34,9 @@
  *
  * Security invariant: the API key never leaves the server, in either
  * direction — not in the GET response, and not echoed back on PUT. The raw
- * upstream response body is never surfaced — only Anthropic's own
- * `error.type`/`error.message` fields (#2196), which never carry the key,
- * so a prod failure is diagnosable from the card instead of a bare
- * `upstream 400 Bad Request`.
+ * upstream response body is never surfaced. Rejected credentials have a
+ * fixed actionable response; upstream diagnostic fields are sanitized
+ * before logging because even an error envelope can echo key material.
  */
 import {
   createConnectorModelPickerRoute,
