@@ -150,7 +150,7 @@ export async function forwardDirect(
   return fetchWithTtfbTimeout(url, { method: 'POST', headers: reqHeaders, body: bodyText }, timeoutMs, `Direct provider '${route.id}'`);
 }
 
-export interface McpForwardHeaders {
+export interface McpForwardHeaders extends Pick<ForwardHeaders, 'actingAs'> {
   mcpProtocolVersion?: string;
   /** Streamable HTTP session continuation (MCP spec) — forwarded pass-through even though the kernel's `/mcp` is currently stateless and never reads it, for forward-compat with a future stateful revision (#2368). */
   mcpSessionId?: string;
@@ -177,6 +177,7 @@ export async function forwardMcpToKernel(
   const reqHeaders: Record<string, string> = {
     'Content-Type': 'application/json',
     Authorization: `Bearer ${token}`,
+    ...correlationHeaders(headers),
   };
   if (headers.mcpProtocolVersion) reqHeaders['Mcp-Protocol-Version'] = headers.mcpProtocolVersion;
   if (headers.mcpSessionId) reqHeaders['Mcp-Session-Id'] = headers.mcpSessionId;

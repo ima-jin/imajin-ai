@@ -4,6 +4,7 @@ import { createProxyServer } from '../src/server.js';
 import type { ProxyConfig } from '../src/types.js';
 
 const CONFIG: ProxyConfig = {
+  authMode: 'host-static',
   host: '127.0.0.1',
   port: 0,
   kernelBaseUrl: 'https://kernel.test',

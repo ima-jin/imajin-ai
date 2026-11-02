@@ -30,6 +30,7 @@ import { UnknownRouteError } from './router.js';
 import { RouteTokenProvider } from './token-provider.js';
 import { stripTrailingSlashes } from './url-utils.js';
 import type { ProxyConfig } from './types.js';
+import { handleAgentRequest, readAgentCredential, type AgentEndpoint } from './agent-handler.js';
 
 const log = createLogger('openclaw-infer-passthrough');
 
@@ -143,6 +144,10 @@ async function writeErrorResponse(res: ServerResponse, health: HealthTracker, er
 }
 
 export function createProxyServer(config: ProxyConfig) {
+  if (config.authMode !== undefined && config.authMode !== 'agent' && config.authMode !== 'host-static') {
+    throw new Error('Invalid passthrough authentication mode');
+  }
+  if (config.authMode !== 'host-static') return createAgentServer(config);
   if (config.legacyGrantIdConfigured || config.routes.some((route) => Object.hasOwn(route, 'attestationId'))) {
     log.warn({}, 'attestationId is deprecated and ignored; legacy grant-ID environment variables are also ignored; minting by principalDid');
   }
@@ -205,6 +210,59 @@ export function createProxyServer(config: ProxyConfig) {
   });
 }
 
+function agentEndpoint(method: string | undefined, path: string): AgentEndpoint | undefined {
+  if (method === 'GET' && MODELS_PATH_RE.test(path)) return 'models';
+  if (method !== 'POST') return undefined;
+  if (COMPLETIONS_PATH_RE.test(path)) return 'completions';
+  if (MCP_PATH_RE.test(path)) return 'mcp';
+  const anthropic = ANTHROPIC_PATH_RE.exec(path);
+  if (anthropic) return anthropic[1] ? 'messages/count_tokens' : 'messages';
+  return undefined;
+}
+
+/** Agent mode never constructs a RouteTokenProvider or a principal-wide catalog cache. */
+function createAgentServer(config: ProxyConfig) {
+  const health = new HealthTracker();
+  return createServer((req, res) => {
+    void routeAgentRequest(config, health, req, res).catch((err: unknown) => {
+      void writeErrorResponse(res, health, err);
+    });
+  });
+}
+
+async function routeAgentRequest(
+  config: ProxyConfig, health: HealthTracker, req: IncomingMessage, res: ServerResponse,
+): Promise<void> {
+  const path = new URL(req.url ?? '/', 'http://localhost').pathname;
+  if (req.method === 'GET' && (path === '/health' || path === '/healthz')) {
+    res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+    res.end(JSON.stringify({ ...health.snapshot(), ok: true, authMode: 'agent', credentialRequired: true }));
+    return;
+  }
+  const endpoint = agentEndpoint(req.method, path);
+  if (!endpoint) {
+    res.writeHead(404, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: 'not_found', message: 'Unknown route' }));
+    return;
+  }
+  const credential = readAgentCredential(req.headers, endpoint === 'messages' || endpoint === 'messages/count_tokens');
+  if ('status' in credential) {
+    req.resume();
+    await writeProxyResponse(res, health, credential.status, credential.headers, credential.body);
+    return;
+  }
+  const result = await handleAgentRequest(config.kernelBaseUrl, config.kernelTimeoutMs, {
+    endpoint, credential,
+    bodyText: endpoint === 'models' ? '' : await readBody(req),
+    ...readCorrelationHeaders(req),
+    anthropicVersion: readHeader(req, 'anthropic-version'),
+    anthropicBeta: readHeader(req, 'anthropic-beta'),
+    mcpProtocolVersion: readHeader(req, 'mcp-protocol-version'),
+    mcpSessionId: readHeader(req, 'mcp-session-id'),
+  });
+  if (result.status < 500) health.recordKernelSuccess();
+  await writeProxyResponse(res, health, result.status, result.headers, result.body);
+}
 async function routeRequest(
   req: IncomingMessage,
   res: ServerResponse,
