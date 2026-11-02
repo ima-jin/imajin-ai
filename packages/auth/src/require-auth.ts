@@ -5,6 +5,8 @@ const log = createLogger('auth');
 import { NextResponse } from "next/server.js";
 import { SESSION_COOKIE_NAME } from "@imajin/config";
 import type { Identity, AuthResult, AuthError } from "./types";
+import { resolveSessionData, sessionIdentity } from "./session-resolver";
+import { internalFetch, InternalFetchError } from "./internal-fetch.cjs";
 
 const getAuthUrl = () => process.env.AUTH_SERVICE_URL!;
 
@@ -97,25 +99,13 @@ function extractSessionCookie(cookieHeader: string | null): string | null {
 async function validateSessionCookie(
   token: string
 ): Promise<AuthResult | AuthError> {
+  const started = Date.now();
   try {
-    const response = await fetch(`${getAuthUrl()}/api/session`, {
-      headers: { Cookie: `${SESSION_COOKIE_NAME}=${token}` },
-      cache: "no-store",
-    });
-
-    if (!response.ok) {
+    const data = await resolveSessionData(token);
+    if (!data) {
       return { error: "Invalid or expired session", status: 401 };
     }
-
-    const data = await response.json();
-    const identity: Identity = {
-      id: data.did || data.identity?.did || data.identity?.id,
-      scope: data.scope || data.identity?.scope || "actor",
-      subtype: data.subtype || data.identity?.subtype || undefined,
-      name: data.name || data.identity?.name,
-      handle: data.handle || data.identity?.handle,
-      tier: data.tier || data.identity?.tier || "soft",
-    };
+    const identity = sessionIdentity(data);
 
     if (!identity.id) {
       return { error: "Invalid session data", status: 401 };
@@ -123,7 +113,11 @@ async function validateSessionCookie(
 
     return { identity };
   } catch (error) {
-    log.error({ err: String(error) }, "[AUTH] Session validation failed");
+    log.error({
+      causeCode: error instanceof InternalFetchError ? error.code : 'SESSION_RESOLVER_FAILED',
+      targetPath: error instanceof InternalFetchError ? error.targetPath : '/auth/api/session',
+      durationMs: Date.now() - started,
+    }, "[AUTH] Session validation failed");
     return { error: "Auth service unavailable", status: 503 };
   }
 }
@@ -135,7 +129,7 @@ async function validateBearerToken(
   token: string
 ): Promise<AuthResult | AuthError> {
   try {
-    const response = await fetch(`${getAuthUrl()}/api/validate`, {
+    const response = await internalFetch(`${getAuthUrl()}/api/validate`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ token }),
@@ -184,7 +178,7 @@ export async function validateActingAs(
     return { valid: false };
   }
   try {
-    const res = await fetch(
+    const res = await internalFetch(
       `${authUrl}/api/groups/${encodeURIComponent(groupDid)}/controllers/${encodeURIComponent(callerDid)}`,
       {
         headers: { Authorization: `Bearer ${internalApiKey}` },
@@ -262,7 +256,7 @@ function hasSessionTokenHeader(token: string): boolean {
  */
 async function applyChainVerification(identity: Identity): Promise<void> {
   try {
-    const chainRes = await fetch(
+    const chainRes = await internalFetch(
       `${getAuthUrl()}/api/identity/${encodeURIComponent(identity.id)}/verify`
     );
     if (chainRes.ok) {
@@ -384,7 +378,7 @@ export async function resolveAgentDelegationAuthority(
   const internalKey = process.env.AUTH_INTERNAL_API_KEY;
   if (internalKey) {
     try {
-      const res = await fetch(`${getAuthUrl()}/api/internal/verify-delegation`, {
+      const res = await internalFetch(`${getAuthUrl()}/api/internal/verify-delegation`, {
         method: "POST",
         headers: { "Content-Type": "application/json", "x-internal-key": internalKey },
         body: JSON.stringify({ agentDid, principalDid }),

@@ -11,6 +11,10 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 
 vi.mock('@imajin/logger/db', () => ({}));
+const mockSessionResolver = vi.hoisted(() => vi.fn());
+vi.mock('@/src/lib/auth/session-resolver', () => ({
+  registerKernelSessionResolver: mockSessionResolver,
+}));
 const mockEnsureWebhookSigner = vi.hoisted(() => vi.fn());
 const mockEnsureChainObserver = vi.hoisted(() => vi.fn());
 vi.mock('@/src/lib/loops/bus-chain', () => ({
@@ -53,6 +57,7 @@ function setRuntime(value: string | undefined): void {
 }
 
 afterEach(() => {
+  mockSessionResolver.mockClear();
   setRuntime(originalRuntime);
   mockLoadVaultAtBoot.mockClear();
   mockProvideVaultInternalApiKey.mockClear();
@@ -63,6 +68,11 @@ afterEach(() => {
 });
 
 describe('kernel instrumentation register()', () => {
+  it('registers the in-process cookie resolver before serving requests', async () => {
+    setRuntime('nodejs');
+    await register();
+    expect(mockSessionResolver).toHaveBeenCalledTimes(1);
+  });
   it('registers the signed loop chain observer at server boot', async () => {
     setRuntime('nodejs');
     await register();
@@ -138,6 +148,7 @@ describe('kernel instrumentation register()', () => {
     await register();
 
     expect(mockLoadVaultAtBoot).not.toHaveBeenCalled();
+    expect(mockSessionResolver).not.toHaveBeenCalled();
     expect(mockProvideVaultInternalApiKey).not.toHaveBeenCalled();
     expect(mockEnsureEmissionExecutor).not.toHaveBeenCalled();
     expect(mockEnsureWebhookSigner).not.toHaveBeenCalled();

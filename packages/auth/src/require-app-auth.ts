@@ -1,3 +1,4 @@
+import { internalFetch } from './internal-fetch.cjs';
 import { createLogger } from '@imajin/logger';
 import { getVaultInternalApiKey } from './internal-post';
 const log = createLogger('auth');
@@ -44,7 +45,7 @@ async function verifyBearerAppToken(token: string, scope?: string): Promise<AppA
     return { error: 'Auth service unavailable', status: 503 };
   }
   try {
-    const res = await fetch(`${authUrl}/api/apps/token/verify`, {
+    const res = await internalFetch(`${authUrl}/api/apps/token/verify`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ token, scope }),
@@ -107,7 +108,7 @@ export async function requireAppAuth(
   try {
     // AUTH_SERVICE_URL already includes the `/auth` prefix (consistent with
     // require-auth.ts and session.ts which use `${authUrl}/api/...`)
-    const res = await fetch(`${authUrl}/api/apps/validate`, {
+    const res = await internalFetch(`${authUrl}/api/apps/validate`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

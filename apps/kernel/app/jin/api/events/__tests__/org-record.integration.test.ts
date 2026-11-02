@@ -155,6 +155,26 @@ afterEach(() => { vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
 afterAll(async () => { await harness.close(); });
 
 describe('organization Record access and data isolation (#3033)', () => {
+  it('surfaces signed ops receipts only to the configured personal or acting-as operator', async () => {
+    await harness.db.insert(systemEvents).values([
+      { id: 'ops_personal', did: 'did:imajin:node', service: 'ops', action: 'ops.liveness.restart',
+        payload: { operatorDid: OWNER, attestationId: 'att_ops_personal' } },
+      { id: 'ops_org', did: 'did:imajin:node', service: 'ops', action: 'ops.liveness.restart',
+        payload: { operatorDid: ORG, attestationId: 'att_ops_org' } },
+      { id: 'ops_foreign', did: 'did:imajin:node', service: 'ops', action: 'ops.liveness.restart',
+        payload: { operatorDid: OTHER_ORG, attestationId: 'att_ops_foreign' } },
+      { id: 'ops_unsigned', did: 'did:imajin:node', service: 'ops', action: 'ops.liveness.restart',
+        payload: { operatorDid: ORG } },
+      { id: 'ops_unrelated', did: 'did:imajin:node', service: 'ops', action: 'test.event',
+        payload: { operatorDid: ORG, attestationId: 'att_other' } },
+    ]);
+    const organization = await page(OWNER, ORG, '?action=ops.liveness.restart');
+    expect(eventIds(organization)).toEqual(['ops_org']);
+    const personal = await (await GET(request(OWNER, undefined, '?action=ops.liveness.restart'))).json();
+    expect(eventIds(personal)).toEqual(['ops_personal']);
+    const stranger = await (await GET(request(COUNTERPARTY, undefined, '?action=ops.liveness.restart'))).json();
+    expect(eventIds(stranger)).toEqual([]);
+  });
   it.each(['person', 'agent'])('filters %s rows before pagination with scoped totals and unchanged personal defaults (#3035)', async kind => {
     const org = await page(OWNER, ORG, `?kind=${kind}&limit=1`);
     expect(org.events).toHaveLength(1);

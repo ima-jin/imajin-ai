@@ -1,0 +1,17 @@
+[Unit]
+Description=Imajin %i HTTP liveness watchdog
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=jin
+WorkingDirectory=/home/jin/%i/imajin-ai
+ExecStart=/usr/bin/node --env-file=/home/jin/%i/imajin-ai/apps/kernel/.env.local deploy/liveness-probe.mjs --env %i --execute
+Restart=on-failure
+RestartSec=15
+Environment=PM2_HOME=/home/jin/.pm2
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

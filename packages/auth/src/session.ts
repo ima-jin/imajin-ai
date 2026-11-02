@@ -1,9 +1,11 @@
+import { internalFetch } from './internal-fetch.cjs';
 import { createLogger } from '@imajin/logger';
 import { getVaultInternalApiKey } from "./internal-post";
 const log = createLogger('auth');
 
 import { SESSION_COOKIE_NAME } from "@imajin/config";
 import type { Identity } from "./types";
+import { resolveSessionData } from "./session-resolver";
 
 const getAuthUrl = () => process.env.AUTH_SERVICE_URL!;
 
@@ -27,7 +29,7 @@ async function validateActingAsCookie(
     return { valid: false };
   }
   try {
-    const res = await fetch(
+    const res = await internalFetch(
       `${authUrl}/api/groups/${encodeURIComponent(groupDid)}/controllers/${encodeURIComponent(callerDid)}`,
       {
         headers: { Authorization: `Bearer ${internalApiKey}` },
@@ -69,16 +71,8 @@ export async function getSession(options?: SessionOptions): Promise<Identity | n
   if (!sessionCookie) return null;
 
   try {
-    const response = await fetch(`${getAuthUrl()}/api/session`, {
-      headers: {
-        Cookie: `${SESSION_COOKIE_NAME}=${sessionCookie.value}`,
-      },
-      cache: "no-store",
-    });
-
-    if (!response.ok) return null;
-
-    const data = await response.json();
+    const data = await resolveSessionData(sessionCookie.value);
+    if (!data?.did) return null;
     const callerDid = data.did;
 
     const identity: Identity = {

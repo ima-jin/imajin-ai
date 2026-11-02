@@ -6,6 +6,7 @@
  */
 
 import { createLogger } from '@imajin/logger';
+import { internalFetch } from '../internal-fetch.cjs';
 const log = createLogger('auth');
 
 import { NextRequest, NextResponse } from 'next/server.js';
@@ -45,7 +46,7 @@ async function validateSession(request: NextRequest): Promise<AuthSession | null
       return null;
     }
 
-    const response = await fetch(`${AUTH_SERVICE_URL}/api/session`, {
+    const response = await internalFetch(`${AUTH_SERVICE_URL}/api/session`, {
       method: 'GET',
       headers: {
         Cookie: `${SESSION_COOKIE_NAME}=${sessionCookie}`,
@@ -77,7 +78,7 @@ async function isInGraph(did: string): Promise<boolean> {
   const connectionsUrl = process.env.CONNECTIONS_SERVICE_URL || 'https://connections.imajin.ai';
 
   try {
-    const response = await fetch(`${connectionsUrl}/api/connections/status/${encodeURIComponent(did)}`);
+    const response = await internalFetch(`${connectionsUrl}/api/connections/status/${encodeURIComponent(did)}`);
     if (!response.ok) {
       return false;
     }

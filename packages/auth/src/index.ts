@@ -5,6 +5,8 @@ export type { AuthOptions, ActingAsResult } from "./require-auth";
 export { requireAdmin } from "./require-admin";
 export { optionalAuth } from "./optional-auth";
 export { getSession } from "./session";
+export { provideSessionResolver } from "./session-resolver";
+export type { SessionResolver, SessionData } from "./session-resolver";
 export type { SessionOptions } from "./session";
 export { requireHardDID } from "./require-hard-did";
 export { requireEstablishedDID } from "./require-established-did";

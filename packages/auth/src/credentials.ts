@@ -1,3 +1,4 @@
+import { internalFetch } from './internal-fetch.cjs';
 import { createLogger } from '@imajin/logger';
 import { postInternal } from './internal-post';
 
@@ -32,7 +33,7 @@ async function resolveDidBatch(
   batch: string[]
 ): Promise<ResolvedIdentitySummary[]> {
   try {
-    const res = await fetch(`${profileUrl}/api/resolve`, {
+    const res = await internalFetch(`${profileUrl}/api/resolve`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

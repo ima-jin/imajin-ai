@@ -122,6 +122,7 @@ describe('submitDelegatedAttestation — response handling', () => {
 
     const result = await submitDelegatedAttestation(baseInput());
 
-    expect(result).toEqual({ ok: false, status: 0, error: 'network down' });
+    expect(result).toMatchObject({ ok: false, status: 0, error: expect.stringContaining('INTERNAL_FETCH_FAILED') });
+    expect(result.error).not.toContain('network down');
   });
 });

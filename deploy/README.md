@@ -5,6 +5,116 @@ Imajin services on **imajin-server** (`192.168.1.193`). Committing them here
 stops the silent config drift that comes from editing the live files in place
 and never recording the change (#1325).
 
+
+## HTTP liveness watchdog (#3206)
+
+**Shipped code, not installed by this PR. Ryan installs it after the auth fix
+is deployed.** PM2 `online` proves a process exists, not that HTTP answers.
+`deploy/liveness-probe.mjs` checks every HTTP listener in the selected tracked
+ecosystem config. Portless `*-kernel-cron` workers are explicitly excluded;
+this is not a heartbeat for background jobs. Reconcile any extra live PM2 app
+into the tracked config before enabling it. No SSH, timer installation or
+live restart is part of this change.
+
+Policy: a **5s total HTTP deadline**, **3 consecutive failures**, **15s between
+completed sweeps**, **90s grace for a newly observed PID**, and a persistent
+**5-minute restart cooldown per app**. Success resets that app's streak.
+Only 2xx is healthy. A zero/missing PM2 PID stays stopped; an unavailable PID
+query is logged without restarting anything. Slow checks never overlap.
+The probe runs as `jin` with the same `PM2_HOME` as the apps, and invokes only
+`pm2 pid <name>` / `pm2 restart <name>` with argument arrays, never a shell,
+`jlist` (which includes secrets), `all`, or `--update-env`.
+
+Each target is `http://127.0.0.1:<port>/api/health?liveness=1`.
+For the kernel, this query is **process liveness only**, with no DB, vault or
+HTTP fan-out. `/api/health` without the query retains its aggregate readiness
+contract. Restarting the kernel for a sibling's readiness failure would amplify
+an outage; do not point this watchdog at aggregate readiness.
+
+Restart attempts are saved **before** the command in
+`~/.imajin/liveness/{dev,prod}.json`. That file also retains counters, cooldowns
+and an ops-event outbox. Writes use an atomic rename; a per-environment lock
+prevents two probes racing. SIGTERM/SIGINT finish the current bounded sweep,
+then remove the lock. After SIGKILL/host failure, inspect the lock's PID before
+removing a stale lock; **never discard the state/outbox** to restart the probe.
+Archive old delivered history under operator control rather than deleting it.
+
+The outbox delivers (at most five pending receipts per sweep) to
+`/jin/api/internal/ops-events` on that environment's kernel, authenticated with
+the existing `AUTH_INTERNAL_API_KEY` loaded from the protected kernel env file.
+No secret is printed or passed as a CLI value. Failed delivery remains queued
+across probe/kernel restarts; 200 acknowledges an idempotent transaction that
+writes both a node-signed `ops.liveness.restart` attestation and its Record event.
+A crash between command and result leaves an honest `requested` receipt, not
+an invented success. `restarted` means the PM2 command succeeded; the next
+health check independently proves recovery.
+
+The recipient is the node's **server-configured `nodeOperatorDid`**, not a DID
+supplied by the probe. Confirm it is Ryan's operator identity (or the correct
+operator organization) before enabling. Receipts appear in that identity's
+**`/jin` → Record**, action `ops.liveness.restart`; org context uses normal
+validated acting-as access. Personal/other-org Records never inherit them.
+The kernel does **not** message Telegram. A gateway may consume/escalate these
+ops events; delivery to an offline kernel is necessarily delayed until it can
+record them. Probe stderr/journal plus the persistent outbox are the offline
+operator evidence.
+
+Operator steps (repeat for dev/prod, do not execute from an agent run):
+
+1. Deploy this code through the normal reviewed release/deploy pipeline.
+   Verify `GET /api/health?liveness=1` answers immediately; verify every tracked
+   app actually implements `/api/health` (a 404 is a configuration failure).
+2. Check the appropriate kernel env file contains the existing internal key
+   without displaying it, and that node metadata has the intended operator DID.
+3. From `/home/jin/prod/imajin-ai`, inspect safely with
+   `node deploy/liveness-probe.mjs --env prod --once --dry-run`.
+   Dry-run is the default and never restarts or sends a real receipt. It does
+   persist observations. Do not run a second copy alongside an active daemon.
+4. Install the provided `deploy/imajin-liveness@.service` as a systemd template
+   using the host's normal privileged service-install procedure. Verify the Node
+   binary path, `User=jin`, repository/env paths and `PM2_HOME` for this host.
+   Enable `imajin-liveness@dev` and `imajin-liveness@prod` only after review.
+   The unit explicitly passes `--execute`; there is no automatic deploy hook.
+5. Inspect the journal and `/jin` Record. Test a **stub**, never deliberately
+   block production: `pnpm --silent test:agent scripts/__tests__/liveness-probe.test.mjs`.
+   It withholds real HTTP responses and uses a stubbed restart command to
+   restore health, then verifies the receipt. No PM2 command is executed.
+6. To disable, stop the appropriate watchdog unit. PM2 apps remain untouched.
+   Keep state/outbox so pending alerts and cooldowns survive re-enabling.
+
+### Auth stall diagnosis and reproduction
+
+With prod's `AUTH_SERVICE_URL=http://localhost:7000/auth`, the former
+`requireAuth → validateSessionCookie` fetched its own `/auth/api/session`
+without a signal. A stalled response held each outer handler and socket until
+Undici's native response-headers deadline. On **Node v22.22.0 / Undici 6.23.0**,
+the committed real-network repro saw six 503s at **300,742–300,743ms**, with
+`UND_ERR_HEADERS_TIMEOUT`, even when the receiving server's `requestTimeout`
+was **1,000ms**. Node's incoming-request timeout does not bound the time spent
+waiting for response headers after a complete request. This reproduces the
+production ~300s signature, not the unknown original trigger of the first stall;
+idle CPU and loopback buildup alone do not prove a pool or event-loop deadlock.
+
+Run `pnpm exec vitest run packages/auth/tests/session-stall-repro.test.ts --reporter=verbose`.
+Before the fix (repro commit `44dfe4fbc`, code based on main `2342115f5`):
+**0/6 settled, 6 stuck after 7,007ms**. After: **6/6 settle at about 5s**.
+The optional `REPRO_DEFAULT_HEADERS=1` mode on the baseline waits about 301s
+and records the native cause. It is a diagnostic mode, not the bounded-pass
+criterion. The script mints ephemeral test tokens and needs no real session,
+DB, or production credentials.
+
+Kernel boot now injects the same JWT verification/current-identity lookup the
+session route uses; no package imports kernel code. Standalone corpus/broker
+consumers retain HTTP. All remaining auth/WS HTTP calls use one shared **5s
+total headers+body deadline**, with no retry. Five seconds allows ordinary
+local DB-backed auth but is far below Cloudflare's 100s; even sequential
+auth/chain/acting-as/delegation fallbacks stay below it. Internal calls emit
+only cause code, target path and duration, never cookies, bearer/internal keys,
+headers, query strings or raw upstream errors.
+
+The Next.js stale Server Action reference noise is separate: the reproduction
+uses only the session HTTP path, with no Server Actions involved.
+
 ## Files
 
 | File | Server location | Env |
