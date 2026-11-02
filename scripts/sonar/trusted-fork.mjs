@@ -29,6 +29,14 @@ export function scanSettingsPath(workspace = root()) {
   assert(typeof workspace === 'string' && isAbsolute(workspace), 'Container workspace must be absolute');
   return join(workspace, 'trusted', 'fork-scan.properties');
 }
+/** Preflight the exact CLI input, not a differently resolved relative-path fallback. */
+export async function checkScanSettings(path) {
+  assert(path === scanSettingsPath(), 'Scanner settings must be the trusted absolute path');
+  const info = await lstat(path);
+  assert(info.isFile() && !info.isSymbolicLink() && info.size > 0, 'Missing regular trusted scanner settings');
+  // Actually open the file before invoking the scanner; stat alone does not prove readability.
+  await readFile(path, 'utf8');
+}
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);
@@ -37,7 +45,8 @@ function assert(condition, message) {
 export function selectPr(prs, sha, repository) {
   const matches = prs.filter((pr) =>
     pr.state === 'open' && pr.head?.sha === sha && pr.base?.repo?.full_name === repository);
-  assert(matches.length === 1, 'Expected exactly one open PR for the exact CI head SHA');
+  assert(matches.length === 1,
+    `Expected exactly one open PR for the exact CI head SHA; found ${matches.length}. Closed PRs are ineligible.`);
   const pr = matches[0];
   assert(pr.head.repo?.fork === true && pr.head.repo.full_name !== repository, 'Not a fork PR');
   assert(pr.base.ref === 'main' && SHA.test(pr.base.sha), 'Expected a trusted main base');
