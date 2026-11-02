@@ -36,26 +36,35 @@ interface AnthropicErrorBody {
 }
 
 /**
- * Best-effort read of Anthropic's own `error.type`/`error.message` off a
- * non-2xx response (#2196), so the connector card can show e.g.
- * `invalid_request_error: <reason>` instead of a bare `400 Bad Request`.
- * Only those two known-safe string fields are read — never the raw body —
- * so nothing else an error page might carry (and the sealed key, which
- * never rides an Anthropic error response in the first place) can leak.
- * Never throws: a body that is not JSON, or not this shape, falls back to
- * the plain HTTP status text.
+ * Sanitize only the diagnostic fields we consume. Treat even Anthropic's
+ * error envelope as untrusted: proxies can echo credentials or fragments.
  */
-async function describeAnthropicError(res: { json: () => Promise<unknown> }, fallback: string): Promise<string> {
+function safeDiagnostic(value: unknown, apiKey: string): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  // Suppress the whole field if it echoes any meaningful key fragment,
+  // including a prefix or suffix. Never retain a partially redacted key.
+  const fragmentLength = Math.min(4, apiKey.length);
+  if (fragmentLength > 0) {
+    for (let index = 0; index <= apiKey.length - fragmentLength; index++) {
+      if (value.includes(apiKey.slice(index, index + fragmentLength))) return '[redacted]';
+    }
+  }
+  return value;
+}
+
+async function readAnthropicError(res: { json: () => Promise<unknown> }, apiKey: string) {
   try {
     const body = (await res.json()) as AnthropicErrorBody;
-    const type = typeof body.error?.type === 'string' ? body.error.type : undefined;
-    const message = typeof body.error?.message === 'string' ? body.error.message : undefined;
-    if (type && message) return `${type}: ${message}`;
-    if (message) return message;
+    return { type: safeDiagnostic(body.error?.type, apiKey), message: safeDiagnostic(body.error?.message, apiKey) };
   } catch {
-    // Not JSON, or not Anthropic's error shape — fall back to the plain HTTP status text.
+    return {};
   }
-  return fallback;
+}
+
+async function describeAnthropicError(res: { json: () => Promise<unknown> }, fallback: string, apiKey: string): Promise<string> {
+  const { type, message } = await readAnthropicError(res, apiKey);
+  if (type && message) return `${type}: ${message}`;
+  return message ?? safeDiagnostic(fallback, apiKey) ?? '';
 }
 
 /**
@@ -72,7 +81,13 @@ export async function listModels(creds: AnthropicCredentials): Promise<ModelList
     const url = afterId ? `${baseUrl}/models?after_id=${encodeURIComponent(afterId)}` : `${baseUrl}/models`;
     const res = await fetch(url, { headers: anthropicHeaders(creds.apiKey) });
     if (!res.ok) {
-      return { ok: false, status: res.status, statusText: await describeAnthropicError(res, res.statusText) };
+      const upstreamError = await readAnthropicError(res, creds.apiKey);
+      return {
+        ok: false, status: res.status,
+        statusText: safeDiagnostic(res.statusText, creds.apiKey) ?? '',
+        invalidKey: [400, 401, 403].includes(res.status),
+        upstreamError,
+      };
     }
     const raw = (await res.json()) as RawAnthropicModelsPage;
     for (const model of raw.data ?? []) {
@@ -108,6 +123,6 @@ export async function probeModel(creds: AnthropicCredentials, modelId: string): 
     ok: false,
     deprecated: false,
     status: res.status,
-    statusText: await describeAnthropicError(res, res.statusText),
+    statusText: await describeAnthropicError(res, res.statusText, creds.apiKey),
   };
 }

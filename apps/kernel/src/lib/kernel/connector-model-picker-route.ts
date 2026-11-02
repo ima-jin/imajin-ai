@@ -53,7 +53,11 @@ export interface ModelPickerCredentials {
 /** Outcome of fetching a provider's model list. */
 export type ModelListResult =
   | { ok: true; models: ModelOption[] }
-  | { ok: false; status: number; statusText: string };
+  | {
+      ok: false; status: number; statusText: string; invalidKey?: boolean;
+      /** Provider-sanitized diagnostics only; never raw upstream bodies or headers. */
+      upstreamError?: { type?: string; message?: string };
+    };
 
 /** Outcome of validating one model id against the provider. */
 export type ModelProbeResult =
@@ -183,8 +187,9 @@ export function createConnectorModelPickerRoute<C extends ModelPickerCredentials
     let result: ModelListResult;
     try {
       result = await opts.listModels(creds);
-    } catch (err) {
-      log.error({ err: String(err), ownerDid }, `${opts.id} models: fetch failed`);
+    } catch {
+      // Transport exceptions can echo request headers; never log them.
+      log.error({ ownerDid }, `${opts.id} models: fetch failed`);
       return NextResponse.json(
         { error: `${opts.id}_models: failed to reach ${upstreamName}` },
         { status: 502, headers: cors },
@@ -193,7 +198,15 @@ export function createConnectorModelPickerRoute<C extends ModelPickerCredentials
     if (!result.ok) {
       // The response body is never surfaced: an upstream error page can echo
       // back the query string, which would leak the key into the response.
-      log.warn({ ownerDid, status: result.status }, `${opts.id} models: upstream list failed`);
+      log.warn({ ownerDid, status: result.status, ...result.upstreamError }, `${opts.id} models: upstream list failed`);
+      if (result.invalidKey) {
+        const code = `${opts.id}_invalid_key`;
+        const message = `${opts.displayName} rejected this key (invalid or wrong key type) — re-seal a Console API key`;
+        return NextResponse.json(
+          { error: `${code}: ${message}`, code, message },
+          { status: 400, headers: cors },
+        );
+      }
       return NextResponse.json(
         { error: `${opts.id}_models: upstream ${result.status} ${result.statusText}` },
         { status: 502, headers: cors },
