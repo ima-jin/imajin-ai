@@ -42,6 +42,57 @@ components:
                   picked:
                     type: boolean
                     description: True when this is the routing winner's currently picked model.
+    InferenceRouteList:
+      type: object
+      required: [routes]
+      additionalProperties: false
+      properties:
+        routes:
+          type: array
+          items:
+            type: object
+            required: [kind, billedPrincipal, card, selectedModels, usable, selectors]
+            additionalProperties: false
+            properties:
+              kind:
+                type: string
+                enum: [own, A, B, C]
+                description: Own card, organization's assigned agent, human's assigned agent, or member grant.
+              billedPrincipal:
+                type: object
+                required: [did, handle]
+                additionalProperties: false
+                properties:
+                  did: { type: string }
+                  handle: { type: [string, "null"] }
+              card:
+                type: object
+                required: [provider, id, label, loaded]
+                additionalProperties: false
+                properties:
+                  provider: { type: string }
+                  id: { type: string }
+                  label: { type: string }
+                  loaded: { type: boolean }
+              selectedModels:
+                type: array
+                items: { type: string }
+              usable: { type: boolean }
+              reason:
+                type: object
+                required: [code, message]
+                additionalProperties: false
+                properties:
+                  code:
+                    type: string
+                    enum: [no_grant, no_model_selected, not_a_member, agent_member_chain_unsupported, key_not_loaded, not_authorized, route_unavailable]
+                  message: { type: string }
+              selectors:
+                type: object
+                additionalProperties: false
+                properties:
+                  actingAs: { type: string }
+                  actingFor: { type: string }
 paths:
   /v1/models/usable:
     get:
@@ -58,15 +109,32 @@ paths:
         the completion adapters record usage against its credential DID.
         During a picker failure only that card's picked model is retained.
         No credentials are returned. OpenAI object:list and data[].id stay compatible.
+        With explain=1, returns route diagnostics instead of the picker catalog:
+        route kind, billed DID and handle, provider/card identity, selected models,
+        loaded and usable booleans, and a safe reason for each unusable route.
+        Candidates are limited to the caller's own and held relationships; the
+        existing completions resolver determines usability. No key material,
+        fingerprints or vault references are included. Diagnostics are private,
+        non-cacheable and do not change the response for existing catalog callers.
+      parameters:
+        - in: query
+          name: explain
+          required: false
+          schema: { type: string, const: "1" }
+          description: Opt into caller-scoped inference route diagnostics.
       security:
         - appToken: []
       responses:
         "200":
-          description: Usable models, or an empty data array when none are usable.
+          description: Usable model catalog, or caller-scoped route diagnostics when explain=1.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/UsableModelList" }
+              schema:
+                oneOf:
+                  - { $ref: "#/components/schemas/UsableModelList" }
+                  - { $ref: "#/components/schemas/InferenceRouteList" }
         "401": { description: Missing or invalid app-token. }
         "403": { description: Missing live authorization or infer:completions scope. }
         "429": { description: Rate limit exceeded. }
         "500": { description: Model listing failed. }
+        "503": { description: Route discovery unavailable; no private exception details are returned. }

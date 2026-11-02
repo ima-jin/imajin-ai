@@ -30,6 +30,7 @@ export interface InferenceRouteCandidate {
   context: BrainCredentialContext;
   orgHeld: boolean;
   pendingAssignmentResolver?: boolean;
+  memberIsActive?: boolean;
 }
 export interface InferenceCardResolution {
   loaded: boolean;
@@ -47,7 +48,7 @@ function reasonMessage(code: InferenceRouteReason, candidate: InferenceRouteCand
     case 'no_grant': return `No grant for ${candidate.memberDid ?? 'member'} on ${principal} ${provider}`;
     case 'no_model_selected': return `${principal} ${provider} card has no model selected`;
     case 'not_a_member': return `${candidate.memberDid ?? 'Caller'} is not a member of ${principal}`;
-    case 'agent_member_chain_unsupported': return 'Agent → member chain not supported yet (#3182)';
+    case 'agent_member_chain_unsupported': return 'Agent → member chain not supported yet';
     case 'key_not_loaded': return `${principal} ${provider} key not loaded`;
     case 'not_authorized': return `Caller is not authorized for ${principal} ${provider}; check assignment and allowed services`;
     case 'route_unavailable': return `${principal} ${provider} route is unavailable`;
@@ -69,7 +70,10 @@ export function describeInferenceRoute(
     selectedModels: resolution.modelId ? [resolution.modelId] : [],
     usable: code === undefined,
     ...(code ? { reason: { code, message: reasonMessage(code, candidate, card.provider) } } : {}),
-    selectors: { ...candidate.selectors },
+    selectors: {
+      ...(candidate.selectors.actingAs ? { actingAs: candidate.selectors.actingAs } : {}),
+      ...(candidate.selectors.actingFor ? { actingFor: candidate.selectors.actingFor } : {}),
+    },
   };
 }
 
@@ -88,7 +92,9 @@ function rejectedResolution(error: unknown): InferenceCardResolution {
 }
 
 async function resolveCard(candidate: InferenceRouteCandidate, provider: BrainConnectorId): Promise<InferenceCardResolution> {
-  if (candidate.pendingAssignmentResolver) return { loaded: false, denied: 'not_authorized' };
+  if (candidate.pendingAssignmentResolver) return {
+    loaded: false, denied: candidate.kind === 'C' ? 'agent_member_chain_unsupported' : 'not_authorized',
+  };
   try {
     // The same resolver used by /infer/v1/chat/completions. Discovery never implements a grant/assignment gate.
     const brain = await resolveBrain(candidate.context, { connectors: [provider] });
@@ -97,7 +103,11 @@ async function resolveCard(candidate: InferenceRouteCandidate, provider: BrainCo
     }
     return { loaded: true, modelId: brain.modelId };
   } catch (error) {
-    return rejectedResolution(error);
+    const resolution = rejectedResolution(error);
+    if (resolution.denied === 'no_grant' && candidate.memberIsActive === false) {
+      return { loaded: false, denied: 'not_a_member' };
+    }
+    return resolution;
   }
 }
 

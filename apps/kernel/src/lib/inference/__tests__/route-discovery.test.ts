@@ -96,6 +96,14 @@ describe('inference route discovery through the existing resolver', () => {
     const [route] = await listInferenceRoutes({ ownerDid: ORG });
     expect(route.reason?.message).toBe(`No grant for ${MEMBER} on @artifact (${ORG}) anthropic`);
   });
+  it('explains a membership removal separately when the canonical grant gate rejects that route', async () => {
+    candidates.mockResolvedValue([{ ...candidate('C'), memberIsActive: false }]);
+    resolve.mockRejectedValue(new ExternalMcpError(403, 'Active org-connection member grant required'));
+    const [route] = await listInferenceRoutes({ ownerDid: ORG });
+    expect(route.reason?.code).toBe('not_a_member');
+    expect(route.reason?.message).toContain(MEMBER);
+    expect(route.reason?.message).toContain('@artifact');
+  });
 
   it('marks an empty-model org resolver result as loaded but unusable, never inventing a default', async () => {
     resolve.mockResolvedValue({ credentialDid: MEMBER, connector: 'anthropic', modelId: '' });
@@ -115,6 +123,23 @@ describe('inference route discovery through the existing resolver', () => {
   it('does not read an unselected assignment through the pre-#3182 resolver', async () => {
     candidates.mockResolvedValue([{ ...candidate('A'), pendingAssignmentResolver: true }]);
     expect((await listInferenceRoutes({ ownerDid: MEMBER }))[0].usable).toBe(false);
+    expect(resolve).not.toHaveBeenCalled();
+  });
+  it('allowlists principal and selector metadata even if an internal object gains a sensitive field', async () => {
+    const sensitive = randomUUID();
+    candidates.mockResolvedValue([{
+      ...candidate(), principal: { ...candidate().principal, fingerprint: sensitive },
+      selectors: { actingAs: ORG, apiKey: sensitive },
+    }]);
+    const text = JSON.stringify(await listInferenceRoutes({ ownerDid: MEMBER }));
+    expect(text).not.toContain(sensitive);
+    expect(text).not.toContain('apiKey');
+    expect(text).not.toContain('fingerprint');
+  });
+  it('names an unsupported agent-to-member chain without calling an older resolver that cannot verify it', async () => {
+    candidates.mockResolvedValue([{ ...candidate('C'), pendingAssignmentResolver: true }]);
+    const [route] = await listInferenceRoutes({ ownerDid: MEMBER });
+    expect(route.reason?.code).toBe('agent_member_chain_unsupported');
     expect(resolve).not.toHaveBeenCalled();
   });
 

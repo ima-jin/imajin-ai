@@ -34,7 +34,7 @@ export function InferenceRoutes() {
       {!!routes?.length && (
         <ul className="space-y-3">
           {routes.map(route => (
-            <li key={`${route.kind}:${route.billedPrincipal.did}:${route.card.id}`}
+            <li key={`${route.kind}:${route.billedPrincipal.did}:${route.card.id}:${route.selectors.actingFor ?? ''}`}
               className="rounded-lg bg-white/5 p-3 text-sm break-words">
               <div className="flex flex-wrap justify-between gap-2">
                 <span className="font-medium text-white">{ROUTE_LABELS[route.kind]}</span>
@@ -42,6 +42,7 @@ export function InferenceRoutes() {
               </div>
               <p className="mt-1 text-gray-300">Billed to: {route.billedPrincipal.handle ? `@${route.billedPrincipal.handle}` : route.billedPrincipal.did}</p>
               <p className="text-xs text-gray-500 break-all">{route.billedPrincipal.did}</p>
+              {route.selectors.actingFor && <p className="text-xs text-gray-400 break-all">On behalf of: {route.selectors.actingFor}</p>}
               <p className="mt-1 text-gray-300">{route.card.provider} · {route.card.label}</p>
               <p className="text-xs text-gray-500 break-all">Card: {route.card.id} · Loaded: {route.card.loaded ? 'yes' : 'no'}</p>
               <p className="text-gray-300">Selected model: {route.selectedModels.join(', ') || 'None'}</p>

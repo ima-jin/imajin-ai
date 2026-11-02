@@ -57,6 +57,14 @@ describe('held-route enumeration (no credential authorization)', () => {
     expect(routes[1].selectors).toEqual({ actingAs: ORG });
     expect(routes[0].context.ownerDid).toBe(MEMBER);
   });
+  it('records a disappeared membership as a diagnostic fact, not an alternate authorization gate', async () => {
+    results.push([actor()], [], [org()]);
+    const routes = await loadInferenceRouteCandidates({
+      ownerDid: ORG, orgContext: { memberDid: MEMBER, orgDid: ORG },
+    });
+    expect(routes[1].memberIsActive).toBe(false);
+    expect(routes[1].context).toMatchObject({ orgContext: { memberDid: MEMBER, orgDid: ORG } });
+  });
 
   it('keeps A and B distinct and honors the verified caller interface without changing it', async () => {
     results.push(
@@ -76,6 +84,30 @@ describe('held-route enumeration (no credential authorization)', () => {
     results.push([actor(AGENT, 'agent')], [{ did: ORG, role: 'agent' }], [], [org()]);
     const routes = await loadInferenceRouteCandidates({ ownerDid: AGENT });
     expect(routes[1].pendingAssignmentResolver).toBe(true);
+  });
+
+  it('keeps direct A and agent-through-human C routes to the same org distinct', async () => {
+    results.push([actor(AGENT, 'agent')], [{ did: ORG, role: 'agent' }, { did: MEMBER, role: 'agent' }],
+      [], [org()], [actor()], [{ did: ORG, role: 'member' }], [org()]);
+    const routes = await loadInferenceRouteCandidates({ ownerDid: AGENT, caller: { actorDid: AGENT } });
+    const orgRoutes = routes.filter(route => route.principal.did === ORG);
+    expect(orgRoutes.map(route => route.kind)).toEqual(['A', 'C']);
+    expect(orgRoutes[1].context).toMatchObject({
+      ownerDid: ORG, caller: { actorDid: AGENT, actingFor: MEMBER, actingAs: ORG },
+      orgContext: { memberDid: MEMBER, orgDid: ORG },
+    });
+    expect(orgRoutes[1].memberDid).toBe(MEMBER);
+    expect(queries[5].params).toEqual([MEMBER]);
+  });
+
+  it('does not mislabel a selected agent-to-human-to-org chain as direct A', async () => {
+    results.push([actor(AGENT, 'agent')], [{ did: MEMBER, role: 'agent' }], [],
+      [actor()], [{ did: ORG, role: 'member' }], [org()]);
+    const routes = await loadInferenceRouteCandidates({
+      ownerDid: ORG, caller: { actorDid: AGENT, actingFor: MEMBER, actingAs: ORG },
+      orgContext: { memberDid: MEMBER, orgDid: ORG },
+    });
+    expect(routes.map(route => route.kind)).toEqual(['own', 'B', 'C']);
   });
 
   it('does not enumerate unrelated principals, non-agent memberships, or app/registrant fallback identities', async () => {

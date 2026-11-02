@@ -12,6 +12,10 @@ function selectorsFor(kind: InferenceRouteKind, principalDid: string): Inference
   if (kind === 'own') return {};
   return kind === 'B' ? { actingFor: principalDid } : { actingAs: principalDid };
 }
+function isMemberChain(selected: DiscoveryContext): boolean {
+  return Boolean(selected.caller?.actingFor && selected.caller.actingAs
+    && selected.caller.actingFor !== selected.caller.actingAs);
+}
 
 async function readPrincipal(did: string) {
   const [identity] = await db.select({
@@ -48,7 +52,7 @@ function candidateContext(
   kind: InferenceRouteKind,
   selected: DiscoveryContext,
 ): { context: BrainCredentialContext; selectors: InferenceRoute['selectors'] } {
-  if (principalDid === selected.ownerDid) {
+  if (principalDid === selected.ownerDid && !isMemberChain(selected)) {
     const caller = selected.caller;
     return {
       context: selected,
@@ -88,19 +92,46 @@ function makeCandidate(actor: Principal, principal: Principal, selected: Discove
   };
 }
 
+async function memberOrgCandidates(actor: Principal, member: Principal, selected: DiscoveryContext): Promise<InferenceRouteCandidate[]> {
+  const memberships = new Set(await relatedPrincipals(member.did, false));
+  const dids = new Set(memberships);
+  if (isMemberChain(selected) && selected.caller?.actingFor === member.did) dids.add(selected.ownerDid);
+  const candidates: InferenceRouteCandidate[] = [];
+  for (const did of dids) {
+    const principal = await readPrincipal(did);
+    if (!principal || !orgScope(principal.scope)) continue;
+    const selectors = { actingFor: member.did, actingAs: did };
+    const caller: DiscoveryCaller = { actorDid: actor.did, ...selectors };
+    const context: BrainCredentialContext & { caller: DiscoveryCaller } = {
+      ownerDid: did, caller, orgContext: { memberDid: member.did, orgDid: did },
+    };
+    candidates.push({
+      kind: 'C', principal: { did, handle: principal.handle }, memberDid: member.did,
+      selectors, context, orgHeld: true, memberIsActive: memberships.has(did),
+      ...(!selected.caller ? { pendingAssignmentResolver: true } : {}),
+    });
+  }
+  return candidates;
+}
 export async function loadInferenceRouteCandidates(selected: DiscoveryContext): Promise<InferenceRouteCandidate[]> {
   const actorDid = selected.caller?.actorDid ?? selected.orgContext?.memberDid ?? selected.ownerDid;
   const actor = await readPrincipal(actorDid);
   if (!actor) return [];
   const agent = actor.subtype === 'agent';
-  const dids = new Set([actorDid, selected.ownerDid, ...await relatedPrincipals(actorDid, agent)]);
+  const selectedPrincipal = isMemberChain(selected) ? selected.caller!.actingFor! : selected.ownerDid;
+  const related = new Set(await relatedPrincipals(actorDid, agent));
+  const dids = new Set([actorDid, selectedPrincipal, ...related]);
   const candidates: InferenceRouteCandidate[] = [];
+  const members: Principal[] = [];
   for (const did of dids) {
     const principal = did === actorDid ? actor : await readPrincipal(did);
     if (!principal) continue;
     const candidate = makeCandidate(actor, principal, selected);
+    if (candidate?.kind === 'C') candidate.memberIsActive = related.has(did);
     if (candidate) candidates.push(candidate);
+    if (candidate?.kind === 'B') members.push(principal);
   }
+  for (const member of members) candidates.push(...await memberOrgCandidates(actor, member, selected));
   return candidates;
 }
 

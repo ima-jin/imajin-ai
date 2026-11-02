@@ -42,9 +42,10 @@ describe('Inference routes section', () => {
     expect(screen.getByText('did:imajin:artifact')).toBeDefined();
   });
   it.each(['A', 'B'] as const)('keeps route %s visually distinct', async kind => {
-    installFetch([route(kind)]);
+    installFetch([{ ...route(kind), selectors: { actingFor: 'did:imajin:delegating-member' } }]);
     render(<InferenceRoutes />);
     expect(await screen.findByText(kind === 'A' ? "A · Organization's agent" : "B · Human's agent")).toBeDefined();
+    expect(screen.getByText('On behalf of: did:imajin:delegating-member')).toBeDefined();
   });
   it('renders an unusable reason, unloaded status and no-model state', async () => {
     installFetch([{
