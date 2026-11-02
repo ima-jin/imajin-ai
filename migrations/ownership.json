@@ -18,6 +18,12 @@
     }
   },
   "tables": {
+    "kernel.org_connection_member_grants": {
+      "owner": "kernel",
+      "schema": "kernel",
+      "firstMigration": "0230_org_connection_member_grants.sql",
+      "notes": "Retained per-member grants on org-owned connections; signed grant/revoke provenance, no credentials."
+    },
     "kernel.org_connection_suspensions": {
       "owner": "kernel",
       "schema": "kernel",

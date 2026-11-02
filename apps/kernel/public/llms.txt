@@ -41,8 +41,23 @@ License: Imajin Network License (INL) v1.0, source-available, not MIT.
   Generic vault fetch/export/renewal are refused. Replace = load again; remove =
   revoke with signed tombstones and actor-attributed connector.org-held history.
   No rows deleted; revoked history is hidden from live reads. No-store responses.
-  Personal/member resolution is unchanged. Grants, proxy injection and UI are
-  separate work. See /connections/api/spec; Tier 1 loads fail closed.
+  Personal/member resolution is unchanged. Proxy injection and UI are separate
+  work. See /connections/api/spec; Tier 1 loads fail closed.
+- Org-held member grants: GET/POST/DELETE
+  /connections/api/org-held/{provider}/grants uses the same live human org-admin
+  act-as gate. POST/DELETE take only {memberDid,reason} (16 KiB body, nonblank
+  reason at most 500 chars; never credentials). POST requires an active loaded
+  connection and current human member. Responses are {changed}; GET lists active
+  grant provenance only, never keys or vault references. Duplicate operations
+  are no-ops. Revoked history is retained; regrant creates a fresh row.
+  Signed grant/revoke history commits atomically. Membership removal revokes all
+  of the member's org-held grants alongside member-owned suspensions, without
+  changing the shared org key or other members. Rejoining does not restore access.
+  The metadata-only requireOrgConnectionMemberGrant contract checks verified
+  member/acting org, current membership, live connection/grant and suspensions
+  on every call. Runtime consumers must also enforce lane/app scopes. Inference
+  (#3202) and Warp HTTP/MCP (#3203) injection remain separate; this API alone
+  does not wire either runtime. See /connections/api/spec.
 - App-hosted upstreams: PUT /connections/api/upstreams declares {upstreams:[{id,
   origin,credentialHeader,credentialPrefix,paths:[{path,methods}]}]} on the caller's
   existing registry app. App-service token + connectors:upstream:read + live operator
