@@ -19,6 +19,7 @@ beforeEach(async () => {
   mintStatus = 200;
   mints = [];
   server = createProxyServer(loadConfig({
+    INFER_PROXY_AUTH_MODE: 'host-static',
     KERNEL_BASE_URL: 'https://kernel.test',
     OPENCLAW_APP_DID: 'did:imajin:app',
     OPENCLAW_APP_PRIVATE_KEY: generateKeypair().privateKey,
@@ -148,6 +149,7 @@ describe('mint-proving readiness (#3041)', () => {
   it('warns once for legacy environment and route IDs together without retaining values', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const env = {
+      INFER_PROXY_AUTH_MODE: 'host-static',
       KERNEL_BASE_URL: 'https://kernel.test',
       OPENCLAW_APP_DID: 'did:imajin:app',
       OPENCLAW_APP_PRIVATE_KEY: generateKeypair().privateKey,

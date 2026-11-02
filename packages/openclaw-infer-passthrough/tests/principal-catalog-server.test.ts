@@ -16,6 +16,7 @@ let realFetch: typeof fetch;
 beforeEach(async () => {
   realFetch = globalThis.fetch;
   server = createProxyServer(loadConfig({
+    INFER_PROXY_AUTH_MODE: 'host-static',
     INFER_PROXY_PRINCIPAL_DID: principalDid,
     KERNEL_BASE_URL: 'https://kernel.test',
     OPENCLAW_APP_DID: 'did:imajin:app',

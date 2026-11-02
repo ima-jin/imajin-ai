@@ -1,5 +1,15 @@
 # @imajin/openclaw-infer-passthrough
-Principal-based configuration and live catalog routing are tracked in imajin-ai#3041.
+**Default: per-calling-agent authentication (#3224).** Every call must supply
+the agent's own `app+jwt` and its configured `x-acting-as` selector. Missing,
+invalid or shared-marker credentials return 401; there is no gateway-principal
+mint, re-mint, catalog cache or direct-key fallback for agent calls.
+The kernel alone verifies authority and resolves connector policy.
+See the canonical [headers, JWT and error contract](../../deploy/infer-passthrough/README.md#calling-agent-contract-3224).
+
+The historical instructions below apply **only** to an explicit, separate
+non-agent host instance with `INFER_PROXY_AUTH_MODE=host-static`.
+Never point agent traffic at that instance. Principal-based configuration
+and live host catalog routing are tracked in imajin-ai#3041.
 
 Local HTTP proxy implementing [imajin-ai#1926](https://github.com/ima-jin/imajin-ai/issues/1926)
 (Phase 4 of the [#1922](https://github.com/ima-jin/imajin-ai/issues/1922) inference

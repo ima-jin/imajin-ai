@@ -41,6 +41,8 @@ export interface ProviderRouteConfig {
 }
 
 export interface ProxyConfig {
+  /** Default is agent. host-static is exclusively for separate non-agent host consumers. */
+  authMode?: 'agent' | 'host-static';
   host: string;
   port: number;
   kernelBaseUrl: string;

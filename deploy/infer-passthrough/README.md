@@ -1,5 +1,95 @@
 # Release deployment for infer-passthrough (#3041, #3082)
 
+## Calling-agent contract (#3224)
+
+The default mode is `INFER_PROXY_AUTH_MODE=agent` (also when unset).
+Every inference call carries the calling agent's **own** kernel-minted credential,
+not the gateway app's token, a shared key, or a synthetic provider marker.
+The sidecar never mints, caches or re-mints credentials in this mode, and never
+uses a direct provider key, even during a kernel outage.
+
+### Headers and JWT shape
+
+- OpenAI-compatible completions (`POST /openai/v1/chat/completions`,
+  `/xai/v1/chat/completions`, any `/:providerId/v1/chat/completions`, or
+  `/v1/chat/completions`), model listing (`GET /:providerId/v1/models` or
+  `/v1/models`), and `POST /mcp`: `Authorization: Bearer <agent-app-jwt>`.
+- Native Anthropic (`POST /anthropic/v1/messages` and
+  `/anthropic/v1/messages/count_tokens`): the same Bearer header, or
+  `x-api-key: <agent-app-jwt>`. If Authorization is present it wins; an invalid
+  Authorization never falls through to x-api-key.
+- `x-acting-as: <configured-actAs-DID>` is sent by the plugin for that agent's
+  configured acting identity, including org context. Omit it for personal
+  context with no selector. The sidecar forwards it unchanged; it never substitutes
+  route `actingAs`, `principalDid`, or `INFER_PROXY_PRINCIPAL_DID`.
+- The JWT is compact, signed with EdDSA, protected header `typ: app+jwt`.
+  Its `azp` is the calling agent's app DID; `sub` is its delegating principal DID.
+  Both must be DIDs, and `exp` must be a future numeric Unix time in seconds.
+  The existing kernel contract also carries `iss`, `aud` (normally `imajin:apps`
+  for inference, the MCP resource audience for MCP), space-delimited `scope`,
+  and `attestationId`. It is **not** a session JWT, `session-app+jwt`,
+  `app-service+jwt`, or a new token scheme. The plugin obtains/refreshes it
+  using the existing app-token flow; no key belongs in provider config.
+- The sidecar checks shape/expiry only; it does not trust decoded claims as
+  authorization. The kernel checks the signature, issuer, audience and scopes,
+  verifies `x-acting-as` membership per call via `validateActingAs`, then
+  applies its existing key-resolution and member-grant policy.
+- `X-Imajin-Session`, `X-Imajin-Turn`, `X-Imajin-Run` correlation headers and
+  `anthropic-version` / `anthropic-beta` remain supported. MCP session/protocol
+  headers remain passthrough. The body and streamed response are forwarded
+  unchanged except for the existing OpenAI parameter translation.
+
+Provider path prefixes are transport aliases in agent mode, not identity or
+authorization choices. Model selection and usable catalog policy stay in the
+kernel; agent calls never consult the host principal's catalog cache.
+
+### Refusals and errors
+
+- Missing/malformed/expired/wrong-type JWT, a shared static key alone, or a
+  malformed supplied selector: **401**, JSON
+  `error: invalid_agent_credential`, with a message naming the calling agent
+  credential (or its x-acting-as selector). No mint or fallback occurs.
+- Kernel rejects a JWT's signature or validity with **401**: return the same
+  status with `invalid_agent_credential` naming the agent credential. No retry
+  under the gateway identity; the plugin must refresh its own JWT.
+- Kernel **403** (including membership, scopes or required member grant) and
+  other non-401 HTTP responses, including 5xx: status and body forwarded.
+  A header selects, never authorizes. **On current main an org's own agent
+  can still receive 403 until #3182 lands.** This PR changes no kernel
+  key-resolution or org-grant policy and does not work around that refusal.
+- Network failure or time-to-first-byte timeout: **502**, `upstream_unavailable`
+  or `upstream_timeout`; no direct-provider/shared-key fallback.
+- Unknown HTTP endpoint/method: **404**. Credentials and keys are never included
+  in errors or logs.
+
+`GET /health` and `/healthz` in agent mode are **liveness only**, return
+`authMode: agent, credentialRequired: true`, and perform no mint. They do not
+prove a caller's grant or completion. The existing deployment mint-health checker
+requires route mint evidence and therefore refuses this liveness-only payload;
+do not treat it as per-agent readiness or bypass that gate during rollout.
+Live Artifact-Jin → @artifact attribution proof belongs on plugin sibling
+ima-jin/openclaw-imajin-plugin#150 after both implementations ship.
+
+### Explicit non-agent host compatibility
+
+The static-principal implementation is **retained only for non-agent host use**,
+explicitly selected with `INFER_PROXY_AUTH_MODE=host-static`. It keeps the legacy
+`OPENCLAW_APP_DID`, `OPENCLAW_APP_PRIVATE_KEY`, principal routes, mint-backed health,
+and optional break-glass behavior described below. Existing variables alone
+**do not** enable it. Unknown mode values refuse startup.
+
+Do not point OpenClaw agent traffic at a host-static instance. If a non-agent
+host consumer still needs it, run a separate loopback instance/port; this is a
+server-wide opt-in, never a request-selected escape hatch. Agent mode needs only
+`KERNEL_BASE_URL` plus optional host/port/timeout settings and ignores host signing
+credentials. Provider-only optional route entries need no principal in agent mode.
+The shipped env example's historical app/principal fields are host-only; for
+agent rollout leave the mode unset or set `agent`, remove provider marker auth,
+and have the plugin attach the per-agent JWT and configured selector on each call.
+No running host is changed by this PR. All host changes described here are
+operator instructions for a reviewed release, not actions performed in this run.
+
+## Legacy host-static release deployment
 Gateway bootstrap migration is tracked in #3185; no live host is changed by this PR.
 Thereafter the timer fetches release tags and `origin/main` every two minutes.
 It selects the highest eligible stable `vX.Y.Z` (not a prerelease), without a
