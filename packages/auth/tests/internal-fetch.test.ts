@@ -68,12 +68,12 @@ describe('internalFetch total deadline', () => {
     expect(output).not.toContain('SECRET');
   });
 
-  it('does not log arbitrary error codes as secret material', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => { throw { code: 'secret token value' }; }));
+  it.each(['secret token value', 'SECRET_MATERIAL'])('does not log arbitrary error code %s', async (code) => {
+    vi.stubGlobal('fetch', vi.fn(async () => { throw { code }; }));
     await expect(internalFetch('http://localhost/api/session')).rejects.toMatchObject({
       code: 'INTERNAL_FETCH_FAILED',
     });
-    expect(JSON.stringify(vi.mocked(console.error).mock.calls)).not.toContain('secret token value');
+    expect(JSON.stringify(vi.mocked(console.error).mock.calls)).not.toContain(code);
   });
 
   it.each([0, -1, Number.NaN, 1.5, 100_000])('rejects invalid timeout %s before fetching', async (timeout) => {

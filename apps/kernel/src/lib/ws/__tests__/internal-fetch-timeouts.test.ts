@@ -8,12 +8,12 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 // only. Production exports are unchanged; every call uses the real shared helper.
 const path = resolve('apps/kernel/ws-server.js');
 const source = readFileSync(path, 'utf8');
-const module = { exports: {} as Record<string, (...args: unknown[]) => Promise<unknown>> };
+const runtimeModule = { exports: {} as Record<string, (...args: unknown[]) => Promise<unknown>> };
 runInNewContext(`${source}\nObject.assign(module.exports, {
   authenticateToken, authenticateWsToken, updateLastSeen, broadcastPresenceChange,
   verifyAgentDelegation, fetchNotificationBacklog, releaseWsClaims, ackNotification,
 });`, {
-  require: createRequire(path), module, console, process, URL, setTimeout, clearTimeout,
+  require: createRequire(path), module: runtimeModule, console, process, URL, setTimeout, clearTimeout,
 });
 beforeEach(() => {
   vi.useFakeTimers();
@@ -34,7 +34,7 @@ it.each([
   ['releaseWsClaims', ['did:imajin:person'], undefined],
   ['ackNotification', ['notification-id', 'did:imajin:person'], undefined],
 ])('bounds WS %s and preserves its fail-closed result', async (name, args, expected) => {
-  const pending = module.exports[name as string](...(args as unknown[]));
+  const pending = runtimeModule.exports[name as string](...(args as unknown[]));
   await vi.advanceTimersByTimeAsync(5_001);
   expect(await pending).toBe(expected);
   const [, init] = vi.mocked(fetch).mock.calls[0];
@@ -42,7 +42,7 @@ it.each([
   expect(vi.getTimerCount()).toBe(0);
 });
 it('bounds WS notification backlog and propagates a typed error to its existing replayer catch', async () => {
-  const pending = expect(module.exports.fetchNotificationBacklog('did:imajin:person'))
+  const pending = expect(runtimeModule.exports.fetchNotificationBacklog('did:imajin:person'))
     .rejects.toMatchObject({ name: 'InternalFetchError', code: 'INTERNAL_FETCH_TIMEOUT' });
   await vi.advanceTimersByTimeAsync(5_001);
   await pending;

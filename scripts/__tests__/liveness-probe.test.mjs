@@ -35,6 +35,8 @@ describe('PM2 HTTP watchdog', () => {
   it.each([
     { name: 'prod-test', env: { PORT: 0 } },
     { name: 'prod-test', env: { PORT: 65536 } },
+    { name: 'prod-test', env: { PORT: 'oops' } },
+    { name: 'prod-test', env: { PORT: 1.5 } },
     { name: 'unsafe;name', env: { PORT: 3000 } },
   ])('rejects invalid inventory instead of executing arbitrary PM2 names: %j', app => {
     expect(() => targetsFromConfig({ apps: [app] })).toThrow('Invalid liveness target');
@@ -93,6 +95,14 @@ describe('PM2 HTTP watchdog', () => {
     expect(f.deps.restart).not.toHaveBeenCalled();
   });
 
+  it('continues checking other apps when one PM2 PID lookup is unavailable', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const f = fixture();
+    f.deps.pid.mockRejectedValueOnce(new Error('pid query unavailable'));
+    await f.probe.tick([target, { app: 'prod-chat', port: 7007 }]);
+    expect(f.deps.check).toHaveBeenCalledTimes(1);
+    expect(f.deps.check).toHaveBeenCalledWith({ app: 'prod-chat', port: 7007 });
+  });
   it('dry-run never restarts or delivers a real ops receipt', async () => {
     const f = fixture();
     for (let i = 0; i < 4; i++) await f.probe.tick([target], { execute: false });
@@ -156,7 +166,7 @@ describe('operator opt-in', () => {
     expect(parseOptions(['--env', 'dev', '--once', '--execute']))
       .toEqual({ environment: 'dev', once: true, execute: true });
   });
-  it.each([[], ['--env'], ['--env', 'other'], ['--all'], ['--env', 'prod', '--execute', '--dry-run']])(
+  it.each([[], ['--env'], ['--env', 'other'], ['--all'], ['--env', 'prod', '--execute', '--dry-run'], ['--env', 'prod', '--env', 'dev']])(
     'rejects unsafe or ambiguous arguments: %j', args => {
       expect(() => parseOptions(args)).toThrow();
     },

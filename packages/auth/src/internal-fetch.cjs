@@ -4,6 +4,12 @@
 // These are small internal responses, NOT streaming inference: bound headers
 // AND the complete body so sending headers alone cannot evade the deadline.
 const INTERNAL_FETCH_TIMEOUT_MS = 5_000;
+const NETWORK_CODES = new Set([
+  'UND_ERR_HEADERS_TIMEOUT', 'UND_ERR_CONNECT_TIMEOUT', 'UND_ERR_BODY_TIMEOUT',
+  'UND_ERR_SOCKET', 'UND_ERR_ABORTED', 'UND_ERR_REQ_CONTENT_LENGTH_MISMATCH',
+  'UND_ERR_RES_CONTENT_LENGTH_MISMATCH', 'ECONNREFUSED', 'ECONNRESET',
+  'ETIMEDOUT', 'ENOTFOUND', 'EAI_AGAIN', 'EHOSTUNREACH', 'ENETUNREACH', 'ABORT_ERR',
+]);
 
 class InternalFetchError extends Error {
   constructor(targetPath, code, durationMs) {
@@ -18,7 +24,7 @@ class InternalFetchError extends Error {
 function causeCode(error) {
   const code = error?.cause?.code ?? error?.code;
   // Never carry arbitrary error messages (which can contain credentials).
-  return typeof code === 'string' && /^[A-Z0-9_]{1,64}$/.test(code)
+  return NETWORK_CODES.has(code)
     ? code : 'INTERNAL_FETCH_FAILED';
 }
 

@@ -54,7 +54,8 @@ describe('internal ops event ingestion', () => {
 
 describe('liveness event validation', () => {
   it.each([
-    null, [], 'text', {}, { ...event, id: 'invalid' }, { ...event, app: 'prod-jin;restart all' },
+    null, [], 'text', {}, { ...event, id: 'invalid' }, { ...event, id: '-'.repeat(36) },
+    { ...event, app: 'prod-jin;restart all' },
     { ...event, port: 0 }, { ...event, port: 65536 }, { ...event, port: 1.5 },
     { ...event, failures: 0 }, { ...event, failures: 101 }, { ...event, failures: 1.5 },
     { ...event, outcome: 'unknown' }, { ...event, at: 'invalid' },

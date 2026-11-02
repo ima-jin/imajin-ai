@@ -13,7 +13,7 @@ export interface LivenessEvent {
 export function parseLivenessEvent(value: unknown): LivenessEvent | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
   const event = value as Record<string, unknown>;
-  if (typeof event.id !== 'string' || !/^[0-9a-f-]{36}$/.test(event.id)
+  if (typeof event.id !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(event.id)
     || typeof event.app !== 'string' || !/^(dev|prod)-[a-z0-9-]{1,60}$/.test(event.app)
     || !Number.isSafeInteger(event.port) || (event.port as number) < 1 || (event.port as number) > 65535
     || !Number.isSafeInteger(event.failures) || (event.failures as number) < 1 || (event.failures as number) > 100

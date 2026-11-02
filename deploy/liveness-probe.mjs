@@ -22,10 +22,11 @@ function targetsFromConfig(config) {
   return config.apps.flatMap((app) => {
     const args = Array.isArray(app.args) ? app.args.join(' ') : app.args ?? '';
     const match = /(?:^|\s)-p\s+(\d+)(?:\s|$)/.exec(args);
-    const port = Number(app.env?.PORT ?? match?.[1]);
+    const configuredPort = app.env?.PORT ?? match?.[1];
     // Cron/scheduler processes deliberately have no HTTP listener.
-    if (!Number.isSafeInteger(port)) return [];
-    if (port < 1 || port > 65535 || !/^(dev|prod)-[a-z0-9-]{1,60}$/.test(app.name)) {
+    if (configuredPort === undefined) return [];
+    const port = Number(configuredPort);
+    if (!Number.isSafeInteger(port) || port < 1 || port > 65535 || !/^(dev|prod)-[a-z0-9-]{1,60}$/.test(app.name)) {
       throw new Error('Invalid liveness target');
     }
     return [{ app: app.name, port }];
@@ -139,6 +140,8 @@ function createProbe(state, dependencies = {}, policy = POLICY) {
 
 function parseOptions(args) {
   const allowed = new Set(['--env', '--once', '--execute', '--dry-run']);
+  const flags = args.filter((arg) => allowed.has(arg));
+  if (new Set(flags).size !== flags.length) throw new Error('Duplicate probe argument');
   if (args.some((arg, index) => !allowed.has(arg) && args[index - 1] !== '--env')) {
     throw new Error('Unknown probe argument');
   }
