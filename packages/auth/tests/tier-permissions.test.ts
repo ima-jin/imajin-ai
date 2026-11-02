@@ -133,7 +133,9 @@ describe('canDo — graph-gated actions (tier AND trust-graph membership)', () =
 
     await canDo('did:imajin:a b/c', 'dm', 'established', CONNECTIONS_URL);
 
-    expect(fetchSpy).toHaveBeenCalledWith(`${CONNECTIONS_URL}/api/connections/status/did%3Aimajin%3Aa%20b%2Fc`);
+    expect(fetchSpy).toHaveBeenCalledWith(`${CONNECTIONS_URL}/api/connections/status/did%3Aimajin%3Aa%20b%2Fc`, {
+      signal: expect.any(AbortSignal),
+    });
   });
 
   it('fails closed when the connections service errors', async () => {

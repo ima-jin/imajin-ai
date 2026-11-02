@@ -1,7 +1,7 @@
 /**
  * Tests for POST /api/balance/topup (#2016) — always credits the MJN unit.
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { jsonPostRequest, resetMockDbCallState } from '@/src/lib/pay/__tests__/mock-drizzle-table';
 import { SESSION_COOKIE_NAME } from '@imajin/config';
 
@@ -52,8 +52,13 @@ beforeEach(() => {
   vi.clearAllMocks();
   resetMockDbCallState(state);
   process.env.PAY_SERVICE_API_KEY = API_KEY;
+  vi.stubEnv('AUTH_SERVICE_URL', 'http://localhost:7000/auth');
   vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ did: 'did:imajin:x' }))));
   state.checkout.mockResolvedValue({ id: 'cs_topup', url: 'https://checkout.test' });
+});
+afterEach(() => {
+  vi.unstubAllEnvs();
+  vi.unstubAllGlobals();
 });
 
 describe('POST /api/balance/topup — always MJN (#2016)', () => {
