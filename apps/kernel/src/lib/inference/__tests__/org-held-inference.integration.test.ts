@@ -8,7 +8,7 @@ import { NextRequest } from 'next/server';
 
 const h = vi.hoisted(() => ({
   db: null as unknown, key: '', get: vi.fn(), unseal: vi.fn(), usage: vi.fn(),
-  log: vi.fn(), personal: vi.fn(), fallback: vi.fn(), session: vi.fn(), deniedScope: false,
+  log: vi.fn(), personal: vi.fn(), fallback: vi.fn(), session: vi.fn(), deniedScope: false, upstreamMode: 'normal',
 }));
 vi.mock('@/src/db', async () => ({
   ...await import('@/src/db/schemas/auth'), ...await import('@/src/db/schemas/connectors'),
@@ -110,6 +110,7 @@ beforeEach(async () => {
   h.key = randomUUID();
   upstreamCalls = 0;
   h.deniedScope = false;
+  h.upstreamMode = 'normal';
   h.session.mockResolvedValue({ error: 'No session', status: 401 });
   h.get.mockResolvedValue({ senderPubkey: 'node-public', custodyScheme: 'delegation-grant' });
   h.unseal.mockImplementation(async () => h.key);
@@ -143,11 +144,33 @@ beforeEach(async () => {
     expect(input.startsWith('https://api.anthropic.com/v1/')).toBe(true);
     upstreamCalls++;
     expect(new Headers(init?.headers).get('x-api-key')).toBe(h.key);
+    if (h.upstreamMode === 'error') throw new Error(h.key);
+    if (h.upstreamMode === 'echo') return Response.json({ id: h.key, content: h.key }, { headers: { 'x-api-key': h.key } });
+    if (h.upstreamMode === 'stream') return new Response(new ReadableStream<Uint8Array>({
+      start(controller) {
+        const parts = ['data: {"type":"message_start","message":{"id":"msg_test","usage":{"input_tokens":3}}}\n\n',
+          'data: {"text":"', h.key.slice(0, 9), h.key.slice(9), '"}\n\n',
+          'data: {"type":"message_delta","usage":{"output_tokens":2}}\n\n'];
+        for (const part of parts) controller.enqueue(new TextEncoder().encode(part));
+        controller.close();
+      },
+    }), { headers: { 'content-type': 'text/event-stream' } });
     return Response.json({ id: 'msg_test', content: [{ type: 'text', text: 'hello' }], usage: { input_tokens: 3, output_tokens: 2 } });
   }));
 });
 
 describe('org-held Anthropic inference through real auth, grant SQL and route', () => {
+  it.each(['echo', 'stream', 'error'])('keeps keys out of responses, headers, captured logs and metering after upstream %s', async mode => {
+    h.upstreamMode = mode;
+    const response = await POST(request({ model: 'claude-test', messages: [], stream: mode === 'stream' }));
+    expect(response.status).toBe(mode === 'error' ? 502 : 200);
+    await assertPrivate(response);
+    if (mode === 'stream') {
+      await vi.waitFor(() => expect(h.usage).toHaveBeenCalledWith(expect.objectContaining({
+        principalDid: MEMBER, tokensIn: 3, tokensOut: 2,
+      })));
+    }
+  });
   it('injects only server-side and attributes usage to the member with allowlisted org provenance', async () => {
     const response = await POST(request());
     expect(response.status).toBe(200);

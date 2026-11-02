@@ -40,6 +40,19 @@ export async function forwardAnthropic(
   body: ChatCompletionsRequestBody,
   meta: CompletionsRequestMetadata,
 ): Promise<Response> {
+  try {
+    return await forwardAnthropicInternal(brain, body, meta);
+  } catch (err) {
+    if (brain.orgUsage) throw new ExternalMcpError(502, 'Organization inference upstream unavailable');
+    throw err;
+  }
+}
+
+async function forwardAnthropicInternal(
+  brain: ResolvedBrain,
+  body: ChatCompletionsRequestBody,
+  meta: CompletionsRequestMetadata,
+): Promise<Response> {
   const { messages, tools, toolChoice } = translateRequest(body);
   const model = getModel(brain.provider, brain.modelId, {
     apiKey: brain.apiKey,
@@ -149,6 +162,7 @@ function streamAnthropic(
   meta: CompletionsRequestMetadata,
 ): Response {
   const result = streamText({
+    ...(brain.orgUsage ? { onError: () => {} } : {}),
     model,
     messages,
     tools,

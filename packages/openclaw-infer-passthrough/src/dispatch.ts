@@ -188,6 +188,8 @@ async function attemptFallback(
   logFields: LogFields,
   extraResponseHeaders: readonly string[] = [],
 ): Promise<ProxyResponse> {
+  // Org inference must never spend a different key, including during outages.
+  if (deps.route.actingAs) return jsonError(502, 'kernel_unavailable', 'Organization inference requires the kernel');
   const directApiKey = deps.resolveDirectApiKey(deps.route);
   if (!deps.route.directBaseUrl || !directApiKey) {
     deps.log.error({ route: deps.route.id, ...logFields, reason }, 'kernel unavailable and no break-glass direct endpoint configured');

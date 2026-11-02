@@ -77,6 +77,7 @@ export async function handleAnthropicRequest(
 
   const path = kernelPath(req.endpoint);
   const headers = {
+    actingAs: route.actingAs,
     sessionId: req.sessionId,
     turnId: req.turnId,
     warpRunId: req.warpRunId,

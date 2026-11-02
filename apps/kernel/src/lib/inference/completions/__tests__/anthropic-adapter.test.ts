@@ -25,6 +25,7 @@ vi.mock('../../usage-ledger', () => ({ recordInferenceUsage: mockRecordInference
 import { forwardAnthropic } from '../anthropic-adapter';
 import { UpstreamTimeoutError } from '../errors';
 import type { ResolvedBrain } from '../../brain';
+import { randomUUID } from 'node:crypto';
 
 const ANTHROPIC_BRAIN: ResolvedBrain = {
   connector: 'anthropic',
@@ -37,6 +38,43 @@ const ANTHROPIC_BRAIN: ResolvedBrain = {
 const FAKE_MODEL = { modelId: 'fake-model' };
 
 describe('forwardAnthropic', () => {
+  it('uses member attribution and org provenance for a generated org completion, without credential echoes', async () => {
+    const apiKey = randomUUID();
+    const orgUsage = { memberDid: 'did:imajin:member', orgDid: 'did:imajin:org', grantId: 'grant', connectionId: 'connection' };
+    mockGenerateText.mockResolvedValueOnce({
+      text: apiKey, toolCalls: [], finishReason: 'stop',
+      usage: { inputTokens: 1, outputTokens: 2 }, response: { id: apiKey },
+    });
+    const response = await forwardAnthropic({ ...ANTHROPIC_BRAIN, apiKey, orgUsage }, { messages: [] }, {});
+    expect(await response.text()).not.toContain(apiKey);
+    expect(mockRecordInferenceUsage).toHaveBeenCalledWith(expect.objectContaining({
+      principalDid: orgUsage.memberDid,
+      metadata: { orgDid: orgUsage.orgDid, grantId: orgUsage.grantId, connectionId: orgUsage.connectionId },
+      externalId: '[redacted]',
+    }));
+  });
+  it('attributes streamed org usage to the member and hides provider errors', async () => {
+    const apiKey = randomUUID();
+    const orgUsage = { memberDid: 'did:imajin:member', orgDid: 'did:imajin:org', grantId: 'grant', connectionId: 'connection' };
+    async function* parts() {
+      yield { type: 'error', error: new Error(apiKey) };
+    }
+    mockStreamText.mockReturnValueOnce({ fullStream: parts() });
+    const response = await forwardAnthropic({ ...ANTHROPIC_BRAIN, apiKey, orgUsage }, { messages: [], stream: true }, {});
+    const { onFinish } = mockStreamText.mock.calls[0][0];
+    onFinish({ finishReason: 'stop', usage: { inputTokens: 1, outputTokens: 2 }, response: { id: 'msg_test' } });
+    expect(await response.text()).not.toContain(apiKey);
+    expect(mockRecordInferenceUsage).toHaveBeenCalledWith(expect.objectContaining({ principalDid: orgUsage.memberDid }));
+  });
+  it.each(['model', 'generate', 'stream'])('does not expose org credentials from a %s failure', async failure => {
+    const apiKey = randomUUID();
+    const orgUsage = { memberDid: 'did:imajin:member', orgDid: 'did:imajin:org', grantId: 'grant', connectionId: 'connection' };
+    if (failure === 'model') mockGetModel.mockImplementationOnce(() => { throw new Error(apiKey); });
+    if (failure === 'generate') mockGenerateText.mockRejectedValueOnce(new Error(apiKey));
+    if (failure === 'stream') mockStreamText.mockImplementationOnce(() => { throw new Error(apiKey); });
+    await expect(forwardAnthropic({ ...ANTHROPIC_BRAIN, apiKey, orgUsage }, { messages: [], stream: failure === 'stream' }, {}))
+      .rejects.toMatchObject({ status: 502, message: 'Organization inference upstream unavailable' });
+  });
   beforeEach(() => {
     vi.clearAllMocks();
     mockGetModel.mockReturnValue(FAKE_MODEL);

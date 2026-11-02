@@ -22,6 +22,15 @@ describe('loadRoutes', () => {
     OPENCLAW_APP_PRIVATE_KEY: 'test-placeholder',
     INFER_PROXY_PRINCIPAL_DID: 'did:imajin:principal',
   };
+  it.each(['', 123, null, 'not-a-did', 'did:imajin:bad\nheader'])('rejects an invalid actingAs selector: %j', actingAs => {
+    dir = mkdtempSync(join(tmpdir(), 'infer-proxy-'));
+    expect(() => loadRoutes(writeRoutes(dir, [{ id: 'anthropic', principalDid: 'did:imajin:member', actingAs }]))).toThrow();
+  });
+  it('retains a non-secret org selector independently of the member principal', () => {
+    dir = mkdtempSync(join(tmpdir(), 'infer-proxy-'));
+    const route = { id: 'anthropic', principalDid: 'did:imajin:member', actingAs: 'did:imajin:org' };
+    expect(loadRoutes(writeRoutes(dir, [route]))).toEqual([route]);
+  });
 
   it('needs no routes file or grant ID with the principal env', () => {
     const config = loadConfig(minimalEnv);

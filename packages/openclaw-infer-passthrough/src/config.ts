@@ -53,6 +53,7 @@ function isValidRoute(value: unknown): value is ProviderRouteConfig {
     route.id.length > 0 &&
     typeof route.principalDid === 'string' &&
     route.principalDid.trim().length > 0 &&
+    (route.actingAs === undefined || (typeof route.actingAs === 'string' && /^did:[a-z0-9]+:[^\s]+$/.test(route.actingAs))) &&
     (route.modelPrefixes === undefined ||
       (Array.isArray(route.modelPrefixes) && route.modelPrefixes.every((prefix) => typeof prefix === 'string' && prefix.length > 0)))
   );

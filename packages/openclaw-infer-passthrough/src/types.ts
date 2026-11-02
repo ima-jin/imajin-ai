@@ -21,6 +21,8 @@ export interface ProviderRouteConfig {
   id: string;
   /** The owner DID whose sealed connector card this route spends against. */
   principalDid: string;
+  /** Org selector only; kernel verifies principalDid's authority on every call. */
+  actingAs?: string;
   /** @deprecated Ignored; accepted only for migrating old route files. */
   attestationId?: string;
   /** Model-id prefixes that select this route on the unprefixed `/v1/chat/completions` path. */
