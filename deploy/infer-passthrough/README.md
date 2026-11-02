@@ -1,5 +1,6 @@
 # Release deployment for infer-passthrough (#3041, #3082)
 
+Per-caller agent authentication contract is tracked in #3224.
 Gateway bootstrap migration is tracked in #3185; no live host is changed by this PR.
 Thereafter the timer fetches release tags and `origin/main` every two minutes.
 It selects the highest eligible stable `vX.Y.Z` (not a prerelease), without a
