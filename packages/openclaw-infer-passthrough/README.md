@@ -265,6 +265,16 @@ See `config/routes.example.json`. Each entry:
   OpenClaw custom-provider entry per upstream, matching the one-`BRAIN_CONNECTORS`-entry-
   per-provider shape from Phase 1 of the epic).
 - `principalDid` — required per route; kernel resolves the live grant, not a persisted grant ID.
+- `actingAs` — optional org DID for **inference** routes. Keep `principalDid` set to
+  the member DID, not the org. The shim forwards this value as `X-Acting-As`; it is
+  only a selector. The kernel verifies the member's current act-as authority and
+  live org-held Anthropic member grant on every inference call, before unsealing.
+  The `app+jwt` mint/verify contract is unchanged. Org calls never fall back to a
+  personal/app card or a direct provider key, including on kernel outages.
+  Configure the same selector on the `openai` seat when using its catalog routing.
+  The org-held key stays in the kernel vault and is never configured here.
+  Org-held connections contain a service key rather than a picked model; include
+  the requested Anthropic model ID in each completion/messages call.
 - `modelPrefixes` — optional override for model selection on `/v1` or the generic
   `/openai/v1` seat. Omit it to use the catalog. Explicit configured provider paths
   use their own principal; catalog entries never borrow another principal’s break-glass key.

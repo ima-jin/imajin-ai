@@ -81,7 +81,7 @@ export function loadRoutes(configPath: string): ProviderRouteConfig[] {
   const invalid = parsed.filter((entry) => !isValidRoute(entry));
   if (invalid.length > 0) {
     throw new Error(
-      `Routes config at ${configPath} has ${invalid.length} invalid entr${invalid.length === 1 ? 'y' : 'ies'} (id and principalDid required; modelPrefixes must be non-empty strings)`,
+      `Routes config at ${configPath} has ${invalid.length} invalid entr${invalid.length === 1 ? 'y' : 'ies'} (id and principalDid required; actingAs must be a DID; modelPrefixes must be non-empty strings)`,
     );
   }
 
