@@ -216,7 +216,7 @@ export async function forwardAnthropicModelsList(brain: ResolvedBrain, querySuff
     { method: 'GET', headers: upstreamHeaders(brain, {}, 'application/json') },
   );
   const text = inferenceText(brain, await upstream.text());
-  return new Response(text, { status: upstream.status, headers: responseHeaders(upstream, false) });
+  return new Response(text, { status: upstream.status, headers: responseHeaders(upstream, false, brain) });
 }
 
 /** Anthropic's `usage` shape, as carried on both the non-streaming JSON body and the streaming `message_start`/`message_delta` events. */
