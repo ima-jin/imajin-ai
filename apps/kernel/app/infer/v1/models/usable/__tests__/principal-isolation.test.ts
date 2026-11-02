@@ -1,12 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { credentials, registrant, appAuth, sessionAuth, orgBrain, picker } = vi.hoisted(() => ({
+const { credentials, registrant, appAuth, sessionAuth, orgBrain, picker, routeCandidates } = vi.hoisted(() => ({
   credentials: new Map<string, { apiKey: string; modelId?: string }>(),
   registrant: vi.fn(),
   appAuth: vi.fn(),
   sessionAuth: vi.fn(),
   orgBrain: vi.fn(),
   picker: vi.fn(),
+  routeCandidates: vi.fn(),
 }));
 
 vi.mock('@imajin/auth', () => ({
@@ -32,6 +33,10 @@ vi.mock('@/src/lib/kernel/connection-principal', () => ({
     ownerDid: caller.actingAs ?? caller.actorDid, actorDid: caller.actorDid,
     ...(caller.actingAs ? { orgContext: { memberDid: caller.actorDid, orgDid: caller.actingAs } } : {}),
   }),
+}));
+vi.mock('@/src/lib/inference/route-discovery-store', () => ({
+  loadInferenceRouteCandidates: routeCandidates,
+  readInferenceCard: async (did: string, provider: string) => ({ provider, id: `card:${did}:${provider}`, label: provider }),
 }));
 vi.mock('@/src/lib/gemini/connector', () => ({ loadGeminiCredentials: async () => undefined }));
 vi.mock('@/src/lib/anthropic/connector', () => ({
@@ -110,6 +115,60 @@ beforeEach(() => {
     appAuth: { userDid: req.headers.get('authorization')?.slice('Bearer '.length), appDid: APP },
   }));
   sessionAuth.mockResolvedValue({ error: 'Unauthorized', status: 401 });
+  routeCandidates.mockImplementation(async (context) => {
+    const ownDid = context.orgContext?.memberDid ?? context.ownerDid;
+    const own = {
+      kind: 'own', principal: { did: ownDid, handle: null }, context: { ownerDid: ownDid },
+      selectors: {}, orgHeld: false,
+    };
+    return context.orgContext ? [own, {
+      kind: 'C', principal: { did: context.ownerDid, handle: 'artifact' }, context,
+      memberDid: ownDid, selectors: { actingAs: context.ownerDid }, orgHeld: true,
+    }] : [own];
+  });
+});
+
+describe('#3223 explain principal isolation (real auth and brain resolver)', () => {
+  const explain = (principal: string) => new Request(`${KERNEL}?explain=1`, {
+    headers: { authorization: `Bearer ${principal}`, 'x-acting-as': 'did:imajin:forged' },
+  }) as Parameters<typeof GET>[0];
+
+  it.each([MAIN, AGENT])('does not enumerate another principal or a raw header selector for %s', async principal => {
+    const response = await GET(explain(principal));
+    expect(response.status).toBe(200);
+    const { routes } = await response.json();
+    const usable = routes.filter((route: { usable: boolean }) => route.usable);
+    expect(usable).toHaveLength(1);
+    expect(usable[0].billedPrincipal.did).toBe(principal);
+    expect(usable[0].selectedModels).toEqual([credentials.get(principal)!.modelId]);
+    const text = JSON.stringify(routes);
+    for (const forbidden of ['did:imajin:forged', 'fixture-agent', 'fixture-main', 'apiKey', 'fingerprint']) {
+      expect(text).not.toContain(forbidden);
+    }
+    expect(routes.every((route: { billedPrincipal: { did: string } }) => route.billedPrincipal.did === principal)).toBe(true);
+  });
+
+  it('shows a denied C route alongside own cards without using own cards as an org fallback', async () => {
+    appAuth.mockResolvedValue({ error: 'Not an app token', status: 401 });
+    sessionAuth.mockResolvedValue({ identity: { id: MAIN, actingAs: ORG } });
+    orgBrain.mockRejectedValue(new ExternalMcpError(403, 'Active org-connection member grant required for anthropic'));
+    const response = await GET(explain(MAIN));
+    expect(response.status).toBe(200);
+    const { routes } = await response.json();
+    expect(routes.find((route: { kind: string }) => route.kind === 'C')).toMatchObject({
+      billedPrincipal: { did: ORG, handle: 'artifact' }, usable: false, reason: { code: 'no_grant' }, selectedModels: [],
+    });
+    expect(routes.find((route: { usable: boolean }) => route.usable)).toMatchObject({
+      kind: 'own', billedPrincipal: { did: MAIN }, selectedModels: ['main-model'],
+    });
+  });
+
+  it('does not enumerate on a rejected app scope or acting selector', async () => {
+    appAuth.mockResolvedValue({ error: 'Not authorized to act as this group', status: 403 });
+    expect((await GET(explain(AGENT))).status).toBe(403);
+    expect(routeCandidates).not.toHaveBeenCalled();
+    expect(sessionAuth).not.toHaveBeenCalled();
+  });
 });
 
 afterEach(() => {

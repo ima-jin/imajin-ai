@@ -43,7 +43,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { corsHeaders } from '@/src/lib/kernel/cors';
 import { rateLimit, getClientIP } from '@imajin/config';
 import { createLogger } from '@imajin/logger';
-import { resolveInferenceAuth } from '@/src/lib/inference/auth';
+import { resolveInferenceAuth, type InferenceAuthContext } from '@/src/lib/inference/auth';
 import { listUsableModels } from '@/src/lib/inference/brain';
 import { ExternalMcpError } from '@/src/lib/kernel/external-mcp-policy';
 import type { UsableModel } from '@/src/lib/inference/model-catalog';
@@ -74,6 +74,10 @@ export async function GET(request: NextRequest) {
   const { ownerDid, appDid, orgContext, caller } = auth.context;
 
   try {
+    // Opt-in diagnostics leave the existing OpenAI model catalog byte-shape unchanged.
+    if (new URL(request.url ?? 'http://localhost').searchParams.get('explain') === '1') {
+      return explainRoutes(auth.context, cors);
+    }
     const context = appDid || orgContext || caller ? auth.context : ownerDid;
     const brains = await listUsableModels(context);
 
@@ -87,6 +91,16 @@ export async function GET(request: NextRequest) {
       { error: 'models_list_failed', message: 'Listing usable models failed', detail: String(err) },
       { status: 500, headers: cors },
     );
+  }
+}
+
+async function explainRoutes(context: InferenceAuthContext, cors: Record<string, string>) {
+  const headers = { ...cors, 'Cache-Control': 'private, no-store', Vary: 'Cookie, Authorization, x-acting-as' };
+  try {
+    const { listInferenceRoutes } = await import('@/src/lib/inference/route-discovery');
+    return NextResponse.json({ routes: await listInferenceRoutes(context) }, { status: 200, headers });
+  } catch {
+    return NextResponse.json({ error: 'inference_routes_unavailable' }, { status: 503, headers });
   }
 }
 

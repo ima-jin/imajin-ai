@@ -20,6 +20,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { InferenceRoutes } from './components/InferenceRoutes';
 import {
   CONNECTOR_REGISTRY,
   type ConnectorEntry,
@@ -172,6 +173,8 @@ export default function ConnectionsPage() {
           ← Account
         </Link>
       </div>
+
+      <InferenceRoutes />
 
       {/* Connector grid */}
       <div className="grid gap-4 sm:grid-cols-2">
