@@ -707,4 +707,8 @@ function setupDidConnectionsRoute(server) {
   });
 }
 
-module.exports = { setupWebSocket, broadcastMessage, broadcastEvent, setupBroadcastRoute, setupDidConnectionsRoute, sendToDid };
+module.exports = {
+  setupWebSocket, broadcastMessage, broadcastEvent, setupBroadcastRoute, setupDidConnectionsRoute, sendToDid,
+  authenticateToken, authenticateWsToken, updateLastSeen, broadcastPresenceChange,
+  verifyAgentDelegation, fetchNotificationBacklog, releaseWsClaims, ackNotification,
+};

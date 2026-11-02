@@ -5,7 +5,7 @@ import { readFile, writeFile, rename, mkdir, open, unlink } from 'node:fs/promis
 import { dirname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { homedir } from 'node:os';
-import { setTimeout as sleep } from 'node:timers/promises';
+import { setTimeout, clearTimeout } from 'node:timers';
 import process from 'node:process';
 import console from 'node:console';
 import transport from '../packages/auth/src/internal-fetch.cjs';
@@ -16,6 +16,38 @@ const POLICY = Object.freeze({
   intervalMs: 15_000, timeoutMs: 5_000, failures: 3,
   startupGraceMs: 90_000, cooldownMs: 300_000,
 });
+
+function sequential(items, operation) {
+  return items.reduce((pending, item) => pending.then(() => operation(item)), Promise.resolve());
+}
+
+/** One sweep at a time, with no retained recursive promise chain. */
+function runTicks(tick, { once, signal, intervalMs = POLICY.intervalMs }) {
+  if (signal.aborted) return Promise.resolve();
+  let timer;
+  let running = false;
+  let onAbort;
+  const finished = new Promise((resolve, reject) => {
+    const next = () => {
+      running = true;
+      Promise.resolve().then(tick).then(() => {
+        running = false;
+        if (once || signal.aborted) resolve();
+        else timer = setTimeout(next, intervalMs);
+      }, reject);
+    };
+    onAbort = () => {
+      clearTimeout(timer);
+      if (!running) resolve();
+    };
+    signal.addEventListener('abort', onAbort, { once: true });
+    next();
+  });
+  return finished.finally(() => {
+    clearTimeout(timer);
+    signal.removeEventListener('abort', onAbort);
+  });
+}
 
 /** Configs are the inventory; never read `pm2 jlist` (it exposes secrets). */
 function targetsFromConfig(config) {
@@ -86,7 +118,7 @@ function createProbe(state, dependencies = {}, policy = POLICY) {
       return;
     }
     const previous = state.apps[target.app];
-    if (!previous || previous.pid !== currentPid) {
+    if (previous?.pid !== currentPid) {
       state.apps[target.app] = {
         pid: currentPid, firstSeen: deps.now(), failures: 0,
         lastRestart: previous?.lastRestart ?? null,
@@ -120,18 +152,16 @@ function createProbe(state, dependencies = {}, policy = POLICY) {
     state,
     async tick(targets, { execute = false, kernelPort } = {}) {
       // Serial state writes, parallelism isn't needed for this small inventory.
-      for (const target of targets) {
-        await checkTarget(target, execute);
-      }
+      await sequential(targets, (target) => checkTarget(target, execute));
       if (execute) {
         // A dead kernel must not make a long outbox starve the next health tick.
         const pending = state.events.filter((receipt) => !receipt.delivered).slice(0, 5);
-        for (const receipt of pending) {
+        await sequential(pending, async (receipt) => {
           if (await deps.deliver(receipt.event, kernelPort)) {
             receipt.delivered = true;
             await deps.persist(state);
           }
-        }
+        });
       }
       await deps.persist(state);
     },
@@ -180,17 +210,14 @@ async function main(args = process.argv.slice(2)) {
       await rename(`${path}.tmp`, path);
     };
     const probe = createProbe(state, { persist });
-    do {
+    await runTicks(async () => {
       await probe.tick(targets, { ...options, kernelPort });
       console.info(JSON.stringify({
         service: 'liveness-probe', environment: options.environment,
         execute: options.execute, apps: state.apps,
         pendingEvents: state.events.filter((receipt) => !receipt.delivered).length,
       }));
-      if (!options.once && !stop.signal.aborted) {
-        await sleep(POLICY.intervalMs, undefined, { signal: stop.signal }).catch(() => undefined);
-      }
-    } while (!options.once && !stop.signal.aborted);
+    }, { once: options.once, signal: stop.signal });
   } finally {
     process.removeListener('SIGTERM', shutdown);
     process.removeListener('SIGINT', shutdown);
@@ -200,9 +227,10 @@ async function main(args = process.argv.slice(2)) {
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  main().catch(() => {
+  try { await main(); }
+  catch {
     console.error('Liveness probe failed; inspect configuration, PM2 availability and state-file permissions');
     process.exitCode = 1;
-  });
+  }
 }
-export { POLICY, targetsFromConfig, createProbe, checkHealth, parseOptions, main };
+export { POLICY, targetsFromConfig, createProbe, checkHealth, parseOptions, runTicks, main };

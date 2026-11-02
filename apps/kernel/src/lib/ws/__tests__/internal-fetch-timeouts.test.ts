@@ -1,20 +1,8 @@
 import { createRequire } from 'node:module';
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
-import { runInNewContext } from 'node:vm';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 
-// Execute the actual CJS entrypoint, exposing private functions in the test VM
-// only. Production exports are unchanged; every call uses the real shared helper.
-const path = resolve('apps/kernel/ws-server.js');
-const source = readFileSync(path, 'utf8');
-const runtimeModule = { exports: {} as Record<string, (...args: unknown[]) => Promise<unknown>> };
-runInNewContext(`${source}\nObject.assign(module.exports, {
-  authenticateToken, authenticateWsToken, updateLastSeen, broadcastPresenceChange,
-  verifyAgentDelegation, fetchNotificationBacklog, releaseWsClaims, ackNotification,
-});`, {
-  require: createRequire(path), module: runtimeModule, console, process, URL, setTimeout, clearTimeout,
-});
+const require = createRequire(import.meta.url);
+const wsTransport = require('../../../../ws-server.js') as Record<string, (...args: unknown[]) => Promise<unknown>>;
 beforeEach(() => {
   vi.useFakeTimers();
   vi.stubEnv('PORT', '7000');
@@ -34,7 +22,7 @@ it.each([
   ['releaseWsClaims', ['did:imajin:person'], undefined],
   ['ackNotification', ['notification-id', 'did:imajin:person'], undefined],
 ])('bounds WS %s and preserves its fail-closed result', async (name, args, expected) => {
-  const pending = runtimeModule.exports[name as string](...(args as unknown[]));
+  const pending = wsTransport[name as string](...(args as unknown[]));
   await vi.advanceTimersByTimeAsync(5_001);
   expect(await pending).toBe(expected);
   const [, init] = vi.mocked(fetch).mock.calls[0];
@@ -42,7 +30,7 @@ it.each([
   expect(vi.getTimerCount()).toBe(0);
 });
 it('bounds WS notification backlog and propagates a typed error to its existing replayer catch', async () => {
-  const pending = expect(runtimeModule.exports.fetchNotificationBacklog('did:imajin:person'))
+  const pending = expect(wsTransport.fetchNotificationBacklog('did:imajin:person'))
     .rejects.toMatchObject({ name: 'InternalFetchError', code: 'INTERNAL_FETCH_TIMEOUT' });
   await vi.advanceTimersByTimeAsync(5_001);
   await pending;

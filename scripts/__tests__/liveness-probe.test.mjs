@@ -3,7 +3,11 @@ import { once } from 'node:events';
 import { createRequire } from 'node:module';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 const require = createRequire(import.meta.url);
-import { createProbe, targetsFromConfig, parseOptions, checkHealth, POLICY } from '../../deploy/liveness-probe.mjs';
+import { createProbe, targetsFromConfig, parseOptions, checkHealth, POLICY, runTicks } from '../../deploy/liveness-probe.mjs';
+vi.mock('node:timers', () => ({
+  setTimeout: (...args) => globalThis.setTimeout(...args),
+  clearTimeout: (timer) => globalThis.clearTimeout(timer),
+}));
 
 const target = { app: 'prod-jin', port: 7000 };
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.useRealTimers(); });
@@ -158,6 +162,61 @@ describe('PM2 HTTP watchdog', () => {
       await new Promise(resolve => server.close(resolve));
     }
   }, 10_000);
+});
+
+describe('non-overlapping watchdog scheduling', () => {
+  it('does not start another sweep until the first finishes, including during shutdown', async () => {
+    vi.useFakeTimers();
+    const controller = new AbortController();
+    let settle;
+    const tick = vi.fn(() => new Promise(resolve => { settle = resolve; }));
+    let finished = false;
+    const pending = runTicks(tick, { once: false, signal: controller.signal })
+      .then(() => { finished = true; });
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(tick).toHaveBeenCalledTimes(1);
+    settle();
+    await vi.advanceTimersByTimeAsync(POLICY.intervalMs);
+    expect(tick).toHaveBeenCalledTimes(2);
+    controller.abort();
+    await Promise.resolve();
+    expect(finished).toBe(false);
+    settle();
+    await pending;
+    expect(vi.getTimerCount()).toBe(0);
+  });
+  it('stops immediately when idle and clears the next scheduled sweep', async () => {
+    vi.useFakeTimers();
+    const controller = new AbortController();
+    const tick = vi.fn(async () => undefined);
+    const pending = runTicks(tick, { once: false, signal: controller.signal });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(vi.getTimerCount()).toBe(1);
+    controller.abort();
+    await pending;
+    expect(vi.getTimerCount()).toBe(0);
+    expect(tick).toHaveBeenCalledTimes(1);
+  });
+  it('runs exactly once in one-shot mode', async () => {
+    const tick = vi.fn(async () => undefined);
+    await runTicks(tick, { once: true, signal: new AbortController().signal });
+    expect(tick).toHaveBeenCalledTimes(1);
+  });
+  it('does not start when already stopped', async () => {
+    const controller = new AbortController();
+    controller.abort();
+    const tick = vi.fn();
+    await runTicks(tick, { once: false, signal: controller.signal });
+    expect(tick).not.toHaveBeenCalled();
+  });
+  it('propagates a sweep failure for supervisor restart and removes the shutdown listener', async () => {
+    const controller = new AbortController();
+    const remove = vi.spyOn(controller.signal, 'removeEventListener');
+    await expect(runTicks(async () => { throw new Error('stub sweep failure'); }, {
+      once: false, signal: controller.signal,
+    })).rejects.toThrow('stub sweep failure');
+    expect(remove).toHaveBeenCalledWith('abort', expect.any(Function));
+  });
 });
 
 describe('operator opt-in', () => {

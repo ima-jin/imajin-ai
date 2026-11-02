@@ -8,7 +8,7 @@ export interface SessionData {
   subtype?: string;
   name?: string;
   handle?: string;
-  tier?: Identity['tier'];
+  tier?: NonNullable<Identity['tier']>;
   email?: string | null;
   role?: string;
   chainVerified?: boolean;
