@@ -25,6 +25,15 @@ describe('internalFetch total deadline', () => {
     expect(fetch.mock.calls[0][1].signal.aborted).toBe(true);
     expect(vi.getTimerCount()).toBe(0);
   });
+  it('does not expose upstream text in JSON parse errors that callers log', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('SECRET_ECHOED_TOKEN not-json')));
+    const response = await internalFetch('http://localhost/auth/api/session?secret=omitted');
+    const failure = await response.json().catch((error: unknown) => error);
+    expect(failure).toBeInstanceOf(InternalFetchError);
+    expect(failure).toMatchObject({ targetPath: '/auth/api/session', code: 'INTERNAL_RESPONSE_INVALID' });
+    expect(String(failure)).not.toContain('SECRET');
+    expect(String(failure)).not.toContain('omitted');
+  });
 
   it('bounds the body too, not just the time to headers', async () => {
     let signal: AbortSignal | undefined;

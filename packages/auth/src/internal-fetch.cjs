@@ -28,13 +28,28 @@ function causeCode(error) {
     ? code : 'INTERNAL_FETCH_FAILED';
 }
 
-async function readResponse(url, init, signal) {
+class BufferedInternalResponse extends Response {
+  constructor(body, response, targetPath, started) {
+    super(body, response);
+    this.targetPath = targetPath;
+    this.started = started;
+  }
+
+  async json() {
+    try { return await super.json(); }
+    catch {
+      // Node's JSON parse errors may quote upstream text. Never let existing
+      // caller logs stringify that text (an upstream could have echoed a token).
+      throw new InternalFetchError(this.targetPath, 'INTERNAL_RESPONSE_INVALID', Date.now() - this.started);
+    }
+  }
+}
+
+async function readResponse(url, init, signal, targetPath, started) {
   const response = await globalThis.fetch(url, { ...init, signal });
   if (!response.body) return response;
   const body = await response.arrayBuffer();
-  return new Response(body, {
-    status: response.status, statusText: response.statusText, headers: response.headers,
-  });
+  return new BufferedInternalResponse(body, response, targetPath, started);
 }
 
 /**
@@ -65,7 +80,7 @@ async function internalFetch(url, init = {}, timeoutMs = INTERNAL_FETCH_TIMEOUT_
     }, timeoutMs);
   });
   try {
-    return await Promise.race([deadline, readResponse(url, init, controller.signal)]);
+    return await Promise.race([deadline, readResponse(url, init, controller.signal, targetPath, started)]);
   } catch (error) {
     const failure = error instanceof InternalFetchError ? error
       : new InternalFetchError(targetPath, causeCode(error), Date.now() - started);
