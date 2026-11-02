@@ -1,4 +1,4 @@
-import { and, eq, isNotNull, isNull, or } from 'drizzle-orm';
+import { and, eq, inArray, isNotNull, isNull, or } from 'drizzle-orm';
 import {
   db, attestations, connectors, identities, identityMembers, orgConnectionEvents,
   orgConnectionMemberGrants, orgConnectionSuspensions, type ConnectorRow, type OrgConnectionMemberGrant,
@@ -43,9 +43,9 @@ function liveOrgConnection(row: ConnectorRow) {
   return isLiveConnection(row) && row.sealedKeyField && row.loadedByDid && row.loadedAt;
 }
 
-/** Immutable evidence commits in the same transaction as every authority change. */
-async function recordGrantChange(
-  tx: ConnectionTransaction, grant: OrgConnectionMemberGrant, actorDid: string, action: 'granted' | 'grant-revoked', reason: string,
+/** Prepare signed evidence without querying the transaction client. */
+async function prepareGrantChange(
+  grant: OrgConnectionMemberGrant, actorDid: string, action: 'granted' | 'grant-revoked', reason: string,
 ) {
   const event = {
     id: generateId('oce'), orgDid: grant.orgDid, memberDid: grant.memberDid, connectionId: grant.connectionId,
@@ -55,18 +55,31 @@ async function recordGrantChange(
     type: 'connector.org-held', subjectDid: grant.memberDid, contextId: grant.orgDid, contextType: 'org-connections',
     payload: { ...event, grantId: grant.id },
   });
-  await tx.insert(attestations).values(attestation);
-  await tx.insert(orgConnectionEvents).values({ ...event, attestationId: attestation.id });
+  return { attestation, event: { ...event, attestationId: attestation.id } };
+}
+
+/** Immutable evidence commits in the same transaction as every authority change. */
+async function recordGrantChange(
+  tx: ConnectionTransaction, grant: OrgConnectionMemberGrant, actorDid: string, action: 'granted' | 'grant-revoked', reason: string,
+) {
+  const evidence = await prepareGrantChange(grant, actorDid, action, reason);
+  await tx.insert(attestations).values(evidence.attestation);
+  await tx.insert(orgConnectionEvents).values(evidence.event);
 }
 
 async function revokeRows(
   tx: ConnectionTransaction, rows: OrgConnectionMemberGrant[], actorDid: string, reason: string,
 ) {
-  for (const row of rows) {
-    await tx.update(orgConnectionMemberGrants).set({ revokedAt: new Date(), revokedByDid: actorDid, revocationReason: reason })
-      .where(and(eq(orgConnectionMemberGrants.id, row.id), isNull(orgConnectionMemberGrants.revokedAt)));
-    await recordGrantChange(tx, row, actorDid, 'grant-revoked', reason);
-  }
+  if (rows.length === 0) return 0;
+  const revoked = await tx.update(orgConnectionMemberGrants)
+    .set({ revokedAt: new Date(), revokedByDid: actorDid, revocationReason: reason })
+    .where(and(inArray(orgConnectionMemberGrants.id, rows.map(row => row.id)), isNull(orgConnectionMemberGrants.revokedAt)))
+    .returning();
+  if (revoked.length === 0) return 0;
+  const evidence = await Promise.all(revoked.map(row => prepareGrantChange(row, actorDid, 'grant-revoked', reason)));
+  await tx.insert(attestations).values(evidence.map(item => item.attestation));
+  await tx.insert(orgConnectionEvents).values(evidence.map(item => item.event));
+  return revoked.length;
 }
 
 /** No custody access. Duplicate grants/revokes are no-ops; regrant creates a fresh row. */
@@ -82,8 +95,8 @@ export function changeOrgConnectionMemberGrant(
       eq(orgConnectionMemberGrants.connectionId, connection.id), isNull(orgConnectionMemberGrants.revokedAt),
     ));
     if (action === 'revoke') {
-      await revokeRows(tx, rows, actor.actorDid, input.reason);
-      return { changed: rows.length > 0 };
+      const revoked = await revokeRows(tx, rows, actor.actorDid, input.reason);
+      return { changed: revoked > 0 };
     }
     if (!liveOrgConnection(connection)) throw new ExternalMcpError(409, 'Active loaded organization connection required');
     await requireMember(tx, actor.orgDid, input.memberDid, provider);

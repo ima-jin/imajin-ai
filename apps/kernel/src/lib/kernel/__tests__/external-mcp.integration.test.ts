@@ -2,7 +2,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { PGlite } from '@electric-sql/pglite';
 import { drizzle } from 'drizzle-orm/pglite';
 import { getTableConfig, type PgTable } from 'drizzle-orm/pg-core';
-import { eq } from 'drizzle-orm';
+import { eq, inArray } from 'drizzle-orm';
 import { NextRequest } from 'next/server';
 import type { Identity } from '@imajin/auth';
 import type { VaultFile } from '@imajin/vault-core';
@@ -93,7 +93,7 @@ import { GET as ORG_GET, POST as ORG_LOAD, DELETE as ORG_REMOVE, OPTIONS as ORG_
 import { GET as ORG_STATUS, POST as ORG_CHANGE } from '@/app/auth/api/org-connections/route';
 import { removeGroupController } from '@/src/lib/auth/remove-group-controller';
 import { GET as MEMBER_GRANTS, POST as GRANT_MEMBER, DELETE as REVOKE_MEMBER, OPTIONS as GRANT_OPTIONS } from '@/app/connections/api/org-held/[provider]/grants/route';
-import { requireOrgConnectionMemberGrant, listOrgConnectionMemberGrants } from '../org-connection-member-grants';
+import { requireOrgConnectionMemberGrant, listOrgConnectionMemberGrants, revokeRemovedMemberOrgGrants } from '../org-connection-member-grants';
 import { orgConnectionMemberGrantRoute } from '../org-connection-member-grant-route';
 
 const tables = [identities, identityMembers, attestations, channelLinks, registryApps, connectors, orgConnectionSuspensions, orgConnectionEvents,
@@ -1126,6 +1126,91 @@ describe('org-held member grants: durable lifecycle and live metadata contract',
       expect(h.vault).toEqual(vaultBefore);
       expect(await database.select().from(vaultDelegationGrants)).toEqual(custodyBefore);
     } finally { read.mockRestore(); }
+  });
+
+  async function prepareTwoGrants() {
+    await prepare();
+    await orgRequest('POST', 'warp', orgKey());
+    await grantRequest();
+    await grantRequest('POST', 'warp');
+    return grants();
+  }
+
+  it('revokes N grants in one update and batch-inserts N signed proofs and N correctly linked events', async () => {
+    const issued = await prepareTwoGrants();
+    await database.transaction(async tx => {
+      const update = vi.spyOn(tx, 'update');
+      const insert = vi.spyOn(tx, 'insert');
+      await revokeRemovedMemberOrgGrants(tx, org, grantee(), member);
+      expect(update).toHaveBeenCalledTimes(1);
+      expect(update).toHaveBeenCalledWith(orgConnectionMemberGrants);
+      expect(insert.mock.calls.map(([table]) => table)).toEqual([attestations, orgConnectionEvents]);
+    });
+    const revoked = await grants();
+    expect(revoked).toHaveLength(issued.length);
+    expect(revoked.every(row => row.revokedAt && row.revokedByDid === member)).toBe(true);
+    const events = (await database.select().from(orgConnectionEvents).where(eq(orgConnectionEvents.orgDid, org)))
+      .filter(event => event.action === 'grant-revoked');
+    expect(events).toHaveLength(issued.length);
+    expect(new Set(events.map(event => event.attestationId)).size).toBe(issued.length);
+    const proofs = await database.select().from(attestations).where(inArray(attestations.id, events.map(event => event.attestationId)));
+    expect(proofs).toHaveLength(issued.length);
+    expect(new Set(proofs.map(proof => (proof.payload as { grantId: string }).grantId))).toEqual(new Set(issued.map(row => row.id)));
+    for (const event of events) {
+      const proof = proofs.find(row => row.id === event.attestationId)!;
+      const grant = revoked.find(row => row.id === (proof.payload as { grantId: string }).grantId)!;
+      expect(proof.payload).toMatchObject({
+        id: event.id, grantId: grant.id, orgDid: org, memberDid: grantee(), connectionId: grant.connectionId,
+        provider: grant.provider, actorDid: member, action: 'grant-revoked', reason: 'Organization membership removed',
+      });
+      expect(crypto.verifySync(proof.signature, canonicalize({
+        subject_did: proof.subjectDid, type: proof.type, context_id: proof.contextId,
+        context_type: proof.contextType, payload: proof.payload, issued_at: proof.issuedAt.getTime(),
+      }), keys.publicKey)).toBe(true);
+    }
+  });
+
+  it.each([1, 2])('does not write evidence for %i already-revoked rows in a stale selection', async staleCount => {
+    const issued = await prepareTwoGrants();
+    const staleIds = new Set(issued.slice(0, staleCount).map(row => row.id));
+    await database.transaction(async tx => {
+      // Simulate the database changing after selection but before the guarded UPDATE.
+      await tx.update(orgConnectionMemberGrants).set({
+        revokedAt: new Date(), revokedByDid: 'did:imajin:previous-admin', revocationReason: 'Earlier revoke',
+      }).where(inArray(orgConnectionMemberGrants.id, [...staleIds]));
+      const staleSelectionTx = new Proxy(tx, {
+        get(target, property) {
+          if (property === 'select') return () => ({ from: () => ({ where: async () => issued }) });
+          const value = Reflect.get(target, property);
+          return typeof value === 'function' ? value.bind(target) : value;
+        },
+      });
+      await revokeRemovedMemberOrgGrants(staleSelectionTx, org, grantee(), member);
+    });
+    const events = (await database.select().from(orgConnectionEvents).where(eq(orgConnectionEvents.orgDid, org)))
+      .filter(event => event.action === 'grant-revoked');
+    expect(events).toHaveLength(issued.length - staleCount);
+    const proofs = (await database.select().from(attestations).where(eq(attestations.contextId, org)))
+      .filter(proof => (proof.payload as { action?: string }).action === 'grant-revoked');
+    expect(proofs).toHaveLength(issued.length - staleCount);
+    expect(proofs.some(proof => staleIds.has((proof.payload as { grantId: string }).grantId))).toBe(false);
+    const revoked = await grants();
+    expect(revoked.filter(row => staleIds.has(row.id)).every(row =>
+      row.revokedByDid === 'did:imajin:previous-admin' && row.revocationReason === 'Earlier revoke')).toBe(true);
+  });
+
+  it('rolls back all batch revocations and membership removal when the attestation insert fails', async () => {
+    await prepareTwoGrants();
+    const before = await permanentState();
+    await client.exec(`ALTER TABLE auth.attestations ADD CONSTRAINT reject_org_grant_proof
+      CHECK (context_type IS DISTINCT FROM 'org-connections') NOT VALID`);
+    try {
+      await expect(removeGroupController(org, { id: member }, grantee())).rejects.toThrow();
+      expect(await permanentState()).toBe(before);
+      expect((await grants()).every(row => row.revokedAt === null)).toBe(true);
+    } finally {
+      await client.exec('ALTER TABLE auth.attestations DROP CONSTRAINT reject_org_grant_proof');
+    }
   });
 
   it('cascade revokes only the removed member across org-held services and preserves other members, org custody and personal access', async () => {
