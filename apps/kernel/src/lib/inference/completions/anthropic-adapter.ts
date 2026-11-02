@@ -162,7 +162,7 @@ function streamAnthropic(
   meta: CompletionsRequestMetadata,
 ): Response {
   const result = streamText({
-    ...(brain.orgUsage ? { onError: () => {} } : {}),
+    ...(brain.orgUsage ? { onError: () => { /* Provider diagnostics may contain the org key; the stream emits a safe error. */ } } : {}),
     model,
     messages,
     tools,

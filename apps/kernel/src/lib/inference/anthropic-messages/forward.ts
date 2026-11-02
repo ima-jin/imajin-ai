@@ -110,10 +110,10 @@ async function fetchAnthropic(brain: ResolvedBrain, path: string, init: RequestI
   }
 }
 
-function responseHeaders(upstream: Response, stream: boolean): Headers {
+function responseHeaders(upstream: Response, stream: boolean, brain: ResolvedBrain): Headers {
   const headers = new Headers();
   const contentType = upstream.headers.get('content-type');
-  if (contentType) headers.set('Content-Type', contentType);
+  if (contentType) headers.set('Content-Type', inferenceText(brain, contentType));
   if (stream) {
     headers.set('Cache-Control', 'no-cache');
     headers.set('Connection', 'keep-alive');
@@ -161,7 +161,7 @@ export async function forwardAnthropicMessages(
     );
   }
 
-  const outHeaders = responseHeaders(upstream, body.stream);
+  const outHeaders = responseHeaders(upstream, body.stream, brain);
 
   if (body.stream && upstream.body) {
     const [clientBody, meterBody] = inferenceStream(brain, upstream.body).tee();
@@ -199,7 +199,7 @@ export async function forwardAnthropicCountTokens(
   );
 
   const text = inferenceText(brain, await upstream.text());
-  return new Response(text, { status: upstream.status, headers: responseHeaders(upstream, false) });
+  return new Response(text, { status: upstream.status, headers: responseHeaders(upstream, false, brain) });
 }
 
 /**

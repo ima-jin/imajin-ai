@@ -145,7 +145,9 @@ beforeEach(async () => {
     upstreamCalls++;
     expect(new Headers(init?.headers).get('x-api-key')).toBe(h.key);
     if (h.upstreamMode === 'error') throw new Error(h.key);
-    if (h.upstreamMode === 'echo') return Response.json({ id: h.key, content: h.key }, { headers: { 'x-api-key': h.key } });
+    if (h.upstreamMode === 'echo') return Response.json({ id: h.key, content: h.key }, {
+      headers: { 'x-api-key': h.key, 'content-type': `application/json; echo=${h.key}` },
+    });
     if (h.upstreamMode === 'stream') return new Response(new ReadableStream<Uint8Array>({
       start(controller) {
         const parts = ['data: {"type":"message_start","message":{"id":"msg_test","usage":{"input_tokens":3}}}\n\n',
