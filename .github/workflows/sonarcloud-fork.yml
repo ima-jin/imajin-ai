@@ -1,0 +1,114 @@
+name: Trusted Fork SonarCloud
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+
+permissions: {}
+
+# Serialize attempts for a head; cancelled/failed CI must not leave an old green
+# result behind. Eligibility is re-read through the API, not event PR metadata.
+concurrency:
+  group: sonarcloud-trusted-${{ github.event.workflow_run.head_sha }}
+  cancel-in-progress: false
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: read
+      statuses: write
+      packages: read # Required only to pull the existing private CI image.
+    # Ephemeral host, no shared self-hosted caches or volumes. Same image as CI.
+    container:
+      image: ghcr.io/ima-jin/ci-runner@sha256:fcc0fb4320e709976a93ac9f940bb2f532a82d3e7f953798c48dc4b0d8435681
+      # Hosted Ubuntu mounts belong to UID 1001; the image defaults to 1000.
+      # Stay non-root while allowing workspace, outputs and tool-cache writes.
+      options: --user 1001:1001
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Load reviewed main helper only (no checkout)
+        id: bootstrap
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+        with:
+          script: |
+            const { mkdir, writeFile } = require('node:fs/promises');
+            const { join } = require('node:path');
+            const { data } = await github.rest.repos.getContent({
+              owner: 'ima-jin', repo: 'imajin-ai',
+              path: 'scripts/sonar/trusted-fork.mjs', ref: 'main',
+            });
+            if (data.type !== 'file' || data.encoding !== 'base64') {
+              throw new Error('Trusted main helper is not a regular file');
+            }
+            const directory = join(process.env.GITHUB_WORKSPACE, 'trusted', 'scripts', 'sonar');
+            await mkdir(directory, { recursive: true });
+            await writeFile(join(directory, 'trusted-fork.mjs'), Buffer.from(data.content, 'base64'),
+              { flag: 'wx', mode: 0o644 });
+
+      - name: Resolve and authenticate CI and PR
+        id: resolve
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+        with:
+          script: |
+            const { resolveRun } = await import(`${process.env.GITHUB_WORKSPACE}/trusted/scripts/sonar/trusted-fork.mjs`);
+            await resolveRun({ github, context, core });
+
+      - name: Download untrusted coverage from the authenticated CI run
+        if: steps.resolve.outputs.scan == 'true'
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: coverage-lcov
+          path: incoming-coverage
+          run-id: ${{ steps.resolve.outputs.run_id }}
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+
+      # Read Git objects, not a PR checkout: no hooks, checkout filters, executable
+      # modes, symlinks, submodules, LFS, local actions or PR scripts.
+      - name: Materialize exact PR source as validated data
+        if: steps.resolve.outputs.scan == 'true'
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+        with:
+          script: |
+            const { materializeSource } = await import(`${process.env.GITHUB_WORKSPACE}/trusted/scripts/sonar/trusted-fork.mjs`);
+            await materializeSource();
+
+      - name: Validate source and lcov; load base-branch scan settings
+        id: prepare
+        if: steps.resolve.outputs.scan == 'true'
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+        with:
+          script: |
+            const { prepareScan } = await import(`${process.env.GITHUB_WORKSPACE}/trusted/scripts/sonar/trusted-fork.mjs`);
+            const settings = await prepareScan({ github, context });
+            core.setOutput('settings', settings);
+
+      - name: Scan data only with trusted settings and wait for this task's gate
+        id: scan
+        if: steps.resolve.outputs.scan == 'true'
+        uses: SonarSource/sonarqube-scan-action@fd88b7d7ccbaefd23d8f36f73b59db7a3d246602 # v6.0.0, same as CI
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: https://sonarcloud.io
+          SONAR_USER_HOME: /github/home/.sonar
+        with:
+          projectBaseDir: source
+          args: -Dproject.settings="${{ steps.prepare.outputs.settings }}"
+
+      - name: Publish exact-task gate result (fail closed)
+        if: always() && steps.resolve.outputs.scan == 'true'
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SCAN_OUTCOME: ${{ steps.scan.outcome }}
+        with:
+          script: |
+            const { finishScan } = await import(`${process.env.GITHUB_WORKSPACE}/trusted/scripts/sonar/trusted-fork.mjs`);
+            await finishScan({ github, context, core });

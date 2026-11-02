@@ -607,6 +607,9 @@ jobs:
         if: ${{ env.SONAR_TOKEN != '' }}
         uses: SonarSource/sonarqube-scan-action@fd88b7d7ccbaefd23d8f36f73b59db7a3d246602 # v6.0.0
 
-      - name: Skip note (fork without SONAR_TOKEN)
+      - name: NOT SCANNED on fork — see sonarcloud/trusted
         if: ${{ env.SONAR_TOKEN == '' }}
-        run: echo "::notice::SONAR_TOKEN not set — skipping SonarCloud scan (expected on forks)."
+        run: |
+          echo "::warning::NOT SCANNED on fork — this required job is a compatibility skip, not Sonar evidence. See sonarcloud/trusted."
+          echo "### NOT SCANNED on fork — see sonarcloud/trusted" >> "$GITHUB_STEP_SUMMARY"
+          echo "The green SonarCloud job is not a scan pass. The trusted workflow runs after successful fork CI and reports on the exact head SHA." >> "$GITHUB_STEP_SUMMARY"
