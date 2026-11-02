@@ -3,7 +3,9 @@ import { requireAppAuth, requireAuth, resolveActingDid } from '@imajin/auth';
 export interface InferenceAuthContext {
   ownerDid: string;
   appDid?: string;
+  orgContext?: VerifiedInferenceOrgContext;
 }
+export interface VerifiedInferenceOrgContext { memberDid: string; orgDid: string }
 
 export type InferenceAuthResult =
   | { ok: true; context: InferenceAuthContext }
@@ -52,9 +54,16 @@ export async function resolveInferenceAuth(
         status: 400,
       };
     }
-    return { ok: true, context: { ownerDid, appDid: appResult.appAuth.appDid } };
+    const orgDid = appResult.appAuth.actingAs;
+    const memberDid = appResult.appAuth.userDid;
+    return { ok: true, context: {
+      ownerDid: orgDid ?? ownerDid, appDid: appResult.appAuth.appDid,
+      ...(orgDid && memberDid && orgDid !== memberDid ? { orgContext: { memberDid, orgDid } } : {}),
+    } };
   }
 
+  // A verified app denied scope or act-as must not degrade to a cookie session.
+  if (appResult.status === 403) return { ok: false, error: appResult.error, status: 403 };
   const authResult = await requireAuth(request);
   if ('error' in authResult) {
     const hasAppAuthHint = Boolean(
@@ -62,13 +71,22 @@ export async function resolveInferenceAuth(
       request.headers.get('x-app-authorization') ||
       request.headers.get('x-acting-for'),
     );
-    if (hasAppAuthHint || appResult.status === 403) {
+    if (hasAppAuthHint) {
       return { ok: false, error: appResult.error, status: appResult.status };
     }
     return { ok: false, error: authResult.error, status: authResult.status };
   }
 
-  return { ok: true, context: { ownerDid: resolveActingDid(authResult.identity) } };
+  const { identity } = authResult;
+  const ownerDid = resolveActingDid(identity);
+  const orgDid = identity.actingAs;
+  if (orgDid && identity.actingFor && identity.actingFor !== orgDid) {
+    return { ok: false, error: 'Conflicting acting identity context', status: 403 };
+  }
+  return { ok: true, context: {
+    ownerDid,
+    ...(orgDid && orgDid !== identity.id ? { orgContext: { memberDid: identity.id, orgDid } } : {}),
+  } };
 }
 
 /**

@@ -38,12 +38,12 @@ export async function listBrainPickerModels(brain: ResolvedBrain): Promise<strin
         result = await createOpenAiCompatibleModelHandlers(brain.baseURL!).listModels(creds);
     }
     // Preserve the picked model during upstream outages or retirement.
-    if (result.ok) return [...new Set([brain.modelId, ...result.models.map((model) => model.id)])];
+    if (result.ok) return [...new Set([brain.modelId, ...result.models.map((model) => model.id)])].filter(Boolean);
   } catch {
     // Provider exceptions can carry credentials. Never log or return their contents.
     log.warn({ connector: brain.connector }, 'model picker unavailable — retaining picked model only');
   }
-  return [brain.modelId];
+  return brain.modelId ? [brain.modelId] : [];
 }
 
 /**

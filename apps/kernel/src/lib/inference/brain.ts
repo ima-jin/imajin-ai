@@ -41,6 +41,7 @@ import { loadOpenrouterCredentials, OPENROUTER_BASE_URL } from '@/src/lib/openro
 import { lookupAppRegistrantDid } from '@/src/lib/kernel/app-registrant';
 import { forEachSequential } from '@/src/lib/async/sequential';
 import { expandUsableModels, resolvePickerModel, type UsableModel } from './model-catalog';
+import type { VerifiedInferenceOrgContext } from './auth';
 
 const log = createLogger('kernel:inference:brain');
 
@@ -57,6 +58,7 @@ export interface BrainCredentialContext {
   ownerDid?: string;
   /** Invoking app/org DID that may provide the credential and pay for compute. */
   appDid?: string;
+  orgContext?: VerifiedInferenceOrgContext;
 }
 
 /**
@@ -67,6 +69,8 @@ export interface BrainCredentialContext {
  * not a brain. It must never be logged or returned to a caller.
  */
 export interface ResolvedBrain {
+  /** Allowlisted attribution only; no vault field or credential reference. */
+  orgUsage?: { memberDid: string; orgDid: string; grantId: string; connectionId: string };
   /** Connector card the credential came from — safe to log and surface. */
   connector: BrainConnectorId;
   /**
@@ -603,6 +607,11 @@ export async function resolveBrain(
   context: string | BrainCredentialContext,
   options?: ResolveBrainOptions,
 ): Promise<ResolvedBrain> {
+  if (typeof context !== 'string' && context.orgContext) {
+    const { resolveOrgHeldBrain } = await import('./org-held-brain');
+    // Org context never enters the personal/app/registrant connector walk.
+    return resolveOrgHeldBrain(context.orgContext, options?.model?.replace(/^imajin\//, ''));
+  }
   const dids = await resolveCandidateDids(context);
   const candidateConnectors = options?.connectors
     ? BRAIN_CONNECTORS.filter((c) => options.connectors!.includes(c.id))
@@ -673,6 +682,7 @@ export async function listUsableBrains(
   context: string | BrainCredentialContext,
   options?: Pick<ResolveBrainOptions, 'connectors'> & { allCards?: boolean },
 ): Promise<ResolvedBrain[]> {
+  if (typeof context !== 'string' && context.orgContext) return [await resolveBrain(context)];
   const dids = await resolveCandidateDids(context);
   const candidateConnectors = options?.connectors
     ? BRAIN_CONNECTORS.filter((c) => options.connectors!.includes(c.id))

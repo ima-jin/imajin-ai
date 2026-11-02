@@ -164,7 +164,7 @@ function appAuth(overrides: Record<string, unknown> = {}) {
 }
 
 beforeEach(() => {
-  vi.clearAllMocks();
+  vi.resetAllMocks();
   mockRateLimit.mockReturnValue({ limited: false });
   mockRequireAppAuth.mockResolvedValue(NO_APP_CREDENTIALS);
   mockRequireAuth.mockResolvedValue({ identity: { id: OWNER_DID } });
@@ -281,13 +281,13 @@ describe('POST /api/inference/capture — app-provided credentials (#1624)', () 
       error: "Scope 'infer:provide' was not granted",
       status: 403,
     });
-    mockRequireAuth.mockResolvedValueOnce({ error: 'Not authenticated', status: 401 });
 
     const res = await POST(makeReq());
 
     expect(res.status).toBe(403);
     expect(await res.json()).toEqual({ error: "Scope 'infer:provide' was not granted" });
     expect(mockCaptureGesture).not.toHaveBeenCalled();
+    expect(mockRequireAuth).not.toHaveBeenCalled();
   });
 
   it('surfaces the app auth error when app headers were supplied but invalid', async () => {

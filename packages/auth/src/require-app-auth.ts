@@ -1,6 +1,7 @@
 import { internalFetch } from './internal-fetch.cjs';
 import { createLogger } from '@imajin/logger';
 import { getVaultInternalApiKey } from './internal-post';
+import { validateActingAs } from './require-auth';
 const log = createLogger('auth');
 
 export interface AppAuthContext {
@@ -9,6 +10,8 @@ export interface AppAuthContext {
   scopes: string[];
   attestationId: string; // empty string for service tokens
   isServiceToken?: boolean; // true when minted via /auth/api/apps/token/service
+  /** Header selector, verified against current group authority on this request. */
+  actingAs?: string;
 }
 
 export type AppAuthResult =
@@ -77,6 +80,24 @@ async function verifyBearerAppToken(token: string, scope?: string): Promise<AppA
  * Works with both `Request` and `NextRequest`.
  */
 export async function requireAppAuth(
+  request: Request,
+  options?: { scope?: string }
+): Promise<AppAuthResult> {
+  const result = await authenticateApp(request, options);
+  if (!('appAuth' in result)) return result;
+  // The token contract is unchanged. A selector never supplies authority.
+  const actingAs = request.headers.get('x-acting-as');
+  if (!actingAs) return result;
+  const { userDid, isServiceToken } = result.appAuth;
+  if (!userDid || isServiceToken) {
+    return { error: 'Not authorized to act as this group', status: 403 };
+  }
+  const verified = await validateActingAs(userDid, actingAs);
+  if (!verified.valid) return { error: 'Not authorized to act as this group', status: 403 };
+  return { appAuth: { ...result.appAuth, actingAs } };
+}
+
+async function authenticateApp(
   request: Request,
   options?: { scope?: string }
 ): Promise<AppAuthResult> {

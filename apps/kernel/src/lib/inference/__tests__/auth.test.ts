@@ -31,6 +31,39 @@ beforeEach(() => {
 });
 
 describe('resolveInferenceAuth — x-api-key bearer fallback (#1959)', () => {
+  it('retains the member separately from a verified app acting org', async () => {
+    mockRequireAppAuth.mockResolvedValueOnce({
+      appAuth: { appDid: APP_DID, userDid: OWNER_DID, actingAs: 'did:imajin:org' },
+    });
+    expect(await resolveInferenceAuth(makeRequest({ 'x-api-key': 'token', 'x-acting-as': 'did:imajin:org' }))).toEqual({
+      ok: true, context: { ownerDid: 'did:imajin:org', appDid: APP_DID, orgContext: { memberDid: OWNER_DID, orgDid: 'did:imajin:org' } },
+    });
+  });
+  it('retains a verified session member and acting org', async () => {
+    mockRequireAppAuth.mockResolvedValueOnce({ error: 'no app token', status: 401 });
+    mockRequireAuth.mockResolvedValueOnce({ identity: { id: OWNER_DID, actingAs: 'did:imajin:org' } });
+    mockResolveActingDid.mockReturnValueOnce('did:imajin:org');
+    expect(await resolveInferenceAuth(makeRequest({}))).toEqual({
+      ok: true, context: { ownerDid: 'did:imajin:org', orgContext: { memberDid: OWNER_DID, orgDid: 'did:imajin:org' } },
+    });
+  });
+  it('never degrades an app act-as or scope denial to session auth', async () => {
+    mockRequireAppAuth.mockResolvedValueOnce({ error: 'Not authorized to act as this group', status: 403 });
+    expect(await resolveInferenceAuth(makeRequest({}))).toMatchObject({ ok: false, status: 403 });
+    expect(mockRequireAuth).not.toHaveBeenCalled();
+  });
+  it('does not derive org authority from an unverified header', async () => {
+    mockRequireAppAuth.mockResolvedValueOnce({ appAuth: { appDid: APP_DID, userDid: OWNER_DID } });
+    expect(await resolveInferenceAuth(makeRequest({ 'x-acting-as': 'did:imajin:spoof', 'x-acting-for': 'did:imajin:spoof' }))).toEqual({
+      ok: true, context: { ownerDid: OWNER_DID, appDid: APP_DID },
+    });
+  });
+  it('rejects conflicting verified session act-as and act-for targets', async () => {
+    mockRequireAppAuth.mockResolvedValueOnce({ error: 'no app token', status: 401 });
+    mockRequireAuth.mockResolvedValueOnce({ identity: { id: OWNER_DID, actingAs: 'did:imajin:org', actingFor: 'did:imajin:other' } });
+    mockResolveActingDid.mockReturnValueOnce('did:imajin:other');
+    expect(await resolveInferenceAuth(makeRequest({}))).toMatchObject({ ok: false, status: 403 });
+  });
   it('authenticates via x-api-key when no Authorization header is present', async () => {
     mockRequireAppAuth.mockResolvedValueOnce({
       appAuth: { appDid: APP_DID, userDid: OWNER_DID, scopes: ['infer:completions'], attestationId: 'att_1' },

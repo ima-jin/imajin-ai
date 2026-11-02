@@ -45,6 +45,7 @@ import { rateLimit, getClientIP } from '@imajin/config';
 import { createLogger } from '@imajin/logger';
 import { resolveInferenceAuth } from '@/src/lib/inference/auth';
 import { listUsableModels } from '@/src/lib/inference/brain';
+import { ExternalMcpError } from '@/src/lib/kernel/external-mcp-policy';
 import type { UsableModel } from '@/src/lib/inference/model-catalog';
 
 const log = createLogger('kernel:inference:usable-models-route');
@@ -70,16 +71,17 @@ export async function GET(request: NextRequest) {
   if (!auth.ok) {
     return NextResponse.json({ error: auth.error }, { status: auth.status, headers: cors });
   }
-  const { ownerDid, appDid } = auth.context;
+  const { ownerDid, appDid, orgContext } = auth.context;
 
   try {
-    const context = appDid ? { ownerDid, appDid } : ownerDid;
+    const context = appDid || orgContext ? auth.context : ownerDid;
     const brains = await listUsableModels(context);
 
     log.info({ ownerDid, appDid: appDid ?? null, count: brains.length }, 'usable models list: resolved usable brains');
 
     return NextResponse.json(toModelList(brains), { status: 200, headers: cors });
   } catch (err) {
+    if (err instanceof ExternalMcpError) return NextResponse.json({ error: err.message }, { status: err.status, headers: cors });
     log.error({ err: String(err), ownerDid }, 'usable models list: failed');
     return NextResponse.json(
       { error: 'models_list_failed', message: 'Listing usable models failed', detail: String(err) },

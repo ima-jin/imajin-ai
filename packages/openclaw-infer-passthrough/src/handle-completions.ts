@@ -84,6 +84,7 @@ export async function handleCompletions(
     { route, getTokenProvider: deps.getTokenProvider, resolveDirectApiKey: deps.resolveDirectApiKey, health: deps.health, log: deps.log },
     (token) =>
       forwardToKernel(deps.kernelBaseUrl, token, bodyText, deps.kernelTimeoutMs, {
+        actingAs: route.actingAs,
         sessionId: req.sessionId,
         turnId: req.turnId,
         warpRunId: req.warpRunId,

@@ -53,15 +53,16 @@ export async function handleModels(deps: HandleModelsDeps, providerId?: string):
       : jsonError(422, 'no_route_configured', 'No inference route configured in INFER_PROXY_ROUTES_CONFIG for model discovery');
   }
   const tokenProvider = deps.getTokenProvider(routeId);
+  const actingAs = deps.routes?.find(route => route.id === routeId)?.actingAs;
 
   const token = await tokenProvider.getToken();
-  const first = await forwardModelsToKernel(deps.kernelBaseUrl, token, deps.kernelTimeoutMs);
+  const first = await forwardModelsToKernel(deps.kernelBaseUrl, token, deps.kernelTimeoutMs, actingAs);
   await rejectRevokedGrant(first, tokenProvider);
   if (first.status !== 401) return toProxyResponse(first);
 
   tokenProvider.invalidate();
   const freshToken = await tokenProvider.getToken();
-  const retried = await forwardModelsToKernel(deps.kernelBaseUrl, freshToken, deps.kernelTimeoutMs);
+  const retried = await forwardModelsToKernel(deps.kernelBaseUrl, freshToken, deps.kernelTimeoutMs, actingAs);
   if (retried.status === 401) tokenProvider.invalidate();
   await rejectRevokedGrant(retried, tokenProvider);
   return toProxyResponse(retried);

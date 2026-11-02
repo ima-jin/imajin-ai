@@ -53,6 +53,7 @@ function isValidRoute(value: unknown): value is ProviderRouteConfig {
     route.id.length > 0 &&
     typeof route.principalDid === 'string' &&
     route.principalDid.trim().length > 0 &&
+    (route.actingAs === undefined || (typeof route.actingAs === 'string' && /^did:[a-z0-9]+:[^\s]+$/.test(route.actingAs))) &&
     (route.modelPrefixes === undefined ||
       (Array.isArray(route.modelPrefixes) && route.modelPrefixes.every((prefix) => typeof prefix === 'string' && prefix.length > 0)))
   );
@@ -80,7 +81,7 @@ export function loadRoutes(configPath: string): ProviderRouteConfig[] {
   const invalid = parsed.filter((entry) => !isValidRoute(entry));
   if (invalid.length > 0) {
     throw new Error(
-      `Routes config at ${configPath} has ${invalid.length} invalid entr${invalid.length === 1 ? 'y' : 'ies'} (id and principalDid required; modelPrefixes must be non-empty strings)`,
+      `Routes config at ${configPath} has ${invalid.length} invalid entr${invalid.length === 1 ? 'y' : 'ies'} (id and principalDid required; actingAs must be a DID; modelPrefixes must be non-empty strings)`,
     );
   }
 

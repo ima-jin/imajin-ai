@@ -22,6 +22,8 @@ import type { ResolvedBrain } from '../brain';
 import { fetchUpstream } from '../completions/errors';
 import type { CompletionsRequestMetadata } from '../completions/types';
 import { recordInferenceUsage } from '../usage-ledger';
+import { inferenceError, inferenceStream, inferenceText } from '../org-inference-safety';
+import { ExternalMcpError } from '@/src/lib/kernel/external-mcp-policy';
 
 const log = createLogger('kernel:inference:anthropic-messages');
 
@@ -66,6 +68,7 @@ export function applySealedModel(
   bodyText: string,
   modelId: string,
 ): { ok: true; value: PreparedAnthropicBody } | { ok: false; error: string } {
+  if (!modelId) return { ok: false, error: 'Anthropic model is required' };
   let parsed: unknown;
   try {
     parsed = JSON.parse(bodyText);
@@ -98,10 +101,19 @@ function upstreamHeaders(brain: ResolvedBrain, headers: AnthropicRequestHeaders,
   return out;
 }
 
-function responseHeaders(upstream: Response, stream: boolean): Headers {
+async function fetchAnthropic(brain: ResolvedBrain, path: string, init: RequestInit): Promise<Response> {
+  try {
+    return await fetchUpstream(brain.connector, `${ANTHROPIC_MESSAGES_BASE_URL}/${path}`, init, UPSTREAM_TIMEOUT_MS);
+  } catch (err) {
+    if (brain.orgUsage) throw new ExternalMcpError(502, 'Organization inference upstream unavailable');
+    throw err;
+  }
+}
+
+function responseHeaders(upstream: Response, stream: boolean, brain: ResolvedBrain): Headers {
   const headers = new Headers();
   const contentType = upstream.headers.get('content-type');
-  if (contentType) headers.set('Content-Type', contentType);
+  if (contentType) headers.set('Content-Type', inferenceText(brain, contentType));
   if (stream) {
     headers.set('Cache-Control', 'no-cache');
     headers.set('Connection', 'keep-alive');
@@ -132,15 +144,14 @@ export async function forwardAnthropicMessages(
     'anthropic messages passthrough: forwarding to api.anthropic.com',
   );
 
-  const upstream = await fetchUpstream(
-    brain.connector,
-    `${ANTHROPIC_MESSAGES_BASE_URL}/messages`,
+  const upstream = await fetchAnthropic(
+    brain,
+    'messages',
     {
       method: 'POST',
       headers: upstreamHeaders(brain, headers, body.stream ? 'text/event-stream' : 'application/json'),
       body: body.value,
     },
-    UPSTREAM_TIMEOUT_MS,
   );
 
   if (!upstream.ok) {
@@ -150,15 +161,15 @@ export async function forwardAnthropicMessages(
     );
   }
 
-  const outHeaders = responseHeaders(upstream, body.stream);
+  const outHeaders = responseHeaders(upstream, body.stream, brain);
 
   if (body.stream && upstream.body) {
-    const [clientBody, meterBody] = upstream.body.tee();
+    const [clientBody, meterBody] = inferenceStream(brain, upstream.body).tee();
     meterAnthropicMessagesStream(meterBody, brain, meta);
     return new Response(clientBody, { status: upstream.status, headers: outHeaders });
   }
 
-  const text = await upstream.text();
+  const text = inferenceText(brain, await upstream.text());
   await recordAnthropicMessagesUsage(text, brain, meta);
   return new Response(text, { status: upstream.status, headers: outHeaders });
 }
@@ -177,19 +188,18 @@ export async function forwardAnthropicCountTokens(
   bodyValue: string,
   headers: AnthropicRequestHeaders,
 ): Promise<Response> {
-  const upstream = await fetchUpstream(
-    brain.connector,
-    `${ANTHROPIC_MESSAGES_BASE_URL}/messages/count_tokens`,
+  const upstream = await fetchAnthropic(
+    brain,
+    'messages/count_tokens',
     {
       method: 'POST',
       headers: upstreamHeaders(brain, headers, 'application/json'),
       body: bodyValue,
     },
-    UPSTREAM_TIMEOUT_MS,
   );
 
-  const text = await upstream.text();
-  return new Response(text, { status: upstream.status, headers: responseHeaders(upstream, false) });
+  const text = inferenceText(brain, await upstream.text());
+  return new Response(text, { status: upstream.status, headers: responseHeaders(upstream, false, brain) });
 }
 
 /**
@@ -200,15 +210,13 @@ export async function forwardAnthropicCountTokens(
  * nothing.
  */
 export async function forwardAnthropicModelsList(brain: ResolvedBrain, querySuffix: string): Promise<Response> {
-  const upstream = await fetchUpstream(
-    brain.connector,
-    `${ANTHROPIC_MESSAGES_BASE_URL}/models${querySuffix}`,
+  const upstream = await fetchAnthropic(
+    brain,
+    `models${querySuffix}`,
     { method: 'GET', headers: upstreamHeaders(brain, {}, 'application/json') },
-    UPSTREAM_TIMEOUT_MS,
   );
-
-  const text = await upstream.text();
-  return new Response(text, { status: upstream.status, headers: responseHeaders(upstream, false) });
+  const text = inferenceText(brain, await upstream.text());
+  return new Response(text, { status: upstream.status, headers: responseHeaders(upstream, false, brain) });
 }
 
 /** Anthropic's `usage` shape, as carried on both the non-streaming JSON body and the streaming `message_start`/`message_delta` events. */
@@ -244,15 +252,16 @@ async function writeAnthropicMessagesUsage(
     sessionId: meta.sessionId,
     turnId: meta.turnId,
     warpRunId: meta.warpRunId,
-    principalDid: brain.credentialDid,
+    principalDid: brain.orgUsage?.memberDid ?? brain.credentialDid,
     agentDid: meta.agentDid,
     provider: brain.connector,
     model: brain.modelId,
     tokensIn: usage.input_tokens,
     tokensOut: usage.output_tokens,
     // #2204: the `msg_...` id Anthropic assigns this call.
-    externalId,
+    externalId: externalId === undefined ? undefined : inferenceText(brain, externalId),
     metadata: {
+      ...(brain.orgUsage ? { orgDid: brain.orgUsage.orgDid, grantId: brain.orgUsage.grantId, connectionId: brain.orgUsage.connectionId } : {}),
       format: 'anthropic-messages',
       ...(usage.cache_creation_input_tokens !== undefined
         ? { cacheCreationInputTokens: usage.cache_creation_input_tokens }
@@ -346,6 +355,6 @@ function meterAnthropicMessagesStream(
 
     await writeAnthropicMessagesUsage(brain, meta, meter.usage, meter.externalId);
   })().catch((err: unknown) => {
-    log.warn({ err: String(err), connector: brain.connector }, 'anthropic messages passthrough: usage stream tap failed');
+    log.warn({ err: inferenceError(brain, err), connector: brain.connector }, 'anthropic messages passthrough: usage stream tap failed');
   });
 }

@@ -89,7 +89,7 @@ export const dynamic = 'force-dynamic';
 export async function POST(request: NextRequest) {
   const guarded = await guardAnthropicRequest(request);
   if (!guarded.ok) return guarded.response;
-  const { cors, ownerDid, appDid, bodyText } = guarded.value;
+  const { cors, ownerDid, appDid, bodyText, orgContext } = guarded.value;
 
   // #2204: sessionId/turnId/warpRunId ride the shared X-Imajin-* correlation
   // headers (legacy X-Session-Id/X-Turn-Id still accepted).
@@ -99,7 +99,7 @@ export async function POST(request: NextRequest) {
   };
 
   try {
-    const brain = await resolveAnthropicBrain(ownerDid, appDid, extractRequestedModel(bodyText));
+    const brain = await resolveAnthropicBrain(ownerDid, appDid, extractRequestedModel(bodyText), orgContext);
 
     const prepared = applySealedModel(bodyText, brain.modelId);
     if (!prepared.ok) {

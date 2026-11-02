@@ -11,7 +11,8 @@
  *     auth service is unavailable -> the caller should surface that error
  *     as-is, never silently falling back to session auth.
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { randomUUID } from 'node:crypto';
 
 vi.mock('@imajin/logger', () => ({
   createLogger: () => ({ error: vi.fn(), warn: vi.fn(), info: vi.fn() }),
@@ -31,6 +32,66 @@ function bearerRequest(token = 'some-bearer-token'): Request {
 beforeEach(() => {
   vi.clearAllMocks();
   process.env.AUTH_SERVICE_URL = AUTH_SERVICE_URL;
+});
+afterEach(() => {
+  setVaultInternalApiKey(undefined);
+  vi.unstubAllGlobals();
+});
+
+describe('requireAppAuth — live act-as selector (#3202)', () => {
+  const member = 'did:imajin:member';
+  const org = 'did:imajin:org';
+  const appAuth = { appDid: 'did:imajin:app', userDid: member, scopes: ['infer:completions'], attestationId: 'att_1' };
+  function request() {
+    return new Request('https://kernel.test/infer/v1/messages', {
+      headers: { authorization: 'Bearer test-token', 'x-acting-as': org },
+    });
+  }
+  function transport(membership: () => unknown, auth = appAuth) {
+    setVaultInternalApiKey(randomUUID());
+    const fetchMock = vi.fn(async (url: string) => Response.json(
+      url.endsWith('/api/apps/token/verify') ? auth : membership(),
+    ));
+    vi.stubGlobal('fetch', fetchMock);
+    return fetchMock;
+  }
+  it.each(['owner', 'admin', 'maintainer', 'agent'])('verifies the selector with the authenticated member, including %s role', async role => {
+    const fetchMock = transport(() => ({ valid: true, role }));
+    expect(await requireAppAuth(request(), { scope: 'infer:completions' })).toEqual({
+      appAuth: { ...appAuth, actingAs: org },
+    });
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      `${AUTH_SERVICE_URL}/api/apps/token/verify`,
+      `${AUTH_SERVICE_URL}/api/groups/${encodeURIComponent(org)}/controllers/${encodeURIComponent(member)}`,
+    ]);
+  });
+  it('revalidates the same token on the very next call after authority removal', async () => {
+    let valid = true;
+    const fetchMock = transport(() => ({ valid, role: 'agent' }));
+    expect(await requireAppAuth(request())).toHaveProperty('appAuth.actingAs', org);
+    valid = false;
+    expect(await requireAppAuth(request())).toEqual({ error: 'Not authorized to act as this group', status: 403 });
+    expect(fetchMock).toHaveBeenCalledTimes(4);
+  });
+  it.each([
+    { valid: false, role: 'owner' },
+    { valid: true, role: 'member' },
+    { valid: true, role: 'agent', allowedServices: [] },
+  ])('denies rejected or insufficient authority: %j', async membership => {
+    transport(() => membership);
+    expect(await requireAppAuth(request())).toEqual({ error: 'Not authorized to act as this group', status: 403 });
+  });
+  it('fails closed when the authority service fails', async () => {
+    transport(() => { throw new Error('unavailable'); });
+    expect(await requireAppAuth(request())).toEqual({ error: 'Not authorized to act as this group', status: 403 });
+  });
+  it('does not let a service token choose a member through a header', async () => {
+    const fetchMock = transport(() => ({ valid: true, role: 'owner' }), { ...appAuth, userDid: '' });
+    const req = request();
+    req.headers.set('x-acting-for', member);
+    expect(await requireAppAuth(req)).toEqual({ error: 'Not authorized to act as this group', status: 403 });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe('requireAppAuth — bearer path notAppToken discrimination (#1812)', () => {

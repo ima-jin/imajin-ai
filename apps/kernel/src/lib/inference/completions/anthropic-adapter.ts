@@ -27,6 +27,8 @@ import {
 import { UpstreamTimeoutError } from './errors';
 import type { ChatCompletionsRequestBody, CompletionsRequestMetadata } from './types';
 import { recordInferenceUsage } from '../usage-ledger';
+import { inferenceError, inferenceStream, inferenceText } from '../org-inference-safety';
+import { ExternalMcpError } from '@/src/lib/kernel/external-mcp-policy';
 
 const log = createLogger('kernel:inference:completions:anthropic');
 
@@ -34,6 +36,19 @@ const log = createLogger('kernel:inference:completions:anthropic');
 const UPSTREAM_TIMEOUT_MS = 120_000;
 
 export async function forwardAnthropic(
+  brain: ResolvedBrain,
+  body: ChatCompletionsRequestBody,
+  meta: CompletionsRequestMetadata,
+): Promise<Response> {
+  try {
+    return await forwardAnthropicInternal(brain, body, meta);
+  } catch (err) {
+    if (brain.orgUsage) throw new ExternalMcpError(502, 'Organization inference upstream unavailable');
+    throw err;
+  }
+}
+
+async function forwardAnthropicInternal(
   brain: ResolvedBrain,
   body: ChatCompletionsRequestBody,
   meta: CompletionsRequestMetadata,
@@ -115,22 +130,24 @@ async function generateAnthropic(
       sessionId: meta.sessionId,
       turnId: meta.turnId,
       warpRunId: meta.warpRunId,
-      principalDid: brain.credentialDid,
+      principalDid: brain.orgUsage?.memberDid ?? brain.credentialDid,
+      ...(brain.orgUsage ? { metadata: { orgDid: brain.orgUsage.orgDid, grantId: brain.orgUsage.grantId, connectionId: brain.orgUsage.connectionId } } : {}),
       agentDid: meta.agentDid,
       provider: brain.connector,
       model: brain.modelId,
       tokensIn: result.usage.inputTokens,
       tokensOut: result.usage.outputTokens,
       // #2204: the AI SDK surfaces the provider's own response id here.
-      externalId: result.response?.id,
+      externalId: result.response?.id === undefined ? undefined : inferenceText(brain, result.response.id),
     });
 
     const completion = buildChatCompletion(brain.modelId, result);
-    return new Response(JSON.stringify(completion), {
+    return new Response(inferenceText(brain, JSON.stringify(completion)), {
       status: 200,
       headers: { 'Content-Type': 'application/json' },
     });
   } catch (err) {
+    if (brain.orgUsage) throw new ExternalMcpError(502, 'Organization inference upstream unavailable');
     rethrowAsTimeout(brain.connector, err);
   }
 }
@@ -145,6 +162,7 @@ function streamAnthropic(
   meta: CompletionsRequestMetadata,
 ): Response {
   const result = streamText({
+    ...(brain.orgUsage ? { onError: () => { /* Provider diagnostics may contain the org key; the stream emits a safe error. */ } } : {}),
     model,
     messages,
     tools,
@@ -171,16 +189,17 @@ function streamAnthropic(
         sessionId: meta.sessionId,
         turnId: meta.turnId,
         warpRunId: meta.warpRunId,
-        principalDid: brain.credentialDid,
+        principalDid: brain.orgUsage?.memberDid ?? brain.credentialDid,
+        ...(brain.orgUsage ? { metadata: { orgDid: brain.orgUsage.orgDid, grantId: brain.orgUsage.grantId, connectionId: brain.orgUsage.connectionId } } : {}),
         agentDid: meta.agentDid,
         provider: brain.connector,
         model: brain.modelId,
         tokensIn: usage.inputTokens,
         tokensOut: usage.outputTokens,
         // #2204: same provider response id the non-streaming path reads off `result.response.id`.
-        externalId: response?.id,
+        externalId: response?.id === undefined ? undefined : inferenceText(brain, response.id),
       }).catch((err: unknown) => {
-        log.error({ err: String(err), connector: brain.connector }, 'completions passthrough: usage ledger write failed');
+        log.error({ err: inferenceError(brain, err), connector: brain.connector }, 'completions passthrough: usage ledger write failed');
       });
     },
   });
@@ -190,14 +209,14 @@ function streamAnthropic(
     async start(controller) {
       try {
         for await (const part of result.fullStream) {
-          const bytes = encodePart(builder, part);
+          const bytes = encodePart(builder, part, brain);
           if (bytes) controller.enqueue(bytes);
         }
       } catch (err) {
         // A mid-stream network/timeout failure — the 200 + headers already
         // went out, so the only graceful option left is a final error frame
         // rather than an unhandled rejection that hangs the connection.
-        log.warn({ connector: brain.connector, err: describeError(err) }, 'completions passthrough: anthropic stream failed');
+        log.warn({ connector: brain.connector, err: inferenceError(brain, err) }, 'completions passthrough: anthropic stream failed');
         controller.enqueue(sseEncode({ error: { message: 'upstream_error', type: 'upstream_error' } }));
       } finally {
         controller.enqueue(SSE_DONE_FRAME);
@@ -206,13 +225,13 @@ function streamAnthropic(
     },
   });
 
-  return new Response(readable, {
+  return new Response(inferenceStream(brain, readable), {
     status: 200,
     headers: { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' },
   });
 }
 
-function encodePart(builder: OpenAIStreamChunkBuilder, part: TextStreamPart<ToolSet>): Uint8Array | undefined {
+function encodePart(builder: OpenAIStreamChunkBuilder, part: TextStreamPart<ToolSet>, brain: ResolvedBrain): Uint8Array | undefined {
   switch (part.type) {
     case 'text-delta':
       return sseEncode(builder.textDelta(part.text));
@@ -227,12 +246,9 @@ function encodePart(builder: OpenAIStreamChunkBuilder, part: TextStreamPart<Tool
     case 'finish':
       return sseEncode(builder.finish(part.finishReason, part.totalUsage));
     case 'error':
-      return sseEncode({ error: { message: describeError(part.error), type: 'upstream_error' } });
+      return sseEncode({ error: { message: inferenceError(brain, part.error), type: 'upstream_error' } });
     default:
       return undefined;
   }
 }
 
-function describeError(err: unknown): string {
-  return err instanceof Error ? err.message : String(err);
-}
