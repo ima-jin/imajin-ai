@@ -11,6 +11,30 @@ import { GET } from '@/app/connections/api/spec/route';
 const kernelRoot = resolve('apps/kernel');
 
 afterEach(() => vi.restoreAllMocks());
+it('publishes the member grant lifecycle with provenance-only responses and no runtime injection promise', async () => {
+  vi.spyOn(process, 'cwd').mockReturnValue(kernelRoot);
+  const spec = parse(await (await GET()).text());
+  const path = '/api/org-held/{provider}/grants';
+  expect(listApiSpecs().find(item => item.service === 'connections')?.paths).toContain(path);
+  const item = spec.paths[path];
+  for (const verb of ['get', 'post', 'delete']) expect(item[verb].security).toEqual([{ cookieAuth: [] }]);
+  for (const verb of ['post', 'delete']) {
+    expect(item[verb].requestBody.content['application/json'].schema.$ref).toBe('#/components/schemas/OrgConnectionMemberGrantInput');
+    expect(item[verb].responses['200'].content['application/json'].schema.$ref).toBe('#/components/schemas/OrgConnectionMemberGrantChange');
+  }
+  const input = spec.components.schemas.OrgConnectionMemberGrantInput;
+  expect(input.additionalProperties).toBe(false);
+  expect(Object.keys(input.properties)).toEqual(['memberDid', 'reason']);
+  const metadata = spec.components.schemas.OrgConnectionMemberGrant;
+  expect(metadata.additionalProperties).toBe(false);
+  expect(Object.keys(metadata.properties).sort()).toEqual([
+    'connectionId', 'grantedAt', 'grantedByDid', 'id', 'memberDid', 'orgDid', 'provider', 'revocationReason', 'revokedAt', 'revokedByDid',
+  ]);
+  expect(item.post.description).toContain('proxy injection are separate');
+  for (const file of ['llms.txt', 'llms-full.txt']) {
+    expect(readFileSync(resolve(kernelRoot, 'public', file), 'utf8')).toContain(`/connections${path}`);
+  }
+});
 it('serves org-held lifecycle contracts with write-only input and metadata-only responses', async () => {
   vi.spyOn(process, 'cwd').mockReturnValue(kernelRoot);
   const spec = parse(await (await GET()).text());

@@ -4916,6 +4916,87 @@ paths:
                     type: array
                     items: { $ref: "#/components/schemas/DelegationGrant" }
 
+  /api/grants/received/operator-approvals:
+    post:
+      tags: [grants]
+      operationId: readOwnOperatorApprovalsLease
+      summary: Read the signing agent's effective operator:approvals lease expiry (#3018)
+      description: |
+        Read-only POST authenticated solely by the agent's own DID signature;
+        no internal key, session, bearer credential or additional capability is
+        required. Sign canonicalize({from, type, timestamp, payload}) with the
+        registered agent DID's current Ed25519 key (hex signature). type must
+        be agent; payload.operation must be operator:approvals:lease. timestamp
+        is Unix milliseconds, at most five minutes old or 30 seconds ahead.
+        Unknown, suspended, non-agent identities and invalid signatures are denied.
+        The signed from DID is the grantee. Query parameters, X-Acting-As,
+        x-acting-as cookies and X-Acting-For never change the read principal.
+        There is no lookup by another agent, delegator or arbitrary grant ID.
+
+        lease is null when no active, unexpired received grant has an active
+        operator:approvals capability and an audience covering this node's
+        operator DID (also null if no operator is configured). With multiple
+        eligible grants, effective expiry is the latest expiresAt: delivery
+        remains entitled while ANY eligible grant survives. Equal expiries
+        use lexicographically ascending grantId as the stable tie-break.
+        Revoked grants, revoked capabilities, expired grants (expiresAt <= now)
+        and other audiences are absent. Re-read after renewal or revocation;
+        this is a no-store snapshot, not authorization for a future action.
+        Only grantId, capability and expiresAt are disclosed, never signatures,
+        secrets, delegator details or the delegator's issued-grant list.
+
+        Bridge consumers can use expiresAt for once-per-lease T-24h and T-1h
+        warnings (deduplicate by grantId + expiresAt + threshold), pointing to
+        /auth/agents → the grant → Renew. Do not guess a TTL for null leases.
+        Warning scheduling/deduplication is consumer-side, not this endpoint.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [from, type, timestamp, payload, signature]
+              properties:
+                from: { type: string, description: The signing agent's own registered DID }
+                type: { type: string, const: agent }
+                timestamp: { type: integer, description: Unix milliseconds }
+                payload:
+                  type: object
+                  required: [operation]
+                  properties:
+                    operation: { type: string, const: "operator:approvals:lease" }
+                signature: { type: string, pattern: '^[0-9a-fA-F]{128}$' }
+      responses:
+        "200":
+          description: Effective self-scoped lease snapshot, or null when absent
+          headers:
+            Cache-Control:
+              schema: { type: string, const: no-store }
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [lease]
+                properties:
+                  lease:
+                    oneOf:
+                      - type: "null"
+                      - type: object
+                        additionalProperties: false
+                        required: [grantId, capability, expiresAt]
+                        properties:
+                          grantId: { type: string }
+                          capability: { type: string, const: "operator:approvals" }
+                          expiresAt: { type: string, format: date-time }
+        "400":
+          description: Invalid JSON
+        "401":
+          description: Agent DID signature required (credentials alone do not authenticate)
+        "503":
+          description: Identity or lease lookup unavailable; never interpreted as a lease
+
   /api/grants/{grantId}:
     delete:
       tags: [grants]

@@ -101,6 +101,27 @@ export const connectors = connectorsSchema.table('connectors', {
 export type ConnectorRow = typeof connectors.$inferSelect;
 export type NewConnectorRow = typeof connectors.$inferInsert;
 
+/** Regrant inserts a new row; revoked grants and provenance are retained. */
+export const orgConnectionMemberGrants = connectorsSchema.table('org_connection_member_grants', {
+  id: text('id').primaryKey(),
+  orgDid: text('org_did').notNull(),
+  memberDid: text('member_did').notNull(),
+  connectionId: text('connection_id').notNull(),
+  provider: text('provider').notNull(),
+  grantedByDid: text('granted_by_did').notNull(),
+  grantedAt: timestamp('granted_at', { withTimezone: true }).notNull().defaultNow(),
+  revokedAt: timestamp('revoked_at', { withTimezone: true }),
+  revokedByDid: text('revoked_by_did'),
+  revocationReason: text('revocation_reason'),
+}, (table) => ({
+  activeUniq: uniqueIndex('uniq_org_connection_member_grant_active')
+    .on(table.orgDid, table.memberDid, table.connectionId)
+    .where(sql`${table.revokedAt} IS NULL`),
+  memberIdx: index('idx_org_connection_member_grants_member').on(table.orgDid, table.memberDid),
+}));
+
+export type OrgConnectionMemberGrant = typeof orgConnectionMemberGrants.$inferSelect;
+
 /** Empty member/slot means every member/slot for this org+provider, including future installs. */
 export const orgConnectionSuspensions = connectorsSchema.table('org_connection_suspensions', {
   orgDid: text('org_did').notNull(),
