@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import YAML from 'yaml';
 import {
   coverageSource, finishScan, prepareScan, property, resolveRun, selectPr,
-  validateLcov, validateSource, verifyGate, materializeSource, parseTree, gitArguments, scanSettingsPath,
+  validateLcov, validateSource, verifyGate, materializeSource, parseTree, gitArguments, scanSettingsPath, checkScanSettings,
 } from '../sonar/trusted-fork.mjs';
 
 const sha = 'a'.repeat(40);
@@ -87,6 +87,37 @@ describe('CI and unique PR authentication', () => {
     expect(statuses()).toEqual([expect.objectContaining({ sha, state: 'pending', context: 'sonarcloud/trusted' })]);
     expect(github.paginate).toHaveBeenCalledWith(github.rest.pulls.list,
       expect.objectContaining({ state: 'open', per_page: 100 }));
+  });
+
+  it('finds an exact-head open fork after more than one API page of unrelated PRs', async () => {
+    const unrelated = Array.from({ length: 100 }, (_, index) => ({
+      ...pr(), number: index + 1, head: { ...pr().head, sha: 'c'.repeat(40) },
+    }));
+    github.paginate.mockResolvedValue([...unrelated, pr()]);
+    await resolveCi();
+    expect(github.paginate).toHaveBeenCalledWith(github.rest.pulls.list,
+      { ...context.repo, state: 'open', per_page: 100 });
+    expect(core.setOutput).toHaveBeenCalledWith('scan', 'true');
+    expect(statuses().at(-1)).toMatchObject({ sha, state: 'pending' });
+  });
+
+  it('reproduces live #3200: closed before CI completion is ineligible, reopening the exact head permits resolution', async () => {
+    const closedSha = '6fb6dd59e99659ef979bc7aa3e6f9f141a37723e';
+    const openSha = 'ee18042acb70dcceecd86846014d8f77c23e32ec';
+    context.payload.workflow_run.head_sha = closedSha;
+    github.rest.actions.getWorkflowRun.mockResolvedValue({ data: { ...run(), head_sha: closedSha } });
+    const closed = { ...pr(), state: 'closed', closed_at: '2026-11-02T03:02:47Z',
+      head: { ...pr().head, sha: closedSha } };
+    const otherOpen = { ...pr(), number: 3201, head: { ...pr().head, sha: openSha } };
+    github.paginate.mockResolvedValue([otherOpen, closed]);
+    await expect(resolveCi()).rejects.toThrow('found 0. Closed PRs are ineligible.');
+    expect(statuses().at(-1)).toMatchObject({ sha: closedSha, state: 'failure' });
+    expect(core.setOutput).not.toHaveBeenCalled();
+
+    github.paginate.mockResolvedValue([otherOpen, { ...closed, state: 'open', closed_at: null }]);
+    await resolveCi();
+    expect(statuses().at(-1)).toMatchObject({ sha: closedSha, state: 'pending' });
+    expect(core.setOutput).toHaveBeenCalledWith('scan', 'true');
   });
 
   it('ignores spoofed event PR number, branch, repository and conclusion', async () => {
@@ -265,9 +296,14 @@ describe('untrusted source, properties and artifact', () => {
       path: 'sonar-project.properties', ref: baseSha,
     }));
     const config = await readFile(join(dir, 'trusted', 'fork-scan.properties'), 'utf8');
+    await expect(checkScanSettings(settings)).resolves.toBeUndefined();
     expect(config).toContain('sonar.exclusions=base-only');
+    expect(config).toContain('sonar.projectKey=ima-jin_imajin-ai');
+    expect(config).toContain('sonar.organization=ima-jin');
     expect(config).toContain(`sonar.scm.revision=${sha}`);
     expect(config).toContain('sonar.pullrequest.key=3200');
+    expect(config).toContain('sonar.pullrequest.branch=fork-branch');
+    expect(config).toContain('sonar.pullrequest.base=main');
     expect(config).toContain('sonar.qualitygate.wait=true');
     expect(config).toContain('sonar.nodejs.executable=/usr/bin/node');
     expect(config).toContain('sonar.scm.exclusions.disabled=true');
@@ -317,6 +353,25 @@ describe('untrusted source, properties and artifact', () => {
     expect(() => scanSettingsPath()).toThrow('absolute');
     await expect(prepareScan({ github, context })).rejects.toThrow('absolute');
     expect(github.rest.repos.getContent).not.toHaveBeenCalled();
+  });
+
+  it('rejects missing, empty, directory or wrongly resolved scanner settings before scanning', async () => {
+    const settings = scanSettingsPath();
+    await expect(checkScanSettings(settings)).rejects.toMatchObject({ code: 'ENOENT' });
+    await writeFile(settings, '');
+    await expect(checkScanSettings(settings)).rejects.toThrow('regular trusted');
+    await rm(settings);
+    await mkdir(settings);
+    await expect(checkScanSettings(settings)).rejects.toThrow('regular trusted');
+    await expect(checkScanSettings(join(dir, 'source', 'fork-scan.properties'))).rejects.toThrow('trusted absolute');
+    await expect(checkScanSettings(`"${settings}"`)).rejects.toThrow('trusted absolute');
+  });
+
+  it('rejects a symlink in place of the trusted settings', async () => {
+    const target = join(dir, 'trusted', 'settings-target');
+    await mkdir(target);
+    await symlink(target, scanSettingsPath(), 'junction');
+    await expect(checkScanSettings(scanSettingsPath())).rejects.toThrow('regular trusted');
   });
 
   it('escapes property injection and never turns branch text into scanner arguments', () => {
@@ -543,13 +598,19 @@ describe('workflow boundary and same-repo compatibility', () => {
     expect(scan.with.projectBaseDir).toBe('source');
     const prepare = jobs.scan.steps.find((step) => step.id === 'prepare');
     expect(prepare.with.script).toContain("core.setOutput('settings', settings)");
+    expect(prepare.with.script).toContain('await checkScanSettings(settings)');
+    expect(prepare.with.script).toContain('Verified trusted scanner settings file:');
     await seedScan();
     const settings = await prepareScan({ github, context });
     const args = scan.with.args.replaceAll('${{ steps.prepare.outputs.settings }}', settings);
-    const configuredPath = /^-Dproject.settings="([^"]+)"$/.exec(args)?.[1];
+    // v6 strips only surrounding argv quotes, not quotes embedded after '='.
+    const argument = /^"(-Dproject.settings=[^"]+)"$/.exec(args)?.[1];
+    expect(argument).toBe(`-Dproject.settings=${settings}`);
+    const configuredPath = argument.slice('-Dproject.settings='.length);
     expect(isAbsolute(configuredPath)).toBe(true);
     expect(relative(join(dir, 'source'), configuredPath)).toBe(join('..', 'trusted', 'fork-scan.properties'));
     expect(await readFile(resolve(join(dir, 'source'), configuredPath), 'utf8')).toContain('sonar.exclusions=base-only');
+    await expect(checkScanSettings(configuredPath)).resolves.toBeUndefined();
     const final = jobs.scan.steps.at(-1);
     expect(final.if).toContain('always()');
     expect(final.env.SCAN_OUTCOME).toBe('${{ steps.scan.outcome }}');
