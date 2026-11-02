@@ -31,6 +31,10 @@ it('publishes the member grant lifecycle with provenance-only responses and no r
     'connectionId', 'grantedAt', 'grantedByDid', 'id', 'memberDid', 'orgDid', 'provider', 'revocationReason', 'revokedAt', 'revokedByDid',
   ]);
   expect(item.post.description).toContain('proxy injection are separate');
+  expect(item.post.description).toContain("An agent assigned to a DID uses that DID's keys with no member grant");
+  expect(item.post.description).toContain('A human member needs this active per-member grant');
+  expect(item.post.description).toContain('allowed_services and revocation are checked per call');
+  expect(item.post.description).toContain('/auth/connectors');
   for (const file of ['llms.txt', 'llms-full.txt']) {
     expect(readFileSync(resolve(kernelRoot, 'public', file), 'utf8')).toContain(`/connections${path}`);
   }

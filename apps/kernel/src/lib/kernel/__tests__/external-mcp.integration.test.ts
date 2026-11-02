@@ -431,7 +431,7 @@ describe('personal external MCP: real SQL, signatures and vault crypto', () => {
   it.each([true, false])('allows a consenting live app, service=%s, without giving it the key', async service => {
     await connect(); await installApp(service);
     expect((await call(RPC, 'POST', { ...rpcCall(), memberDid: member }, { authorization: 'Bearer FAKE_APP_TOKEN' })).status).toBe(200);
-    expect(requireAppAuth).toHaveBeenCalledWith(expect.anything(), { scope: EXTERNAL_MCP_SCOPE });
+    expect(requireAppAuth).toHaveBeenCalledWith(expect.anything(), { scope: EXTERNAL_MCP_SCOPE, service: 'connections', allowMemberActAs: true });
     expect(h.fetch).toHaveBeenCalledTimes(3);
   });
   it.each(['no-consent', 'revoked-consent', 'dropped-scope', 'inactive-app', 'no-approval', 'wrong-member'])(

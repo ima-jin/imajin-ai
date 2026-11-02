@@ -27,6 +27,12 @@ vi.mock('@/src/lib/kernel/cors', () => ({
 }));
 vi.mock('@/src/lib/kernel/app-registrant', () => ({ lookupAppRegistrantDid: registrant }));
 vi.mock('@/src/lib/inference/org-held-brain', () => ({ resolveOrgHeldBrain: orgBrain }));
+vi.mock('@/src/lib/kernel/connection-principal', () => ({
+  resolveConnectionPrincipal: async (caller: { actorDid: string; actingAs?: string }) => ({
+    ownerDid: caller.actingAs ?? caller.actorDid, actorDid: caller.actorDid,
+    ...(caller.actingAs ? { orgContext: { memberDid: caller.actorDid, orgDid: caller.actingAs } } : {}),
+  }),
+}));
 vi.mock('@/src/lib/gemini/connector', () => ({ loadGeminiCredentials: async () => undefined }));
 vi.mock('@/src/lib/anthropic/connector', () => ({
   loadAnthropicCredentials: async (did: string) => credentials.get(did),
@@ -126,7 +132,7 @@ describe('#3198 principal-scoped sealed inference (real auth orchestration + bra
   });
 
   it('uses only the personal session context when no acting org is selected', async () => {
-    appAuth.mockResolvedValue({ error: 'Not an app token', status: 401 });
+    appAuth.mockResolvedValue({ error: 'Not an app token', status: 401, notAppToken: true });
     sessionAuth.mockResolvedValue({ identity: { id: MAIN } });
     const response = await GET(request(MAIN));
     expect(response.status).toBe(200);
@@ -136,7 +142,7 @@ describe('#3198 principal-scoped sealed inference (real auth orchestration + bra
   });
 
   it('lists the granted org catalog for a verified acting-org session without personal/app fallback', async () => {
-    appAuth.mockResolvedValue({ error: 'Not an app token', status: 401 });
+    appAuth.mockResolvedValue({ error: 'Not an app token', status: 401, notAppToken: true });
     sessionAuth.mockResolvedValue({ identity: { id: MAIN, actingAs: ORG } });
     picker.mockResolvedValue({ ok: true, models: [{ id: 'org-model' }] });
     const response = await GET(request(MAIN));
@@ -151,7 +157,7 @@ describe('#3198 principal-scoped sealed inference (real auth orchestration + bra
   });
 
   it('returns a grant-naming 403 for an ungranted acting-org session, never a personal catalog or a 500', async () => {
-    appAuth.mockResolvedValue({ error: 'Not an app token', status: 401 });
+    appAuth.mockResolvedValue({ error: 'Not an app token', status: 401, notAppToken: true });
     sessionAuth.mockResolvedValue({ identity: { id: MAIN, actingAs: ORG } });
     const error = 'Active org-connection member grant required for anthropic';
     orgBrain.mockRejectedValue(new ExternalMcpError(403, error));

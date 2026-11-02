@@ -241,9 +241,9 @@ describe('forwardOpenAiCompatible', () => {
     const res = await forwardOpenAiCompatible(XAI_BRAIN, { messages: [], stream: true }, {});
     await res.text();
 
-    expect(mockRecordInferenceUsage).toHaveBeenCalledWith(
+    await vi.waitFor(() => expect(mockRecordInferenceUsage).toHaveBeenCalledWith(
       expect.objectContaining({ provider: 'xai', model: 'grok-4', status: 'error' }),
-    );
+    ));
   });
 
   it('#2202: omits status entirely on a successful (2xx) call, unchanged from before this field existed', async () => {
@@ -337,9 +337,9 @@ describe('forwardOpenAiCompatible', () => {
       const text = await res.text();
 
       expect(text).toContain('data: [DONE]');
-      expect(mockRecordInferenceUsage).toHaveBeenCalledWith(
+      await vi.waitFor(() => expect(mockRecordInferenceUsage).toHaveBeenCalledWith(
         expect.objectContaining({ provider: 'local', model: 'llama3', tokensIn: 5, tokensOut: 7 }),
-      );
+      ));
     });
 
     it('propagates UpstreamTimeoutError/UpstreamUnavailableError from egressSafeFetch unchanged', async () => {
@@ -505,9 +505,9 @@ describe('forwardOpenAiCompatible', () => {
       const res = await forwardOpenAiCompatible(XAI_BRAIN, { messages: [], stream: true }, {});
       await res.text();
 
-      expect(mockRecordInferenceUsage).toHaveBeenCalledWith(
+      await vi.waitFor(() => expect(mockRecordInferenceUsage).toHaveBeenCalledWith(
         expect.objectContaining({ externalId: 'chatcmpl-stream-1', tokensIn: 3, tokensOut: 4 }),
-      );
+      ));
     });
   });
 });

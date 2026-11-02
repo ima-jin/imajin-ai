@@ -228,6 +228,12 @@ paths:
         retaining revoked provenance. Each change commits signed connector.org-held
         attestation and org-connection event history atomically. Never accesses custody.
         Defines authority metadata only; inference and Warp proxy injection are separate.
+        A human member needs this active per-member grant to use org-held keys.
+        An agent assigned to a DID uses that DID's keys with no member grant.
+        Runtime assignment, allowed_services and revocation are checked per call;
+        x-acting-as selects the identity and never authorizes access.
+        Missing member grants point to the org connector card on /auth/connectors
+        while acting as the org.
       security:
         - cookieAuth: []
       requestBody:

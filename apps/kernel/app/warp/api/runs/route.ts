@@ -71,7 +71,7 @@ export async function GET(request: NextRequest) {
   const filters = readFilters(new URL(request.url));
 
   try {
-    const page = await listAgentRuns(acting.did, filters);
+    const page = await listAgentRuns(acting.did, filters, ...(acting.caller ? [acting.caller] as const : []));
     return NextResponse.json(page, { headers: cors });
   } catch (err) {
     log.error({ err: String(err), principalDid: acting.did }, 'Warp run list failed');

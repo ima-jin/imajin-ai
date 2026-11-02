@@ -105,6 +105,11 @@ export function authorizeExternalMcp(
 ) {
   return db.transaction(async tx => {
     await lockMember(tx, caller.memberDid);
+    const selected = caller.caller?.actingAs ?? caller.caller?.actingFor;
+    if (selected) {
+      const lock = `org-held-connection:${selected}`;
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${lock}, 0))`);
+    }
     const row = await authorizeMemberConnection(tx, caller, target);
     // A changed member binding is refused generically before request policy or unseal.
     validateCall?.();

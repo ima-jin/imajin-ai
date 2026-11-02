@@ -31,6 +31,29 @@ beforeEach(() => {
 });
 
 describe('resolveInferenceAuth — x-api-key bearer fallback (#1959)', () => {
+  it('refuses a rejected app credential even when a valid personal session is available', async () => {
+    mockRequireAppAuth.mockResolvedValueOnce({ error: 'Invalid app token', status: 401, notAppToken: false });
+    mockRequireAuth.mockResolvedValueOnce({ identity: { id: OWNER_DID } });
+    expect(await resolveInferenceAuth(makeRequest({ authorization: 'Bearer invalid-app', cookie: 'session=fixture' })))
+      .toEqual({ ok: false, error: 'Invalid app token', status: 401 });
+    expect(mockRequireAuth).not.toHaveBeenCalled();
+  });
+  it('does not let an app service token assert a principal using an unverified x-acting-for header', async () => {
+    mockRequireAppAuth.mockResolvedValueOnce({ appAuth: { appDid: APP_DID, userDid: '', isServiceToken: true } });
+    expect(await resolveInferenceAuth(makeRequest({ 'x-acting-for': OWNER_DID })))
+      .toMatchObject({ ok: false, status: 400 });
+  });
+  it('carries a verified human-agent delegation and org selector separately', async () => {
+    mockRequireAppAuth.mockResolvedValueOnce({
+      appAuth: { appDid: APP_DID, userDid: 'did:imajin:agent', actingFor: OWNER_DID, actingAs: 'did:imajin:org' },
+    });
+    expect(await resolveInferenceAuth(makeRequest({}))).toMatchObject({
+      ok: true, context: {
+        ownerDid: 'did:imajin:org', caller: { actorDid: 'did:imajin:agent', actingFor: OWNER_DID, actingAs: 'did:imajin:org' },
+        orgContext: { memberDid: OWNER_DID, orgDid: 'did:imajin:org' },
+      },
+    });
+  });
   it('retains the member separately from a verified app acting org', async () => {
     mockRequireAppAuth.mockResolvedValueOnce({
       appAuth: { appDid: APP_DID, userDid: OWNER_DID, actingAs: 'did:imajin:org' },
@@ -74,7 +97,7 @@ describe('resolveInferenceAuth — x-api-key bearer fallback (#1959)', () => {
     expect(result).toEqual({ ok: true, context: { ownerDid: OWNER_DID, appDid: APP_DID, caller: { actorDid: OWNER_DID } } });
     expect(mockRequireAppAuth).toHaveBeenCalledWith(
       expect.objectContaining({ headers: expect.any(Headers) }),
-      { scope: 'infer:completions', service: 'infer' },
+      { scope: 'infer:completions', service: 'infer', allowMemberActAs: true },
     );
     const forwardedRequest = mockRequireAppAuth.mock.calls[0][0] as Request;
     expect(forwardedRequest.headers.get('authorization')).toBe('Bearer minted-app-token');

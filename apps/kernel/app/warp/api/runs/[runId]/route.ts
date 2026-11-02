@@ -34,7 +34,7 @@ export async function GET(request: NextRequest, props: { params: Promise<{ runId
   if ('response' in run) return run.response;
 
   try {
-    const detail = await getAgentRun(acting.did, run.runId);
+    const detail = await getAgentRun(acting.did, run.runId, ...(acting.caller ? [acting.caller] as const : []));
     return NextResponse.json(detail, { headers: cors });
   } catch (err) {
     log.error(

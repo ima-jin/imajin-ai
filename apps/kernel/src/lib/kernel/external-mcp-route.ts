@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { requireAppAuth, requireAuth } from '@imajin/auth';
 import { corsHeaders } from './cors';
+import { connectionCaller } from './connection-principal-policy';
 import { connectExternalMcp, disconnectExternalMcp, externalMcpStatus, invokeExternalMcp, type ExternalMcpCaller } from './external-mcp';
 import { EXTERNAL_MCP_SCOPE, ExternalMcpError, memberDidSchema, parseExternalMcpCall } from './external-mcp-policy';
 
@@ -15,7 +16,7 @@ export async function personalMember(request: NextRequest): Promise<ExternalMcpC
 }
 async function invocationCaller(request: NextRequest, selected?: string): Promise<ExternalMcpCaller> {
   if (request.headers.has('authorization') || request.headers.has('x-app-did')) {
-    const auth = await requireAppAuth(request, { scope: EXTERNAL_MCP_SCOPE, service: 'connections' });
+    const auth = await requireAppAuth(request, { scope: EXTERNAL_MCP_SCOPE, service: 'connections', allowMemberActAs: true });
     if ('error' in auth) throw new ExternalMcpError(auth.status, 'Scoped app authentication required');
     const app = auth.appAuth;
     const memberDid = app.isServiceToken ? selected : app.userDid;
@@ -24,21 +25,13 @@ async function invocationCaller(request: NextRequest, selected?: string): Promis
     }
     return {
       memberDid: memberDid!, appDid: app.appDid, serviceToken: app.isServiceToken,
-      ...(!app.isServiceToken ? { caller: {
-        actorDid: app.userDid,
-        ...(app.actingAs ? { actingAs: app.actingAs } : {}),
-        ...(app.actingFor ? { actingFor: app.actingFor } : {}),
-      } } : {}),
+      ...(!app.isServiceToken ? { caller: connectionCaller(app.userDid, app) } : {}),
     };
   }
-  const auth = await requireAuth(request, { sessionOnly: true, service: 'connections' });
+  const auth = await requireAuth(request, { sessionOnly: true, service: 'connections', allowMemberActAs: true });
   if ('error' in auth) throw new ExternalMcpError(auth.status, 'Member session required');
   const { identity } = auth;
-  const caller: ExternalMcpCaller = { memberDid: identity.id, caller: {
-    actorDid: identity.id,
-    ...(identity.actingAs ? { actingAs: identity.actingAs } : {}),
-    ...(identity.actingFor ? { actingFor: identity.actingFor } : {}),
-  } };
+  const caller: ExternalMcpCaller = { memberDid: identity.id, caller: connectionCaller(identity.id, identity) };
   if (selected && selected !== caller.memberDid) throw new ExternalMcpError(403, 'Member selector does not match caller');
   return caller;
 }

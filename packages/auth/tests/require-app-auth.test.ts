@@ -91,6 +91,12 @@ describe('requireAppAuth — live act-as selector (#3202)', () => {
     expect(await requireAppAuth(req, { service: 'infer' }))
       .toEqual({ error: 'Not authorized to act for this identity', status: 403 });
   });
+  it('allows ordinary member selection only for explicitly grant-gated connector routes', async () => {
+    transport(() => ({ valid: true, role: 'member' }));
+    expect(await requireAppAuth(request(), { service: 'infer' })).toHaveProperty('status', 403);
+    expect(await requireAppAuth(request(), { service: 'infer', allowMemberActAs: true }))
+      .toHaveProperty('appAuth.actingAs', org);
+  });
   it('revalidates the same token on the very next call after authority removal', async () => {
     let valid = true;
     const fetchMock = transport(() => ({ valid, role: 'agent' }));
@@ -121,6 +127,13 @@ describe('requireAppAuth — live act-as selector (#3202)', () => {
 });
 
 describe('requireAppAuth — bearer path notAppToken discrimination (#1812)', () => {
+  it.each(['app+jwt', 'app-service+jwt'])('never classifies a rejected %s as a session-token candidate', async typ => {
+    const header = Buffer.from(JSON.stringify({ typ })).toString('base64url');
+    vi.stubGlobal('fetch', vi.fn(async () => Response.json({ error: 'Invalid app token' }, { status: 401 })));
+    expect(await requireAppAuth(bearerRequest(`${header}.fixture.invalid`))).toEqual({
+      error: 'Invalid app token', status: 401, notAppToken: false,
+    });
+  });
   it('marks a 401 (invalid/expired token) response as notAppToken', async () => {
     global.fetch = vi.fn(async () =>
       new Response(JSON.stringify({ error: 'Invalid or expired app token' }), { status: 401 }),

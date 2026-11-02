@@ -27,6 +27,7 @@
  */
 import { CONNECTOR_DIDS, CONNECTOR_CHANNELS } from '@imajin/auth/scope-vocabulary';
 import { createConnectorStaticSecret } from '@/src/lib/kernel/connector-static-secret';
+import type { ConnectionCaller } from '@/src/lib/kernel/connection-principal';
 
 /** Connector app DID — the grantee of every per-DID Warp key delegation grant. */
 export const WARP_CONNECTOR_DID = CONNECTOR_DIDS.warp;
@@ -82,7 +83,27 @@ export const sealWarpAgentKey = warpConnector.sealAndGrant;
  * `warp_no_secret` when no key is sealed or the delegation grant has been
  * revoked or expired.
  */
-export function requireAgentKey(principalDid: string): Promise<string> {
+export async function requireAgentKey(principalDid: string, caller?: ConnectionCaller): Promise<string> {
+  if (caller) {
+    const { missingConnection, resolveConnectionPrincipal } = await import('@/src/lib/kernel/connection-principal');
+    const principal = await resolveConnectionPrincipal(caller, 'warp');
+    if (principal.ownerDid !== principalDid) throw missingConnection(principalDid);
+    if (principal.orgContext) {
+      const { authorizeExternalMcp } = await import('@/src/lib/kernel/external-mcp');
+      try {
+        const context = await authorizeExternalMcp({ memberDid: caller.actorDid, caller }, {
+          provider: 'warp', scope: WARP_DISPATCH_SCOPE, service: 'warp',
+        });
+        return context.credential;
+      } catch (error) {
+        const { ExternalMcpError } = await import('@/src/lib/kernel/external-mcp-policy');
+        if (error instanceof ExternalMcpError) throw error;
+        throw new ExternalMcpError(503, 'Organization Warp credential unavailable');
+      }
+    }
+    try { return await warpConnector.requireSecret(principalDid, WARP_DISPATCH_SCOPE); }
+    catch { throw missingConnection(principalDid); }
+  }
   return warpConnector.requireSecret(principalDid, WARP_DISPATCH_SCOPE);
 }
 

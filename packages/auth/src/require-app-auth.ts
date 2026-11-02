@@ -36,6 +36,16 @@ export type AppAuthResult =
 
 const getAuthUrl = () => process.env.AUTH_SERVICE_URL!;
 
+/** Unverified type is only a refusal discriminator; it can never grant access. */
+function claimsAppToken(token: string): boolean {
+  try {
+    const header = JSON.parse(Buffer.from(token.split('.').at(0) ?? '', 'base64url').toString('utf8'));
+    return header?.typ === 'app+jwt' || header?.typ === 'app-service+jwt';
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Verify a short-lived app token (#1069). Calls the kernel's stateless verify
  * endpoint, which checks the EdDSA signature + expiry locally (no DB hit) and
@@ -62,7 +72,7 @@ async function verifyBearerAppToken(token: string, scope?: string): Promise<AppA
       // an app token at all (invalid signature/shape or expired); a 403 means
       // it verified fine but lacks the required scope. Only the former is a
       // "not an app token" signal for the caller's fallback decision.
-      return { error: data.error ?? 'Invalid app token', status: res.status, notAppToken: res.status === 401 };
+      return { error: data.error ?? 'Invalid app token', status: res.status, notAppToken: res.status === 401 && !claimsAppToken(token) };
     }
     return { appAuth: (await res.json()) as AppAuthContext };
   } catch (err) {
@@ -83,7 +93,7 @@ async function verifyBearerAppToken(token: string, scope?: string): Promise<AppA
  */
 export async function requireAppAuth(
   request: Request,
-  options?: { scope?: string; service?: string }
+  options?: { scope?: string; service?: string; allowMemberActAs?: boolean }
 ): Promise<AppAuthResult> {
   const result = await authenticateApp(request, options);
   if (!('appAuth' in result)) return result;
@@ -99,7 +109,9 @@ export async function requireAppAuth(
     return { error: 'Not authorized to act for this identity', status: 403 };
   }
   if (actingAs) {
-    const verified = await validateActingAs(actingFor ?? userDid, actingAs, options?.service);
+    const verified = await validateActingAs(actingFor ?? userDid, actingAs, options?.service, {
+      allowMember: options?.allowMemberActAs,
+    });
     if (!verified.valid) return { error: 'Not authorized to act as this group', status: 403 };
   }
   return { appAuth: { ...result.appAuth, ...(actingAs ? { actingAs } : {}), ...(actingFor ? { actingFor } : {}) } };
