@@ -18,6 +18,38 @@ Workspace imports use @imajin/*. private:true is not evidence of publication;
 the generated package table in README.md links checked public registry metadata.
 License: Imajin Network License (INL) v1.0, source-available, not MIT.
 
+## v0.8.31 source addendum (2026-11-03)
+
+Reviewed v0.8.30..af81cd4b3 (PR #3225, PR #3226, PR #3228, PR #3234, PR #3227,
+PR #3235, PR #3236); the older generated inventory provenance above is retained,
+not regenerated. No migrations were added in this range.
+
+- GET /connections/api/org-held/status?orgDid= is a personal-session-only,
+  private no-store read of loaded org-key status for any active human org
+  member. orgDid is a selector, never authority; live org, human identity and
+  membership are checked. Metadata only (inactive keys omitted, no secret or
+  loader DID). It grants no act-as, member grant, custody, inference or proxy
+  access. See /connections/api/spec.
+- GET /oauth/agent-bindings?agent_did= is a no-store list of the agent/principal
+  choices the signed-in human may approve at OAuth consent: only the assigned
+  human or a human org admin. There is no public assignment list.
+- GET /infer/v1/models/usable?explain=1 adds opt-in, per-caller route
+  diagnostics; the default catalog response is unchanged. /auth/connectors adds
+  an acting-identity-aware Inference routes section plus org-held key and
+  member-grant controls scoped to the acting org DID.
+- Agent key resolution follows the agent's assigned DID through existing live
+  membership/delegation records (no new tables). Members still need an
+  org-held member grant to use an org's keys.
+- @imajin/openclaw-infer-passthrough: the default agent lane forwards each
+  calling agent's own app token and JWT plus per-call x-acting-as. There is no
+  shared fallback; a missing credential is a 401. The deploy health gate
+  accepts liveness under an explicitly declared INFER_PROXY_AUTH_MODE=agent
+  (PR #3234); the host rollout is gated by #3230. The Artifact org bot runs on
+  Artifact's Anthropic lane (PR #3236); its Warp lane is #3203.
+- OpenClaw gateways connect through mcp.imajin.ai with explicit agent/principal
+  selection at consent (PR #3235). Runbook: docs/ops/openclaw-mcp.md; host
+  configuration and the dogfood window are #3237.
+
 ## v0.8.30 source addendum (2026-11-02)
 
 Reviewed v0.8.29..2342115f5 (PR #3205, PR #3207, PR #3200, PR #3201);
