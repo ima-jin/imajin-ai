@@ -107,7 +107,8 @@ function MemberGrants({ entry, orgDid, members, loaded }: Readonly<{
     <p className="text-sm text-gray-400">Human members need a specific grant to use this org key (use-case C). An agent assigned to the org uses the org&apos;s keys without a member grant.</p>
     {error && <p role="alert" className="text-sm text-red-400">{error}</p>}
     {grants === null && !error && <p className="text-sm text-gray-400">Loading member grants…</p>}
-    <label className="block text-sm text-gray-300">Grant/revoke reason (required; never enter credentials)
+    <label className="block text-sm text-gray-300">
+      <span>Grant/revoke reason (required; never enter credentials)</span>
       <input className={fieldClass} value={reason} onChange={event => setReason(event.target.value)} maxLength={500} disabled={busy} />
     </label>
     {members.length === 0 && <p className="text-sm text-gray-400">No human members.</p>}
@@ -177,7 +178,8 @@ function OrgKeyCard({ entry, orgDid, initial, canManage, members, statusUnavaila
     {error && <p role="alert" className="text-sm text-red-400">{error}</p>}
     {canManage && <>
       <form onSubmit={event => void change('POST', event)} className="space-y-3">
-        <label className="block text-sm text-gray-300">{metadata ? 'Replacement service key' : 'Service key'} (write-only)
+        <label className="block text-sm text-gray-300">
+          <span>{metadata ? 'Replacement service key' : 'Service key'} (write-only)</span>
           <input ref={input} type="password" autoComplete="new-password" required maxLength={4096} disabled={busy} className={fieldClass} />
         </label>
         <p className="text-xs text-gray-500">Sealed for this org. The value is cleared on submit and never shown again.</p>
