@@ -5,6 +5,7 @@ The kernel — the Next.js application implementing the six primitives (Attestat
 As of 2026-10-21, all six extracted verticals live in their own repositories behind the [registered-app contract](https://github.com/ima-jin/imajin-ai/issues/1981): [coffee](https://github.com/ima-jin/coffee/blob/main/README.md), [dykil](https://github.com/ima-jin/dykil/blob/main/README.md), [events](https://github.com/ima-jin/events/blob/main/README.md), [learn](https://github.com/ima-jin/learn/blob/main/README.md), [links](https://github.com/ima-jin/links/blob/main/README.md) and [market](https://github.com/ima-jin/market/blob/main/README.md). Events' kernel copy was pruned in [#2517](https://github.com/ima-jin/imajin-ai/issues/2517); its cutover closed on 2026-10-20 with buy/QR smoke deferred to [#2989](https://github.com/ima-jin/imajin-ai/issues/2989). Dykil's node-witnessed legacy import remains incomplete in [#2522](https://github.com/ima-jin/imajin-ai/issues/2522). See the [root README](../../README.md) for the generated inventory and dated acceptance status; source extraction alone is not operational acceptance.
 
 ## Run it
+Agent self-discovery work is tracked in #3250; live acceptance remains an operator step after merge.
 
 ```bash
 pnpm --filter @imajin/kernel dev   # http://localhost:3000
