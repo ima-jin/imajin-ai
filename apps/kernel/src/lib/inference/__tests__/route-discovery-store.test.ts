@@ -1,176 +1,114 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { results, queries, registration } = vi.hoisted(() => ({
-  results: [] as unknown[][],
-  queries: [] as { sql: string; params: unknown[] }[],
-  registration: vi.fn(),
+const h = vi.hoisted(() => ({
+  results: [] as unknown[][], queries: [] as { sql: string; params: unknown[] }[],
+  registration: vi.fn(), assignment: vi.fn(), principal: vi.fn(),
 }));
 vi.mock('@/src/db', async () => {
   const schema = await import('@/src/db/schemas/auth');
   const { PgDialect } = await import('drizzle-orm/pg-core');
   function where(predicate: Parameters<InstanceType<typeof PgDialect>['sqlToQuery']>[0]) {
-    queries.push(new PgDialect().sqlToQuery(predicate));
-    const rows = results.shift() ?? [];
+    h.queries.push(new PgDialect().sqlToQuery(predicate));
+    const rows = h.results.shift() ?? [];
     return Object.assign(Promise.resolve(rows), { limit: () => Promise.resolve(rows) });
   }
-  return {
-    ...schema,
-    db: {
-      select: () => ({ from: () => ({ where }) }),
-    },
-  };
+  return { ...schema, db: { select: () => ({ from: () => ({ where }) }) } };
 });
-vi.mock('@imajin/auth', async () => import('../../../../../../packages/auth/src/delegation-grant'));
+vi.mock('@/src/lib/kernel/connection-principal', () => ({
+  requireAgentAssignment: h.assignment, resolveConnectionPrincipal: h.principal,
+}));
 vi.mock('@/src/lib/kernel/connector-registry-store', () => ({
-  readConnectorRegistration: registration,
+  readConnectorRegistration: h.registration,
   connectorRegistryId: (did: string, provider: string) => `card:${did}:${provider}`,
 }));
 import { loadInferenceRouteCandidates, readInferenceCard } from '../route-discovery-store';
+import { ExternalMcpError } from '@/src/lib/kernel/external-mcp-policy';
 
 const MEMBER = 'did:imajin:member';
 const AGENT = 'did:imajin:agent';
 const ORG = 'did:imajin:artifact';
 const actor = (did = MEMBER, subtype = 'human') => ({ did, handle: did === MEMBER ? 'ryan' : 'jin', scope: 'actor', subtype });
 const org = () => ({ did: ORG, handle: 'artifact', scope: 'business', subtype: null });
-beforeEach(() => { results.length = 0; queries.length = 0; registration.mockReset(); });
+beforeEach(() => {
+  h.results.length = 0;
+  h.queries.length = 0;
+  vi.resetAllMocks();
+  h.assignment.mockResolvedValue(undefined);
+  h.principal.mockResolvedValue({});
+});
 
-describe('held-route enumeration (no credential authorization)', () => {
-  it('enumerates personal own and C routes without granting membership any authority', async () => {
-    results.push([actor()], [{ did: ORG, role: 'member' }], [org()]);
+describe('canonical held-route enumeration', () => {
+  it('binds personal/organization metadata to their actual DIDs and checks every candidate', async () => {
+    h.results.push([actor()], [{ did: ORG, role: 'member' }], [org()]);
     const routes = await loadInferenceRouteCandidates({ ownerDid: MEMBER });
     expect(routes.map(row => [row.kind, row.principal.did])).toEqual([['own', MEMBER], ['C', ORG]]);
-    expect(routes[1].context).toMatchObject({
-      ownerDid: ORG, orgContext: { memberDid: MEMBER, orgDid: ORG },
-      caller: { actorDid: MEMBER, actingAs: ORG },
-    });
     expect(routes[1].principal.handle).toBe('artifact');
-    expect(routes[1].orgHeld).toBe(true);
-  });
-
-  it('retains both the verified member and selected org identity, never the personal handle for org billing', async () => {
-    results.push([actor()], [{ did: ORG, role: 'admin' }], [org()]);
-    const context = { ownerDid: ORG, orgContext: { memberDid: MEMBER, orgDid: ORG } };
-    const routes = await loadInferenceRouteCandidates(context);
-    expect(routes).toHaveLength(2);
-    expect(routes[1].context).toBe(context);
-    expect(routes[1].principal).toEqual({ did: ORG, handle: 'artifact' });
-    expect(routes[1].selectors).toEqual({ actingAs: ORG });
-    expect(routes[0].context.ownerDid).toBe(MEMBER);
-  });
-  it('records a disappeared membership as a diagnostic fact, not an alternate authorization gate', async () => {
-    results.push([actor()], [], [org()]);
-    const routes = await loadInferenceRouteCandidates({
-      ownerDid: ORG, orgContext: { memberDid: MEMBER, orgDid: ORG },
+    expect(routes[1].context).toMatchObject({
+      ownerDid: ORG, caller: { actorDid: MEMBER, actingAs: ORG }, orgContext: { memberDid: MEMBER, orgDid: ORG },
     });
-    expect(routes[1].memberIsActive).toBe(false);
-    expect(routes[1].context).toMatchObject({ orgContext: { memberDid: MEMBER, orgDid: ORG } });
+    expect(h.principal).toHaveBeenCalledWith({ actorDid: MEMBER, actingAs: ORG }, 'infer');
+    expect(h.queries[1].params).toEqual([MEMBER]);
+    expect(h.queries[1].sql).toContain('"removed_at" is null');
   });
-
-  it('keeps A and B distinct and honors the verified caller interface without changing it', async () => {
-    results.push(
-      [actor(AGENT, 'agent')],
-      [{ did: ORG, role: 'agent' }, { did: MEMBER, role: 'agent' }],
-      [], [org()], [actor()],
-    );
-    const selected = { ownerDid: AGENT, caller: { actorDid: AGENT } };
-    const routes = await loadInferenceRouteCandidates(selected);
-    expect(routes.map(row => row.kind)).toEqual(['own', 'A', 'B']);
-    expect(routes[1].context).toMatchObject({ caller: { actorDid: AGENT, actingAs: ORG } });
-    expect(routes[2].context).toMatchObject({ caller: { actorDid: AGENT, actingFor: MEMBER } });
-    expect(routes[1].pendingAssignmentResolver).toBeUndefined();
+  it('uses the canonical assignment gate, not an independent grant/audience interpretation', async () => {
+    h.results.push([actor(AGENT, 'agent')], [], [{ did: ORG }, { did: MEMBER }], [org()]);
+    h.assignment.mockImplementation(async (_db, _agent, did) => {
+      if (did === MEMBER) throw new ExternalMcpError(403, 'arbitrary', 'agent_not_assigned');
+    });
+    const routes = await loadInferenceRouteCandidates({ ownerDid: AGENT, caller: { actorDid: AGENT } });
+    expect(routes.map(row => row.principal.did)).toEqual([AGENT, ORG]);
+    expect(h.assignment).toHaveBeenCalledWith(expect.anything(), AGENT, ORG, 'infer');
+    expect(h.queries[2].sql).toContain('"revoked_at" is null');
+    expect(h.queries[2].sql).toContain('"expires_at" >');
   });
-
-  it('does not probe fabricated assignments on the older resolver', async () => {
-    results.push([actor(AGENT, 'agent')], [{ did: ORG, role: 'agent' }], [], [org()]);
+  it('keeps an inference-excluded assignment visible with its typed denial and does not traverse a denied human', async () => {
+    const error = new ExternalMcpError(403, 'arbitrary', 'service_not_allowed');
+    h.results.push([actor(AGENT, 'agent')], [{ did: MEMBER, role: 'agent' }], [], [actor()]);
+    h.assignment.mockRejectedValue(error);
+    h.principal.mockImplementation(async caller => {
+      if (caller.actingFor) throw error;
+      return {};
+    });
     const routes = await loadInferenceRouteCandidates({ ownerDid: AGENT });
-    expect(routes[1].pendingAssignmentResolver).toBe(true);
+    expect(routes[1]).toMatchObject({ kind: 'B', authorizationError: error });
+    expect(h.queries).toHaveLength(4);
   });
-
-  it('keeps direct A and agent-through-human C routes to the same org distinct', async () => {
-    results.push([actor(AGENT, 'agent')], [{ did: ORG, role: 'agent' }, { did: MEMBER, role: 'agent' }],
+  it('keeps direct org A and through-human C routes distinct', async () => {
+    h.results.push([actor(AGENT, 'agent')], [{ did: ORG, role: 'agent' }, { did: MEMBER, role: 'agent' }],
       [], [org()], [actor()], [{ did: ORG, role: 'member' }], [org()]);
-    const routes = await loadInferenceRouteCandidates({ ownerDid: AGENT, caller: { actorDid: AGENT } });
-    const orgRoutes = routes.filter(route => route.principal.did === ORG);
-    expect(orgRoutes.map(route => route.kind)).toEqual(['A', 'C']);
-    expect(orgRoutes[1].context).toMatchObject({
-      ownerDid: ORG, caller: { actorDid: AGENT, actingFor: MEMBER, actingAs: ORG },
-      orgContext: { memberDid: MEMBER, orgDid: ORG },
-    });
-    expect(orgRoutes[1].memberDid).toBe(MEMBER);
-    expect(queries[5].params).toEqual([MEMBER]);
+    const routes = await loadInferenceRouteCandidates({ ownerDid: AGENT });
+    expect(routes.filter(row => row.principal.did === ORG).map(row => row.kind)).toEqual(['A', 'C']);
+    expect(routes.at(-1)?.context.caller).toEqual({ actorDid: AGENT, actingFor: MEMBER, actingAs: ORG });
   });
-
-  it('does not mislabel a selected agent-to-human-to-org chain as direct A', async () => {
-    results.push([actor(AGENT, 'agent')], [{ did: MEMBER, role: 'agent' }], [],
-      [actor()], [{ did: ORG, role: 'member' }], [org()]);
-    const routes = await loadInferenceRouteCandidates({
-      ownerDid: ORG, caller: { actorDid: AGENT, actingFor: MEMBER, actingAs: ORG },
-      orgContext: { memberDid: MEMBER, orgDid: ORG },
-    });
-    expect(routes.map(route => route.kind)).toEqual(['own', 'B', 'C']);
+  it('propagates unexpected assignment/store failures rather than silently exposing candidates', async () => {
+    h.results.push([actor(AGENT, 'agent')], [{ did: ORG, role: 'agent' }], []);
+    h.assignment.mockRejectedValue(new Error('database unavailable'));
+    await expect(loadInferenceRouteCandidates({ ownerDid: AGENT })).rejects.toThrow('database unavailable');
   });
-
-  it('does not enumerate unrelated principals, non-agent memberships, or app/registrant fallback identities', async () => {
-    results.push([actor(AGENT, 'agent')], [{ did: ORG, role: 'member' }], []);
-    const routes = await loadInferenceRouteCandidates({ ownerDid: AGENT, appDid: 'did:imajin:shared-app' });
-    expect(routes.map(row => row.principal.did)).toEqual([AGENT]);
-    expect(queries).toHaveLength(3);
-    expect(queries[1].params).toEqual([AGENT]);
-    expect(queries[1].sql).toContain('"member_did" = $1');
-    expect(queries[1].sql).toContain('"removed_at" is null');
-    expect(queries.flatMap(query => query.params)).not.toContain('did:imajin:shared-app');
+  it('propagates unexpected principal failures', async () => {
+    h.results.push([actor()], []);
+    h.principal.mockRejectedValue(new Error('database unavailable'));
+    await expect(loadInferenceRouteCandidates({ ownerDid: MEMBER })).rejects.toThrow('database unavailable');
   });
-
-  it('only considers live delegation grants bound to this agent and an allowed audience', async () => {
-    results.push([actor(AGENT, 'agent')], [], [
-      { did: MEMBER, audience: { type: 'dids', values: [MEMBER] } },
-      { did: ORG, audience: { type: 'dids', values: [MEMBER] } },
-      { did: 'did:imajin:malformed', audience: { type: 'dids', values: [] } },
-    ], [actor()]);
-    const routes = await loadInferenceRouteCandidates({ ownerDid: AGENT, caller: { actorDid: AGENT } });
-    expect(routes.map(row => row.principal.did)).toEqual([AGENT, MEMBER]);
-    expect(queries[2].params[0]).toBe(AGENT);
-    expect(queries[2].params[1]).toBe('active');
-    expect(queries[2].sql).toContain('"revoked_at" is null');
-    expect(queries[2].sql).toContain('"expires_at" >');
-  });
-
-  it('deduplicates a selected identity, membership and delegation for the same principal', async () => {
-    results.push([actor(AGENT, 'agent')], [{ did: ORG, role: 'agent' }],
-      [{ did: ORG, audience: { type: 'all' } }], [org()]);
-    const routes = await loadInferenceRouteCandidates({
-      ownerDid: ORG, caller: { actorDid: AGENT, actingAs: ORG },
-      orgContext: { memberDid: AGENT, orgDid: ORG },
-    });
-    expect(routes.map(row => row.kind)).toEqual(['own', 'A']);
-  });
-
-  it('does not enumerate a human peer from an ordinary member relationship', async () => {
-    results.push([actor()], [{ did: 'did:imajin:peer', role: 'member' }], [actor('did:imajin:peer')]);
-    expect((await loadInferenceRouteCandidates({ ownerDid: MEMBER })).map(row => row.kind)).toEqual(['own']);
-  });
-
-  it('hides unavailable/suspended identities instead of traversing their relationships', async () => {
-    results.push([]);
+  it('hides missing/suspended identities', async () => {
+    h.results.push([]);
     expect(await loadInferenceRouteCandidates({ ownerDid: MEMBER })).toEqual([]);
-    expect(queries).toHaveLength(1);
-    expect(queries[0].sql).toContain('"suspended_at" is null');
+    expect(h.queries[0].sql).toContain('"suspended_at" is null');
   });
-
-  it('skips a disappeared related identity', async () => {
-    results.push([actor()], [{ did: ORG, role: 'member' }], []);
+  it('ignores an ordinary human peer relationship and disappeared targets', async () => {
+    h.results.push([actor()], [{ did: 'did:imajin:peer', role: 'member' }, { did: ORG, role: 'member' }],
+      [actor('did:imajin:peer')], []);
     expect((await loadInferenceRouteCandidates({ ownerDid: MEMBER })).map(row => row.kind)).toEqual(['own']);
   });
 });
 
 describe('public card metadata', () => {
-  it('returns only id, label and provider from the owning card', async () => {
-    registration.mockResolvedValue({ id: 'card-org', label: 'Artifact Anthropic', sealedKeyField: 'private-reference', accountEmail: 'private' });
+  it('allowlists metadata and selects the org-held provider row', async () => {
+    h.registration.mockResolvedValue({ id: 'card-org', label: 'Artifact Anthropic', sealedKeyField: 'private-reference' });
     expect(await readInferenceCard(ORG, 'anthropic', true)).toEqual({ id: 'card-org', label: 'Artifact Anthropic', provider: 'anthropic' });
-    expect(registration).toHaveBeenCalledWith(ORG, 'org-held-anthropic', 'primary');
+    expect(h.registration).toHaveBeenCalledWith(ORG, 'org-held-anthropic', 'primary');
   });
-  it('has a stable, nonsecret identity for a not-yet-loaded card', async () => {
-    registration.mockResolvedValue(undefined);
+  it('gives an unconfigured card a stable identity', async () => {
     expect(await readInferenceCard(MEMBER, 'anthropic', false)).toEqual({
       id: `card:${MEMBER}:anthropic`, label: 'anthropic · primary', provider: 'anthropic',
     });

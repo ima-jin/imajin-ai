@@ -23,8 +23,12 @@ const READ_TOOLS = {
   getEnvironment: z.object({ environmentId: identifier }).strict(),
 } as const;
 
+export type ConnectionErrorCode =
+  | 'agent_not_assigned' | 'service_not_allowed' | 'identity_inactive' | 'org_membership_required'
+  | 'org_grant_required' | 'connection_not_loaded' | 'connection_suspended' | 'credential_unavailable';
+
 export class ExternalMcpError extends Error {
-  constructor(public readonly status: number, message: string) { super(message); }
+  constructor(public readonly status: number, message: string, public readonly code?: ConnectionErrorCode) { super(message); }
 }
 export function allowedPostmanTool(name: string): name is keyof typeof READ_TOOLS {
   return Object.hasOwn(READ_TOOLS, name);

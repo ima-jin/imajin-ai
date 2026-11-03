@@ -21,5 +21,6 @@ export function sessionConnectionCaller(identity: Identity): { caller?: Connecti
 export const callerArguments = (caller?: ConnectionCaller): [ConnectionCaller] | [] => caller ? [caller] : [];
 export const missingConnection = (did: string) => new ExternalMcpError(
   403, `No active connection for ${did}. Configure that identity's connectors on /auth/connectors while acting as ${did}`,
+  'connection_not_loaded',
 );
 export const isOrgScope = (scope: string) => ['business', 'community', 'family'].includes(scope);

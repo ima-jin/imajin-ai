@@ -149,7 +149,7 @@ describe('resolveInferenceAuth — x-api-key bearer fallback (#1959)', () => {
 
   it('falls back to session auth when neither Authorization nor x-api-key is present', async () => {
     mockRequireAppAuth.mockResolvedValueOnce({ error: 'Authorization Bearer <app-token>, or X-App-DID + X-App-Authorization headers required', status: 401 });
-    mockRequireAuth.mockResolvedValueOnce({ identity: { did: OWNER_DID } });
+    mockRequireAuth.mockResolvedValueOnce({ identity: { id: OWNER_DID } });
     mockResolveActingDid.mockReturnValueOnce(OWNER_DID);
 
     const result = await resolveInferenceAuth(makeRequest({}), 'infer:completions');

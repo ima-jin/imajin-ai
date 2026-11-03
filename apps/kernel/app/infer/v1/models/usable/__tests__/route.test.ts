@@ -114,6 +114,12 @@ describe('GET /infer/v1/models/usable?explain=1 — additive diagnostics', () =>
     expect(mockListRoutes).not.toHaveBeenCalled();
     expect(mockListUsableModels).toHaveBeenCalled();
   });
+  it('passes an explicit model to discovery for call-path parity', async () => {
+    await GET(new Request('https://kernel.test/infer/v1/models/usable?explain=1&model=claude-sonnet-5-5') as RouteRequest);
+    expect(mockListRoutes).toHaveBeenCalledWith(
+      { ownerDid: OWNER_DID, appDid: APP_DID }, { model: 'claude-sonnet-5-5' },
+    );
+  });
 });
 
 describe('GET /infer/v1/models/usable — request gating', () => {

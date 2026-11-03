@@ -14,9 +14,12 @@ describe('inference discovery spec (#3027)', () => {
     const listing = spec.paths['/v1/models/usable'].get;
     expect(listing.security).toEqual([{ appToken: [] }]);
     expect(listing.description).toContain('infer:completions');
-    expect(listing.responses['200'].content['application/json'].schema).toEqual({
-      $ref: '#/components/schemas/UsableModelList',
-    });
+    expect(listing.responses['200'].content['application/json'].schema.oneOf).toEqual([
+      { $ref: '#/components/schemas/UsableModelList' },
+      { $ref: '#/components/schemas/InferenceRouteList' },
+    ]);
+    expect(listing.parameters).toContainEqual(expect.objectContaining({ name: 'explain', in: 'query' }));
+    expect(spec.components.schemas.InferenceRouteList.properties.routes.items.properties.kind.enum).toEqual(['own', 'A', 'B', 'C']);
     const schema = spec.components.schemas.UsableModelList;
     expect(schema.properties.object.const).toBe('list');
     const entry = schema.properties.data.items;

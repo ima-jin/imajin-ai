@@ -1,12 +1,13 @@
 import { resolveBrain, listBrainConnectors, NoBrainSealedError, NoModelSelectedError } from './brain';
-import type { BrainConnectorId, BrainCredentialContext } from './brain';
+import type { BrainConnectorId } from './brain';
+import { inferenceBrainContext } from './route-context';
 import type { InferenceAuthContext } from './auth';
-import { ExternalMcpError } from '@/src/lib/kernel/external-mcp-policy';
+import { ExternalMcpError, type ConnectionErrorCode } from '@/src/lib/kernel/external-mcp-policy';
 import { loadInferenceRouteCandidates, readInferenceCard } from './route-discovery-store';
 
 export type InferenceRouteKind = 'own' | 'A' | 'B' | 'C';
 export type InferenceRouteReason =
-  | 'no_grant' | 'no_model_selected' | 'not_a_member' | 'agent_member_chain_unsupported'
+  | 'no_grant' | 'no_model_selected' | 'not_a_member'
   | 'key_not_loaded' | 'not_authorized' | 'route_unavailable';
 
 export interface InferenceRoute {
@@ -19,18 +20,15 @@ export interface InferenceRoute {
   selectors: { actingAs?: string; actingFor?: string };
 }
 
-/** Structural compatibility with the verified caller context introduced by #3182. */
-export interface DiscoveryCaller { actorDid: string; actingAs?: string; actingFor?: string }
-export type DiscoveryContext = InferenceAuthContext & { caller?: DiscoveryCaller };
+export type DiscoveryContext = InferenceAuthContext;
 export interface InferenceRouteCandidate {
   kind: InferenceRouteKind;
   principal: InferenceRoute['billedPrincipal'];
   memberDid?: string;
   selectors: InferenceRoute['selectors'];
-  context: BrainCredentialContext;
+  context: InferenceAuthContext;
   orgHeld: boolean;
-  pendingAssignmentResolver?: boolean;
-  memberIsActive?: boolean;
+  authorizationError?: ExternalMcpError;
 }
 export interface InferenceCardResolution {
   loaded: boolean;
@@ -48,7 +46,6 @@ function reasonMessage(code: InferenceRouteReason, candidate: InferenceRouteCand
     case 'no_grant': return `No grant for ${candidate.memberDid ?? 'member'} on ${principal} ${provider}`;
     case 'no_model_selected': return `${principal} ${provider} card has no model selected`;
     case 'not_a_member': return `${candidate.memberDid ?? 'Caller'} is not a member of ${principal}`;
-    case 'agent_member_chain_unsupported': return 'Agent → member chain not supported yet';
     case 'key_not_loaded': return `${principal} ${provider} key not loaded`;
     case 'not_authorized': return `Caller is not authorized for ${principal} ${provider}; check assignment and allowed services`;
     case 'route_unavailable': return `${principal} ${provider} route is unavailable`;
@@ -78,41 +75,34 @@ export function describeInferenceRoute(
 }
 
 /** Never forward an exception message: custody and upstream errors may contain key material. */
+const CONNECTION_REASONS: Record<ConnectionErrorCode, InferenceRouteReason> = {
+  agent_not_assigned: 'not_authorized', service_not_allowed: 'not_authorized', identity_inactive: 'not_authorized',
+  org_membership_required: 'not_a_member', org_grant_required: 'no_grant',
+  connection_not_loaded: 'key_not_loaded', connection_suspended: 'not_authorized', credential_unavailable: 'key_not_loaded',
+};
 function rejectedResolution(error: unknown): InferenceCardResolution {
   if (error instanceof NoModelSelectedError) return { loaded: true };
   if (error instanceof NoBrainSealedError) return { loaded: false };
   if (!(error instanceof ExternalMcpError)) return { loaded: false, denied: 'route_unavailable' };
-  const message = error.message.toLowerCase();
-  if (message.includes('member grant required')) return { loaded: false, denied: 'no_grant' };
-  if (message.includes('not a member')) return { loaded: false, denied: 'not_a_member' };
-  if (message.includes('chain') && message.includes('not supported')) {
-    return { loaded: false, denied: 'agent_member_chain_unsupported' };
-  }
-  return { loaded: false, denied: error.status === 403 ? 'not_authorized' : 'key_not_loaded' };
+  return { loaded: false, denied: error.code ? CONNECTION_REASONS[error.code] : 'route_unavailable' };
 }
 
-async function resolveCard(candidate: InferenceRouteCandidate, provider: BrainConnectorId): Promise<InferenceCardResolution> {
-  if (candidate.pendingAssignmentResolver) return {
-    loaded: false, denied: candidate.kind === 'C' ? 'agent_member_chain_unsupported' : 'not_authorized',
-  };
+async function resolveCard(candidate: InferenceRouteCandidate, provider: BrainConnectorId, model?: string): Promise<InferenceCardResolution> {
+  if (candidate.authorizationError) return rejectedResolution(candidate.authorizationError);
   try {
     // The same resolver used by /infer/v1/chat/completions. Discovery never implements a grant/assignment gate.
-    const brain = await resolveBrain(candidate.context, { connectors: [provider] });
+    const brain = await resolveBrain(inferenceBrainContext(candidate.context), { connectors: [provider], ...(model ? { model } : {}) });
     if (brain.credentialDid !== candidate.principal.did || brain.connector !== provider) {
       return { loaded: false, denied: 'route_unavailable' };
     }
     return { loaded: true, modelId: brain.modelId };
   } catch (error) {
-    const resolution = rejectedResolution(error);
-    if (resolution.denied === 'no_grant' && candidate.memberIsActive === false) {
-      return { loaded: false, denied: 'not_a_member' };
-    }
-    return resolution;
+    return rejectedResolution(error);
   }
 }
 
 /** Enumerate only held relationships; re-evaluate each route through the call resolver, without caching authority. */
-export async function listInferenceRoutes(context: DiscoveryContext): Promise<InferenceRoute[]> {
+export async function listInferenceRoutes(context: DiscoveryContext, options?: { model?: string }): Promise<InferenceRoute[]> {
   const candidates = await loadInferenceRouteCandidates(context);
   const routes: InferenceRoute[] = [];
   // Sequential: the existing resolver uses custody locks and provider-priority ordering.
@@ -120,7 +110,7 @@ export async function listInferenceRoutes(context: DiscoveryContext): Promise<In
     const providers = candidate.orgHeld ? ['anthropic'] as const : listBrainConnectors();
     for (const provider of providers) {
       const card = await readInferenceCard(candidate.principal.did, provider, candidate.orgHeld);
-      const resolution = await resolveCard(candidate, provider);
+      const resolution = await resolveCard(candidate, provider, options?.model);
       routes.push(describeInferenceRoute(candidate, card, resolution));
     }
   }

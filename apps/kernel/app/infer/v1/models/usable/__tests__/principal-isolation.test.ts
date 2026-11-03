@@ -149,9 +149,9 @@ describe('#3223 explain principal isolation (real auth and brain resolver)', () 
   });
 
   it('shows a denied C route alongside own cards without using own cards as an org fallback', async () => {
-    appAuth.mockResolvedValue({ error: 'Not an app token', status: 401 });
+    appAuth.mockResolvedValue({ error: 'Not an app token', status: 401, notAppToken: true });
     sessionAuth.mockResolvedValue({ identity: { id: MAIN, actingAs: ORG } });
-    orgBrain.mockRejectedValue(new ExternalMcpError(403, 'Active org-connection member grant required for anthropic'));
+    orgBrain.mockRejectedValue(new ExternalMcpError(403, 'Active org-connection member grant required for anthropic', 'org_grant_required'));
     const response = await GET(explain(MAIN));
     expect(response.status).toBe(200);
     const { routes } = await response.json();

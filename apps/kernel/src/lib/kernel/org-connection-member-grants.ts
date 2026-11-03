@@ -4,7 +4,7 @@ import {
   orgConnectionMemberGrants, orgConnectionSuspensions, type ConnectorRow, type OrgConnectionMemberGrant,
 } from '@/src/db';
 import { prepareMechanicalAttestation } from '@/src/lib/auth/emit-mechanical-attestation';
-import { ExternalMcpError } from './external-mcp-policy';
+import { ExternalMcpError, type ConnectionErrorCode } from './external-mcp-policy';
 import { generateId } from './id';
 import { isLiveConnection, type ConnectionTransaction } from './member-connection-gate';
 import { authorizeOrgConnectionAdmin, orgHeldProvider, type OrgConnectionActor } from './org-held-connection-policy';
@@ -21,8 +21,8 @@ export function parseMemberGrantInput(raw: unknown): MemberGrantInput {
   return { memberDid: value.memberDid, reason: value.reason.trim() };
 }
 
-const denied = (provider: string) => new ExternalMcpError(403,
-  `Active org-connection member grant required for ${provider}. Ask an org admin to grant access on the org's connector card on /auth/connectors while acting as the org`);
+const denied = (provider: string, code: ConnectionErrorCode = 'org_grant_required') => new ExternalMcpError(403,
+  `Active org-connection member grant required for ${provider}. Ask an org admin to grant access on the org's connector card on /auth/connectors while acting as the org`, code);
 type GrantReader = Pick<ConnectionTransaction, 'select'>;
 
 async function requireMember(tx: GrantReader, orgDid: string, memberDid: string, provider: string) {
@@ -30,7 +30,7 @@ async function requireMember(tx: GrantReader, orgDid: string, memberDid: string,
   const [membership] = await tx.select().from(identityMembers).where(and(
     eq(identityMembers.identityDid, orgDid), eq(identityMembers.memberDid, memberDid), isNull(identityMembers.removedAt),
   )).limit(1);
-  if (person?.scope !== 'actor' || person.subtype === 'agent' || person.suspendedAt || !membership) throw denied(provider);
+  if (person?.scope !== 'actor' || person.subtype === 'agent' || person.suspendedAt || !membership) throw denied(provider, 'org_membership_required');
 }
 
 async function findConnection(tx: GrantReader, orgDid: string, provider: string) {
@@ -148,7 +148,7 @@ export async function requireOrgConnectionMemberGrant(context: OrgMemberGrantCon
   if (!org || !['business', 'community', 'family'].includes(org.scope) || org.suspendedAt) throw denied(provider);
   await requireMember(tx, orgDid, memberDid, provider);
   const connection = await findConnection(tx, orgDid, provider);
-  if (!connection || !liveOrgConnection(connection)) throw denied(provider);
+  if (!connection || !liveOrgConnection(connection)) throw denied(provider, 'connection_not_loaded');
   const [grant] = await tx.select().from(orgConnectionMemberGrants).where(and(
     eq(orgConnectionMemberGrants.orgDid, orgDid), eq(orgConnectionMemberGrants.memberDid, memberDid),
     eq(orgConnectionMemberGrants.connectionId, connection.id), eq(orgConnectionMemberGrants.provider, provider),
@@ -164,6 +164,6 @@ export async function requireOrgConnectionMemberGrant(context: OrgMemberGrantCon
       or(eq(orgConnectionSuspensions.slot, ''), eq(orgConnectionSuspensions.slot, connection.slot)),
     )),
   )).limit(1);
-  if (suspension) throw denied(provider);
+  if (suspension) throw denied(provider, 'connection_suspended');
   return { grantId: grant.id, orgDid, memberDid, connectionId: connection.id, provider, grantedAt: grant.grantedAt };
 }

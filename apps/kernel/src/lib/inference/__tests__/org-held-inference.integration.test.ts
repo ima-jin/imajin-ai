@@ -9,7 +9,7 @@ import { NextRequest } from 'next/server';
 const h = vi.hoisted(() => ({
   db: null as unknown, key: '', get: vi.fn(), unseal: vi.fn(), usage: vi.fn(),
   log: vi.fn(), personal: vi.fn(), fallback: vi.fn(), session: vi.fn(), deniedScope: false, upstreamMode: 'normal',
-  tokenDid: '',
+  tokenDid: '', complete: vi.fn(),
 }));
 vi.mock('@/src/db', async () => ({
   ...await import('@/src/db/schemas/auth'), ...await import('@/src/db/schemas/connectors'),
@@ -39,6 +39,8 @@ vi.mock('@/src/lib/anthropic/connector', () => ({
   loadAnthropicCredentials: h.personal, ANTHROPIC_BASE_URL: 'https://api.anthropic.com/v1',
 }));
 vi.mock('@/src/lib/kernel/cors', () => ({ corsHeaders: () => ({}), corsOptions: vi.fn() }));
+vi.mock('@/src/lib/inference/completions/anthropic-adapter', () => ({ forwardAnthropic: h.complete }));
+vi.mock('@/src/lib/inference/completions/openai-compatible-adapter', () => ({ forwardOpenAiCompatible: h.complete }));
 vi.mock('@imajin/config', async original => ({
   ...await original<typeof import('@imajin/config')>(), rateLimit: () => ({ limited: false }), getClientIP: () => '127.0.0.1',
 }));
@@ -55,6 +57,9 @@ import { POST } from '@/app/infer/v1/messages/route';
 import { POST as countTokens } from '@/app/infer/v1/messages/count_tokens/route';
 import { GET as models } from '@/app/infer/v1/models/route';
 import { GET as usableModels } from '@/app/infer/v1/models/usable/route';
+import { POST as completions } from '@/app/infer/v1/chat/completions/route';
+import type { InferenceRoute } from '../route-discovery';
+import type { ConnectionCaller } from '@/src/lib/kernel/connection-principal-policy';
 import { resolveOrgHeldBrain } from '../org-held-brain';
 import { resolveBrain } from '../brain';
 import { authorizeExternalMcp } from '@/src/lib/kernel/external-mcp';
@@ -114,6 +119,150 @@ beforeAll(async () => {
   }
   database = drizzle(client);
   h.db = database;
+});
+
+describe('route discovery ≡ chat/completions (real auth, assignment and grant SQL)', () => {
+  const ORG_MODEL = 'claude-sonnet-5-5';
+  async function assignTo(did: string, allowedServices: string[] | null = null) {
+    await database.insert(identityMembers).values({ identityDid: did, memberDid: AGENT, role: 'agent', allowedServices });
+  }
+  async function grantMember() {
+    await database.insert(orgConnectionMemberGrants).values({
+      id: 'parity-grant', orgDid: ORG, memberDid: MEMBER, connectionId: 'org-connection',
+      provider: 'anthropic', grantedByDid: MEMBER, grantedAt: new Date(),
+    });
+  }
+  function parityRequest(caller: ConnectionCaller, model: string | undefined, listing: boolean) {
+    h.tokenDid = caller.actorDid;
+    const headers = {
+      authorization: 'Bearer fixture-app-token',
+      ...(caller.actingAs ? { 'x-acting-as': caller.actingAs } : {}),
+      ...(caller.actingFor ? { 'x-acting-for': caller.actingFor } : {}),
+    };
+    const query = new URLSearchParams({ explain: '1', ...(model ? { model } : {}) });
+    return new NextRequest(`https://kernel.test/infer/v1/${listing ? `models/usable?${query}` : 'chat/completions'}`, {
+      headers, ...(listing ? {} : {
+        method: 'POST', body: JSON.stringify({ ...(model ? { model } : {}), messages: [{ role: 'user', content: 'fixture' }] }),
+      }),
+    });
+  }
+  async function assertParity(caller: ConnectionCaller, principalDid: string, kind: InferenceRoute['kind'], model?: string) {
+    const listing = await usableModels(parityRequest(caller, model, true));
+    const body = await listing.clone().json();
+    const route = (body.routes as InferenceRoute[] | undefined)?.find(row =>
+      row.kind === kind && row.card.provider === 'anthropic' && row.billedPrincipal.did === principalDid
+      && row.selectors.actingFor === caller.actingFor && row.selectors.actingAs === caller.actingAs);
+    h.complete.mockClear();
+    const call = await completions(parityRequest(caller, model, false));
+    const diagnostics = { status: listing.status, kinds: body.routes?.map((row: InferenceRoute) => ({
+      kind: row.kind, did: row.billedPrincipal.did, usable: row.usable, reason: row.reason?.code,
+    })) };
+    expect(route?.usable ?? false, JSON.stringify(diagnostics)).toBe(call.ok);
+    expect(h.complete).toHaveBeenCalledTimes(call.ok ? 1 : 0);
+    if (call.ok) {
+      expect(h.complete.mock.calls[0][0]).toMatchObject({ credentialDid: principalDid, modelId: route!.selectedModels[0] });
+    }
+    expect(await listing.clone().text()).not.toContain(h.key);
+    expect(await listing.clone().text()).not.toContain(FIELD);
+    return { listing, call, route, body };
+  }
+
+  it.each(['agent-self', 'agent-org', 'agent-human', 'member-granted', 'member-ungranted', 'agent-unassigned'] as const)(
+    'agrees for %s, with no personal/app/registrant fallback on denied routes', async scenario => {
+      let caller: ConnectionCaller = { actorDid: AGENT };
+      let principal = AGENT;
+      let kind: InferenceRoute['kind'] = 'own';
+      let model = 'personal-model';
+      if (scenario === 'agent-org' || scenario === 'agent-unassigned') {
+        caller = { actorDid: AGENT, actingAs: ORG };
+        principal = ORG; kind = 'A'; model = ORG_MODEL;
+        if (scenario === 'agent-org') await assignTo(ORG, ['infer']);
+      }
+      if (scenario === 'agent-human') {
+        await assignTo(MEMBER, ['infer']);
+        caller = { actorDid: AGENT, actingFor: MEMBER };
+        principal = MEMBER; kind = 'B';
+      }
+      if (scenario === 'member-granted' || scenario === 'member-ungranted') {
+        caller = { actorDid: MEMBER, actingAs: ORG };
+        principal = ORG; kind = 'C'; model = ORG_MODEL;
+        if (scenario === 'member-granted') await grantMember();
+      }
+      const { call, route, listing } = await assertParity(caller, principal, kind, model);
+      const allowed = !['member-ungranted', 'agent-unassigned'].includes(scenario);
+      expect(call.ok).toBe(allowed);
+      expect(h.fallback).not.toHaveBeenCalled();
+      if (scenario === 'member-ungranted') expect(route?.reason?.code).toBe('no_grant');
+      if (scenario === 'agent-unassigned') expect(listing.status).toBe(403);
+      if (scenario === 'agent-org') {
+        expect(route).toMatchObject({ kind: 'A', selectedModels: [ORG_MODEL], usable: true });
+        expect(await database.select().from(orgConnectionMemberGrants)).toEqual([]);
+      }
+    },
+  );
+  it('keeps the assigned-human/org-member chain on the human grant, and rechecks revocation', async () => {
+    await assignTo(MEMBER);
+    await grantMember();
+    const caller = { actorDid: AGENT, actingFor: MEMBER, actingAs: ORG };
+    expect((await assertParity(caller, ORG, 'C', ORG_MODEL)).route?.usable).toBe(true);
+    await database.update(orgConnectionMemberGrants).set({ revokedAt: new Date() });
+    expect((await assertParity(caller, ORG, 'C', ORG_MODEL)).route?.reason?.code).toBe('no_grant');
+  });
+  it('proves the Artifact-Jin → @artifact Sonnet 5.5 route using the real resolver and public DID fixtures', async () => {
+    const agentDid = 'did:imajin:8gqnAWGGms2cyrZ4krfNQjknYWMfJcoHgnxha8AfKwUY';
+    const orgDid = 'did:imajin:Fp5QtWo9vsmS7G5AcbuEUrPT6oGbKxj5gke6T4voH7xE';
+    const field = `${EXTERNAL_MCP_NAMESPACE}:artifact-route:${orgDid}`;
+    await database.insert(identities).values([
+      { id: agentDid, publicKey: 'artifact-agent-public', scope: 'actor', subtype: 'agent' },
+      { id: orgDid, publicKey: 'artifact-org-public', scope: 'business', handle: 'artifact' },
+    ]);
+    await database.insert(identityMembers).values({ identityDid: orgDid, memberDid: agentDid, role: 'agent', allowedServices: ['infer'] });
+    await database.insert(connectors).values({
+      id: 'artifact-anthropic', ownerDid: orgDid, provider: 'org-held-anthropic', slot: 'primary',
+      status: 'active', sealedKeyField: field, loadedByDid: MEMBER, loadedAt: new Date(),
+    });
+    await database.insert(vaultDelegationGrants).values({
+      id: 'artifact-custody', field, subject: orgDid, grantedTo: 'did:imajin:node', status: 'active', oneTime: false,
+      ownerXPub: 'fixture', wrappedKey: 'fixture', wrappedNonce: 'fixture', keyId: 'fixture', ownerSignature: 'fixture',
+    });
+    const result = await assertParity({ actorDid: agentDid, actingAs: orgDid }, orgDid, 'A', ORG_MODEL);
+    expect(result.route).toMatchObject({
+      kind: 'A', billedPrincipal: { did: orgDid, handle: 'artifact' }, selectedModels: [ORG_MODEL], usable: true,
+    });
+    expect(await database.select().from(orgConnectionMemberGrants)).toEqual([]);
+  });
+  it('reports an org card without an explicit model as unusable just as the call rejects it', async () => {
+    await assignTo(ORG);
+    const result = await assertParity({ actorDid: AGENT, actingAs: ORG }, ORG, 'A');
+    expect(result.route).toMatchObject({ usable: false, reason: { code: 'no_model_selected' } });
+    expect(result.call.status).toBe(400);
+  });
+  it('does not let an excluded service borrow authority from a parallel delegation', async () => {
+    await assignTo(ORG, ['warp']);
+    await database.insert(delegationGrants).values({
+      id: 'parallel', agentDid: AGENT, delegatorDid: ORG, audience: { type: 'all' },
+      issuedAt: new Date(), expiresAt: new Date(Date.now() + 60_000), status: 'active',
+    });
+    const listing = await usableModels(parityRequest({ actorDid: AGENT }, undefined, true));
+    const { routes } = await listing.json();
+    expect(routes.find((route: InferenceRoute) => route.kind === 'A')).toMatchObject({
+      usable: false, reason: { code: 'not_authorized' }, selectedModels: [],
+    });
+    expect(h.get).not.toHaveBeenCalled();
+    expect((await completions(parityRequest({ actorDid: AGENT, actingAs: ORG }, ORG_MODEL, false))).status).toBe(403);
+  });
+  it('does not expose unrelated or revoked/expired/wrong-audience assignments', async () => {
+    await database.insert(identities).values({ id: 'did:imajin:unrelated', publicKey: 'other', scope: 'business' });
+    await database.insert(delegationGrants).values({
+      id: 'wrong-audience', agentDid: AGENT, delegatorDid: 'did:imajin:unrelated',
+      audience: { type: 'dids', values: [MEMBER] }, issuedAt: new Date(),
+      expiresAt: new Date(Date.now() + 60_000), status: 'active',
+    });
+    const response = await usableModels(parityRequest({ actorDid: AGENT }, undefined, true));
+    expect(response.status).toBe(200);
+    expect(await response.text()).not.toContain('did:imajin:unrelated');
+    expect(h.get).not.toHaveBeenCalled();
+  });
 });
 
 describe('assigned agents use only the assigned DID keys, without member-grant rows', () => {
@@ -279,6 +428,7 @@ beforeEach(async () => {
   h.get.mockResolvedValue({ senderPubkey: 'node-public', custodyScheme: 'delegation-grant' });
   h.unseal.mockImplementation(async () => h.key);
   h.usage.mockResolvedValue(undefined);
+  h.complete.mockImplementation(async brain => Response.json({ model: brain.modelId }));
   h.personal.mockResolvedValue({ apiKey: randomUUID(), modelId: 'personal-model' });
   provideInternalApiKey(randomUUID());
   vi.stubEnv('AUTH_SERVICE_URL', 'https://auth.test/auth');

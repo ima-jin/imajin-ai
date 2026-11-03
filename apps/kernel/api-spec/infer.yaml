@@ -85,7 +85,7 @@ components:
                 properties:
                   code:
                     type: string
-                    enum: [no_grant, no_model_selected, not_a_member, agent_member_chain_unsupported, key_not_loaded, not_authorized, route_unavailable]
+                    enum: [no_grant, no_model_selected, not_a_member, key_not_loaded, not_authorized, route_unavailable]
                   message: { type: string }
               selectors:
                 type: object
@@ -122,6 +122,11 @@ paths:
           required: false
           schema: { type: string, const: "1" }
           description: Opt into caller-scoped inference route diagnostics.
+        - in: query
+          name: model
+          required: false
+          schema: { type: string }
+          description: With explain=1, evaluate the same explicit model selection as a completion request. No implicit org model is invented.
       security:
         - appToken: []
       responses:

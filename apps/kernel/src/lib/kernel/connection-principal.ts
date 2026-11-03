@@ -6,7 +6,8 @@ import type { ConnectionTransaction } from './member-connection-gate';
 import { isOrgScope, type ConnectionCaller } from './connection-principal-policy';
 export { missingConnection, type ConnectionCaller } from './connection-principal-policy';
 type Reader = Pick<ConnectionTransaction, 'select'>;
-const forbidden = () => new ExternalMcpError(403, 'Agent is not assigned to this identity or service');
+const forbidden = (code: 'agent_not_assigned' | 'service_not_allowed' | 'identity_inactive' = 'agent_not_assigned') =>
+  new ExternalMcpError(403, 'Agent is not assigned to this identity or service', code);
 
 /** An explicit service restriction cannot be bypassed by a parallel delegation grant. */
 export async function requireAgentAssignment(tx: Reader, agentDid: string, principalDid: string, service: string) {
@@ -15,7 +16,7 @@ export async function requireAgentAssignment(tx: Reader, agentDid: string, princ
     isNull(identityMembers.removedAt),
   )).limit(1);
   if (membership?.allowedServices !== null && membership?.allowedServices !== undefined
-    && !membership.allowedServices.includes(service)) throw forbidden();
+    && !membership.allowedServices.includes(service)) throw forbidden('service_not_allowed');
   if (membership?.role === 'agent') return;
   const grants = await tx.select().from(delegationGrants).where(and(
     eq(delegationGrants.agentDid, agentDid), eq(delegationGrants.delegatorDid, principalDid),
@@ -31,7 +32,7 @@ async function activeIdentity(tx: Reader, did: string) {
   const [identity] = await tx.select().from(identities).where(and(
     eq(identities.id, did), isNull(identities.suspendedAt),
   )).limit(1);
-  if (!identity) throw forbidden();
+  if (!identity) throw forbidden('identity_inactive');
   return identity;
 }
 

@@ -45,7 +45,7 @@ beforeEach(() => {
   candidates.mockResolvedValue([candidate()]);
   card.mockImplementation(async (_did, provider) => ({ provider, id: 'card-primary', label: 'Inference account' }));
   resolve.mockImplementation(async (context) => ({
-    credentialDid: context.ownerDid, connector: 'anthropic', provider: 'anthropic', modelId: MODEL,
+    credentialDid: typeof context === 'string' ? context : context.ownerDid, connector: 'anthropic', provider: 'anthropic', modelId: MODEL,
     apiKey: randomUUID(),
   }));
 });
@@ -55,12 +55,20 @@ describe('inference route discovery through the existing resolver', () => {
     const selected = candidate(kind);
     candidates.mockResolvedValue([selected]);
     const [route] = await listInferenceRoutes({ ownerDid: selected.principal.did });
-    expect(resolve).toHaveBeenCalledWith(selected.context, { connectors: ['anthropic'] });
+    expect(resolve).toHaveBeenCalledWith(selected.context.ownerDid, { connectors: ['anthropic'] });
     expect(route).toEqual({
       kind, billedPrincipal: selected.principal,
       card: { provider: 'anthropic', id: 'card-primary', label: 'Inference account', loaded: true },
       selectedModels: [MODEL], usable: true, selectors: selected.selectors,
     });
+  });
+  it('never infers a reason from a message when no typed code is present', async () => {
+    resolve.mockRejectedValue(new ExternalMcpError(403, 'Active org-connection member grant required'));
+    expect((await listInferenceRoutes({ ownerDid: MEMBER }))[0].reason?.code).toBe('route_unavailable');
+  });
+  it('evaluates the same explicit model as a completion request', async () => {
+    await listInferenceRoutes({ ownerDid: MEMBER }, { model: MODEL });
+    expect(resolve).toHaveBeenCalledWith(MEMBER, { connectors: ['anthropic'], model: MODEL });
   });
 
   it('names Artifact as the billed principal for the Artifact-Jin org-agent route', async () => {
@@ -74,11 +82,14 @@ describe('inference route discovery through the existing resolver', () => {
   });
 
   it.each([
-    [new ExternalMcpError(403, 'Active org-connection member grant required for anthropic'), 'no_grant'],
-    [new ExternalMcpError(403, 'Not a member of the org'), 'not_a_member'],
-    [new ExternalMcpError(403, 'Agent → member chain not supported yet'), 'agent_member_chain_unsupported'],
-    [new ExternalMcpError(403, 'Agent is not assigned to this identity or service'), 'not_authorized'],
-    [new ExternalMcpError(503, 'Organization inference credential unavailable'), 'key_not_loaded'],
+    [new ExternalMcpError(403, 'arbitrary text', 'org_grant_required'), 'no_grant'],
+    [new ExternalMcpError(403, 'arbitrary text', 'org_membership_required'), 'not_a_member'],
+    [new ExternalMcpError(403, 'arbitrary text', 'connection_suspended'), 'not_authorized'],
+    [new ExternalMcpError(403, 'arbitrary text', 'agent_not_assigned'), 'not_authorized'],
+    [new ExternalMcpError(403, 'arbitrary text', 'service_not_allowed'), 'not_authorized'],
+    [new ExternalMcpError(403, 'arbitrary text', 'identity_inactive'), 'not_authorized'],
+    [new ExternalMcpError(403, 'arbitrary text', 'connection_not_loaded'), 'key_not_loaded'],
+    [new ExternalMcpError(503, 'arbitrary text', 'credential_unavailable'), 'key_not_loaded'],
     [new Error('unexpected vault fault'), 'route_unavailable'],
     [new NoBrainSealedError([MEMBER], []), 'key_not_loaded'],
     [new NoModelSelectedError([]), 'no_model_selected'],
@@ -92,13 +103,13 @@ describe('inference route discovery through the existing resolver', () => {
 
   it('names the member, org and provider in a missing-grant explanation', async () => {
     candidates.mockResolvedValue([candidate('C')]);
-    resolve.mockRejectedValue(new ExternalMcpError(403, 'Active org-connection member grant required'));
+    resolve.mockRejectedValue(new ExternalMcpError(403, 'arbitrary text', 'org_grant_required'));
     const [route] = await listInferenceRoutes({ ownerDid: ORG });
     expect(route.reason?.message).toBe(`No grant for ${MEMBER} on @artifact (${ORG}) anthropic`);
   });
   it('explains a membership removal separately when the canonical grant gate rejects that route', async () => {
-    candidates.mockResolvedValue([{ ...candidate('C'), memberIsActive: false }]);
-    resolve.mockRejectedValue(new ExternalMcpError(403, 'Active org-connection member grant required'));
+    candidates.mockResolvedValue([candidate('C')]);
+    resolve.mockRejectedValue(new ExternalMcpError(403, 'arbitrary text', 'org_membership_required'));
     const [route] = await listInferenceRoutes({ ownerDid: ORG });
     expect(route.reason?.code).toBe('not_a_member');
     expect(route.reason?.message).toContain(MEMBER);
@@ -120,8 +131,8 @@ describe('inference route discovery through the existing resolver', () => {
     expect((await listInferenceRoutes({ ownerDid: MEMBER }))[0].usable).toBe(false);
   });
 
-  it('does not read an unselected assignment through the pre-#3182 resolver', async () => {
-    candidates.mockResolvedValue([{ ...candidate('A'), pendingAssignmentResolver: true }]);
+  it('does not read credentials after a canonical assignment rejection', async () => {
+    candidates.mockResolvedValue([{ ...candidate('A'), authorizationError: new ExternalMcpError(403, 'denied', 'agent_not_assigned') }]);
     expect((await listInferenceRoutes({ ownerDid: MEMBER }))[0].usable).toBe(false);
     expect(resolve).not.toHaveBeenCalled();
   });
@@ -136,10 +147,10 @@ describe('inference route discovery through the existing resolver', () => {
     expect(text).not.toContain('apiKey');
     expect(text).not.toContain('fingerprint');
   });
-  it('names an unsupported agent-to-member chain without calling an older resolver that cannot verify it', async () => {
-    candidates.mockResolvedValue([{ ...candidate('C'), pendingAssignmentResolver: true }]);
+  it('reports a canonical service restriction before custody without parsing its message', async () => {
+    candidates.mockResolvedValue([{ ...candidate('C'), authorizationError: new ExternalMcpError(403, 'denied', 'service_not_allowed') }]);
     const [route] = await listInferenceRoutes({ ownerDid: MEMBER });
-    expect(route.reason?.code).toBe('agent_member_chain_unsupported');
+    expect(route.reason?.code).toBe('not_authorized');
     expect(resolve).not.toHaveBeenCalled();
   });
 
