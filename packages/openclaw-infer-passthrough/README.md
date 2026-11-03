@@ -5,6 +5,59 @@ invalid or shared-marker credentials return 401; there is no gateway-principal
 mint, re-mint, catalog cache or direct-key fallback for agent calls.
 The kernel alone verifies authority and resolves connector policy.
 See the canonical [headers, JWT and error contract](../../deploy/infer-passthrough/README.md#calling-agent-contract-3224).
+## Org bots: Artifact proof (#3184)
+
+An **org bot = agent assigned to the org DID using the org's keys**. Artifact-Jin
+signs as itself with its own `app+jwt`; its configured `actAs` selects Artifact
+via `x-acting-as`. The kernel rechecks assignment on every call, reads Artifact's
+sealed org-held Anthropic connection, and bills `@artifact`, recording the bot
+as actor. The assigned org bot needs **no per-member grant** (#3182).
+Human members still need the #3200 per-member grant; membership alone gives
+no key access. Speaker turns are separate work (#3231).
+
+**Personal agents stay on their human's keys. No per-session act-as.**
+There is no principal act-as forward or conversation switching in this proof.
+A personal agent cannot select an org it is not assigned to. No Anthropic/Warp
+service key or grant ID belongs in OpenClaw config, env, or smoke input/output.
+
+Disabling or removing the org connection refuses the **next call** with HTTP
+403 and `code: connection_not_loaded`; it never falls back to a personal, app,
+registrant or direct key. Until the org connectors UI (#3181) is on main, this
+stable kernel code is the acceptance contract, not an invented control label.
+
+### Operator smoke (Anthropic lane only for now)
+
+`node scripts/artifact-org-bot-smoke.mjs --dry-run` runs locally without
+credentials, network traffic or billing. It does **not** claim a live proof.
+For production, run the script on the passthrough host with protected JSON on
+stdin, supplied by the operator's existing credential loader, never inline on
+the command line or committed to a file. Fields:
+
+- `agentDid`, `orgDid`, `model`: the bot, its configured org and the exact
+  Anthropic model selected from that org's discovery route.
+- `agentToken`: the bot's short-lived self-context `app+jwt` (`azp = sub =
+  agentDid`, audience `imajin:apps`, scope `infer:completions`).
+- `auditToken`: an independently authorized session credential for the
+  existing usage audit route (org owner or `usage:read` auditor). It is used
+  **only to read evidence**, never to run inference or mint org context.
+
+The script verifies the usable kind-A route at `https://jin.imajin.ai`,
+sends exactly one completion through `http://127.0.0.1:8787`, and reads the
+correlated usage audit record. Output contains **only** `status`, `billedOrg`
+and `usageIds`; it never prints keys, credentials, prompts or response bodies.
+Missing evidence or wrong billing identity fails the smoke, not a false success.
+
+**Live rollout caveat:** plugin PR #151 currently describes minting with
+`sub = configured actAs` (the org), whereas the working assigned-agent kernel
+path requires `sub = agentDid` with the org solely in `x-acting-as`. Integration
+tests cover both the working self-context token and refusal of the org-subject
+token. Do not work around this by granting the org to itself or relaxing auth;
+the plugin/kernel credential contract must agree before claiming live proof.
+
+This script intentionally has **no Warp implementation or placeholder**.
+The combined operator proof awaits #2278's implementation and #3203 on main.
+Connection-off production verification, the proof comment on #3178 and removing
+static OpenClaw keys remain operator-only after both lanes work.
 
 The historical instructions below apply **only** to an explicit, separate
 non-agent host instance with `INFER_PROXY_AUTH_MODE=host-static`.
