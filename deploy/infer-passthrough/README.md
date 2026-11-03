@@ -1,4 +1,5 @@
 # Release deployment for infer-passthrough (#3041, #3082)
+Release interlock #3230: agent-mode promotion requires an explicitly declared host auth mode after plugin PR #151 is deployed.
 
 ## Calling-agent contract (#3224)
 
