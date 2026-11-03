@@ -1,5 +1,6 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { randomUUID } from 'node:crypto';
+import type { AddressInfo } from 'node:net';
 import { PGlite } from '@electric-sql/pglite';
 import { drizzle } from 'drizzle-orm/pglite';
 import { getTableConfig } from 'drizzle-orm/pg-core';
@@ -65,6 +66,10 @@ import { resolveBrain } from '../brain';
 import { authorizeExternalMcp } from '@/src/lib/kernel/external-mcp';
 import { GET as warpRuns } from '@/app/warp/api/runs/route';
 import { resolveAgentAuthority } from '@/src/lib/auth/agent-authority';
+import { createAppToken } from '@/src/lib/auth/jwt';
+import { POST as verifyToken } from '@/app/auth/api/apps/token/verify/route';
+import { createProxyServer } from '../../../../../../packages/openclaw-infer-passthrough/src/server';
+import { loadConfig } from '../../../../../../packages/openclaw-infer-passthrough/src/config';
 
 vi.setConfig({ testTimeout: 30_000, hookTimeout: 30_000 });
 const MEMBER = 'did:imajin:member';
@@ -76,6 +81,148 @@ const tables = [identities, identityMembers, delegationGrants, connectors, orgCo
 let client: PGlite;
 let database: ReturnType<typeof drizzle>;
 let upstreamCalls = 0;
+const httpFetch = globalThis.fetch;
+
+describe('Artifact org bot through agent-mode passthrough and kernel (#3184)', () => {
+  let server: ReturnType<typeof createProxyServer>;
+  let baseUrl: string;
+  let token: string;
+  const kernelCalls: Headers[] = [];
+
+  beforeEach(async () => {
+    // Use the real kernel token signer/verifier with ephemeral, in-memory material.
+    vi.stubEnv('NODE_ENV', 'test');
+    vi.stubEnv('AUTH_PRIVATE_KEY', '');
+    await database.update(identities).set({ handle: 'artifact' }).where(eq(identities.id, ORG));
+    await database.insert(identityMembers).values({
+      identityDid: ORG, memberDid: AGENT, role: 'agent', allowedServices: ['infer'],
+    });
+    token = await createAppToken({
+      azp: AGENT, sub: AGENT, scope: 'infer:completions', attestationId: randomUUID(),
+    });
+    kernelCalls.length = 0;
+    const fakeServices = globalThis.fetch;
+    vi.stubGlobal('fetch', vi.fn(async (input: string, init?: RequestInit) => {
+      if (input.startsWith(baseUrl)) return httpFetch(input, init);
+      if (input === 'https://kernel.test/infer/v1/messages') {
+        kernelCalls.push(new Headers(init?.headers));
+        return POST(new NextRequest(input, init));
+      }
+      if (input.endsWith('/api/apps/token/verify')) {
+        return verifyToken(new NextRequest(input, init));
+      }
+      return fakeServices(input, init);
+    }));
+    server = createProxyServer(loadConfig({ KERNEL_BASE_URL: 'https://kernel.test' }));
+    await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
+    baseUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  });
+  afterEach(async () => {
+    await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
+  });
+
+  function call(credential = token, selector: string | null = ORG) {
+    return fetch(`${baseUrl}/anthropic/v1/messages`, {
+      method: 'POST',
+      headers: {
+        'x-api-key': credential, 'anthropic-version': '2023-06-01',
+        ...(selector ? { 'x-acting-as': selector } : {}),
+        'x-imajin-session': 'artifact-proof', 'x-imajin-turn': 'artifact-turn',
+      },
+      body: JSON.stringify({ model: 'claude-test', max_tokens: 8, messages: [{ role: 'user', content: 'proof' }] }),
+    });
+  }
+  function assertNoDispatch() {
+    expect(h.get).not.toHaveBeenCalled();
+    expect(h.unseal).not.toHaveBeenCalled();
+    expect(h.personal).not.toHaveBeenCalled();
+    expect(h.fallback).not.toHaveBeenCalled();
+    expect(h.usage).not.toHaveBeenCalled();
+    expect(upstreamCalls).toBe(0);
+  }
+
+  it('bills @artifact with the org bot as actor, using org custody without a member grant', async () => {
+    const response = await call();
+    expect(response.status).toBe(200);
+    expect(await database.select().from(orgConnectionMemberGrants)).toEqual([]);
+    expect((await database.select().from(identities).where(eq(identities.id, ORG)))[0].handle).toBe('artifact');
+    expect(kernelCalls).toHaveLength(1);
+    expect(kernelCalls[0].get('x-api-key')).toBe(token);
+    expect(kernelCalls[0].get('x-acting-as')).toBe(ORG);
+    expect(kernelCalls[0].has('x-acting-for')).toBe(false);
+    expect(h.get).toHaveBeenCalledWith(FIELD);
+    expect(h.usage).toHaveBeenCalledTimes(1);
+    expect(h.usage).toHaveBeenCalledWith(expect.objectContaining({
+      principalDid: ORG, agentDid: AGENT, tokensIn: 3, tokensOut: 2,
+      sessionId: 'artifact-proof', turnId: 'artifact-turn',
+      metadata: { orgDid: ORG, connectionId: 'org-connection', format: 'anthropic-messages' },
+    }));
+    expect(h.personal).not.toHaveBeenCalled();
+    expect(h.fallback).not.toHaveBeenCalled();
+    expect(upstreamCalls).toBe(1);
+    await assertPrivate(response);
+  });
+
+  it('keeps a personal-agent credential on its human keys without an org selector', async () => {
+    await database.update(identityMembers).set({ identityDid: MEMBER }).where(eq(identityMembers.memberDid, AGENT));
+    const personalToken = await createAppToken({
+      azp: AGENT, sub: MEMBER, scope: 'infer:completions', attestationId: randomUUID(),
+    });
+    h.personal.mockResolvedValue({ apiKey: h.key, modelId: 'personal-model' });
+    const response = await call(personalToken, null);
+    expect(response.status).toBe(200);
+    expect(h.personal.mock.calls).toEqual([[MEMBER]]);
+    expect(h.get).not.toHaveBeenCalled();
+    expect(h.usage).toHaveBeenCalledWith(expect.objectContaining({ principalDid: MEMBER }));
+    expect(kernelCalls[0].has('x-acting-as')).toBe(false);
+    expect(h.fallback).not.toHaveBeenCalled();
+  });
+
+  it('refuses a personal agent selecting an org it is not assigned to, even with org membership', async () => {
+    await database.update(identityMembers).set({ identityDid: MEMBER }).where(eq(identityMembers.memberDid, AGENT));
+    await database.insert(identityMembers).values({ identityDid: ORG, memberDid: AGENT, role: 'member' });
+    expect((await call()).status).toBe(403);
+    assertNoDispatch();
+  });
+
+  it.each(['status-off', 'removed', 'assignment-revoked'] as const)(
+    'refuses the next call after %s with no cached credential or fallback', async state => {
+      expect((await call()).status).toBe(200);
+      if (state === 'status-off') await database.update(connectors).set({ status: 'revoked' });
+      if (state === 'removed') await database.update(connectors).set({ revokedAt: new Date() });
+      if (state === 'assignment-revoked') {
+        await database.update(identityMembers).set({ removedAt: new Date() }).where(eq(identityMembers.memberDid, AGENT));
+      }
+      vi.clearAllMocks();
+      upstreamCalls = 0;
+      const response = await call();
+      expect(response.status).toBe(403);
+      if (state !== 'assignment-revoked') {
+        expect(await response.clone().json()).toMatchObject({
+          code: 'connection_not_loaded', error: expect.stringContaining('/auth/connectors'),
+        });
+      }
+      assertNoDispatch();
+      await assertPrivate(response);
+    },
+  );
+
+  it('refuses a tampered signature at the real verifier without session fallback', async () => {
+    const [header, claims] = token.split('.');
+    const invalid = `${header}.${claims}.${Buffer.alloc(64).toString('base64url')}`;
+    expect((await call(invalid)).status).toBe(401);
+    expect(h.session).not.toHaveBeenCalled();
+    assertNoDispatch();
+  });
+
+  it('does not treat an org-subject token as the org bot signing as itself', async () => {
+    const orgSubject = await createAppToken({
+      azp: AGENT, sub: ORG, scope: 'infer:completions', attestationId: randomUUID(),
+    });
+    expect((await call(orgSubject)).status).toBe(403);
+    assertNoDispatch();
+  });
+});
 
 function request(body: unknown = { model: 'claude-test', messages: [], max_tokens: 8 }, org: string | null = ORG) {
   return new NextRequest('https://kernel.test/infer/v1/messages', {

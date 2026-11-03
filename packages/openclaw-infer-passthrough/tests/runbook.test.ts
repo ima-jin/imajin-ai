@@ -29,6 +29,16 @@ describe('principal migration runbook (#3041)', () => {
     expect(runbook).toContain('install -o root -g root -m 0755 deploy/infer-passthrough/bootstrap.sh deploy/infer-passthrough/update.sh /usr/local/libexec/infer-passthrough/');
     expect(runbook).toContain('deploy/infer-passthrough/check-health.mjs');
   });
+  it('documents assigned org bots, personal isolation and the partial operator proof (#3184)', () => {
+    const readme = readFileSync(new URL('README.md', packageUrl), 'utf8');
+    for (const contract of [
+      'org bot = agent assigned to the org DID using the org',
+      'Personal agents stay on their human', 'No per-session act-as',
+      'no per-member grant', 'connection_not_loaded',
+      'artifact-org-bot-smoke.mjs --dry-run', 'usageIds',
+      'no Warp implementation or placeholder', 'plugin PR #151',
+    ]) expect(readme).toContain(contract);
+  });
   it('documents per-agent transport, refusals and the host-only opt-in (#3224)', () => {
     const runbook = readFileSync(new URL('../../../deploy/infer-passthrough/README.md', import.meta.url), 'utf8');
     for (const contract of [

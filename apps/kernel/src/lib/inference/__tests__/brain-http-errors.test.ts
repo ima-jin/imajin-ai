@@ -22,8 +22,15 @@ import { NoBrainSealedError, NoModelSelectedError, ModelDeprecatedError } from '
 import { SpendCapExceededError } from '@/src/lib/inference/spend-cap';
 import { VaultDelegationError } from '@/src/lib/vault/errors';
 import { RetryError } from 'ai';
+import { ExternalMcpError } from '@/src/lib/kernel/external-mcp-policy';
 
 describe('mapBrainErrorToHttp', () => {
+  it('preserves the connection-off code without changing other connector errors', () => {
+    expect(mapBrainErrorToHttp(new ExternalMcpError(403, 'Connection not loaded', 'connection_not_loaded')))
+      .toEqual({ status: 403, body: { error: 'Connection not loaded', code: 'connection_not_loaded' } });
+    expect(mapBrainErrorToHttp(new ExternalMcpError(403, 'Not assigned', 'agent_not_assigned')))
+      .toEqual({ status: 403, body: { error: 'Not assigned' } });
+  });
   it('maps NoBrainSealedError to a 422 no_brain response with no credential material', () => {
     const err = new NoBrainSealedError('inference_no_brain: no model credential sealed for did:imajin:x');
     const mapped = mapBrainErrorToHttp(err);

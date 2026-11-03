@@ -35,7 +35,10 @@ export interface MappedHttpError {
  */
 export function mapBrainErrorToHttp(err: unknown): MappedHttpError | undefined {
   if (err instanceof ExternalMcpError) {
-    return { status: err.status, body: { error: err.message } };
+    return {
+      status: err.status,
+      body: { error: err.message, ...(err.code === 'connection_not_loaded' ? { code: err.code } : {}) },
+    };
   }
   // #1621 removed the env-key fallback, so "nobody sealed a brain" is a real
   // runtime outcome. The response must never carry credential material — the
