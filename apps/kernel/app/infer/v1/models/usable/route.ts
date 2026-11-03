@@ -43,7 +43,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { corsHeaders } from '@/src/lib/kernel/cors';
 import { rateLimit, getClientIP } from '@imajin/config';
 import { createLogger } from '@imajin/logger';
-import { resolveInferenceAuth } from '@/src/lib/inference/auth';
+import { resolveInferenceAuth, type InferenceAuthContext } from '@/src/lib/inference/auth';
+import { inferenceBrainContext } from '@/src/lib/inference/route-context';
 import { listUsableModels } from '@/src/lib/inference/brain';
 import { ExternalMcpError } from '@/src/lib/kernel/external-mcp-policy';
 import type { UsableModel } from '@/src/lib/inference/model-catalog';
@@ -71,10 +72,14 @@ export async function GET(request: NextRequest) {
   if (!auth.ok) {
     return NextResponse.json({ error: auth.error }, { status: auth.status, headers: cors });
   }
-  const { ownerDid, appDid, orgContext, caller } = auth.context;
+  const { ownerDid, appDid } = auth.context;
 
   try {
-    const context = appDid || orgContext || caller ? auth.context : ownerDid;
+    // Opt-in diagnostics leave the existing OpenAI model catalog byte-shape unchanged.
+    if (new URL(request.url ?? 'http://localhost').searchParams.get('explain') === '1') {
+      return explainRoutes(auth.context, cors, new URL(request.url).searchParams.get('model') ?? undefined);
+    }
+    const context = inferenceBrainContext(auth.context);
     const brains = await listUsableModels(context);
 
     log.info({ ownerDid, appDid: appDid ?? null, count: brains.length }, 'usable models list: resolved usable brains');
@@ -87,6 +92,17 @@ export async function GET(request: NextRequest) {
       { error: 'models_list_failed', message: 'Listing usable models failed', detail: String(err) },
       { status: 500, headers: cors },
     );
+  }
+}
+
+async function explainRoutes(context: InferenceAuthContext, cors: Record<string, string>, model?: string) {
+  const headers = { ...cors, 'Cache-Control': 'private, no-store', Vary: 'Cookie, Authorization, x-acting-as' };
+  try {
+    const { listInferenceRoutes } = await import('@/src/lib/inference/route-discovery');
+    const routes = model ? await listInferenceRoutes(context, { model }) : await listInferenceRoutes(context);
+    return NextResponse.json({ routes }, { status: 200, headers });
+  } catch {
+    return NextResponse.json({ error: 'inference_routes_unavailable' }, { status: 503, headers });
   }
 }
 

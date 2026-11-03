@@ -1,5 +1,6 @@
-import { requireAppAuth, requireAuth, resolveActingDid, type AppAuthContext, type Identity } from '@imajin/auth';
-import { connectionCaller, sessionConnectionCaller, type ConnectionCaller } from '@/src/lib/kernel/connection-principal-policy';
+import { requireAppAuth, requireAuth } from '@imajin/auth';
+import type { ConnectionCaller } from '@/src/lib/kernel/connection-principal-policy';
+import { resolveInferenceRouteContext } from './route-context';
 
 export interface InferenceAuthContext {
   ownerDid: string;
@@ -47,7 +48,7 @@ export async function resolveInferenceAuth(
   scope: string = 'infer:provide',
 ): Promise<InferenceAuthResult> {
   const appResult = await requireAppAuth(withApiKeyBearerFallback(request), { scope, service: 'infer', allowMemberActAs: true });
-  if ('appAuth' in appResult) return appInferenceContext(appResult.appAuth);
+  if ('appAuth' in appResult) return resolveInferenceRouteContext({ app: appResult.appAuth });
 
   // A verified app denied scope or act-as must not degrade to a cookie session.
   const credentialHint = request.headers.get('x-api-key') || request.headers.get('x-app-did')
@@ -69,30 +70,7 @@ export async function resolveInferenceAuth(
     return { ok: false, error: authResult.error, status: authResult.status };
   }
 
-  return sessionInferenceContext(authResult.identity);
-}
-
-function appInferenceContext(app: AppAuthContext): InferenceAuthResult {
-  const memberDid = app.actingFor || app.userDid;
-  if (!memberDid) return { ok: false, error: 'App-authenticated inference requires an authenticated caller DID', status: 400 };
-  const orgDid = app.actingAs;
-  return { ok: true, context: {
-    ownerDid: orgDid ?? memberDid, appDid: app.appDid,
-    caller: connectionCaller(app.userDid, app),
-    ...(orgDid && orgDid !== memberDid ? { orgContext: { memberDid, orgDid } } : {}),
-  } };
-}
-
-function sessionInferenceContext(identity: Identity): InferenceAuthResult {
-  const ownerDid = resolveActingDid(identity);
-  const orgDid = identity.actingAs;
-  if (orgDid && identity.actingFor && identity.actingFor !== orgDid && identity.subtype !== 'agent') {
-    return { ok: false, error: 'Conflicting acting identity context', status: 403 };
-  }
-  return { ok: true, context: {
-    ownerDid: orgDid ?? ownerDid, ...sessionConnectionCaller(identity),
-    ...(orgDid && orgDid !== identity.id ? { orgContext: { memberDid: identity.actingFor ?? identity.id, orgDid } } : {}),
-  } };
+  return resolveInferenceRouteContext({ identity: authResult.identity });
 }
 
 /**

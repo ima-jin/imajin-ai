@@ -10,7 +10,7 @@ import type { VerifiedInferenceOrgContext } from './auth';
 import type { ResolvedBrain } from './brain';
 import { missingConnection } from '@/src/lib/kernel/connection-principal';
 
-const unavailable = () => new ExternalMcpError(503, 'Organization inference credential unavailable');
+const unavailable = () => new ExternalMcpError(503, 'Organization inference credential unavailable', 'credential_unavailable');
 
 /** One live grant + custody snapshot per call; never cache a key or authorization. */
 export function resolveOrgHeldBrain(context: VerifiedInferenceOrgContext, modelId = ''): Promise<ResolvedBrain> {
