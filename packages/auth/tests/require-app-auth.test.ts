@@ -27,6 +27,7 @@ function bearerRequest(token = 'some-bearer-token'): Request {
   return new Request('https://kernel.test/connections/api/connections', {
     headers: { authorization: `Bearer ${token}` },
   });
+
 }
 
 beforeEach(() => {
@@ -36,6 +37,7 @@ beforeEach(() => {
 afterEach(() => {
   setVaultInternalApiKey(undefined);
   vi.unstubAllGlobals();
+  vi.unstubAllEnvs();
 });
 
 describe('requireAppAuth — live act-as selector (#3202)', () => {
@@ -64,6 +66,50 @@ describe('requireAppAuth — live act-as selector (#3202)', () => {
       `${AUTH_SERVICE_URL}/api/apps/token/verify`,
       `${AUTH_SERVICE_URL}/api/groups/${encodeURIComponent(org)}/controllers/${encodeURIComponent(member)}`,
     ]);
+  });
+  it.each([{ allowedServices: [] }, { allowedServices: ['pay'] }])('refuses an inference selector excluded by allowed_services %j', async ({ allowedServices }) => {
+    transport(() => ({ valid: true, role: 'agent', allowedServices }));
+    expect(await requireAppAuth(request(), { scope: 'infer:completions', service: 'infer' }))
+      .toEqual({ error: 'Not authorized to act as this group', status: 403 });
+  });
+  it('accepts a selector restricted to the current service', async () => {
+    transport(() => ({ valid: true, role: 'agent', allowedServices: ['infer'] }));
+    expect(await requireAppAuth(request(), { scope: 'infer:completions', service: 'infer' }))
+      .toHaveProperty('appAuth.actingAs', org);
+  });
+  it('verifies onBehalfOf rather than trusting x-acting-for', async () => {
+    transport(() => ({ valid: true, role: 'agent' }));
+    const req = request();
+    req.headers.delete('x-acting-as');
+    req.headers.set('x-acting-for', member);
+    expect(await requireAppAuth(req, { service: 'infer' })).toHaveProperty('appAuth.actingFor', member);
+  });
+  it('rejects an unassigned onBehalfOf selector and an excluded delegation service', async () => {
+    transport(() => ({ valid: true, role: 'agent', allowedServices: ['pay'] }));
+    const req = request();
+    req.headers.delete('x-acting-as');
+    req.headers.set('x-acting-for', member);
+    expect(await requireAppAuth(req, { service: 'infer' }))
+      .toEqual({ error: 'Not authorized to act for this identity', status: 403 });
+  });
+  it('allows ordinary member selection only for explicitly grant-gated connector routes', async () => {
+    transport(() => ({ valid: true, role: 'member' }));
+    expect(await requireAppAuth(request(), { service: 'infer' })).toHaveProperty('status', 403);
+    expect(await requireAppAuth(request(), { service: 'infer', allowMemberActAs: true }))
+      .toHaveProperty('appAuth.actingAs', org);
+  });
+  it.each(['active', 'revoked', 'unavailable', 'error'])('checks delegation-only act-as authority per call: %s', async state => {
+    setVaultInternalApiKey(randomUUID());
+    vi.stubEnv('AUTH_INTERNAL_API_KEY', randomUUID());
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (url.endsWith('/api/apps/token/verify')) return Response.json(appAuth);
+      if (url.includes('/controllers/')) return Response.json({ valid: false });
+      if (state === 'error') throw new Error('Authority service unavailable');
+      return Response.json({ allowed: state === 'active' }, { status: state === 'unavailable' ? 503 : 200 });
+    }));
+    const result = await requireAppAuth(request(), { service: 'infer', allowMemberActAs: true });
+    if (state === 'active') expect(result).toHaveProperty('appAuth.actingAs', org);
+    else expect(result).toEqual({ error: 'Not authorized to act as this group', status: 403 });
   });
   it('revalidates the same token on the very next call after authority removal', async () => {
     let valid = true;
@@ -95,6 +141,13 @@ describe('requireAppAuth — live act-as selector (#3202)', () => {
 });
 
 describe('requireAppAuth — bearer path notAppToken discrimination (#1812)', () => {
+  it.each(['app+jwt', 'app-service+jwt'])('never classifies a rejected %s as a session-token candidate', async typ => {
+    const header = Buffer.from(JSON.stringify({ typ })).toString('base64url');
+    vi.stubGlobal('fetch', vi.fn(async () => Response.json({ error: 'Invalid app token' }, { status: 401 })));
+    expect(await requireAppAuth(bearerRequest(`${header}.fixture.invalid`))).toEqual({
+      error: 'Invalid app token', status: 401, notAppToken: false,
+    });
+  });
   it('marks a 401 (invalid/expired token) response as notAppToken', async () => {
     global.fetch = vi.fn(async () =>
       new Response(JSON.stringify({ error: 'Invalid or expired app token' }), { status: 401 }),

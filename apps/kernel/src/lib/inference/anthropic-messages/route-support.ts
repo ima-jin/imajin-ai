@@ -21,6 +21,7 @@ import { resolveInferenceAuth, type InferenceAuthContext, type VerifiedInference
 import { resolveBrain, type ResolvedBrain, type ResolveBrainOptions } from '../brain';
 import { mapBrainErrorToHttp } from '../brain-http-errors';
 import { mapUpstreamErrorToHttp } from '../completions/errors';
+import type { ConnectionCaller } from '@/src/lib/kernel/connection-principal';
 
 /** Same scope as #1925's completions passthrough — no new scope for this wire format. */
 export const ANTHROPIC_MESSAGES_SCOPE = 'infer:completions';
@@ -93,9 +94,11 @@ export function resolveAnthropicBrain(
   appDid: string | undefined,
   model?: string,
   orgContext?: VerifiedInferenceOrgContext,
+  caller?: ConnectionCaller,
 ): Promise<ResolvedBrain> {
   const options: ResolveBrainOptions = model ? { connectors: ANTHROPIC_ONLY, model } : { connectors: ANTHROPIC_ONLY };
-  const context = appDid || orgContext ? { ownerDid, ...(appDid ? { appDid } : {}), ...(orgContext ? { orgContext } : {}) } : ownerDid;
+  const context = appDid || orgContext || caller
+    ? { ownerDid, ...(appDid ? { appDid } : {}), ...(orgContext ? { orgContext } : {}), ...(caller ? { caller } : {}) } : ownerDid;
   return resolveBrain(context, options);
 }
 

@@ -5,9 +5,10 @@ import { isExternalMcpField } from '@/src/lib/vault/field-grammar';
 import { getNodeSigningIdentity, getNodeXPrivateKey } from '@/src/lib/vault/sealing';
 import { requireOrgConnectionMemberGrant } from '@/src/lib/kernel/org-connection-member-grants';
 import { ExternalMcpError } from '@/src/lib/kernel/external-mcp-policy';
-import { isLiveConnection } from '@/src/lib/kernel/member-connection-gate';
+import { authorizeMemberConnection, isLiveConnection } from '@/src/lib/kernel/member-connection-gate';
 import type { VerifiedInferenceOrgContext } from './auth';
 import type { ResolvedBrain } from './brain';
+import { missingConnection } from '@/src/lib/kernel/connection-principal';
 
 const unavailable = () => new ExternalMcpError(503, 'Organization inference credential unavailable');
 
@@ -17,16 +18,19 @@ export function resolveOrgHeldBrain(context: VerifiedInferenceOrgContext, modelI
     const { memberDid, orgDid } = context;
     const lock = `org-held-connection:${orgDid}`;
     await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${lock}, 0))`);
-    const grant = await requireOrgConnectionMemberGrant({
+    const assignedConnection = context.assignedAgentDid ? await authorizeMemberConnection(tx, {
+      memberDid: context.assignedAgentDid, caller: { actorDid: context.assignedAgentDid, actingAs: orgDid },
+    }, { provider: 'anthropic', scope: 'infer:completions', service: 'infer' }) : undefined;
+    const grant = context.assignedAgentDid ? undefined : await requireOrgConnectionMemberGrant({
       memberDid, orgDid, actingDid: orgDid, provider: 'anthropic',
     }, tx);
     // Grant errors stay outside the custody catch: preserve their clear 403.
     try {
-      const [row] = await tx.select().from(connectors).where(and(
-        eq(connectors.id, grant.connectionId), eq(connectors.ownerDid, orgDid),
+      const row = assignedConnection ?? (await tx.select().from(connectors).where(and(
+        ...(grant ? [eq(connectors.id, grant.connectionId)] : []), eq(connectors.ownerDid, orgDid),
         eq(connectors.provider, 'org-held-anthropic'), eq(connectors.slot, 'primary'),
-      )).limit(1);
-      if (!row || !isLiveConnection(row) || !row.sealedKeyField || !isExternalMcpField(row.sealedKeyField)) throw unavailable();
+      )).limit(1))[0];
+      if (!row || !isLiveConnection(row) || !row.sealedKeyField || !isExternalMcpField(row.sealedKeyField)) throw missingConnection(orgDid);
       const node = getNodeSigningIdentity();
       const [custody] = await tx.select().from(vaultDelegationGrants).where(and(
         eq(vaultDelegationGrants.field, row.sealedKeyField), eq(vaultDelegationGrants.subject, orgDid),
@@ -41,9 +45,14 @@ export function resolveOrgHeldBrain(context: VerifiedInferenceOrgContext, modelI
       if (!apiKey || !isLiveConnection(custody)) throw unavailable();
       return {
         connector: 'anthropic', provider: 'anthropic', credentialDid: orgDid, modelId, apiKey,
-        orgUsage: { memberDid, orgDid, grantId: grant.grantId, connectionId: grant.connectionId },
+        ...(context.assignedAgentDid ? { actorDid: context.assignedAgentDid } : {}),
+        orgUsage: {
+          memberDid: context.assignedAgentDid ? orgDid : memberDid, orgDid,
+          ...(grant ? { grantId: grant.grantId } : {}), connectionId: row.id,
+        },
       };
-    } catch {
+    } catch (error) {
+      if (error instanceof ExternalMcpError && error.status === 403) throw error;
       // Vault failures may contain field/value material. Never propagate it.
       throw unavailable();
     }

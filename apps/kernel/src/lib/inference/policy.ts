@@ -23,6 +23,8 @@ import { getModel, generateText } from '@imajin/llm';
 import { createLogger } from '@imajin/logger';
 import { resolveBrain, ModelDeprecatedError, type BrainCredentialContext, type ResolvedBrain } from './brain';
 import type { CandidateIntent, InferenceContext, IntentVocabulary } from './types';
+import { inferenceText } from './org-inference-safety';
+import { ExternalMcpError } from '@/src/lib/kernel/external-mcp-policy';
 
 const log = createLogger('kernel:inference:policy');
 
@@ -106,8 +108,12 @@ export async function infer(
       prompt: userMessage,
       maxRetries: 1,
     });
-    rawText = result.text;
+    rawText = inferenceText(brain, result.text);
   } catch (err) {
+    if (brain?.orgUsage) {
+      await markSessionFailed(ctx.sessionId);
+      throw new ExternalMcpError(502, 'Organization inference upstream unavailable');
+    }
     // #1818: the model sealed on a connector card can be retired upstream
     // after selection — Google (and other providers) keep dead model ids in
     // their own models-list API, so pick-time validation narrows this window

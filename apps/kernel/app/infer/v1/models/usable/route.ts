@@ -71,10 +71,10 @@ export async function GET(request: NextRequest) {
   if (!auth.ok) {
     return NextResponse.json({ error: auth.error }, { status: auth.status, headers: cors });
   }
-  const { ownerDid, appDid, orgContext } = auth.context;
+  const { ownerDid, appDid, orgContext, caller } = auth.context;
 
   try {
-    const context = appDid || orgContext ? auth.context : ownerDid;
+    const context = appDid || orgContext || caller ? auth.context : ownerDid;
     const brains = await listUsableModels(context);
 
     log.info({ ownerDid, appDid: appDid ?? null, count: brains.length }, 'usable models list: resolved usable brains');

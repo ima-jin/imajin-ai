@@ -37,6 +37,21 @@ function nodeOrigin(): string {
   return `${scheme}://${host}`;
 }
 
+/** Connector-only selection may use the existing live agent-delegation record. */
+async function delegatedActingAs(callerDid: string, principalDid: string): Promise<ActingAsResult> {
+  const internalKey = process.env.AUTH_INTERNAL_API_KEY;
+  if (!internalKey) return { valid: false };
+  const response = await internalFetch(`${getAuthUrl()}/api/internal/verify-delegation`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "x-internal-key": internalKey },
+    body: JSON.stringify({ agentDid: callerDid, principalDid }),
+    cache: "no-store",
+  });
+  if (!response.ok) return { valid: false };
+  const data = await response.json();
+  return data.allowed === true ? { valid: true, role: 'agent', allowedServices: null } : { valid: false };
+}
+
 /**
  * Trim trailing slashes without a regex — `/\/+$/` was flagged as
  * super-linear on attacker-controlled input (SonarCloud typescript:S8786).
@@ -76,6 +91,8 @@ function parseCookieValue(cookieHeader: string | null, name: string): string | n
 }
 
 export interface AuthOptions {
+  /** Connector invocation routes enforce a separate per-member key grant after selection. */
+  allowMemberActAs?: boolean;
   sessionOnly?: boolean; // If true, accept only a user session cookie, never a Bearer credential
   verifyChain?: boolean; // If true, also verify the chain is valid (not just session)
   service?: string;      // If set, validate that acting-as controller has access to this service
@@ -169,7 +186,8 @@ export interface ActingAsResult {
 export async function validateActingAs(
   callerDid: string,
   groupDid: string,
-  service?: string
+  service?: string,
+  options?: { allowMember?: boolean },
 ): Promise<ActingAsResult> {
   const authUrl = getAuthUrl();
   const internalApiKey = getVaultInternalApiKey();
@@ -187,7 +205,11 @@ export async function validateActingAs(
     );
     if (!res.ok) return { valid: false };
     const data = await res.json();
-    if (data.valid !== true || !["owner", "admin", "maintainer", "agent"].includes(data.role)) {
+    const roles = options?.allowMember ? ["owner", "admin", "maintainer", "agent", "member"] : ["owner", "admin", "maintainer", "agent"];
+    if (data.valid !== true) {
+      return options?.allowMember ? await delegatedActingAs(callerDid, groupDid) : { valid: false };
+    }
+    if (!roles.includes(data.role)) {
       return { valid: false };
     }
 
@@ -291,7 +313,9 @@ async function applyActingAs(
   const actingAs = extractActingAsValue(request);
   if (!actingAs) return undefined;
 
-  const actingAsResult = await validateActingAs(identity.id, actingAs, options?.service);
+  const actingAsResult = await validateActingAs(identity.actingFor ?? identity.id, actingAs, options?.service, {
+    allowMember: options?.allowMemberActAs,
+  });
   if (!actingAsResult.valid) {
     return { error: "Not authorized to act as this group", status: 403 };
   }
@@ -343,11 +367,10 @@ export async function requireAuth(
     await applyChainVerification(result.identity);
   }
 
-  const actingAsError = await applyActingAs(request, result.identity, options);
-  if (actingAsError) return actingAsError;
-
   const actingForError = await applyActingFor(request, result.identity, options);
   if (actingForError) return actingForError;
+  const actingAsError = await applyActingAs(request, result.identity, options);
+  if (actingAsError) return actingAsError;
 
   return result;
 }

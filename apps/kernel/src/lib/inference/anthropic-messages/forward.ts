@@ -253,7 +253,7 @@ async function writeAnthropicMessagesUsage(
     turnId: meta.turnId,
     warpRunId: meta.warpRunId,
     principalDid: brain.orgUsage?.memberDid ?? brain.credentialDid,
-    agentDid: meta.agentDid,
+    agentDid: brain.actorDid ?? meta.agentDid,
     provider: brain.connector,
     model: brain.modelId,
     tokensIn: usage.input_tokens,

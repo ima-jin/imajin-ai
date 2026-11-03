@@ -60,7 +60,7 @@ export async function POST(request: NextRequest) {
   if (!auth.ok) {
     return NextResponse.json({ error: auth.error }, { status: auth.status, headers: cors });
   }
-  const { ownerDid, appDid, orgContext } = auth.context;
+  const { ownerDid, appDid, orgContext, caller } = auth.context;
 
   const body = await parseRequestBody(request);
   if (!body.ok) {
@@ -79,7 +79,7 @@ export async function POST(request: NextRequest) {
   };
 
   try {
-    const context = appDid || orgContext ? auth.context : ownerDid;
+    const context = appDid || orgContext || caller ? auth.context : ownerDid;
     // #2195: `model` is the routing key among the principal's sealed,
     // usable connectors — omitted (rather than passed as `undefined`) when
     // absent so a bare `resolveBrain(context)` call stays byte-identical to

@@ -12,6 +12,7 @@
 import { NextResponse } from 'next/server';
 import { CorpusContextError } from './corpus-context';
 import { WarpApiError, WarpBriefEventError, WarpBriefSizeError } from './errors';
+import { ExternalMcpError } from '@/src/lib/kernel/external-mcp-policy';
 
 /** Status Warp returned, mapped to what *our* caller should see. */
 function statusForUpstream(upstream: number): number {
@@ -44,6 +45,9 @@ function upstreamErrorResponse(err: WarpApiError, cors: Record<string, string>):
  * upstream failure is nothing they can act on.
  */
 export function warpErrorResponse(err: unknown, cors: Record<string, string>): NextResponse {
+  if (err instanceof ExternalMcpError) {
+    return NextResponse.json({ error: err.message }, { status: err.status, headers: cors });
+  }
   if (err instanceof WarpBriefSizeError) {
     return NextResponse.json({ error: 'warp_brief_too_large', maxBytes: err.maxBytes, detail: err.message },
       { status: 413, headers: cors });

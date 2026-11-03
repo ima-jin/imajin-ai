@@ -51,7 +51,7 @@
  * and a sweep tick observing the same terminal state can't double-publish.
  */
 import { NextResponse, type NextRequest } from 'next/server';
-import { requireAuth, resolveActingDid } from '@imajin/auth';
+import { warpActingDid } from '@/src/lib/warp/route-context';
 import { createLogger } from '@imajin/logger';
 import { corsHeaders } from '@/src/lib/kernel/cors';
 import { CORPUS_CONTEXT_MAX_LIMIT, type CorpusContextInput } from '@/src/lib/warp/corpus-context';
@@ -181,11 +181,9 @@ function buildDispatchInput(
 export async function POST(request: NextRequest) {
   const cors = corsHeaders(request);
 
-  const auth = await requireAuth(request);
-  if ('error' in auth) {
-    return NextResponse.json({ error: auth.error }, { status: auth.status, headers: cors });
-  }
-  const principalDid = resolveActingDid(auth.identity);
+  const acting = await warpActingDid(request, cors);
+  if ('response' in acting) return acting.response;
+  const principalDid = acting.did;
 
   let body: Record<string, unknown>;
   try {
@@ -211,7 +209,7 @@ export async function POST(request: NextRequest) {
   const input = buildDispatchInput(prompt, corpusContext, body);
 
   try {
-    const run = await dispatchAgentRun(principalDid, input);
+    const run = await dispatchAgentRun(principalDid, input, ...(acting.caller ? [acting.caller] as const : []));
 
     // Fire-and-forget, deliberately un-awaited: the watch polls for up to 30
     // minutes, so putting it in the response path would turn a 201 into a
@@ -223,7 +221,7 @@ export async function POST(request: NextRequest) {
     // DB dependency, and this is the one production call site of the
     // in-request watch, so it is where the real, DB-backed claim guard
     // against a duplicate terminal publish with the scheduled sweep belongs.
-    void watchRun(principalDid, run.runId, { claimTerminalPublish });
+    void watchRun(principalDid, run.runId, { claimTerminalPublish, ...(acting.caller ? { caller: acting.caller } : {}) });
 
     return NextResponse.json(run, { status: 201, headers: cors });
   } catch (err) {
