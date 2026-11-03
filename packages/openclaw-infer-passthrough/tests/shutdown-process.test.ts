@@ -29,7 +29,12 @@ describe.skipIf(process.platform !== 'linux')('standalone tsx process-group shut
     // CI tests run before builds. Resolve the real workspace sources, not mocks.
     const tsconfig = join(directory, 'tsconfig.json');
     await writeFile(tsconfig, JSON.stringify({
-      compilerOptions: { paths: { '@imajin/*': [resolve('packages/*/src/index.ts')] } },
+      compilerOptions: {
+        paths: {
+          '@imajin/auth/*': [resolve('packages/auth/src/*.ts')],
+          '@imajin/*': [resolve('packages/*/src/index.ts')],
+        },
+      },
     }));
     upstream = createServer((_req, res) => {
       upstreamResponse = res;
