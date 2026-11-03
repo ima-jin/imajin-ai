@@ -7,7 +7,7 @@ import OrgConnectionsPanel from '../../components/OrgConnectionsPanel';
 interface LoadedKey {
   provider: string;
   status: 'loaded';
-  loadedByDid: string;
+  loadedByDid?: string;
   loadedAt: string;
 }
 interface Member {
@@ -43,6 +43,22 @@ function actingHeaders(orgDid: string) {
 function loadedMetadata(value: LoadedKey): LoadedKey {
   return { provider: value.provider, status: 'loaded', loadedByDid: value.loadedByDid, loadedAt: value.loadedAt };
 }
+function canManageGroup(group: Group, humanSession: boolean) {
+  const viewer = group.controllers.find(member => member.controllerDid === group.viewerDid);
+  return humanSession && ['owner', 'admin'].includes(group.viewerRole)
+    && !!viewer && viewer.subtype !== 'agent' && viewer.role !== 'agent'
+    && (viewer.allowedServices === null || viewer.allowedServices.includes('connections'));
+}
+
+function KeyStatus({ uncertain, metadata }: Readonly<{ uncertain: boolean; metadata?: LoadedKey }>) {
+  if (uncertain) return <output className="block text-sm text-gray-400">Key status unavailable.</output>;
+  if (!metadata) return <output className="block text-sm text-gray-400">Not loaded</output>;
+  return <output className="block break-all text-sm text-green-400">
+    <span className="block">Loaded</span>
+    {metadata.loadedByDid && <span className="block">Loaded by {metadata.loadedByDid}</span>}
+    <span className="block">Loaded at <time dateTime={metadata.loadedAt}>{metadata.loadedAt}</time></span>
+  </output>;
+}
 
 function MemberGrants({ entry, orgDid, members, loaded }: Readonly<{
   entry: ConnectorEntry; orgDid: string; members: Member[]; loaded: boolean;
@@ -58,7 +74,7 @@ function MemberGrants({ entry, orgDid, members, loaded }: Readonly<{
     const controller = new AbortController();
     fetch(endpoint, { headers: actingHeaders(orgDid), cache: 'no-store', signal: controller.signal })
       .then(async response => {
-        if (!response.ok) throw new Error();
+        if (!response.ok) throw new Error('Member grants read failed');
         const data = await response.json();
         if (!controller.signal.aborted) setGrants(data.grants.map((grant: Grant) => ({ memberDid: grant.memberDid })));
       })
@@ -73,10 +89,10 @@ function MemberGrants({ entry, orgDid, members, loaded }: Readonly<{
       const response = await fetch(endpoint, {
         method: granted ? 'DELETE' : 'POST', headers, body: JSON.stringify({ memberDid, reason: reason.trim() }),
       });
-      if (!response.ok) throw new Error();
+      if (!response.ok) throw new Error('Member grant change failed');
       // Re-read authoritative state; a failed mutation never changes the displayed grant.
       const read = await fetch(endpoint, { headers, cache: 'no-store' });
-      if (!read.ok) throw new Error();
+      if (!read.ok) throw new Error('Member grants refresh failed');
       const data = await read.json();
       setGrants(data.grants.map((grant: Grant) => ({ memberDid: grant.memberDid })));
     } catch {
@@ -90,7 +106,7 @@ function MemberGrants({ entry, orgDid, members, loaded }: Readonly<{
     <h4 className="font-semibold text-white">Member grants</h4>
     <p className="text-sm text-gray-400">Human members need a specific grant to use this org key (use-case C). An agent assigned to the org uses the org&apos;s keys without a member grant.</p>
     {error && <p role="alert" className="text-sm text-red-400">{error}</p>}
-    {!grants && !error && <p className="text-sm text-gray-400">Loading member grants…</p>}
+    {grants === null && !error && <p className="text-sm text-gray-400">Loading member grants…</p>}
     <label className="block text-sm text-gray-300">Grant/revoke reason (required; never enter credentials)
       <input className={fieldClass} value={reason} onChange={event => setReason(event.target.value)} maxLength={500} disabled={busy} />
     </label>
@@ -98,9 +114,11 @@ function MemberGrants({ entry, orgDid, members, loaded }: Readonly<{
     <ul className="space-y-3">{members.map(member => {
       const granted = grantedDids.has(member.controllerDid);
       const label = member.name || (member.handle ? `@${member.handle}` : member.controllerDid);
+      const knownStatus = granted ? 'Granted' : 'Not granted';
+      const grantStatus = grants ? knownStatus : 'Grant status unavailable';
       return <li key={member.controllerDid} className="flex flex-wrap items-center justify-between gap-2">
         <div className="min-w-0 break-all text-sm text-gray-300">
-          <p>{label}</p><p className="text-xs text-gray-500">{member.controllerDid} · {grants ? (granted ? 'Granted' : 'Not granted') : 'Grant status unavailable'}</p>
+          <p>{label}</p><p className="text-xs text-gray-500">{member.controllerDid} · {grantStatus}</p>
         </div>
         <button type="button" className={buttonClass}
           disabled={busy || !grants || !reason.trim() || reason.length > 500 || (!loaded && !granted)}
@@ -141,7 +159,7 @@ function OrgKeyCard({ entry, orgDid, initial, canManage, members, statusUnavaila
         });
       } finally { if (input.current) input.current.value = ''; }
       const response = await request;
-      if (!response.ok) throw new Error();
+      if (!response.ok) throw new Error('Org service key change failed');
       if (method === 'POST') setMetadata(loadedMetadata(await response.json()));
       else setMetadata(undefined);
       setUncertain(false);
@@ -153,12 +171,9 @@ function OrgKeyCard({ entry, orgDid, initial, canManage, members, statusUnavaila
 
   return <article className="space-y-4 rounded-xl border border-white/10 bg-white/5 p-5" aria-label={`${entry.name} org service key`}>
     <h3 className="text-lg font-semibold text-white">{entry.icon} {entry.name}</h3>
-    <p className="text-sm text-gray-400">{entry.description}</p>
-    {uncertain
-      ? <p role="status" className="text-sm text-gray-400">Key status unavailable.{!canManage && ' Read-only; an org owner or admin can check the loaded status.'}</p>
-      : metadata
-        ? <div role="status" className="break-all text-sm text-green-400"><p>Loaded</p><p>Loaded by {metadata.loadedByDid}</p><p>Loaded at <time dateTime={metadata.loadedAt}>{metadata.loadedAt}</time></p></div>
-        : <p role="status" className="text-sm text-gray-400">Not loaded</p>}
+    <p className="text-sm text-gray-400">Org-held {entry.name} service key, sealed under this org&apos;s DID.</p>
+    <KeyStatus uncertain={uncertain} metadata={metadata} />
+    {!canManage && <p className="text-sm text-gray-400">Read-only</p>}
     {error && <p role="alert" className="text-sm text-red-400">{error}</p>}
     {canManage && <>
       <form onSubmit={event => void change('POST', event)} className="space-y-3">
@@ -186,10 +201,15 @@ export default function OrgServiceKeys({ orgDid, humanSession }: Readonly<{ orgD
       try {
         const options = { headers: actingHeaders(orgDid), cache: 'no-store' as const, signal: controller.signal };
         const response = await fetch(`/auth/api/groups/${encodeURIComponent(orgDid)}`, options);
-        if (!response.ok) throw new Error();
+        if (!response.ok) throw new Error('Organization membership read failed');
         const data: Group = await response.json();
-        if (data.groupDid !== orgDid || !['business', 'community', 'family'].includes(data.scope)) throw new Error();
-        const read = await fetch('/connections/api/org-held', options);
+        if (data.groupDid !== orgDid || !['business', 'community', 'family'].includes(data.scope)) {
+          throw new Error('Organization identity mismatch');
+        }
+        const endpoint = canManageGroup(data, humanSession)
+          ? '/connections/api/org-held'
+          : `/connections/api/org-held/status?orgDid=${encodeURIComponent(orgDid)}`;
+        const read = await fetch(endpoint, options);
         const keys = read.ok ? (await read.json()).connections.map(loadedMetadata) : [];
         if (controller.signal.aborted) return;
         setGroup(data); setConnections(keys); setStatusUnavailable(!read.ok);
@@ -199,12 +219,9 @@ export default function OrgServiceKeys({ orgDid, humanSession }: Readonly<{ orgD
     }
     void load();
     return () => controller.abort();
-  }, [orgDid]);
+  }, [orgDid, humanSession]);
 
-  const viewer = group?.controllers.find(member => member.controllerDid === group.viewerDid);
-  const canManage = humanSession && !!group && ['owner', 'admin'].includes(group.viewerRole)
-    && viewer?.subtype !== 'agent' && viewer?.role !== 'agent'
-    && !!viewer && (viewer.allowedServices === null || viewer.allowedServices.includes('connections'));
+  const canManage = group !== null && canManageGroup(group, humanSession);
   const members = group?.controllers.filter(member => member.scope === 'actor' && member.subtype !== 'agent' && member.role !== 'agent') ?? [];
   const label = group?.name || (group?.handle ? `@${group.handle}` : orgDid);
   return <section aria-label="Org service keys" className="mb-8 space-y-4">

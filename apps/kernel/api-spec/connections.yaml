@@ -183,6 +183,48 @@ tags:
     description: imajin connections service
 
 paths:
+  /api/org-held/status:
+    get:
+      tags: [connections]
+      operationId: readMemberOrgHeldStatus
+      summary: Read loaded-key status as an active human org member without key access
+      description: >-
+        Authenticates the personal session only. orgDid is a selector, never
+        authority; live active org, human identity and identity_members membership
+        are required. Any member role may read. Does not grant act-as, member
+        grants, custody, inference or proxy access. No loadedByDid, secret or
+        vault-field reference is selected or returned. No unseal on reads.
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: orgDid
+          in: query
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Metadata only; private, no-store; inactive keys omitted
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [connections]
+                properties:
+                  connections:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: false
+                      required: [provider, status, loadedAt]
+                      properties:
+                        provider: { type: string }
+                        status: { type: string, enum: [loaded] }
+                        loadedAt: { type: string, format: date-time }
+        "400": { description: Invalid or missing orgDid }
+        "401": { description: Personal session required }
+        "403": { description: Not an active human member of this org }
+        "503": { description: Store unavailable; no internal error details }
   /api/org-held/{provider}/grants:
     parameters:
       - name: provider

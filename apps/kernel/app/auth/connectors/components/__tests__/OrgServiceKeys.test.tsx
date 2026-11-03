@@ -34,8 +34,9 @@ function transport(options: { loaded?: boolean; role?: string; group?: ReturnTyp
   const fetch = vi.fn(async (url: string, init?: RequestInit) => {
     if (url.startsWith('/auth/api/groups/')) return Response.json(options.group ?? fixture(options.role));
     if (url === '/auth/api/org-connections') return Response.json({ connections: [], suspensions: [], events: [] });
-    if (url === '/connections/api/org-held') {
-      return Response.json({ connections: loaded ? [metadata()] : [] }, { status: options.readStatus ?? 200 });
+    if (url === '/connections/api/org-held' || url.startsWith('/connections/api/org-held/status?')) {
+      const row = url === '/connections/api/org-held' ? metadata() : { provider: 'anthropic', status: 'loaded', loadedAt };
+      return Response.json({ connections: loaded ? [row] : [] }, { status: options.readStatus ?? 200 });
     }
     if (url === keyEndpoint) {
       loaded = init?.method === 'POST';
@@ -137,19 +138,25 @@ describe('org service-key cards', () => {
   it.each(['member', 'maintainer', 'agent'])('hides all mutations for non-admin %s', async role => {
     const fetch = transport({ role, readStatus: 403 });
     const card = await panel();
-    expect(card.getByRole('status').textContent).toContain('Read-only');
+    expect(card.getByText('Read-only')).toBeDefined();
     expect(card.queryByRole('button')).toBeNull();
+    expect(fetch.mock.calls.some(([url]) => url === `/connections/api/org-held/status?orgDid=${encodeURIComponent(orgDid)}`)).toBe(true);
+    expect(fetch.mock.calls.some(([url]) => url === '/connections/api/org-held' || url.endsWith('/grants'))).toBe(false);
     expect(card.queryByLabelText(/write-only/)).toBeNull();
     expect(screen.queryByRole('region', { name: 'Organization external connections' })).toBeNull();
     expect(fetch.mock.calls.some(([, init]) => init?.method)).toBe(false);
     expect(fetch.mock.calls.some(([url]) => url.endsWith('/grants'))).toBe(false);
   });
 
-  it('renders loaded metadata read-only when a member-readable route becomes available', async () => {
-    transport({ role: 'member' });
+  it('renders member-readable loaded status with no loaded-by DID and never calls admin reads or grants', async () => {
+    const fetch = transport({ role: 'member' });
     const card = await panel();
     expect(card.getByText('Loaded')).toBeDefined();
+    expect(card.getByText(loadedAt)).toBeDefined();
+    expect(card.queryByText(/Loaded by/)).toBeNull();
     expect(card.queryByRole('button')).toBeNull();
+    expect(fetch.mock.calls.some(([url]) => url === `/connections/api/org-held/status?orgDid=${encodeURIComponent(orgDid)}`)).toBe(true);
+    expect(fetch.mock.calls.some(([url]) => url === '/connections/api/org-held' || url.endsWith('/grants'))).toBe(false);
   });
 
   it.each(['agent-session', 'service-restricted', 'missing-viewer'])('fails closed for %s', async boundary => {
