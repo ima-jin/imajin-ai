@@ -5,6 +5,10 @@ import { MCP_SCOPE_SET } from '../../apps/kernel/src/lib/mcp/oauth-config';
 const text = readFileSync(new URL('../../docs/ops/openclaw-mcp.md', import.meta.url), 'utf8').replaceAll('\r\n', '\n');
 const blocks = [...text.matchAll(/```json\n([\s\S]*?)\n```/g)].map(match => JSON.parse(match[1]));
 describe('operator runbook acceptance contract', () => {
+  it('keeps screenshot evidence in PR comments rather than documentation image embeds', () => {
+    expect(text).toContain('see the screenshots in the PR #3235 comments');
+    expect(text).not.toMatch(/!\[[^\]]*\]\([^)]*\.(?:png|jpe?g|gif|webp)/i);
+  });
   it('provides only discovery-based OAuth transport configuration, never credentials or shared headers', () => {
     expect(blocks[0]).toEqual({ mcp: { servers: { imajin: {
       enabled: true, transport: 'streamable-http', url: 'https://mcp.imajin.ai/mcp',

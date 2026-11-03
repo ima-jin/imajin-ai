@@ -154,6 +154,8 @@ Use generated throwaway human/agent identities and assignment rows, never prod
 keys or sessions. Walk the real consent page and keep the screenshot free of
 codes, tokens, cookies, developer tools and response bodies.
 
+For consent verification evidence, see the screenshots in the PR #3235 comments.
+
 ## Read-only smoke
 
 Load `MCP_ACCESS_TOKEN` securely from the chosen agent's OAuth store into the
