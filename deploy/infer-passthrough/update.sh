@@ -7,6 +7,7 @@ repo=${INFER_UPDATE_REPO:-$state/repo}
 runtime_user=${INFER_UPDATE_USER:-imajin}
 port=${INFER_UPDATE_PORT:-8787}
 candidate_port=${INFER_UPDATE_CANDIDATE_PORT:-8788}
+env_file=/etc/imajin/infer-passthrough.env
 script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 mode=${1:-}
 case "$mode" in
@@ -23,15 +24,28 @@ if [[ "$port" == "$candidate_port" ]]; then
   printf 'Candidate and live ports must differ\n' >&2
   exit 2
 fi
+# Only exact, unquoted assignments declare a mode. Never execute env-file text.
+# Last assignment wins; comments and unrelated keys are ignored.
+declared_auth_mode=
+if ! {
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    if [[ "$line" =~ ^INFER_PROXY_AUTH_MODE=(.*)$ ]]; then
+      declared_auth_mode=${BASH_REMATCH[1]}
+    fi
+  done < "$env_file"
+} 2>/dev/null; then
+  printf 'Cannot read health authentication mode file\n' >&2
+  exit 2
+fi
 if [[ "$mode" == --check ]]; then
-  exec node "$script_dir/check-health.mjs" "$port"
+  exec node "$script_dir/check-health.mjs" "$port" "$declared_auth_mode"
 fi
 
 log() { printf 'infer-passthrough-update: %s\n' "$*"; }
 as_user() { runuser -u "$runtime_user" -- "$@"; }
 health() {
   local health_port="$1"
-  node "$script_dir/check-health.mjs" "$health_port"
+  node "$script_dir/check-health.mjs" "$health_port" "$declared_auth_mode"
 }
 
 # One updater at a time. The directory and current link are root-owned.
@@ -128,7 +142,7 @@ as_user env TURBO_CACHE_DIR="$state/releases/.turbo" pnpm --dir "$candidate" exe
 candidate_started=true
 systemd-run --unit=infer-passthrough-candidate --collect --service-type=exec \
   --uid="$runtime_user" --working-directory="$candidate" \
-  --property=EnvironmentFile=/etc/imajin/infer-passthrough.env \
+  --property=EnvironmentFile="$env_file" \
   --property=TimeoutStopSec=10s --property=KillMode=control-group \
   /usr/bin/env INFER_PROXY_HOST=127.0.0.1 INFER_PROXY_PORT="$candidate_port" \
   "$candidate/node_modules/.bin/tsx" packages/openclaw-infer-passthrough/src/server.ts

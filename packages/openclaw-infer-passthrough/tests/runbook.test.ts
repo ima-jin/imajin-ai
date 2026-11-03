@@ -6,6 +6,29 @@ import { loadRoutes } from '../src/config.js';
 const packageUrl = new URL('../', import.meta.url);
 
 describe('principal migration runbook (#3041)', () => {
+  it('keeps the declared-mode gate and executable operator interlock explicit (#3230)', () => {
+    const runbook = readFileSync(new URL('../../../deploy/infer-passthrough/README.md', import.meta.url), 'utf8');
+    for (const contract of [
+      'Unset or empty means undeclared', 'Agent liveness without routes fails',
+      'credentialRequired === true', 'A host-static route payload fails',
+      'no reinstall is', 'needed for option (a)', 'not live',
+      '/usr/local/libexec/infer-passthrough', 'both checker + update.sh',
+      'Do not "fix" the checker alone', 'deployed <tag>',
+      'one model call through :8787 **from an agent** succeeds',
+      'update.sh --check',
+    ]) expect(runbook).toContain(contract);
+    const operator = runbook.slice(runbook.indexOf('**(b) Agent-native'));
+    const plugin = operator.indexOf('deploy plugin PR #151');
+    const declaration = operator.indexOf('Set the explicit line `INFER_PROXY_AUTH_MODE=agent`');
+    const reinstall = operator.indexOf('Reinstall **both checker + update.sh**');
+    const promote = operator.indexOf('Only then let the tag promote');
+    expect(plugin).toBeGreaterThanOrEqual(0);
+    expect(declaration).toBeGreaterThan(plugin);
+    expect(reinstall).toBeGreaterThan(declaration);
+    expect(promote).toBeGreaterThan(reinstall);
+    expect(runbook).toContain('install -o root -g root -m 0755 deploy/infer-passthrough/bootstrap.sh deploy/infer-passthrough/update.sh /usr/local/libexec/infer-passthrough/');
+    expect(runbook).toContain('deploy/infer-passthrough/check-health.mjs');
+  });
   it('documents per-agent transport, refusals and the host-only opt-in (#3224)', () => {
     const runbook = readFileSync(new URL('../../../deploy/infer-passthrough/README.md', import.meta.url), 'utf8');
     for (const contract of [

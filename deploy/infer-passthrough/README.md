@@ -65,9 +65,10 @@ kernel; agent calls never consult the host principal's catalog cache.
 
 `GET /health` and `/healthz` in agent mode are **liveness only**, return
 `authMode: agent, credentialRequired: true`, and perform no mint. They do not
-prove a caller's grant or completion. The existing deployment mint-health checker
-requires route mint evidence and therefore refuses this liveness-only payload;
-do not treat it as per-agent readiness or bypass that gate during rollout.
+prove a caller's grant or completion. The deployment checker accepts this payload
+only with an explicitly declared `agent` mode from the host env file (see the
+release gate below); undeclared mode still requires route mint evidence.
+Do not treat liveness as per-agent readiness or bypass that gate during rollout.
 Live Artifact-Jin → @artifact attribution proof belongs on plugin sibling
 ima-jin/openclaw-imajin-plugin#150 after both implementations ship.
 
@@ -85,10 +86,62 @@ server-wide opt-in, never a request-selected escape hatch. Agent mode needs only
 `KERNEL_BASE_URL` plus optional host/port/timeout settings and ignores host signing
 credentials. Provider-only optional route entries need no principal in agent mode.
 The shipped env example's historical app/principal fields are host-only; for
-agent rollout leave the mode unset or set `agent`, remove provider marker auth,
+agent rollout explicitly set `INFER_PROXY_AUTH_MODE=agent`, remove provider marker auth,
 and have the plugin attach the per-agent JWT and configured selector on each call.
 No running host is changed by this PR. All host changes described here are
 operator instructions for a reviewed release, not actions performed in this run.
+
+## v0.8.31 release gate (#3230)
+
+The **server default** is agent, but the **deployment gate default** is deliberately
+undeclared and route-gated. `update.sh` reads only anchored
+`INFER_PROXY_AUTH_MODE=` assignments from `/etc/imajin/infer-passthrough.env`,
+the same EnvironmentFile used to start the candidate on :8788. It never sources
+or evaluates that file and never takes the declaration from `/health` or the
+updater's inherited environment. Comments/unrelated keys are ignored; the last
+matching assignment wins. Use a plain unquoted `agent` or `host-static` value.
+Unset or empty means undeclared. Other declared values fail with a fixed
+diagnostic, without printing the value or response body; an unreadable file
+also refuses the update.
+
+- **Undeclared or host-static:** HTTP success, `ok === true`, non-empty `routes`,
+  every route `ok === true`. Agent liveness without routes fails and stays frozen.
+- **Declared agent:** HTTP success, `ok === true`, `authMode === 'agent'` and
+  `credentialRequired === true`. A host-static route payload fails.
+- The declaration is passed to candidate, live, rollback, already-current and
+  `--check` probes. Redirects are refused; startup/network failures are retried
+  without exposing details.
+
+**Operator precondition before cutting v0.8.31: pick one and record which.**
+These are post-PR operator steps, not actions performed by this PR:
+
+**(a) Legacy bridge:** add `INFER_PROXY_AUTH_MODE=host-static` to
+`/etc/imajin/infer-passthrough.env` before the tag. The candidate serves mint-backed
+health with routes and the already-installed checker passes; **no reinstall is
+needed for option (a)**. Providers keep using the shared key under the gateway
+principal. This bridge does not meet "agent signs as itself everywhere".
+
+**(b) Agent-native, in this exact order:**
+
+1. Merge and **deploy plugin PR #151** (the implementation for plugin issue #150)
+   to the gateway first: imajin-openai/imajin-xai must send each calling agent's
+   own app+jwt and configured x-acting-as, not the shared static key.
+2. Set the explicit line `INFER_PROXY_AUTH_MODE=agent` in
+   `/etc/imajin/infer-passthrough.env`. Removing the host-static line is **not**
+   sufficient: an absent declaration stays route-gated.
+3. Reinstall **both checker + update.sh** from the reviewed production-approved
+   artifact using the root-owned installation block below. The repo copy is
+   **not live** until reinstalled to `/usr/local/libexec/infer-passthrough`;
+   in particular the installed `check-health.mjs` and `update.sh` must both change.
+   Do not re-run bootstrap or manually point `current`.
+4. Only then let the tag promote through the existing production approval gate.
+
+**Do not "fix" the checker alone before (a) or (b).** Unconditionally accepting
+agent liveness while providers still send the shared key turns the frozen update
+into 401s on every imajin-openai / imajin-xai call through :8787.
+After either option, verify `journalctl -u infer-passthrough-update` shows
+`deployed <tag>` and one model call through :8787 **from an agent** succeeds.
+Liveness alone is not this completion proof; record the chosen option and evidence.
 
 ## Legacy host-static release deployment
 Gateway bootstrap migration is tracked in #3185; no live host is changed by this PR.
@@ -123,8 +176,11 @@ orchestrates worktrees, the atomic `current` symlink and systemd.
 
 Before touching the live service, a transient `infer-passthrough-candidate` unit
 runs the new code on **127.0.0.1:8788**, using the same restricted EnvironmentFile.
-The candidate's `/health` must mint (or cache a valid token) for **every configured
-route**, except the explicitly reported unregistered MCP audience. Break-glass cannot satisfy this probe. The candidate is
+With undeclared or host-static mode, the candidate's `/health` must mint (or cache
+a valid token) for **every configured route**, except the explicitly reported
+unregistered MCP audience. Break-glass cannot satisfy this probe. With explicitly
+declared agent mode, the release gate above requires agent liveness instead.
+The candidate is
 stopped, `current` atomically switches to the release checkout, and the live unit
 restarts. A second `/health` check gates success. Any post-promotion failure,
 including a failed restart or TERM/INT, switches `current` back, reinstalls no
@@ -309,22 +365,29 @@ host file edits; an unregistered MCP audience requires registration, not consent
 
 ## Release check and diagnosis
 
-The release check and updater use **the same mint-backed `/health` route**:
+The release check and updater use **the same `/health` route and declared-mode
+gate**. Prefer the installed updater's `--check`, which reads the host env file.
+Direct checker use must pass the same explicitly declared mode as its second
+argument (omitting it is undeclared/route-gated):
 
 ```bash
-node /usr/local/libexec/infer-passthrough/check-health.mjs 8787
+/usr/local/libexec/infer-passthrough/update.sh --check
+# Only after option (b)'s plugin deploy, env edit and reinstall:
+node /usr/local/libexec/infer-passthrough/check-health.mjs 8787 agent
 curl --fail-with-body --silent http://127.0.0.1:8787/health
 systemctl status infer-passthrough-update.timer infer-passthrough-update.service
 journalctl -u infer-passthrough-update.service -n 60 --no-pager
 ```
 
-HTTP 200 means each required route has minted or holds an unexpired token; an
+In host-static mode, HTTP 200 means each required route has minted or holds an unexpired token; an
 unregistered MCP audience is explicitly marked skipped. HTTP 503 includes failed
 route IDs and typed guidance (credentials, grant, audience or connectivity), never
 token/key material. Re-grant is advised only for a missing live grant. Existing
 fallback and passthrough-error counters remain on both `/health` and `/healthz`.
 The release checker only contacts the fixed loopback `/health` endpoint and
 refuses redirects; its port argument cannot supply a host or path.
+In agent mode, HTTP 200 is liveness only (`ok: true`, `authMode: agent`,
+`credentialRequired: true`), not proof of a grant or successful model call.
 Mint success does not claim a billed model completion happened or that no grant
 was revoked after the last mint; cached tokens retain the kernel's normal TTL.
 
