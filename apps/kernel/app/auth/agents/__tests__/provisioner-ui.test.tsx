@@ -312,6 +312,38 @@ describe('downloading a local-placement bundle', () => {
 });
 
 describe('Provision agent wizard', () => {
+  it.each(['ab', 'Bad Handle!'])('disables provisioning for invalid handle %s', async handle => {
+    await renderAgentsPage([], []);
+    fireEvent.click(screen.getByRole('button', { name: '+ Provision Agent' }));
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Agent' } });
+    fireEvent.change(screen.getByLabelText('Handle (optional)'), { target: { value: handle } });
+    expect(screen.getByRole('button', { name: 'Provision' })).toHaveProperty('disabled', true);
+    expect(screen.getByRole('alert').textContent).toBe('Invalid handle');
+  });
+
+  it('submits an org-selected custom handle using the org DID rather than the session DID', async () => {
+    const spy = await renderAgentsPage([], [], {
+      '/auth/api/agents': async (url, init) => {
+        if (url.endsWith('/auth/api/agents/provision')) return { ok: true, json: async () => init?.method === 'POST' ? { provision: provision() } : { provisions: [] } } as Response;
+        return { ok: true, json: async () => ({ agents: [], delegator: { did: 'did:imajin:artifact', name: 'Artifact', isOrganization: true, actorDid: OWNER } }) } as Response;
+      },
+    });
+    expect(screen.getByRole('region', { name: 'Adopt orphaned agent' })).toBeDefined();
+    fireEvent.click(screen.getByRole('button', { name: '+ Provision Agent' }));
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Artifact Jin' } });
+    fireEvent.change(screen.getByLabelText('Handle (optional)'), { target: { value: 'artifact-jin' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Provision' }));
+    await waitFor(() => expect(spy).toHaveBeenCalledWith('/auth/api/agents/provision', expect.objectContaining({
+      method: 'POST', body: expect.stringContaining('"servingDid":"did:imajin:artifact"'),
+    })));
+    const call = spy.mock.calls.find(([, init]) => init?.method === 'POST');
+    expect(JSON.parse(call![1]!.body as string).handle).toBe('artifact-jin');
+  });
+
+  it('hides org adoption in personal context', async () => {
+    await renderAgentsPage([], []);
+    expect(screen.queryByRole('region', { name: 'Adopt orphaned agent' })).toBeNull();
+  });
   it('opens and closes via the header button and Cancel', async () => {
     await renderAgentsPage([], []);
 

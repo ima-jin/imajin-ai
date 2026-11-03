@@ -45,20 +45,20 @@ function parsePositiveInt(env: NodeJS.ProcessEnv, name: string, fallback: number
   return parsed;
 }
 
-function isValidRoute(value: unknown): value is ProviderRouteConfig {
+function isValidRoute(value: unknown, requirePrincipal: boolean): value is ProviderRouteConfig {
   if (!value || typeof value !== 'object') return false;
   const route = value as Record<string, unknown>;
   return (
     typeof route.id === 'string' &&
     route.id.length > 0 &&
-    typeof route.principalDid === 'string' &&
-    route.principalDid.trim().length > 0 &&
+    (!requirePrincipal || (typeof route.principalDid === 'string' && route.principalDid.trim().length > 0)) &&
+    (route.actingAs === undefined || (typeof route.actingAs === 'string' && /^did:[a-z0-9]+:[^\s]+$/.test(route.actingAs))) &&
     (route.modelPrefixes === undefined ||
       (Array.isArray(route.modelPrefixes) && route.modelPrefixes.every((prefix) => typeof prefix === 'string' && prefix.length > 0)))
   );
 }
 
-export function loadRoutes(configPath: string): ProviderRouteConfig[] {
+export function loadRoutes(configPath: string, requirePrincipal = true): ProviderRouteConfig[] {
   let raw: string;
   try {
     raw = readFileSync(configPath, 'utf-8');
@@ -77,14 +77,14 @@ export function loadRoutes(configPath: string): ProviderRouteConfig[] {
     throw new TypeError(`Routes config at ${configPath} must be a JSON array of route entries`);
   }
 
-  const invalid = parsed.filter((entry) => !isValidRoute(entry));
+  const invalid = parsed.filter((entry) => !isValidRoute(entry, requirePrincipal));
   if (invalid.length > 0) {
     throw new Error(
-      `Routes config at ${configPath} has ${invalid.length} invalid entr${invalid.length === 1 ? 'y' : 'ies'} (id and principalDid required; modelPrefixes must be non-empty strings)`,
+      `Routes config at ${configPath} has ${invalid.length} invalid entr${invalid.length === 1 ? 'y' : 'ies'} (id and principalDid required; actingAs must be a DID; modelPrefixes must be non-empty strings)`,
     );
   }
 
-  const routes = parsed as ProviderRouteConfig[];
+  const routes = parsed.map((entry) => ({ principalDid: '', ...entry })) as ProviderRouteConfig[];
   const seenIds = new Set<string>();
   for (const route of routes) {
     if (seenIds.has(route.id)) {
@@ -96,21 +96,27 @@ export function loadRoutes(configPath: string): ProviderRouteConfig[] {
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): ProxyConfig {
+  const authMode = env.INFER_PROXY_AUTH_MODE ?? 'agent';
+  if (authMode !== 'agent' && authMode !== 'host-static') {
+    throw new Error('INFER_PROXY_AUTH_MODE must be agent or host-static');
+  }
+  const hostStatic = authMode === 'host-static';
   const routesPath = env.INFER_PROXY_ROUTES_CONFIG;
   const routes = routesPath
-    ? loadRoutes(routesPath)
+    ? loadRoutes(routesPath, hostStatic)
     : ['openai', 'anthropic', 'mcp'].map((id) => ({
         id,
-        principalDid: requireEnv(env, 'INFER_PROXY_PRINCIPAL_DID'),
+        principalDid: hostStatic ? requireEnv(env, 'INFER_PROXY_PRINCIPAL_DID') : '',
       }));
   return {
+    authMode,
     host: env.INFER_PROXY_HOST || DEFAULT_HOST,
     port: parsePositiveInt(env, 'INFER_PROXY_PORT', DEFAULT_PORT),
     kernelBaseUrl: requireEnv(env, 'KERNEL_BASE_URL'),
     kernelTimeoutMs: parsePositiveInt(env, 'KERNEL_TIMEOUT_MS', DEFAULT_KERNEL_TIMEOUT_MS),
     directTimeoutMs: parsePositiveInt(env, 'DIRECT_TIMEOUT_MS', DEFAULT_DIRECT_TIMEOUT_MS),
-    appDid: requireEnv(env, 'OPENCLAW_APP_DID'),
-    appPrivateKey: requireEnv(env, 'OPENCLAW_APP_PRIVATE_KEY'),
+    appDid: hostStatic ? requireEnv(env, 'OPENCLAW_APP_DID') : '',
+    appPrivateKey: hostStatic ? requireEnv(env, 'OPENCLAW_APP_PRIVATE_KEY') : '',
     legacyGrantIdConfigured: Object.keys(env).some((name) =>
       /^(?:INFER_PROXY|OPENCLAW)_(?:.*_)?(?:GRANT|ATTESTATION)_ID$/.test(name)),
     routes,

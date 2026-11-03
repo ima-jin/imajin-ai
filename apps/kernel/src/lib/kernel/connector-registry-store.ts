@@ -73,7 +73,10 @@ export interface ConnectorRegistration {
  * actually serve — the drift that #1253 exists to prevent, in a new table.
  */
 function connectorIdentity(provider: string): { channel: string; connectorDid: string } | undefined {
-  const entry = getConnector(provider);
+  // Billing is independent custody on the Anthropic card, not a second UI
+  // connector. Keep its provider/vault reference distinct while deriving the
+  // shared channel and DID from the same canonical catalogue entry.
+  const entry = getConnector(provider === 'anthropic-billing' ? 'anthropic' : provider);
   if (!entry) return undefined;
   return { channel: entry.channel, connectorDid: entry.connectorDid };
 }
@@ -178,6 +181,11 @@ export async function syncConnectorRegistrationScopes(
   slot?: string,
 ): Promise<void> {
   const selected = connectionSlot(slot ?? currentConnectionSlot(provider, ownerDid));
+  if (provider === 'anthropic') {
+    // Both credentials share one scope manifest. Publishing it must update
+    // the billing row too, including an empty snapshot on scope withdrawal.
+    await syncConnectorRegistrationScopes(ownerDid, 'anthropic-billing', scopes, selected);
+  }
   const identity = connectorIdentity(provider);
   if (!identity) {
     log.warn({ provider }, 'connector registry: unknown provider — skipping scope sync');
@@ -185,7 +193,9 @@ export async function syncConnectorRegistrationScopes(
   }
 
   const now = new Date();
-  const snapshot = [...scopes];
+  const snapshot = provider === 'anthropic-billing'
+    ? scopes.filter(scope => scope === getConnector('anthropic')?.billingCredential?.scope)
+    : [...scopes];
   try {
     await db
       .insert(connectors)

@@ -5,6 +5,7 @@ import { requireAuth, authErrorResponse, resolveActingDid } from '@imajin/auth';
 import { listGrantDetailsForDelegator, type DelegationGrantDetail } from '@/src/lib/auth/grants';
 import { mintAgentIdentity, MintAgentIdentityError } from '@/src/lib/auth/agent-identity';
 import { createLogger } from '@imajin/logger';
+import { requireGrantPrincipal } from '@/src/lib/auth/grant-principal';
 
 const log = createLogger('kernel');
 
@@ -224,7 +225,7 @@ export async function GET(request: NextRequest) {
  * Create a new agent identity linked to the authenticated user.
  */
 export async function POST(request: NextRequest) {
-  const authResult = await requireAuth(request);
+  const authResult = await requireGrantPrincipal(request);
   if ('error' in authResult) {
     return authErrorResponse(authResult);
   }

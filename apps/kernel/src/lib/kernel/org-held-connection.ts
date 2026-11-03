@@ -1,5 +1,5 @@
-import { and, eq, isNotNull, isNull, like, sql } from 'drizzle-orm';
-import { db, attestations, connectors, identities, identityMembers, type ConnectorRow } from '@/src/db';
+import { and, eq, isNotNull, like, sql } from 'drizzle-orm';
+import { db, attestations, connectors, type ConnectorRow } from '@/src/db';
 import { prepareMechanicalAttestation } from '@/src/lib/auth/emit-mechanical-attestation';
 import { deleteFromVault, revokeStaticSecretGrant, sealAndGrantStaticSecret, vaultService } from '@/src/lib/vault';
 import { EXTERNAL_MCP_NAMESPACE } from '@/src/lib/vault/field-grammar';
@@ -8,27 +8,10 @@ import { connectorRegistryId } from './connector-registry-store';
 import { getConnector } from './connector-registry';
 import { connectInput, ExternalMcpError } from './external-mcp-policy';
 import { generateId } from './id';
+import { authorizeOrgConnectionAdmin, ORG_HELD_PREFIX, orgHeldProvider, type OrgConnectionActor } from './org-held-connection-policy';
+export { orgHeldProvider, type OrgConnectionActor } from './org-held-connection-policy';
 
-/** Not a catalogue provider: existing provider lifecycle/resolution cannot select it. */
-const ORG_HELD_PREFIX = 'org-held-';
-export const orgHeldProvider = (provider: string) => `${ORG_HELD_PREFIX}${provider}`;
-export interface OrgConnectionActor { orgDid: string; actorDid: string }
 type Transaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
-const refused = () => new ExternalMcpError(403, 'Active organization owner or admin required');
-
-/** Recheck live authority inside the lifecycle transaction, not the cached session role. */
-async function authorize(tx: Transaction, actor: OrgConnectionActor) {
-  const [org] = await tx.select().from(identities).where(eq(identities.id, actor.orgDid)).for('share');
-  const [person] = await tx.select().from(identities).where(eq(identities.id, actor.actorDid)).for('share');
-  const [membership] = await tx.select().from(identityMembers).where(and(
-    eq(identityMembers.identityDid, actor.orgDid), eq(identityMembers.memberDid, actor.actorDid),
-    isNull(identityMembers.removedAt),
-  )).for('share');
-  if (!org || !['business', 'community', 'family'].includes(org.scope) || org.suspendedAt
-    || person?.scope !== 'actor' || person.subtype === 'agent' || person.suspendedAt
-    || !membership || !['owner', 'admin'].includes(membership.role)
-    || (membership.allowedServices !== null && !membership.allowedServices.includes('connections'))) throw refused();
-}
 
 function selection(orgDid: string, provider?: string) {
   return and(eq(connectors.ownerDid, orgDid), eq(connectors.slot, 'primary'),
@@ -54,7 +37,7 @@ function locked<T>(actor: OrgConnectionActor, work: (tx: Transaction) => Promise
   return db.transaction(async tx => {
     const key = `org-held-connection:${actor.orgDid}`;
     await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${key}, 0))`);
-    await authorize(tx, actor);
+    await authorizeOrgConnectionAdmin(tx, actor);
     return work(tx);
   });
 }

@@ -5,6 +5,8 @@ const log = createLogger('auth');
 import { NextResponse } from "next/server.js";
 import { SESSION_COOKIE_NAME } from "@imajin/config";
 import type { Identity, AuthResult, AuthError } from "./types";
+import { resolveSessionData, sessionIdentity } from "./session-resolver";
+import { internalFetch, InternalFetchError } from "./internal-fetch.cjs";
 
 const getAuthUrl = () => process.env.AUTH_SERVICE_URL!;
 
@@ -33,6 +35,21 @@ function nodeOrigin(): string {
   const prefixHost = stripTrailingSlashes(prefix.replace(/^https?:\/\//, ""));
   const host = prefixHost.includes(".") ? prefixHost : domain;
   return `${scheme}://${host}`;
+}
+
+/** Connector-only selection may use the existing live agent-delegation record. */
+async function delegatedActingAs(callerDid: string, principalDid: string): Promise<ActingAsResult> {
+  const internalKey = process.env.AUTH_INTERNAL_API_KEY;
+  if (!internalKey) return { valid: false };
+  const response = await internalFetch(`${getAuthUrl()}/api/internal/verify-delegation`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "x-internal-key": internalKey },
+    body: JSON.stringify({ agentDid: callerDid, principalDid }),
+    cache: "no-store",
+  });
+  if (!response.ok) return { valid: false };
+  const data = await response.json();
+  return data.allowed === true ? { valid: true, role: 'agent', allowedServices: null } : { valid: false };
 }
 
 /**
@@ -74,6 +91,8 @@ function parseCookieValue(cookieHeader: string | null, name: string): string | n
 }
 
 export interface AuthOptions {
+  /** Connector invocation routes enforce a separate per-member key grant after selection. */
+  allowMemberActAs?: boolean;
   sessionOnly?: boolean; // If true, accept only a user session cookie, never a Bearer credential
   verifyChain?: boolean; // If true, also verify the chain is valid (not just session)
   service?: string;      // If set, validate that acting-as controller has access to this service
@@ -97,25 +116,13 @@ function extractSessionCookie(cookieHeader: string | null): string | null {
 async function validateSessionCookie(
   token: string
 ): Promise<AuthResult | AuthError> {
+  const started = Date.now();
   try {
-    const response = await fetch(`${getAuthUrl()}/api/session`, {
-      headers: { Cookie: `${SESSION_COOKIE_NAME}=${token}` },
-      cache: "no-store",
-    });
-
-    if (!response.ok) {
+    const data = await resolveSessionData(token);
+    if (!data) {
       return { error: "Invalid or expired session", status: 401 };
     }
-
-    const data = await response.json();
-    const identity: Identity = {
-      id: data.did || data.identity?.did || data.identity?.id,
-      scope: data.scope || data.identity?.scope || "actor",
-      subtype: data.subtype || data.identity?.subtype || undefined,
-      name: data.name || data.identity?.name,
-      handle: data.handle || data.identity?.handle,
-      tier: data.tier || data.identity?.tier || "soft",
-    };
+    const identity = sessionIdentity(data);
 
     if (!identity.id) {
       return { error: "Invalid session data", status: 401 };
@@ -123,7 +130,11 @@ async function validateSessionCookie(
 
     return { identity };
   } catch (error) {
-    log.error({ err: String(error) }, "[AUTH] Session validation failed");
+    log.error({
+      causeCode: error instanceof InternalFetchError ? error.code : 'SESSION_RESOLVER_FAILED',
+      targetPath: error instanceof InternalFetchError ? error.targetPath : '/auth/api/session',
+      durationMs: Date.now() - started,
+    }, "[AUTH] Session validation failed");
     return { error: "Auth service unavailable", status: 503 };
   }
 }
@@ -135,7 +146,7 @@ async function validateBearerToken(
   token: string
 ): Promise<AuthResult | AuthError> {
   try {
-    const response = await fetch(`${getAuthUrl()}/api/validate`, {
+    const response = await internalFetch(`${getAuthUrl()}/api/validate`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ token }),
@@ -175,7 +186,8 @@ export interface ActingAsResult {
 export async function validateActingAs(
   callerDid: string,
   groupDid: string,
-  service?: string
+  service?: string,
+  options?: { allowMember?: boolean },
 ): Promise<ActingAsResult> {
   const authUrl = getAuthUrl();
   const internalApiKey = getVaultInternalApiKey();
@@ -184,7 +196,7 @@ export async function validateActingAs(
     return { valid: false };
   }
   try {
-    const res = await fetch(
+    const res = await internalFetch(
       `${authUrl}/api/groups/${encodeURIComponent(groupDid)}/controllers/${encodeURIComponent(callerDid)}`,
       {
         headers: { Authorization: `Bearer ${internalApiKey}` },
@@ -193,7 +205,11 @@ export async function validateActingAs(
     );
     if (!res.ok) return { valid: false };
     const data = await res.json();
-    if (data.valid !== true || !["owner", "admin", "maintainer", "agent"].includes(data.role)) {
+    const roles = options?.allowMember ? ["owner", "admin", "maintainer", "agent", "member"] : ["owner", "admin", "maintainer", "agent"];
+    if (data.valid !== true) {
+      return options?.allowMember ? await delegatedActingAs(callerDid, groupDid) : { valid: false };
+    }
+    if (!roles.includes(data.role)) {
       return { valid: false };
     }
 
@@ -262,7 +278,7 @@ function hasSessionTokenHeader(token: string): boolean {
  */
 async function applyChainVerification(identity: Identity): Promise<void> {
   try {
-    const chainRes = await fetch(
+    const chainRes = await internalFetch(
       `${getAuthUrl()}/api/identity/${encodeURIComponent(identity.id)}/verify`
     );
     if (chainRes.ok) {
@@ -297,7 +313,9 @@ async function applyActingAs(
   const actingAs = extractActingAsValue(request);
   if (!actingAs) return undefined;
 
-  const actingAsResult = await validateActingAs(identity.id, actingAs, options?.service);
+  const actingAsResult = await validateActingAs(identity.actingFor ?? identity.id, actingAs, options?.service, {
+    allowMember: options?.allowMemberActAs,
+  });
   if (!actingAsResult.valid) {
     return { error: "Not authorized to act as this group", status: 403 };
   }
@@ -349,11 +367,10 @@ export async function requireAuth(
     await applyChainVerification(result.identity);
   }
 
-  const actingAsError = await applyActingAs(request, result.identity, options);
-  if (actingAsError) return actingAsError;
-
   const actingForError = await applyActingFor(request, result.identity, options);
   if (actingForError) return actingForError;
+  const actingAsError = await applyActingAs(request, result.identity, options);
+  if (actingAsError) return actingAsError;
 
   return result;
 }
@@ -384,7 +401,7 @@ export async function resolveAgentDelegationAuthority(
   const internalKey = process.env.AUTH_INTERNAL_API_KEY;
   if (internalKey) {
     try {
-      const res = await fetch(`${getAuthUrl()}/api/internal/verify-delegation`, {
+      const res = await internalFetch(`${getAuthUrl()}/api/internal/verify-delegation`, {
         method: "POST",
         headers: { "Content-Type": "application/json", "x-internal-key": internalKey },
         body: JSON.stringify({ agentDid, principalDid }),

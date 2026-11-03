@@ -15,6 +15,7 @@
  * response mapping.
  */
 import { vi, describe, it, expect, beforeEach } from 'vitest';
+import { randomBytes } from 'node:crypto';
 import {
   makeModelPickerRequest,
   stubModelPickerFetch,
@@ -28,6 +29,8 @@ const mockAnthropicKeyPending = vi.fn();
 const mockSetModelId = vi.fn();
 
 const { resolveOwnerDid: mockResolveConnectorOwnerDid, notifyModelsChanged: mockNotifyModelsChanged } = mockModelPickerRouteDeps();
+const modelLog = { error: vi.fn(), info: vi.fn(), warn: vi.fn() };
+vi.doMock('@imajin/logger', () => ({ createLogger: () => modelLog }));
 
 vi.doMock('@/src/lib/anthropic/connector', () => ({
   loadAnthropicSealedCredentials: mockLoadAnthropicSealedCredentials,
@@ -39,7 +42,8 @@ vi.doMock('@/src/lib/anthropic/connector', () => ({
 const { GET, PUT, OPTIONS } = await import('../route');
 
 const OWNER_DID = 'did:imajin:farmer';
-const API_KEY = 'sk-ant-SEALED';
+const API_KEY = randomBytes(32).toString('hex');
+const INVALID_KEY_MESSAGE = 'Anthropic rejected this key (invalid or wrong key type) — re-seal a Console API key';
 
 type RouteRequest = Parameters<typeof PUT>[0];
 
@@ -52,6 +56,7 @@ function stubFetch(body: unknown, ok = true, status = 200) {
 }
 
 beforeEach(() => {
+  vi.clearAllMocks();
   resetModelPickerMocks({
     resolveOwnerDid: mockResolveConnectorOwnerDid,
     loadSealedCredentials: mockLoadAnthropicSealedCredentials,
@@ -198,7 +203,7 @@ describe('GET', () => {
     expect(fetchMock).toHaveBeenCalledWith('https://proxy.example/v1/models', expect.any(Object));
   });
 
-  it('maps an upstream error to 502 without forwarding an unrecognised body shape', async () => {
+  it('classifies rejected credentials without forwarding an unrecognised body shape', async () => {
     // Not Anthropic's real `{ error: { type, message } }` envelope (#2196) —
     // only that shape's `type`/`message` strings are ever read, so a body
     // that doesn't match it must still fall back to the plain status text.
@@ -206,28 +211,31 @@ describe('GET', () => {
     stubFetch({ details: `bad key ${API_KEY}` }, false, 401);
 
     const res = await GET(makeReq());
-
-    expect(res.status).toBe(502);
+    expect(res.status).toBe(400);
     expect(JSON.stringify(await res.json())).not.toContain(API_KEY);
   });
 
-  it('surfaces the upstream error.type/error.message on a 400 so the failure is diagnosable (#2196)', async () => {
+  it.each([400, 401, 403])('returns actionable invalid-key text and logs safe diagnostics for upstream %s', async status => {
     mockLoadAnthropicSealedCredentials.mockResolvedValue({ apiKey: API_KEY });
     stubFetch(
       { type: 'error', error: { type: 'invalid_request_error', message: 'after_id is not a valid model ID' } },
       false,
-      400,
+      status,
     );
 
     const res = await GET(makeReq());
     const body = await res.json() as { error: string };
 
-    expect(res.status).toBe(502);
-    expect(body.error).toBe('anthropic_models: upstream 400 invalid_request_error: after_id is not a valid model ID');
+    expect(res.status).toBe(400);
+    expect(body.error).toBe(`anthropic_invalid_key: ${INVALID_KEY_MESSAGE}`);
+    expect(modelLog.warn).toHaveBeenCalledWith({
+      ownerDid: OWNER_DID, status, type: 'invalid_request_error', message: 'after_id is not a valid model ID',
+    }, 'anthropic models: upstream list failed');
+    expect(JSON.stringify(modelLog.warn.mock.calls)).not.toContain(API_KEY);
     expect(body.error).not.toContain(API_KEY);
   });
 
-  it('falls back to the plain HTTP status text when the upstream body is not JSON', async () => {
+  it('classifies credential rejection even when the upstream body is not JSON', async () => {
     mockLoadAnthropicSealedCredentials.mockResolvedValue({ apiKey: API_KEY });
     const fetchMock = vi.fn().mockResolvedValue({
       ok: false,
@@ -239,9 +247,8 @@ describe('GET', () => {
 
     const res = await GET(makeReq());
     const body = await res.json() as { error: string };
-
-    expect(res.status).toBe(502);
-    expect(body.error).toBe('anthropic_models: upstream 400 Bad Request');
+    expect(res.status).toBe(400);
+    expect(body.error).toBe(`anthropic_invalid_key: ${INVALID_KEY_MESSAGE}`);
   });
 
   it('maps a transport failure to 502', async () => {
@@ -251,6 +258,43 @@ describe('GET', () => {
     const res = await GET(makeReq());
 
     expect(res.status).toBe(502);
+  });
+
+  it.each(['full', 'prefix', 'suffix', 'middle'] as const)('never logs echoed %s key material or headers', async part => {
+    const fragments = { full: API_KEY, prefix: API_KEY.slice(0, 12), suffix: API_KEY.slice(-12), middle: API_KEY.slice(12, 24) };
+    const echoed = fragments[part];
+    stubFetch({
+      error: { type: `invalid_request_error ${echoed}`, message: `Rejected ${echoed}` },
+      headers: { 'x-api-key': API_KEY },
+    }, false, 401);
+
+    const res = await GET(makeReq());
+    const body = await res.json();
+    const serialized = JSON.stringify([modelLog.warn.mock.calls, modelLog.error.mock.calls, body]);
+    expect(res.status).toBe(400);
+    expect(body.code).toBe('anthropic_invalid_key');
+    expect(body.message).toBe(INVALID_KEY_MESSAGE);
+    expect(modelLog.warn.mock.calls[0][0]).toMatchObject({ status: 401, type: '[redacted]', message: '[redacted]' });
+    expect(serialized).not.toContain(API_KEY);
+    expect(serialized).not.toContain(echoed);
+    expect(serialized).not.toContain('x-api-key');
+  });
+
+  it.each([500, 503, 529])('keeps upstream %s as an outage, not an invalid key', async status => {
+    stubFetch({ error: { type: 'api_error', message: 'Service unavailable' } }, false, status);
+    const res = await GET(makeReq());
+    expect(res.status).toBe(502);
+    expect((await res.json()).error).toBe(`anthropic_models: upstream ${status} Error`);
+    expect(modelLog.warn).toHaveBeenCalledWith(expect.objectContaining({ status, type: 'api_error', message: 'Service unavailable' }), expect.any(String));
+  });
+
+  it('keeps a timeout as an outage and never logs an exception echoing credentials', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new DOMException(`Timed out ${API_KEY}`, 'TimeoutError')));
+    const res = await GET(makeReq());
+    expect(res.status).toBe(502);
+    expect((await res.json()).error).toBe('anthropic_models: failed to reach Anthropic');
+    expect(modelLog.error).toHaveBeenCalledWith({ ownerDid: OWNER_DID }, 'anthropic models: fetch failed');
+    expect(JSON.stringify(modelLog.error.mock.calls)).not.toContain(API_KEY);
   });
 
   it('carries the CORS headers', async () => {

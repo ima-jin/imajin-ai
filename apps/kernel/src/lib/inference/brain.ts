@@ -41,6 +41,8 @@ import { loadOpenrouterCredentials, OPENROUTER_BASE_URL } from '@/src/lib/openro
 import { lookupAppRegistrantDid } from '@/src/lib/kernel/app-registrant';
 import { forEachSequential } from '@/src/lib/async/sequential';
 import { expandUsableModels, resolvePickerModel, type UsableModel } from './model-catalog';
+import type { VerifiedInferenceOrgContext } from './auth';
+import { missingConnection, type ConnectionCaller } from '@/src/lib/kernel/connection-principal-policy';
 
 const log = createLogger('kernel:inference:brain');
 
@@ -57,6 +59,10 @@ export interface BrainCredentialContext {
   ownerDid?: string;
   /** Invoking app/org DID that may provide the credential and pay for compute. */
   appDid?: string;
+  orgContext?: VerifiedInferenceOrgContext;
+  caller?: ConnectionCaller;
+  /** Verified callers never walk app or registrant credentials. */
+  exclusive?: boolean;
 }
 
 /**
@@ -67,6 +73,9 @@ export interface BrainCredentialContext {
  * not a brain. It must never be logged or returned to a caller.
  */
 export interface ResolvedBrain {
+  actorDid?: string;
+  /** Allowlisted attribution only; no vault field or credential reference. */
+  orgUsage?: { memberDid: string; orgDid: string; grantId?: string; connectionId: string };
   /** Connector card the credential came from — safe to log and surface. */
   connector: BrainConnectorId;
   /**
@@ -484,6 +493,7 @@ function credentialDids(context: string | BrainCredentialContext): string[] {
  * drift on which DIDs a principal's brain(s) can come from.
  */
 async function resolveCandidateDids(context: string | BrainCredentialContext): Promise<string[]> {
+  if (typeof context !== 'string' && context.exclusive) return context.ownerDid ? [context.ownerDid] : [];
   const dids = credentialDids(context);
 
   // Walk up to the app's registrant org DID — the identity where org-level
@@ -569,6 +579,19 @@ export interface ResolveBrainOptions {
   model?: string;
 }
 
+async function resolveOrgBrain(context: VerifiedInferenceOrgContext, options?: ResolveBrainOptions) {
+  if (options?.connectors && !options.connectors.includes('anthropic')) throw missingConnection(context.orgDid);
+  const { resolveOrgHeldBrain } = await import('./org-held-brain');
+  return resolveOrgHeldBrain(context, options?.model?.replace(/^imajin\//, ''));
+}
+
+async function callerPrincipal(caller: ConnectionCaller) {
+  if (!caller.actingFor && !caller.actingAs) return { ownerDid: caller.actorDid, actorDid: caller.actorDid };
+  const { resolveConnectionPrincipal } = await import('@/src/lib/kernel/connection-principal');
+  return resolveConnectionPrincipal(caller, 'infer');
+}
+
+
 /**
  * Resolve a brain from the candidate DIDs' sealed connector cards.
  *
@@ -599,10 +622,17 @@ export interface ResolveBrainOptions {
  * The returned `apiKey` is for the immediate call only: never log it, persist
  * it, or include it in a response body.
  */
+
 export async function resolveBrain(
   context: string | BrainCredentialContext,
   options?: ResolveBrainOptions,
 ): Promise<ResolvedBrain> {
+  if (typeof context !== 'string' && context.caller) {
+    const principal = await callerPrincipal(context.caller);
+    const brain = await resolveBrain({ ...principal, exclusive: true }, options);
+    return { ...brain, actorDid: principal.actorDid };
+  }
+  if (typeof context !== 'string' && context.orgContext) return resolveOrgBrain(context.orgContext, options);
   const dids = await resolveCandidateDids(context);
   const candidateConnectors = options?.connectors
     ? BRAIN_CONNECTORS.filter((c) => options.connectors!.includes(c.id))
@@ -632,6 +662,9 @@ export async function resolveBrain(
     throw new NoModelSelectedError(walk.modellessCards);
   }
 
+  if (typeof context !== 'string' && context.exclusive && context.ownerDid) {
+    throw missingConnection(context.ownerDid);
+  }
   throw new NoBrainSealedError(dids, candidateConnectors, walk.failures);
 }
 
@@ -673,6 +706,11 @@ export async function listUsableBrains(
   context: string | BrainCredentialContext,
   options?: Pick<ResolveBrainOptions, 'connectors'> & { allCards?: boolean },
 ): Promise<ResolvedBrain[]> {
+  if (typeof context !== 'string' && context.caller) {
+    const principal = await callerPrincipal(context.caller);
+    return listUsableBrains({ ...principal, exclusive: true }, options);
+  }
+  if (typeof context !== 'string' && context.orgContext) return [await resolveBrain(context, options)];
   const dids = await resolveCandidateDids(context);
   const candidateConnectors = options?.connectors
     ? BRAIN_CONNECTORS.filter((c) => options.connectors!.includes(c.id))

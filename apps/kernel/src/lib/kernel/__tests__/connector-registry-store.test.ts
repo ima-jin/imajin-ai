@@ -10,8 +10,9 @@
  *      already succeeded, or make a completed revoke look like it failed.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { createHash } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { withConnectorConnection } from '../connector-connection-context';
+const { warnLog } = vi.hoisted(() => ({ warnLog: vi.fn() }));
 
 const { insertValues, conflictSets, updateSets, insertMock, updateMock, returningRows } = vi.hoisted(() => {
   const insertValues: Record<string, unknown>[] = [];
@@ -86,12 +87,26 @@ vi.mock('drizzle-orm', () => ({
 }));
 
 vi.mock('@/src/db', () => ({
-  db: { insert: insertMock, update: updateMock },
+  db: {
+    insert: insertMock, update: updateMock,
+    select: () => ({ from: () => ({ where: async () => insertValues }) }),
+  },
   connectors: { ownerDid: 'owner_did', provider: 'provider' },
 }));
 
 vi.mock('@imajin/logger', () => ({
-  createLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
+  createLogger: () => ({ info: vi.fn(), warn: warnLog, error: vi.fn() }),
+}));
+
+vi.mock('@/src/lib/vault', () => ({
+  sealAndStore: vi.fn(), sealAndStoreV2: vi.fn(),
+  loadAndUnseal: vi.fn(), vaultFieldStatus: vi.fn(),
+  revokeVaultDelegationGrantsForConnector: vi.fn(),
+}));
+
+vi.mock('@/src/lib/notify/connector-events', () => ({
+  notifyConnectorCredentialSealed: vi.fn(),
+  notifyConnectorCredentialUnsealed: vi.fn(),
 }));
 
 import {
@@ -101,12 +116,14 @@ import {
   syncConnectorRegistrationScopes,
   setConnectorSpendCap,
   renameConnectorConnection,
+  listConnectorRegistrations,
 } from '../connector-registry-store';
 
 const OWNER = 'did:imajin:farmer';
 const SEALED_FIELD = `xai-api-key:${OWNER}`;
 
 beforeEach(() => {
+  warnLog.mockClear();
   insertValues.length = 0;
   conflictSets.length = 0;
   updateSets.length = 0;
@@ -145,6 +162,32 @@ describe('connectorRegistryId', () => {
 // ── recordConnectorRegistration ───────────────────────────────────────────────
 
 describe('recordConnectorRegistration', () => {
+  it('seals a billing key through the real connector and registers only its field reference without warning', async () => {
+    const { sealBillingKey } = await import('@/src/lib/anthropic/billing-connector');
+    const { sealAndStoreV2 } = await import('@/src/lib/vault');
+    const syntheticKey = randomBytes(32).toString('hex');
+    await sealBillingKey(OWNER, syntheticKey);
+    expect(sealAndStoreV2).toHaveBeenCalledWith(`anthropic-billing-api-key:${OWNER}`, syntheticKey);
+    expect(insertValues[0]).toMatchObject({
+      provider: 'anthropic-billing', sealedKeyField: `anthropic-billing-api-key:${OWNER}`,
+      channel: 'anthropic', connectorDid: 'did:imajin:anthropic-connector',
+    });
+    expect(JSON.stringify(insertValues)).not.toContain(syntheticKey);
+    expect(warnLog).not.toHaveBeenCalled();
+  });
+  it('registers independent billing custody under the canonical Anthropic identity without warning', async () => {
+    const sealedKeyField = `anthropic-billing-api-key:${OWNER}`;
+    await recordConnectorRegistration({ ownerDid: OWNER, provider: 'anthropic-billing', sealedKeyField });
+    const rows = await listConnectorRegistrations(OWNER);
+    expect(rows).toEqual([expect.objectContaining({
+      id: connectorRegistryId(OWNER, 'anthropic-billing'),
+      provider: 'anthropic-billing', channel: 'anthropic',
+      connectorDid: 'did:imajin:anthropic-connector', sealedKeyField, status: 'active',
+    })]);
+    expect(connectorRegistryId(OWNER, 'anthropic-billing')).not.toBe(connectorRegistryId(OWNER, 'anthropic'));
+    expect(conflictSets[0]).not.toHaveProperty('scopes');
+    expect(warnLog).not.toHaveBeenCalled();
+  });
   it('records slot metadata without erasing a previously sealed field or existing label', async () => {
     await recordConnectorRegistration({ ownerDid: OWNER, provider: 'google', slot: 'work', accountEmail: 'work@example.test' });
     expect(insertValues[0]).toMatchObject({ slot: 'work', label: 'work', accountEmail: 'work@example.test' });
@@ -223,6 +266,27 @@ describe('revokeConnectorRegistration', () => {
 // ── syncConnectorRegistrationScopes ───────────────────────────────────────────
 
 describe('syncConnectorRegistrationScopes', () => {
+  it.each([
+    { scopes: ['anthropic:infer', 'anthropic:billing'], expected: ['anthropic:billing'] },
+    { scopes: ['anthropic:infer'], expected: [] },
+    { scopes: [], expected: [] },
+  ])('mirrors only billing scopes from the shared manifest: $scopes', async ({ scopes, expected }) => {
+    await syncConnectorRegistrationScopes(OWNER, 'anthropic', scopes, 'work');
+    const billing = insertValues.find(row => row.provider === 'anthropic-billing');
+    expect(billing).toMatchObject({
+      provider: 'anthropic-billing', channel: 'anthropic', slot: 'work',
+      connectorDid: 'did:imajin:anthropic-connector', scopes: expected,
+    });
+    expect(insertValues.find(row => row.provider === 'anthropic')).toMatchObject({ scopes, slot: 'work' });
+    expect(conflictSets[0]).toMatchObject({ scopes: expected });
+    expect(warnLog).not.toHaveBeenCalled();
+  });
+
+  it('recognizes direct billing scope sync and never copies inference scopes into it', async () => {
+    await syncConnectorRegistrationScopes(OWNER, 'anthropic-billing', ['anthropic:infer', 'anthropic:billing']);
+    expect(insertValues[0]).toMatchObject({ provider: 'anthropic-billing', scopes: ['anthropic:billing'] });
+    expect(warnLog).not.toHaveBeenCalled();
+  });
   it('upserts the snapshot, so an OAuth connector with no seal step still registers', async () => {
     await syncConnectorRegistrationScopes(OWNER, 'github', ['github:read']);
 

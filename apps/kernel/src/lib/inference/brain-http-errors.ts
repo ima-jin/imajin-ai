@@ -21,6 +21,7 @@ import { RetryError } from 'ai';
 import { NoBrainSealedError, NoModelSelectedError, ModelDeprecatedError } from './brain';
 import { VaultDelegationError } from '@/src/lib/vault/errors';
 import { SpendCapExceededError } from './spend-cap';
+import { ExternalMcpError } from '@/src/lib/kernel/external-mcp-policy';
 
 export interface MappedHttpError {
   status: number;
@@ -33,6 +34,12 @@ export interface MappedHttpError {
  * should fall through to its own generic failure response.
  */
 export function mapBrainErrorToHttp(err: unknown): MappedHttpError | undefined {
+  if (err instanceof ExternalMcpError) {
+    return {
+      status: err.status,
+      body: { error: err.message, ...(err.code === 'connection_not_loaded' ? { code: err.code } : {}) },
+    };
+  }
   // #1621 removed the env-key fallback, so "nobody sealed a brain" is a real
   // runtime outcome. The response must never carry credential material — the
   // resolver names only DIDs and connectors, never keys.

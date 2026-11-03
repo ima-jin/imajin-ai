@@ -1,6 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
+vi.mock('@/src/lib/mcp/agent-binding', () => ({
+  AgentOAuthError: class extends Error {},
+  mcpOAuthContext: async (payload: { sub: string; azp: string; scope: string }) => ({
+    did: payload.sub, appDid: payload.azp, scopes: new Set(payload.scope.split(' ')),
+  }),
+}));
+
 const mocked = vi.hoisted(() => ({ jwt: vi.fn(), bearer: vi.fn(), status: vi.fn() }));
 vi.mock('@/src/lib/auth/jwt', () => ({ verifyAppToken: mocked.jwt }));
 vi.mock('@/src/lib/access/delegate-grant', () => ({ resolveDelegateGrantBearer: mocked.bearer }));

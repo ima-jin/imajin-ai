@@ -2631,6 +2631,123 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
 
+  /api/agents:
+    post:
+      tags: [auth]
+      operationId: createAgentIdentity
+      summary: Create a personal agent and return its keypair once
+      description: |
+        Personal creation retains both legacy owner/agent membership rows.
+        Business, community and family principals are refused with HTTP 403
+        directing the operator to Provision agent. No identity is minted.
+        Resolves X-Acting-As through the auth-service owner/admin gate;
+        agent-delegated and non-admin callers cannot create grants or agents.
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [handle]
+              properties:
+                handle: { type: string, minLength: 3, maxLength: 64, pattern: "^[a-z0-9_-]+$" }
+                displayName: { type: string }
+                bio: { type: string }
+      responses:
+        "201": { description: Agent created; save the returned keypair immediately }
+        "400": { description: Invalid handle or JSON }
+        "401": { description: Authentication required }
+        "403": { description: Organization must use Provision agent, or caller lacks principal authority }
+        "409": { description: Handle already taken }
+
+  /api/agents/provision:
+    post:
+      tags: [auth]
+      operationId: provisionAgentIdentity
+      summary: Provision an agent with operator-selected delegation scopes
+      description: |
+        servingDid must equal the authenticated acting identity. Org owner/admin
+        authorization requires auth-service access. Agent authority comes only
+        from issueGrant, never organization membership. Optional handle uses
+        the same global uniqueness and syntax rules as personal agent creation.
+        Omitted or empty handle retains the name-derived randomized default.
+        Org identity minting binds the provision record in the same transaction.
+        No scopes means no authority; pipeline failures remain visible in steps.
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [servingDid, name, harness, placement, scopes]
+              properties:
+                servingDid: { type: string }
+                name: { type: string }
+                handle: { type: string, description: "Empty or omitted derives from name; otherwise 3–64 lowercase letters, digits, underscores or hyphens" }
+                harness: { type: string, enum: [nanoclaw, openclaw] }
+                placement: { type: string, enum: [hosted, local] }
+                scopes: { type: array, items: { type: string } }
+                model: { type: object }
+                idempotencyKey: { type: string }
+      responses:
+        "201": { description: Provision with status and step history }
+        "400": { description: Invalid handle or provision input }
+        "401": { description: Authentication required }
+        "403": { description: Caller cannot provision for the selected principal }
+        "409": { description: Handle already taken }
+
+  /api/agents/adopt:
+    post:
+      tags: [auth]
+      operationId: adoptOrphanAgent
+      summary: Adopt an orphan agent into the acting organization with original-key proof
+      description: |
+        On /auth/agents while acting as an org, use Adopt orphaned agent.
+        Requires an org owner/admin with auth-service access, rechecked live
+        during both stages. Agents and delegated callers are refused.
+        First send action=challenge with agentDid and nonempty registered
+        capabilities. Returns challengeId, exact UTF-8 challenge and expiresAt
+        (five minutes). Sign that exact challenge with the existing agent
+        Ed25519 private key locally, then send action=adopt, challengeId,
+        signature (128 hex characters). Never send a private key.
+        The single-use proof binds org, human, target DID and capabilities.
+        Both stages require actor/agent subtype, no membership rows in either
+        direction (including removed history), no active unexpired delegation
+        grants, and no agent_provisions. Redemption locks the challenge and
+        agent and atomically commits the provision flow's grant issuer,
+        signed issuance history, agent.adopted attestation and challenge use.
+        DID, handle and public key remain unchanged; no org membership is added.
+        Production adoption is an explicit post-deploy operator action, not a migration.
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [action]
+              properties:
+                action: { type: string, enum: [challenge, adopt] }
+                agentDid: { type: string }
+                capabilities: { type: array, minItems: 1, items: { type: string } }
+                challengeId: { type: string }
+                signature: { type: string, pattern: "^[a-fA-F0-9]{128}$" }
+      responses:
+        "200": { description: Challenge prepared or adoption committed with did, publicKey and grant }
+        "400": { description: Invalid action, DID, capabilities or JSON }
+        "401": { description: Authentication required }
+        "403": { description: Unauthorized org, missing/expired/used proof, mismatched principal or invalid signature }
+        "409": { description: Target is not an active orphan agent }
+        "500": { description: Adoption unavailable; transaction rolled back }
+
   /api/identity/{did}:
     get:
       tags: [auth]
@@ -4798,6 +4915,87 @@ paths:
                   grants:
                     type: array
                     items: { $ref: "#/components/schemas/DelegationGrant" }
+
+  /api/grants/received/operator-approvals:
+    post:
+      tags: [grants]
+      operationId: readOwnOperatorApprovalsLease
+      summary: Read the signing agent's effective operator:approvals lease expiry (#3018)
+      description: |
+        Read-only POST authenticated solely by the agent's own DID signature;
+        no internal key, session, bearer credential or additional capability is
+        required. Sign canonicalize({from, type, timestamp, payload}) with the
+        registered agent DID's current Ed25519 key (hex signature). type must
+        be agent; payload.operation must be operator:approvals:lease. timestamp
+        is Unix milliseconds, at most five minutes old or 30 seconds ahead.
+        Unknown, suspended, non-agent identities and invalid signatures are denied.
+        The signed from DID is the grantee. Query parameters, X-Acting-As,
+        x-acting-as cookies and X-Acting-For never change the read principal.
+        There is no lookup by another agent, delegator or arbitrary grant ID.
+
+        lease is null when no active, unexpired received grant has an active
+        operator:approvals capability and an audience covering this node's
+        operator DID (also null if no operator is configured). With multiple
+        eligible grants, effective expiry is the latest expiresAt: delivery
+        remains entitled while ANY eligible grant survives. Equal expiries
+        use lexicographically ascending grantId as the stable tie-break.
+        Revoked grants, revoked capabilities, expired grants (expiresAt <= now)
+        and other audiences are absent. Re-read after renewal or revocation;
+        this is a no-store snapshot, not authorization for a future action.
+        Only grantId, capability and expiresAt are disclosed, never signatures,
+        secrets, delegator details or the delegator's issued-grant list.
+
+        Bridge consumers can use expiresAt for once-per-lease T-24h and T-1h
+        warnings (deduplicate by grantId + expiresAt + threshold), pointing to
+        /auth/agents → the grant → Renew. Do not guess a TTL for null leases.
+        Warning scheduling/deduplication is consumer-side, not this endpoint.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [from, type, timestamp, payload, signature]
+              properties:
+                from: { type: string, description: The signing agent's own registered DID }
+                type: { type: string, const: agent }
+                timestamp: { type: integer, description: Unix milliseconds }
+                payload:
+                  type: object
+                  required: [operation]
+                  properties:
+                    operation: { type: string, const: "operator:approvals:lease" }
+                signature: { type: string, pattern: '^[0-9a-fA-F]{128}$' }
+      responses:
+        "200":
+          description: Effective self-scoped lease snapshot, or null when absent
+          headers:
+            Cache-Control:
+              schema: { type: string, const: no-store }
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [lease]
+                properties:
+                  lease:
+                    oneOf:
+                      - type: "null"
+                      - type: object
+                        additionalProperties: false
+                        required: [grantId, capability, expiresAt]
+                        properties:
+                          grantId: { type: string }
+                          capability: { type: string, const: "operator:approvals" }
+                          expiresAt: { type: string, format: date-time }
+        "400":
+          description: Invalid JSON
+        "401":
+          description: Agent DID signature required (credentials alone do not authenticate)
+        "503":
+          description: Identity or lease lookup unavailable; never interpreted as a lease
 
   /api/grants/{grantId}:
     delete:

@@ -203,16 +203,27 @@ describe('POST /auth/api/agents (#1717)', () => {
     expect(reverseRow.identityDid).toBe(PERSONAL_DID);
   });
 
-  it('creates an org-serving identity without either membership link', async () => {
-    mockRequireAuth.mockResolvedValue({ identity: { id: PERSONAL_DID, actingFor: BUSINESS_DID } });
+  it('refuses plain org creation and directs the admin to Provision agent without minting', async () => {
+    mockRequireAuth.mockResolvedValue({ identity: { id: PERSONAL_DID, actingAs: BUSINESS_DID, actingAsRole: 'admin' } });
     pushSelectResult([]);
     pushSelectResult([{ scope: 'business' }]);
 
     const res = await POST(makePostRequest({ handle: 'business-bot' }));
 
-    expect(res.status).toBe(201);
-    expect(mockTxInsertValues).toHaveBeenCalledOnce();
-    expect(mockTxInsertValues.mock.calls[0][0]).toMatchObject({ subtype: 'agent', scope: 'actor' });
+    expect(res.status).toBe(403);
+    expect((await res.json()).error).toContain('Provision agent');
+    expect(mockTxInsertValues).not.toHaveBeenCalled();
+    expect(JSON.stringify(mockSelectWhere.mock.calls)).toContain(BUSINESS_DID);
+  });
+
+  it.each([
+    { id: PERSONAL_DID, actingFor: BUSINESS_DID },
+    { id: PERSONAL_DID, actingAs: BUSINESS_DID, actingAsRole: 'member' },
+    { id: LOCAL_AGENT_DID, subtype: 'agent' },
+  ])('refuses delegated/non-admin creation before accessing storage: %j', async identity => {
+    mockRequireAuth.mockResolvedValue({ identity });
+    expect((await POST(makePostRequest({ handle: 'business-bot' }))).status).toBe(403);
+    expect(mockDbSelect).not.toHaveBeenCalled();
   });
 
   it('reports a transaction failure instead of claiming a partial creation succeeded', async () => {

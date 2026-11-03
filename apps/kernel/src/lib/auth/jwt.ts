@@ -161,6 +161,8 @@ export interface AppTokenPayload {
   aud?: string;          // optional target service/audience
   attestationId: string; // source app.authorized attestation; empty string for service tokens
   isServiceToken?: boolean; // true when typ='app-service+jwt' (no user delegation)
+  /** Fixed MCP assigned principal, signed at consent; never a request selector. */
+  actingFor?: string;
 }
 
 /**
@@ -174,6 +176,7 @@ export async function createAppToken(payload: AppTokenPayload): Promise<string> 
     azp: payload.azp,
     scope: payload.scope,
     attestationId: payload.attestationId,
+    ...(payload.actingFor ? { acting_for: payload.actingFor } : {}),
   })
     .setProtectedHeader({ alg: 'EdDSA', typ: 'app+jwt' })
     .setSubject(payload.sub)
@@ -231,6 +234,7 @@ export async function verifyAppToken(token: string): Promise<AppTokenPayload | n
       aud: payload.aud as string | undefined,
       attestationId: (payload.attestationId as string) ?? '',
       isServiceToken,
+      ...(typeof payload.acting_for === 'string' && payload.acting_for ? { actingFor: payload.acting_for } : {}),
     };
   } catch (error) {
     log.error({ err: String(error) }, 'App token verification failed');

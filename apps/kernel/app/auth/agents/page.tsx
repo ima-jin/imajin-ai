@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { buildPublicUrlAbsolute } from '@imajin/config';
 import { GRANT_SCOPE_REGISTRY } from '@imajin/auth/grant-scopes';
 import RetracePane from './retrace-panel';
+import AdoptAgent from './adopt-agent';
 import { fireAndForget } from '@/src/lib/async/fire-and-forget';
 import { previousGrantLeaseMs, operatorGrantExpiryWarning } from '@/src/lib/auth/grant-lease';
 
@@ -551,11 +552,13 @@ function ProvisionWizard({
   onCancel,
   submitting,
 }: Readonly<{
-  onSubmit: (input: { name: string; harness: ProvisionHarness; placement: ProvisionPlacement; scopes: string[]; provider: string }) => void;
+  onSubmit: (input: { name: string; handle: string; harness: ProvisionHarness; placement: ProvisionPlacement; scopes: string[]; provider: string }) => void;
   onCancel: () => void;
   submitting: boolean;
 }>) {
   const [name, setName] = useState('');
+  const [provisionHandle, setProvisionHandle] = useState('');
+  const handleValid = !provisionHandle || (provisionHandle.length >= 3 && provisionHandle.length <= 64 && /^[a-z0-9_-]+$/.test(provisionHandle));
   const [harness, setHarness] = useState<ProvisionHarness>('nanoclaw');
   const [placement, setPlacement] = useState<ProvisionPlacement>('hosted');
   const [scopes, setScopes] = useState<string[]>([]);
@@ -588,6 +591,15 @@ function ProvisionWizard({
           ref={autoFocusRef}
           className="w-full px-4 py-2 border border-gray-700 rounded-lg bg-black text-white focus:ring-2 focus:ring-amber-500 focus:border-transparent"
         />
+      </div>
+
+      <div>
+        <label htmlFor="provision-handle" className="block text-sm text-gray-400 mb-1">Handle (optional)</label>
+        <input id="provision-handle" value={provisionHandle} onChange={e => setProvisionHandle(e.target.value)}
+          placeholder="artifact-jin" maxLength={64}
+          className="w-full px-4 py-2 border border-gray-700 rounded-lg bg-black text-white" />
+        <p className="text-xs text-gray-500 mt-1">3–64 lowercase letters, numbers, underscores or hyphens. Leave empty to derive from name.</p>
+        {!handleValid && <p role="alert" className="text-sm text-red-400">Invalid handle</p>}
       </div>
 
       <div>
@@ -655,8 +667,8 @@ function ProvisionWizard({
       <div className="flex gap-3 pt-2">
         <button
           type="button"
-          onClick={() => onSubmit({ name, harness, placement, scopes, provider })}
-          disabled={!name.trim() || submitting}
+          onClick={() => onSubmit({ name, handle: provisionHandle, harness, placement, scopes, provider })}
+          disabled={!name.trim() || !handleValid || submitting}
           className="px-6 py-2 bg-amber-500 hover:bg-amber-400 text-black font-medium rounded-lg transition disabled:opacity-50"
         >
           {submitting ? 'Provisioning…' : 'Provision'}
@@ -1001,7 +1013,7 @@ export default function AgentsPage() {
   }
 
   /** Provision a new agent via the envelope provisioner (#1933): identity + minimal grants + RFC-31 envelope in one call. */
-  async function handleCreateProvision(input: { name: string; harness: ProvisionHarness; placement: ProvisionPlacement; scopes: string[]; provider: string }) {
+  async function handleCreateProvision(input: { name: string; handle: string; harness: ProvisionHarness; placement: ProvisionPlacement; scopes: string[]; provider: string }) {
     if (!session || !delegator) return;
     setActionLoading('provision');
     try {
@@ -1012,6 +1024,7 @@ export default function AgentsPage() {
         body: JSON.stringify({
           servingDid: delegator.did,
           name: input.name,
+          ...(input.handle ? { handle: input.handle } : {}),
           harness: input.harness,
           placement: input.placement,
           scopes: input.scopes,
@@ -1188,6 +1201,8 @@ export default function AgentsPage() {
             {actionLoading === `issue-grant-${grantAgentDid}` ? 'Issuing…' : '+ Add capability to agent'}
           </button>
         </section>
+
+        {delegator?.isOrganization && <AdoptAgent orgDid={delegator.did} onAdopted={loadData} />}
 
         {/* Envelope provisioner (#1933): new agent flow */}
         {showProvisionWizard && (

@@ -1,0 +1,32 @@
+import { and, eq, isNotNull, isNull, like } from 'drizzle-orm';
+import { db, connectors, identities, identityMembers } from '@/src/db';
+import { ExternalMcpError } from './external-mcp-policy';
+import { ORG_HELD_PREFIX, type OrgConnectionActor } from './org-held-connection-policy';
+
+/** Membership permits metadata only. It does not create a custody or member grant. */
+export function readOrgHeldStatus(actor: OrgConnectionActor) {
+  return db.transaction(async tx => {
+    const [org] = await tx.select({ scope: identities.scope, suspendedAt: identities.suspendedAt })
+      .from(identities).where(eq(identities.id, actor.orgDid)).for('share');
+    const [person] = await tx.select({ scope: identities.scope, subtype: identities.subtype, suspendedAt: identities.suspendedAt })
+      .from(identities).where(eq(identities.id, actor.actorDid)).for('share');
+    const [membership] = await tx.select({ memberDid: identityMembers.memberDid })
+      .from(identityMembers).where(and(
+        eq(identityMembers.identityDid, actor.orgDid), eq(identityMembers.memberDid, actor.actorDid),
+        isNull(identityMembers.removedAt),
+      )).for('share');
+    if (!org || !['business', 'community', 'family'].includes(org.scope) || org.suspendedAt
+      || person?.scope !== 'actor' || person.subtype === 'agent' || person.suspendedAt || !membership) {
+      throw new ExternalMcpError(403, 'Active organization membership required');
+    }
+    const rows = await tx.select({ provider: connectors.provider, loadedAt: connectors.loadedAt })
+      .from(connectors).where(and(
+        eq(connectors.ownerDid, actor.orgDid), like(connectors.provider, `${ORG_HELD_PREFIX}%`),
+        eq(connectors.slot, 'primary'), eq(connectors.status, 'active'),
+        isNotNull(connectors.sealedKeyField), isNotNull(connectors.loadedAt), isNotNull(connectors.loadedByDid),
+      )).orderBy(connectors.provider);
+    return { connections: rows.map(row => ({
+      provider: row.provider.slice(ORG_HELD_PREFIX.length), status: 'loaded' as const, loadedAt: row.loadedAt,
+    })) };
+  });
+}

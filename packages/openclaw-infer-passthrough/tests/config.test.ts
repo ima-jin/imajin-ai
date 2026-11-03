@@ -16,12 +16,53 @@ describe('loadRoutes', () => {
     if (dir) rmSync(dir, { recursive: true, force: true });
   });
 
+  it('defaults to agent transport without any host signing credential or principal', () => {
+    const config = loadConfig({
+      KERNEL_BASE_URL: 'https://kernel.test',
+      OPENCLAW_APP_DID: 'did:imajin:ignored',
+      OPENCLAW_APP_PRIVATE_KEY: 'ignored-placeholder',
+      INFER_PROXY_PRINCIPAL_DID: 'did:imajin:ignored',
+    });
+    expect(config.authMode).toBe('agent');
+    expect(config.appDid).toBe('');
+    expect(config.appPrivateKey).toBe('');
+    expect(config.routes.every(route => route.principalDid === '')).toBe(true);
+  });
+
+  it('accepts provider-only routes in agent mode without assigning a principal', () => {
+    dir = mkdtempSync(join(tmpdir(), 'infer-proxy-'));
+    const config = loadConfig({
+      KERNEL_BASE_URL: 'https://kernel.test',
+      INFER_PROXY_ROUTES_CONFIG: writeRoutes(dir, [{ id: 'xai' }]),
+    });
+    expect(config.routes).toEqual([{ id: 'xai', principalDid: '' }]);
+  });
+
+  it.each(['', 'static', 'AGENT'])('rejects unknown auth mode %j instead of enabling host auth', authMode => {
+    expect(() => loadConfig({ KERNEL_BASE_URL: 'https://kernel.test', INFER_PROXY_AUTH_MODE: authMode }))
+      .toThrow('INFER_PROXY_AUTH_MODE must be agent or host-static');
+  });
+
+  it('requires the kernel URL in agent mode', () => {
+    expect(() => loadConfig({})).toThrow('KERNEL_BASE_URL is required');
+  });
+
   const minimalEnv = {
+    INFER_PROXY_AUTH_MODE: 'host-static',
     KERNEL_BASE_URL: 'https://kernel.test',
     OPENCLAW_APP_DID: 'did:imajin:app',
     OPENCLAW_APP_PRIVATE_KEY: 'test-placeholder',
     INFER_PROXY_PRINCIPAL_DID: 'did:imajin:principal',
   };
+  it.each(['', 123, null, 'not-a-did', 'did:imajin:bad\nheader'])('rejects an invalid actingAs selector: %j', actingAs => {
+    dir = mkdtempSync(join(tmpdir(), 'infer-proxy-'));
+    expect(() => loadRoutes(writeRoutes(dir, [{ id: 'anthropic', principalDid: 'did:imajin:member', actingAs }]))).toThrow();
+  });
+  it('retains a non-secret org selector independently of the member principal', () => {
+    dir = mkdtempSync(join(tmpdir(), 'infer-proxy-'));
+    const route = { id: 'anthropic', principalDid: 'did:imajin:member', actingAs: 'did:imajin:org' };
+    expect(loadRoutes(writeRoutes(dir, [route]))).toEqual([route]);
+  });
 
   it('needs no routes file or grant ID with the principal env', () => {
     const config = loadConfig(minimalEnv);
@@ -113,6 +154,7 @@ describe('loadConfig', () => {
     const routesPath = writeRoutes(dir, [{ id: 'xai', principalDid: 'did:imajin:ryan', attestationId: 'att-1' }]);
     expect(() =>
       loadConfig({
+        INFER_PROXY_AUTH_MODE: 'host-static',
         INFER_PROXY_ROUTES_CONFIG: routesPath,
         KERNEL_BASE_URL: 'https://kernel.test',
         OPENCLAW_APP_DID: 'did:imajin:app',

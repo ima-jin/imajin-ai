@@ -216,6 +216,23 @@ describe('sealing a credential', () => {
 
 // ── Sealed state, read from whichever flag the backend reports ─────────────────
 
+describe('Anthropic model-list rejection', () => {
+  it('renders the actionable invalid-key response instead of a bare gateway error', async () => {
+    const message = 'Anthropic rejected this key (invalid or wrong key type) — re-seal a Console API key';
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      if (String(input) === '/anthropic/api/models') {
+        return { ...jsonResponse({ error: `anthropic_invalid_key: ${message}`, code: 'anthropic_invalid_key', message }, false), status: 400 };
+      }
+      return jsonResponse({ manifestAssetId: null, activeScopes: [], validScopes: ['anthropic:infer'], keySealed: true });
+    }));
+
+    render(<ConnectorDetail entry={entryFor('anthropic')} />);
+
+    expect(await screen.findByText(`Error: anthropic_invalid_key: ${message}`)).toBeDefined();
+    expect(screen.queryByText(/502/)).toBeNull();
+  });
+});
+
 describe('sealed credential status', () => {
   it('reads Gemini\'s `keySealed`', async () => {
     installFetch({

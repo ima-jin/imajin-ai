@@ -1,5 +1,7 @@
+import { internalFetch } from './internal-fetch.cjs';
 import { createLogger } from '@imajin/logger';
 import { getVaultInternalApiKey } from './internal-post';
+import { resolveAgentDelegationAuthority, validateActingAs } from './require-auth';
 const log = createLogger('auth');
 
 export interface AppAuthContext {
@@ -8,6 +10,10 @@ export interface AppAuthContext {
   scopes: string[];
   attestationId: string; // empty string for service tokens
   isServiceToken?: boolean; // true when minted via /auth/api/apps/token/service
+  /** Header selector, verified against current group authority on this request. */
+  actingAs?: string;
+  /** Agent delegation selector verified on this request, not asserted by the header. */
+  actingFor?: string;
 }
 
 export type AppAuthResult =
@@ -30,6 +36,16 @@ export type AppAuthResult =
 
 const getAuthUrl = () => process.env.AUTH_SERVICE_URL!;
 
+/** Unverified type is only a refusal discriminator; it can never grant access. */
+function claimsAppToken(token: string): boolean {
+  try {
+    const header = JSON.parse(Buffer.from(token.split('.').at(0) ?? '', 'base64url').toString('utf8'));
+    return header?.typ === 'app+jwt' || header?.typ === 'app-service+jwt';
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Verify a short-lived app token (#1069). Calls the kernel's stateless verify
  * endpoint, which checks the EdDSA signature + expiry locally (no DB hit) and
@@ -44,7 +60,7 @@ async function verifyBearerAppToken(token: string, scope?: string): Promise<AppA
     return { error: 'Auth service unavailable', status: 503 };
   }
   try {
-    const res = await fetch(`${authUrl}/api/apps/token/verify`, {
+    const res = await internalFetch(`${authUrl}/api/apps/token/verify`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ token, scope }),
@@ -56,7 +72,7 @@ async function verifyBearerAppToken(token: string, scope?: string): Promise<AppA
       // an app token at all (invalid signature/shape or expired); a 403 means
       // it verified fine but lacks the required scope. Only the former is a
       // "not an app token" signal for the caller's fallback decision.
-      return { error: data.error ?? 'Invalid app token', status: res.status, notAppToken: res.status === 401 };
+      return { error: data.error ?? 'Invalid app token', status: res.status, notAppToken: res.status === 401 && !claimsAppToken(token) };
     }
     return { appAuth: (await res.json()) as AppAuthContext };
   } catch (err) {
@@ -76,6 +92,32 @@ async function verifyBearerAppToken(token: string, scope?: string): Promise<AppA
  * Works with both `Request` and `NextRequest`.
  */
 export async function requireAppAuth(
+  request: Request,
+  options?: { scope?: string; service?: string; allowMemberActAs?: boolean }
+): Promise<AppAuthResult> {
+  const result = await authenticateApp(request, options);
+  if (!('appAuth' in result)) return result;
+  // The token contract is unchanged. A selector never supplies authority.
+  const actingAs = request.headers.get('x-acting-as');
+  const actingFor = request.headers.get('x-acting-for');
+  if (!actingAs && !actingFor) return result;
+  const { userDid, isServiceToken } = result.appAuth;
+  if (!userDid || isServiceToken) {
+    return { error: 'Not authorized to act as this group', status: 403 };
+  }
+  if (actingFor && !await resolveAgentDelegationAuthority(userDid, actingFor, options?.service)) {
+    return { error: 'Not authorized to act for this identity', status: 403 };
+  }
+  if (actingAs) {
+    const verified = await validateActingAs(actingFor ?? userDid, actingAs, options?.service, {
+      allowMember: options?.allowMemberActAs,
+    });
+    if (!verified.valid) return { error: 'Not authorized to act as this group', status: 403 };
+  }
+  return { appAuth: { ...result.appAuth, ...(actingAs ? { actingAs } : {}), ...(actingFor ? { actingFor } : {}) } };
+}
+
+async function authenticateApp(
   request: Request,
   options?: { scope?: string }
 ): Promise<AppAuthResult> {
@@ -107,7 +149,7 @@ export async function requireAppAuth(
   try {
     // AUTH_SERVICE_URL already includes the `/auth` prefix (consistent with
     // require-auth.ts and session.ts which use `${authUrl}/api/...`)
-    const res = await fetch(`${authUrl}/api/apps/validate`, {
+    const res = await internalFetch(`${authUrl}/api/apps/validate`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

@@ -27,6 +27,7 @@ import { corsHeaders } from '@/src/lib/kernel/cors';
 import { rateLimit, getClientIP } from '@imajin/config';
 import { createLogger } from '@imajin/logger';
 import { resolveInferenceAuth } from '@/src/lib/inference/auth';
+import { inferenceBrainContext } from '@/src/lib/inference/route-context';
 import { resolveBrain } from '@/src/lib/inference/brain';
 import { mapBrainErrorToHttp } from '@/src/lib/inference/brain-http-errors';
 import { mapUpstreamErrorToHttp } from '@/src/lib/inference/completions/errors';
@@ -60,7 +61,7 @@ export async function POST(request: NextRequest) {
   if (!auth.ok) {
     return NextResponse.json({ error: auth.error }, { status: auth.status, headers: cors });
   }
-  const { ownerDid, appDid } = auth.context;
+  const { ownerDid, appDid, orgContext } = auth.context;
 
   const body = await parseRequestBody(request);
   if (!body.ok) {
@@ -79,7 +80,7 @@ export async function POST(request: NextRequest) {
   };
 
   try {
-    const context = appDid ? { ownerDid, appDid } : ownerDid;
+    const context = inferenceBrainContext(auth.context);
     // #2195: `model` is the routing key among the principal's sealed,
     // usable connectors — omitted (rather than passed as `undefined`) when
     // absent so a bare `resolveBrain(context)` call stays byte-identical to
@@ -88,6 +89,9 @@ export async function POST(request: NextRequest) {
     const brain = requestedModel
       ? await resolveBrain(context, { model: requestedModel })
       : await resolveBrain(context);
+    if (orgContext && !brain.modelId) {
+      return NextResponse.json({ error: 'Anthropic model is required' }, { status: 400, headers: cors });
+    }
 
     log.info(
       {

@@ -1,0 +1,31 @@
+name: Bootstrap inference gateway
+
+on:
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: infer-passthrough-bootstrap
+  cancel-in-progress: false
+
+jobs:
+  bootstrap:
+    # This dedicated host runner may invoke only the fixed root-owned service.
+    # Never check out or execute repository code as root on this runner.
+    runs-on: [self-hosted, infer-passthrough-gateway]
+    environment: production
+    steps:
+      - name: Verify selected main workflow
+        shell: bash
+        env:
+          BOOTSTRAP_REF: ${{ github.ref }}
+          BOOTSTRAP_WORKFLOW_REF: ${{ github.workflow_ref }}
+        run: |
+          if [[ "$BOOTSTRAP_REF" != refs/heads/main ||
+                "$BOOTSTRAP_WORKFLOW_REF" != 'ima-jin/imajin-ai/.github/workflows/infer-passthrough-bootstrap.yml@refs/heads/main' ]]; then
+            printf 'Refusing bootstrap outside the selected main workflow\n' >&2
+            exit 1
+          fi
+      - name: Run trusted bootstrap
+        run: sudo -n /usr/bin/systemctl start infer-passthrough-bootstrap.service

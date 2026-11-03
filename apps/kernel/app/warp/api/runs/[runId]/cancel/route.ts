@@ -32,7 +32,7 @@ export async function POST(request: NextRequest, props: { params: Promise<{ runI
   if ('response' in run) return run.response;
 
   try {
-    const cancellation = await cancelAgentRun(acting.did, run.runId);
+    const cancellation = await cancelAgentRun(acting.did, run.runId, ...(acting.caller ? [acting.caller] as const : []));
     return NextResponse.json(cancellation, { headers: cors });
   } catch (err) {
     log.error(

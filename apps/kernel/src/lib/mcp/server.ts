@@ -96,12 +96,20 @@ async function callTool(msg: JsonRpcMessage, ctx: McpToolContext, surface?: McpS
   }
   try {
     const args = (msg.params?.arguments as Record<string, unknown>) ?? {};
+    if (ctx.actingFor && ['actAs', 'actingAs', 'actingFor', 'acting_for', 'agent_did', 'x-acting-as']
+      .some(selector => Object.hasOwn(args, selector))) {
+      return ok(msg.id, { content: [{ type: 'text', text:
+        'agent_binding_immutable: Use the consent-bound identity; consent again on /auth/authorize to change it.',
+      }], isError: true });
+    }
     const content = await tool.handler(args, ctx);
     return ok(msg.id, { content, isError: false });
   } catch (e) {
     // MCP convention: tool failures are returned in-band (isError), not as
     // protocol-level JSON-RPC errors, so the model can see what went wrong.
-    return ok(msg.id, { content: [{ type: 'text', text: `Error: ${String(e)}` }], isError: true });
+    const message = e instanceof Error && e.name === 'AgentOAuthError' && 'code' in e
+      ? `${e.code}: ${e.message}` : String(e);
+    return ok(msg.id, { content: [{ type: 'text', text: `Error: ${message}` }], isError: true });
   }
 }
 

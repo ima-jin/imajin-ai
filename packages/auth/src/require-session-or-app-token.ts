@@ -5,6 +5,7 @@ import { SESSION_COOKIE_NAME } from '@imajin/config';
 import { verifyAppToken } from './app-token';
 import { resolveAppAudience } from './app-audience';
 import { resolveAgentDelegationAuthority } from './require-auth';
+import { resolveSessionData } from './session-resolver';
 
 export interface SessionOrTokenAuth {
   /** DID of the authenticated caller (the token's `sub`, or the session's did). */
@@ -59,7 +60,6 @@ export interface SessionOrTokenAuthOptions {
   requireScopes?: string[];
 }
 
-const getAuthUrl = () => process.env.AUTH_SERVICE_URL!;
 
 const ACTING_FOR_REJECTED = 'Not authorized to act for this identity';
 
@@ -88,23 +88,15 @@ function extractSessionCookie(cookieHeader: string | null): string | null {
 }
 
 /**
- * Validate the legacy shared session cookie against the kernel. Kept
- * self-contained (rather than reusing `require-auth.ts`'s private helper) —
- * this package already duplicates this exact pattern between
- * `require-auth.ts` and `session.ts`.
+ * Validate through the kernel's injected resolver, or bounded HTTP for
+ * out-of-process consumers. Keep this adapter's existing result contract.
  */
 async function validateLegacySessionCookie(
   token: string
 ): Promise<{ did: string; tier: string } | null> {
-  const authUrl = getAuthUrl();
-  if (!authUrl) return null;
   try {
-    const res = await fetch(`${authUrl}/api/session`, {
-      headers: { Cookie: `${SESSION_COOKIE_NAME}=${token}` },
-      cache: 'no-store',
-    });
-    if (!res.ok) return null;
-    const data = await res.json();
+    const data = await resolveSessionData(token);
+    if (!data) return null;
     const did = data.did ?? data.identity?.did ?? null;
     if (!did) return null;
     // Same fallback `require-auth.ts` applies: no tier reported means soft.

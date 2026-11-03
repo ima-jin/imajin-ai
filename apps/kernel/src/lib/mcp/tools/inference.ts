@@ -105,7 +105,10 @@ const inferenceCaptureTool: McpTool = {
     // silently dropped `ctx.appDid` and made the app/org-DID walk unreachable
     // for every MCP-driven capture, even though McpToolContext always carries
     // the authenticated app DID.
-    const candidates = await infer(inferCtx, vocab, { ownerDid: ctx.did, appDid: ctx.appDid });
+    const brainContext = ctx.actingFor
+      ? await (await import('../agent-binding')).mcpCredentialContext(ctx, 'infer')
+      : { ownerDid: ctx.did, appDid: ctx.appDid };
+    const candidates = await infer(inferCtx, vocab, brainContext);
     const topIntent = candidates[0];
     if (!topIntent) {
       return json({ sessionId, assetId: resolvedAssetId, status: 'failed', error: 'No candidates inferred' });

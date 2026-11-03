@@ -111,7 +111,7 @@ function appAuth(overrides: Record<string, unknown> = {}) {
 }
 
 beforeEach(() => {
-  vi.clearAllMocks();
+  vi.resetAllMocks();
   mockRequireAppAuth.mockResolvedValue(NO_APP_CREDENTIALS);
   mockRequireAuth.mockResolvedValue({ identity: { id: OWNER_DID } });
   mockConfirmIntent.mockResolvedValue(undefined);
@@ -179,18 +179,16 @@ describe('POST /api/inference/confirm/:sessionId — app-authenticated caller pa
     const res = await POST(makeReq(), makeProps());
 
     expect(res.status).toBe(200);
-    expect(mockRequireAppAuth).toHaveBeenCalledWith(expect.anything(), { scope: 'infer:provide' });
+    expect(mockRequireAppAuth).toHaveBeenCalledWith(expect.anything(), { scope: 'infer:provide', service: 'infer', allowMemberActAs: true });
     expect(mockConfirmIntent).toHaveBeenCalledWith(SESSION_ID, OWNER_DID, undefined);
     expect(mockRequireAuth).not.toHaveBeenCalled();
   });
 
-  it('falls back to X-Acting-For for service tokens with no delegating user', async () => {
+  it('refuses an unverified principal selector on an app service token', async () => {
     mockRequireAppAuth.mockResolvedValueOnce(appAuth({ userDid: '', isServiceToken: true }));
-
     const res = await POST(makeReq({ 'x-acting-for': OWNER_DID }), makeProps());
-
-    expect(res.status).toBe(200);
-    expect(mockConfirmIntent).toHaveBeenCalledWith(SESSION_ID, OWNER_DID, undefined);
+    expect(res.status).toBe(400);
+    expect(mockConfirmIntent).not.toHaveBeenCalled();
   });
 
   it('rejects service tokens that name no owner DID', async () => {
@@ -207,13 +205,13 @@ describe('POST /api/inference/confirm/:sessionId — app-authenticated caller pa
       error: "Scope 'infer:provide' was not granted",
       status: 403,
     });
-    mockRequireAuth.mockResolvedValueOnce({ error: 'Not authenticated', status: 401 });
 
     const res = await POST(makeReq(), makeProps());
 
     expect(res.status).toBe(403);
     expect(await res.json()).toEqual({ error: "Scope 'infer:provide' was not granted" });
     expect(mockConfirmIntent).not.toHaveBeenCalled();
+    expect(mockRequireAuth).not.toHaveBeenCalled();
   });
 
   it('surfaces the app auth error when app headers were supplied but invalid — not a generic 401 Invalid token', async () => {

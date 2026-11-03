@@ -5,6 +5,7 @@ import type { DocumentActor } from '@/src/lib/auth/document-authorization';
 import { OwnershipError } from '@/src/lib/auth/ownership-policy';
 import { generateId } from './id';
 import type { ConnectionTransaction } from './member-connection-gate';
+import { revokeRemovedMemberOrgGrants } from './org-connection-member-grants';
 
 export interface SuspensionInput { action: 'suspend' | 'resume'; reason: string; connectionId?: string; provider?: string }
 
@@ -91,6 +92,7 @@ export async function suspendRemovedMember(tx: ConnectionTransaction, orgDid: st
   await Promise.all(rows.map(row => recordSuspension(tx, orgDid, actorDid, {
     action: 'suspend', reason: 'Organization membership removed', connectionId: row.id,
   }, row)));
+  await revokeRemovedMemberOrgGrants(tx, orgDid, memberDid, actorDid);
 }
 
 /** Admin metadata allowlist: never return fields, bindings, credentials or provider bodies. */

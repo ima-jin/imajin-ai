@@ -12,6 +12,8 @@ Environment=PATH=/usr/local/bin:/usr/bin:/bin
 ExecStart=/var/lib/imajin/infer-passthrough/current/node_modules/.bin/tsx packages/openclaw-infer-passthrough/src/server.ts
 Restart=on-failure
 RestartSec=5
+TimeoutStopSec=10s
+KillMode=control-group
 NoNewPrivileges=true
 PrivateTmp=true
 

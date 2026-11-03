@@ -45,6 +45,7 @@ export async function GET(request: NextRequest, props: { params: Promise<{ runId
       acting.did,
       run.runId,
       Number.isFinite(maxChars) && maxChars > 0 ? { maxChars } : {},
+      ...(acting.caller ? [acting.caller] as const : []),
     );
     return NextResponse.json(transcript, { headers: cors });
   } catch (err) {

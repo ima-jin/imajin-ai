@@ -18,7 +18,8 @@
  * this one pulls in `@imajin/auth`.
  */
 import { NextResponse, type NextRequest } from 'next/server';
-import { requireAuth, resolveActingDid } from '@imajin/auth';
+import { requireAppAuth, requireAuth, resolveActingDid } from '@imajin/auth';
+import { connectionCaller, sessionConnectionCaller, type ConnectionCaller } from '@/src/lib/kernel/connection-principal-policy';
 
 /**
  * Either the value the handler asked for, or the response it should return.
@@ -32,14 +33,31 @@ export type WarpRouteStep<T> = T | { response: NextResponse };
 export async function warpActingDid(
   request: NextRequest,
   cors: Record<string, string>,
-): Promise<WarpRouteStep<{ did: string }>> {
-  const auth = await requireAuth(request);
+): Promise<WarpRouteStep<{ did: string; caller?: ConnectionCaller }>> {
+  if (request.headers.has('authorization') || request.headers.has('x-app-did')) {
+    const app = await requireAppAuth(request, { scope: 'warp:dispatch', service: 'warp', allowMemberActAs: true });
+    if ('appAuth' in app) {
+      const context = app.appAuth;
+      if (!context.userDid || context.isServiceToken) {
+        return { response: NextResponse.json({ error: 'Agent or member credential required' }, { status: 403, headers: cors }) };
+      }
+      return { did: context.actingAs ?? context.actingFor ?? context.userDid, caller: connectionCaller(context.userDid, context) };
+    }
+    if (!app.notAppToken) {
+      return { response: NextResponse.json({ error: app.error }, { status: app.status, headers: cors }) };
+    }
+  }
+  const auth = await requireAuth(request, { service: 'warp', allowMemberActAs: true });
   if ('error' in auth) {
     return {
       response: NextResponse.json({ error: auth.error }, { status: auth.status, headers: cors }),
     };
   }
-  return { did: resolveActingDid(auth.identity) };
+  const { identity } = auth;
+  return {
+    did: identity.actingAs ?? resolveActingDid(identity),
+    ...sessionConnectionCaller(identity),
+  };
 }
 
 /**

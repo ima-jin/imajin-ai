@@ -39,9 +39,10 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
   }
 
-  const { servingDid, name, harness, placement, scopes, model, idempotencyKey } = body as {
+  const { servingDid, name, handle, harness, placement, scopes, model, idempotencyKey } = body as {
     servingDid?: string;
     name?: string;
+    handle?: string;
     harness?: string;
     placement?: string;
     scopes?: string[];
@@ -64,6 +65,7 @@ export async function POST(request: NextRequest) {
       servingDid,
       actorDid: identity.id,
       name: name ?? '',
+      handle,
       harness: harness as ProvisionHarness,
       placement: placement as ProvisionPlacement,
       scopes,

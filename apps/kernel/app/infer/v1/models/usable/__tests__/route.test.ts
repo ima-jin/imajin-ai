@@ -2,11 +2,13 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // ─── Mocks ──────────────────────────────────────────────────────────────────
 
-const { mockResolveInferenceAuth, mockRateLimit, mockListUsableModels } = vi.hoisted(() => ({
+const { mockResolveInferenceAuth, mockRateLimit, mockListUsableModels, mockListRoutes } = vi.hoisted(() => ({
   mockResolveInferenceAuth: vi.fn(),
   mockRateLimit: vi.fn(),
   mockListUsableModels: vi.fn(),
+  mockListRoutes: vi.fn(),
 }));
+vi.mock('@/src/lib/inference/route-discovery', () => ({ listInferenceRoutes: mockListRoutes }));
 
 vi.mock('@/src/lib/inference/auth', () => ({
   resolveInferenceAuth: mockResolveInferenceAuth,
@@ -70,6 +72,54 @@ beforeEach(() => {
   mockRateLimit.mockReturnValue({ limited: false });
   mockResolveInferenceAuth.mockResolvedValue({ ok: true, context: { ownerDid: OWNER_DID, appDid: APP_DID } });
   mockListUsableModels.mockResolvedValue([]);
+  mockListRoutes.mockResolvedValue([]);
+});
+
+describe('GET /infer/v1/models/usable?explain=1 — additive diagnostics', () => {
+  const explainRequest = () => new Request('https://kernel.test/infer/v1/models/usable?explain=1') as RouteRequest;
+  it('opts into diagnostics without changing or fetching the existing picker catalog', async () => {
+    mockListRoutes.mockResolvedValue([{ kind: 'own', usable: false, reason: { code: 'key_not_loaded' } }]);
+    const res = await GET(explainRequest());
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ routes: [{ kind: 'own', usable: false, reason: { code: 'key_not_loaded' } }] });
+    expect(res.headers.get('Cache-Control')).toBe('private, no-store');
+    expect(res.headers.get('Vary')).toContain('x-acting-as');
+    expect(mockListUsableModels).not.toHaveBeenCalled();
+    expect(mockListRoutes).toHaveBeenCalledWith({ ownerDid: OWNER_DID, appDid: APP_DID });
+  });
+  it('passes verified acting-org context to discovery without replacing it with the personal identity', async () => {
+    const context = { ownerDid: 'did:imajin:org', orgContext: { memberDid: OWNER_DID, orgDid: 'did:imajin:org' } };
+    mockResolveInferenceAuth.mockResolvedValue({ ok: true, context });
+    expect((await GET(explainRequest())).status).toBe(200);
+    expect(mockListRoutes).toHaveBeenCalledWith(context);
+  });
+  it.each([401, 403])('does not enumerate anything after an auth rejection (%s)', async status => {
+    mockResolveInferenceAuth.mockResolvedValue({ ok: false, error: 'Denied', status });
+    expect((await GET(explainRequest())).status).toBe(status);
+    expect(mockListRoutes).not.toHaveBeenCalled();
+  });
+  it('preserves rate limiting for explain requests', async () => {
+    mockRateLimit.mockReturnValue({ limited: true, retryAfter: 3 });
+    expect((await GET(explainRequest())).status).toBe(429);
+    expect(mockListRoutes).not.toHaveBeenCalled();
+  });
+  it('does not expose store or custody error text', async () => {
+    mockListRoutes.mockRejectedValue(new Error('private database diagnostic'));
+    const res = await GET(explainRequest());
+    expect(res.status).toBe(503);
+    expect(await res.json()).toEqual({ error: 'inference_routes_unavailable' });
+  });
+  it('does not activate diagnostics for an unknown explain value', async () => {
+    await GET(new Request('https://kernel.test/infer/v1/models/usable?explain=true') as RouteRequest);
+    expect(mockListRoutes).not.toHaveBeenCalled();
+    expect(mockListUsableModels).toHaveBeenCalled();
+  });
+  it('passes an explicit model to discovery for call-path parity', async () => {
+    await GET(new Request('https://kernel.test/infer/v1/models/usable?explain=1&model=claude-sonnet-5-5') as RouteRequest);
+    expect(mockListRoutes).toHaveBeenCalledWith(
+      { ownerDid: OWNER_DID, appDid: APP_DID }, { model: 'claude-sonnet-5-5' },
+    );
+  });
 });
 
 describe('GET /infer/v1/models/usable — request gating', () => {

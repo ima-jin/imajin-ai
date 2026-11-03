@@ -124,6 +124,7 @@ import { lookupIdentity } from '@/src/lib/kernel/lookup';
 import { getNodeDid } from '@/src/lib/kernel/node-identity';
 import { getMcpResource } from '@/src/lib/mcp/oauth-config';
 import { requireAgentKey } from './connector';
+import type { ConnectionCaller } from '@/src/lib/kernel/connection-principal';
 import {
   CORPUS_CONTEXT_SEPARATOR,
   fetchCorpusContext,
@@ -1054,6 +1055,7 @@ async function resolvePrompt(
 export async function dispatchAgentRun(
   principalDid: string,
   input: DispatchAgentRunInput,
+  caller?: ConnectionCaller,
 ): Promise<WarpAgentRun> {
   assertWarpBriefSize(input.prompt);
   const trimmedPrompt = input.prompt.trim();
@@ -1066,7 +1068,7 @@ export async function dispatchAgentRun(
   // The environment and jin-name lookups run after the gate deliberately: both
   // hit the DB, and an unauthorized caller should not be able to make us do that
   // work before being turned away.
-  const agentKey = await requireAgentKey(principalDid);
+  const agentKey = await (caller ? requireAgentKey(principalDid, caller) : requireAgentKey(principalDid));
   const [jinName, environmentId] = await Promise.all([
     resolveJinName(principalDid),
     resolveEnvironmentId(principalDid, input.environmentId),
@@ -1115,6 +1117,7 @@ export async function dispatchAgentRun(
     payload: {
       runId: run.runId,
       principalDid,
+      actorDid: caller?.actorDid ?? principalDid,
       configName: config.name,
       state: run.state,
       skillSpec: config.skill_spec ?? null,
@@ -1164,10 +1167,10 @@ export async function dispatchAgentRun(
  * body — and it is what makes a failed run diagnosable and a finished one
  * measurable.
  */
-export async function getAgentRun(principalDid: string, runId: string): Promise<WarpAgentRun> {
+export async function getAgentRun(principalDid: string, runId: string, caller?: ConnectionCaller): Promise<WarpAgentRun> {
   const id = requireRunId(runId);
 
-  const agentKey = await requireAgentKey(principalDid);
+  const agentKey = await (caller ? requireAgentKey(principalDid, caller) : requireAgentKey(principalDid));
   return fetchAgentRun(agentKey, id);
 }
 
@@ -1236,8 +1239,9 @@ function buildRunsQuery(input: ListAgentRunsInput): string {
 export async function listAgentRuns(
   principalDid: string,
   input: ListAgentRunsInput = {},
+  caller?: ConnectionCaller,
 ): Promise<WarpAgentRunPage> {
-  const agentKey = await requireAgentKey(principalDid);
+  const agentKey = await (caller ? requireAgentKey(principalDid, caller) : requireAgentKey(principalDid));
   const payload = await warpFetch(agentKey, `/agent/runs${buildRunsQuery(input)}`, {
     method: 'GET',
   });
@@ -1328,6 +1332,7 @@ export async function getAgentRunTranscript(
   principalDid: string,
   runId: string,
   options: { maxChars?: number } = {},
+  caller?: ConnectionCaller,
 ): Promise<WarpAgentRunTranscript> {
   const id = requireRunId(runId);
   const maxChars =
@@ -1335,7 +1340,7 @@ export async function getAgentRunTranscript(
       ? Math.trunc(options.maxChars)
       : TRANSCRIPT_MAX_CHARS;
 
-  const agentKey = await requireAgentKey(principalDid);
+  const agentKey = await (caller ? requireAgentKey(principalDid, caller) : requireAgentKey(principalDid));
   const response = await warpRequest(agentKey, runPath(id, '/transcript'), {
     method: 'GET',
     redirect: 'manual',
@@ -1363,10 +1368,11 @@ export async function getAgentRunTranscript(
 export async function getAgentRunConversation(
   principalDid: string,
   runId: string,
+  caller?: ConnectionCaller,
 ): Promise<WarpAgentRunConversation> {
   const id = requireRunId(runId);
 
-  const agentKey = await requireAgentKey(principalDid);
+  const agentKey = await (caller ? requireAgentKey(principalDid, caller) : requireAgentKey(principalDid));
   const payload = await warpFetch(agentKey, runPath(id, '/conversation'), { method: 'GET' });
 
   const body = objectOrNull(payload);
@@ -1396,10 +1402,11 @@ export async function getAgentRunConversation(
 export async function cancelAgentRun(
   principalDid: string,
   runId: string,
+  caller?: ConnectionCaller,
 ): Promise<WarpAgentRunCancellation> {
   const id = requireRunId(runId);
 
-  const agentKey = await requireAgentKey(principalDid);
+  const agentKey = await (caller ? requireAgentKey(principalDid, caller) : requireAgentKey(principalDid));
   await warpFetch(agentKey, runPath(id, '/cancel'), { method: 'POST' });
 
   log.info({ principalDid, runId: id }, 'Warp cloud agent run cancelled');
@@ -1502,6 +1509,7 @@ export async function sendFollowup(
   principalDid: string,
   runId: string,
   input: SendFollowupInput,
+  caller?: ConnectionCaller,
 ): Promise<WarpFollowupAck> {
   assertWarpBriefSize(input.message);
   const id = requireRunId(runId);
@@ -1517,7 +1525,7 @@ export async function sendFollowup(
 
   const resume = input.resume === true;
 
-  const agentKey = await requireAgentKey(principalDid);
+  const agentKey = await (caller ? requireAgentKey(principalDid, caller) : requireAgentKey(principalDid));
 
   const current = await fetchAgentRun(agentKey, id);
   const wasTerminal = isTerminalRunState(current.state);
@@ -1623,6 +1631,7 @@ const UNKNOWN_STATE = 'UNKNOWN';
 const UNKNOWN_ARTIFACT_TYPE = 'UNKNOWN';
 
 export interface WatchRunOptions {
+  caller?: ConnectionCaller;
   /** Override the poll schedule. Tests pass short gaps; production uses the default. */
   intervalsMs?: readonly number[];
   /** Override the total budget. Defaults to {@link WATCH_TIMEOUT_MS}. */
@@ -1901,9 +1910,10 @@ function toProgressMessage(index: number, entry: FlatMessage): ProgressMessage {
 async function readConversationMessages(
   principalDid: string,
   runId: string,
+  caller?: ConnectionCaller,
 ): Promise<FlatMessage[] | null> {
   try {
-    const conversation = await getAgentRunConversation(principalDid, runId);
+    const conversation = await getAgentRunConversation(principalDid, runId, caller);
     return flattenConversation(conversation.steps);
   } catch (err) {
     log.warn(
@@ -2056,6 +2066,7 @@ async function reportProgress(
   runId: string,
   run: WarpAgentRun,
   tracker: ProgressTracker,
+  caller?: ConnectionCaller,
 ): Promise<void> {
   try {
     const changed: ProgressChange[] = [];
@@ -2069,7 +2080,7 @@ async function reportProgress(
     let newMessageCount = 0;
 
     if (state !== null && !PRE_START_STATES.has(state)) {
-      const flat = await readConversationMessages(principalDid, runId);
+      const flat = await readConversationMessages(principalDid, runId, caller);
       if (flat !== null && flat.length > tracker.messageCount) {
         const fresh = flat
           .slice(tracker.messageCount)
@@ -2200,7 +2211,7 @@ async function pollUntilTerminal(
 
     let run: WarpAgentRun;
     try {
-      run = await getAgentRun(principalDid, runId);
+      run = await getAgentRun(principalDid, runId, options.caller);
       consecutiveErrors = 0;
     } catch (err) {
       consecutiveErrors += 1;
@@ -2224,7 +2235,7 @@ async function pollUntilTerminal(
     await notifyIfBlocked(principalDid, run, tracker);
 
     if (reportsProgress) {
-      await reportProgress(principalDid, runId, run, tracker);
+      await reportProgress(principalDid, runId, run, tracker, options.caller);
     }
     return pollAttempt(attempt + 1);
   };

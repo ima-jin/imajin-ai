@@ -5,6 +5,7 @@
  */
 
 export const ATTESTATION_TYPES = [
+  'ops.liveness.restart',
   'connector.org-held',
   'connector.external-mcp',
   'connector.disconnected',
@@ -113,6 +114,7 @@ export const ATTESTATION_TYPES = [
   // Never used as an auth basis — auth root stays homogeneous (did:imajin +
   // challenge-response); this is provenance only.
   'agent.external_identity',
+  'agent.adopted',
 
   // Off-platform value-realization fact (#1886) — the intro-attribution
   // .fair template's second trigger class. One party claims value was
@@ -327,6 +329,7 @@ export type AttestationType = typeof ATTESTATION_TYPES[number];
  * excluded from any "pending your countersignature" view or query.
  */
 export const MECHANICAL_ATTESTATION_TYPES = [
+  'ops.liveness.restart',
   'connector.org-held',
   'connector.external-mcp',
   'connector.disconnected',
@@ -366,6 +369,7 @@ export const MECHANICAL_ATTESTATION_TYPES = [
   'media.uploaded',
   'agent.turn.usage',
   'agent.external_identity',
+  'agent.adopted',
   // #1147/#1148 attestationClass: 'system' facts — see ATTESTATION_TYPES above.
   'usage.incurred',
   'usage.rollup',

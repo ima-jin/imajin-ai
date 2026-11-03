@@ -1191,6 +1191,8 @@ export interface BusEventMap {
   'warp.agent.dispatched': {
     runId: string;
     principalDid: string;
+    /** Authenticated agent/human that initiated the call, distinct from the key owner. */
+    actorDid?: string;
     /** Warp `config.name` the run was stamped with, e.g. `veteze-jin`. */
     configName: string;
     /** Lifecycle state Warp reported at creation, typically `QUEUED`. */

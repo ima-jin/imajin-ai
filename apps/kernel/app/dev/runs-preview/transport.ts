@@ -90,7 +90,10 @@ function applyLifecycleFixture(command: SessionCommandFrame, loopId: string, at:
   });
 }
 /** Local fixture only. All API calls are intercepted; production code and auth are unchanged. */
-export async function createRunsPreviewTransport(horizonState = 'active', blockers?: string) {
+export async function createRunsPreviewTransport(
+  horizonState = 'active', blockers?: string,
+  scheduleOutcome?: (complete: () => Promise<void>) => void,
+) {
   if (process.env.NODE_ENV !== 'development') throw new Error('Development fixture only');
   const principalKey = crypto.getRandomValues(new Uint8Array(32));
   const kernelKey = crypto.getRandomValues(new Uint8Array(32));
@@ -166,8 +169,12 @@ export async function createRunsPreviewTransport(horizonState = 'active', blocke
     if (!validWish || !validGrant || canonicalCommandJson(commandBody(command)) !== canonicalCommandJson(commandBody(expected))) return json({ error: 'Invalid full-body signatures' }, 403);
     used.add(command.commandId);
     // Deliberately later than delivery: transport acceptance is not execution.
-    const timer = setTimeout(() => { timers.delete(timer); void outcome(command, loopId); }, 500);
-    timers.add(timer);
+    if (scheduleOutcome) {
+      scheduleOutcome(() => outcome(command, loopId));
+    } else {
+      const timer = setTimeout(() => { timers.delete(timer); void outcome(command, loopId); }, 500);
+      timers.add(timer);
+    }
     return json({ commandId: command.commandId, delivered: true });
   }
   async function approvalDecision(proposalId: string, data: Record<string, unknown>) {

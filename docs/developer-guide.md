@@ -39,6 +39,49 @@ exists or a complete live deployment inventory. Not every route group has a spec
 The generated [route index](../apps/kernel/public/llms.txt) and
 [contract reference](../apps/kernel/public/llms-full.txt) cover the current handler tree.
 
+### v0.8.30 integration delta (2026-11-02 source)
+
+Since v0.8.29, `GET/POST/DELETE /connections/api/org-held/{provider}/grants`
+administers metadata-only member
+grants. A human session must act as the org with live owner/admin membership and
+`connections` service access. POST/DELETE accept `{memberDid, reason}`; GET
+returns active provenance, never credentials. Membership removal revokes the
+member's grants without changing the shared key. Org-key runtime injection
+(#3202/#3203) is not shipped here; it remains v0.9.0 work.
+
+Read-only `POST /auth/api/grants/received/operator-approvals` uses the registered
+agent's own Ed25519-signed `{from, type, timestamp, payload}` envelope plus
+`signature`, with `type: agent` and `payload.operation: operator:approvals:lease`.
+Session/bearer/internal credentials cannot replace the signature; acting identity
+overlays cannot change the signer-scoped read. The no-store response is
+`{lease: {grantId, capability, expiresAt}}` or `{lease: null}`. Latest eligible
+expiry wins; clients re-read after renewal/revocation and schedule their own
+warnings. See the [auth spec](../apps/kernel/api-spec/auth.yaml),
+[connections spec](../apps/kernel/api-spec/connections.yaml) and
+[kernel delta](../apps/kernel/README.md#pre-cut-delta-for-v0830).
+These are source contracts, not deployment evidence.
+
+#### Contributor checks on fork PRs
+
+Fork CI's green **SonarCloud** job is a compatibility skip (**NOT SCANNED**).
+After CI, **Trusted Fork SonarCloud** authenticates a unique open fork PR at the
+exact head and publishes `sonarcloud/trusted`; successful CI and the submitted
+analysis task's quality gate OK are required for success. Verify Sonar total 0
+separately, not just a green gate. The workflow/helper runs from reviewed `main`,
+so a PR changing it cannot prove its own privileged path before merge.
+Main-push analyses have no open PR by design; a "no open PR" report there is not
+failed fork coverage. The trusted fork follow-up skips non-PR/same-repo runs;
+main analysis remains the normal CI Sonar path. See
+[full trust-boundary guidance](../README.md#sonarcloud-on-fork-prs).
+
+### v0.8.29 integration delta (2026-10-30 source)
+
+Since v0.8.28, [kernel-owned details](../apps/kernel/README.md#pre-cut-delta-for-v0829)
+add org-scoped connection revocation and org-held connector custody, push-based
+inference gateway-host bootstrap, and the refusal of plain org agent creation in
+favor of provisioned/orphan-adopted agents. Source availability is not proof of
+deployment.
+
 ### v0.8.28 integration delta (2026-10-26 source)
 
 Since v0.8.27, [kernel-owned details](../apps/kernel/README.md#pre-cut-delta-for-v0828)

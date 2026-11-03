@@ -48,6 +48,7 @@ import { warpErrorResponse } from '@/src/lib/warp/route-errors';
 import { claimTerminalPublish, countPriorResumes } from '@/src/lib/warp/run-watch-sweep';
 import { isWarpBriefTooLarge, WARP_BRIEF_MAX_BYTES } from '@/src/lib/warp/brief-limit';
 import { WarpBriefSizeError } from '@/src/lib/warp/errors';
+import { callerArguments } from '@/src/lib/kernel/connection-principal-policy';
 
 const log = createLogger('kernel');
 
@@ -92,7 +93,7 @@ export async function POST(request: NextRequest, props: { params: Promise<{ runI
       message,
       ...(mode === undefined ? {} : { mode }),
       ...(resume === undefined ? {} : { resume }),
-    });
+    }, ...callerArguments(acting.caller));
 
     if (ack.resumed !== undefined) {
       // Fire-and-forget, deliberately un-awaited — same reasoning as the
@@ -101,6 +102,7 @@ export async function POST(request: NextRequest, props: { params: Promise<{ runI
       // segment it just started is one past that (#2055).
       void watchRun(acting.did, run.runId, {
         claimTerminalPublish,
+        ...(acting.caller ? { caller: acting.caller } : {}),
         resumeContext: { resumedFrom: ack.resumed.previousSessionId, segment: priorResumes + 2 },
       });
     }

@@ -32,6 +32,34 @@ components:
         the operation's documented scope in the token and current operator-approved
         service scopes of an active registry app. Not a session or delegated app token.
   schemas:
+    OrgConnectionMemberGrantInput:
+      type: object
+      additionalProperties: false
+      required: [memberDid, reason]
+      properties:
+        memberDid: { type: string, maxLength: 256, pattern: '^did:[a-z0-9]+:[^\s]+$' }
+        reason: { type: string, minLength: 1, maxLength: 500, description: Nonblank audit reason; never enter credentials. }
+    OrgConnectionMemberGrant:
+      type: object
+      additionalProperties: false
+      required: [id, orgDid, memberDid, connectionId, provider, grantedByDid, grantedAt, revokedAt, revokedByDid, revocationReason]
+      properties:
+        id: { type: string }
+        orgDid: { type: string }
+        memberDid: { type: string }
+        connectionId: { type: string }
+        provider: { type: string }
+        grantedByDid: { type: string }
+        grantedAt: { type: string, format: date-time }
+        revokedAt: { type: [string, "null"], format: date-time }
+        revokedByDid: { type: [string, "null"] }
+        revocationReason: { type: [string, "null"] }
+    OrgConnectionMemberGrantChange:
+      type: object
+      additionalProperties: false
+      required: [changed]
+      properties:
+        changed: { type: boolean }
     OrgHeldConnection:
       type: object
       additionalProperties: false
@@ -155,6 +183,149 @@ tags:
     description: imajin connections service
 
 paths:
+  /api/org-held/status:
+    get:
+      tags: [connections]
+      operationId: readMemberOrgHeldStatus
+      summary: Read loaded-key status as an active human org member without key access
+      description: >-
+        Authenticates the personal session only. orgDid is a selector, never
+        authority; live active org, human identity and identity_members membership
+        are required. Any member role may read. Does not grant act-as, member
+        grants, custody, inference or proxy access. No loadedByDid, secret or
+        vault-field reference is selected or returned. No unseal on reads.
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: orgDid
+          in: query
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Metadata only; private, no-store; inactive keys omitted
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [connections]
+                properties:
+                  connections:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: false
+                      required: [provider, status, loadedAt]
+                      properties:
+                        provider: { type: string }
+                        status: { type: string, enum: [loaded] }
+                        loadedAt: { type: string, format: date-time }
+        "400": { description: Invalid or missing orgDid }
+        "401": { description: Personal session required }
+        "403": { description: Not an active human member of this org }
+        "503": { description: Store unavailable; no internal error details }
+  /api/org-held/{provider}/grants:
+    parameters:
+      - name: provider
+        in: path
+        required: true
+        schema: { type: string, examples: [anthropic, warp] }
+    get:
+      tags: [connections]
+      operationId: listOrgConnectionMemberGrants
+      summary: List active member grant provenance without accessing custody
+      description: >-
+        Human session acting as the org plus live owner/admin and connections-service
+        access required. Org and actor must be active. Org DID and issuer come only
+        from authenticated act-as. No secret or vault field is returned.
+        Revoked rows remain in storage but are hidden from this active list.
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: Active provenance only; private, no-store
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [grants]
+                properties:
+                  grants:
+                    type: array
+                    items: { $ref: "#/components/schemas/OrgConnectionMemberGrant" }
+        "401": { description: Human admin session required }
+        "403": { description: Active org owner/admin act-as required }
+        "503": { description: Store unavailable; no internal details }
+    post:
+      tags: [connections]
+      operationId: grantOrgConnectionMember
+      summary: Grant one active member access to an org-owned connection
+      description: >-
+        Same live human org-admin gate as GET. Body at most 16 KiB.
+        Requires a current human member and an active, loaded org-held primary
+        connection. The org-row lock serializes changes with membership removal.
+        Duplicate active grant is an idempotent no-op. Regrant inserts a new row,
+        retaining revoked provenance. Each change commits signed connector.org-held
+        attestation and org-connection event history atomically. Never accesses custody.
+        Defines authority metadata only; inference and Warp proxy injection are separate.
+        A human member needs this active per-member grant to use org-held keys.
+        An agent assigned to a DID uses that DID's keys with no member grant.
+        Runtime assignment, allowed_services and revocation are checked per call;
+        x-acting-as selects the identity and never authorizes access.
+        Missing member grants point to the org connector card on /auth/connectors
+        while acting as the org.
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/OrgConnectionMemberGrantInput" }
+      responses:
+        "200":
+          description: changed only; private, no-store
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OrgConnectionMemberGrantChange" }
+        "400": { description: Invalid JSON, member DID, reason or extra fields }
+        "401": { description: Human admin session required }
+        "403": { description: Admin or current human membership required }
+        "404": { description: No org-owned connection for provider }
+        "409": { description: Connection not active and loaded }
+        "413": { description: Body exceeds 16 KiB }
+        "503": { description: Signing or store unavailable; transaction rolled back }
+    delete:
+      tags: [connections]
+      operationId: revokeOrgConnectionMember
+      summary: Revoke one member without touching the shared org key or other members
+      description: >-
+        Same live admin gate and bounded body as POST. Revoke retains granted-by,
+        granted-at, revoked-by, revoked-at and reason with signed event history.
+        Missing live grant is an idempotent no-op. Member/connection need not remain
+        active to revoke. Canonical membership removal revokes all of that member's
+        org-held grants in its own transaction, alongside member-owned suspensions.
+        Rejoining never resurrects a revoked grant. No rows or shared keys deleted.
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/OrgConnectionMemberGrantInput" }
+      responses:
+        "200":
+          description: changed only; private, no-store
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OrgConnectionMemberGrantChange" }
+        "400": { description: Invalid JSON, member DID, reason or extra fields }
+        "401": { description: Human admin session required }
+        "403": { description: Active org owner/admin act-as required }
+        "404": { description: No org-owned connection for provider }
+        "413": { description: Body exceeds 16 KiB }
+        "503": { description: Signing or store unavailable; transaction rolled back }
   /api/org-held:
     get:
       tags: [connections]
@@ -224,7 +395,8 @@ paths:
         Replacement revokes previous custody and writes a signed vault tombstone.
         Signed connector.org-held attestations record org, actor, provider and
         loaded/replaced/revoked action; never credentials or raw exceptions.
-        No rows deleted. Per-member grants, proxy injection and UI are separate.
+        No rows deleted. Per-member grants use /api/org-held/{provider}/grants;
+        proxy injection and UI remain separate.
       security:
         - cookieAuth: []
       requestBody:

@@ -6,6 +6,7 @@ import { createAppToken } from '@/src/lib/auth/jwt';
 import { createLogger } from '@imajin/logger';
 import { rateLimit, getClientIP } from '@imajin/config';
 import { canConsentToApp, PRIVATE_APP_CONSENT_ERROR } from '@/src/lib/kernel/app-consent';
+import { AgentOAuthError, oauthAgentBinding, type AgentOAuthBinding } from '@/src/lib/mcp/agent-binding';
 import {
   getMcpResource,
   ACCESS_TOKEN_TTL_SECONDS,
@@ -47,13 +48,14 @@ function field(form: FormData, name: string): string | undefined {
 }
 
 /** OAuth access token = short-lived app+jwt (sub=user DID, azp=app, aud=MCP resource). */
-function mintAccessToken(opts: { userDid: string; appDid: string; scope: string; attestationId: string }) {
+function mintAccessToken(opts: { userDid: string; appDid: string; scope: string; attestationId: string; binding?: AgentOAuthBinding }) {
   return createAppToken({
     sub: opts.userDid,
     azp: opts.appDid,
     scope: opts.scope,
     aud: getMcpResource(),
     attestationId: opts.attestationId,
+    ...(opts.binding ? { actingFor: opts.binding.principalDid } : {}),
   });
 }
 
@@ -91,15 +93,23 @@ export async function POST(request: NextRequest) {
   }
 
   const clientId = field(form, 'client_id');
+  if (['agent_did', 'acting_for', 'actAs', 'actingAs'].some(name => form.has(name))) {
+    return tokenError('agent_binding_immutable', 400, 'Change agent binding by consenting again on /auth/authorize.');
+  }
   if (clientId) {
     const clientLimit = rateLimit(`oauth-token:client:${clientId}`, 120, 60_000);
     if (clientLimit.limited) return tooManyRequests(clientLimit.retryAfter);
   }
 
   const grantType = field(form, 'grant_type');
-  if (grantType === 'authorization_code') return handleAuthorizationCode(form);
-  if (grantType === 'refresh_token') return handleRefreshToken(form);
-  return tokenError('unsupported_grant_type');
+  try {
+    if (grantType === 'authorization_code') return await handleAuthorizationCode(form);
+    if (grantType === 'refresh_token') return await handleRefreshToken(form);
+    return tokenError('unsupported_grant_type');
+  } catch (error) {
+    if (!(error instanceof AgentOAuthError)) throw error;
+    return tokenError(error.code, error.status, error.message);
+  }
 }
 
 async function handleAuthorizationCode(form: FormData) {
@@ -153,7 +163,8 @@ async function handleAuthorizationCode(form: FormData) {
   if (!client) {
     return tokenError('invalid_client', 401, 'client inactive');
   }
-  if (!await canConsentToApp(client, record.userDid)) {
+  const binding = await oauthAgentBinding(record.attestationId, record.userDid, client.appDid);
+  if (!await canConsentToApp(client, binding?.consentedByDid ?? record.userDid)) {
     return tokenError('invalid_grant', 400, PRIVATE_APP_CONSENT_ERROR);
   }
 
@@ -162,6 +173,7 @@ async function handleAuthorizationCode(form: FormData) {
     appDid: client.appDid,
     scope: record.scope,
     attestationId: record.attestationId,
+    binding,
   });
   const refresh = await issueRefreshToken({
     clientId: record.clientId,
@@ -256,7 +268,8 @@ async function handleRefreshToken(form: FormData) {
     return tokenError('invalid_client', 401, 'client inactive');
   }
 
-  if (!await canConsentToApp(client, record.userDid)) {
+  const binding = await oauthAgentBinding(record.attestationId, record.userDid, client.appDid);
+  if (!await canConsentToApp(client, binding?.consentedByDid ?? record.userDid)) {
     return tokenError('invalid_grant', 400, PRIVATE_APP_CONSENT_ERROR);
   }
 
@@ -269,7 +282,9 @@ async function handleRefreshToken(form: FormData) {
   //
   // Resolved BEFORE the rotation consume below so an unusable registration
   // fails without burning the presented refresh token.
-  const granted = resolveRefreshScopes(client.requestedScopes);
+  const registered = resolveRefreshScopes(client.requestedScopes);
+  const consented = new Set(record.scope.split(/\s+/));
+  const granted = binding ? registered.filter(scope => consented.has(scope)) : registered;
   if (granted.length === 0) {
     log.warn(
       { clientId: record.clientId, userDid: record.userDid },
@@ -309,6 +324,7 @@ async function handleRefreshToken(form: FormData) {
     appDid: client.appDid,
     scope,
     attestationId: record.attestationId,
+    binding,
   });
 
   log.info(

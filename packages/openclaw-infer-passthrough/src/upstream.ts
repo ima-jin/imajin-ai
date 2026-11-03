@@ -61,6 +61,8 @@ export class NoDirectFallbackError extends Error {
 }
 
 export interface ForwardHeaders {
+  /** Untrusted org selector; verified live by the kernel, never by this shim. */
+  actingAs?: string;
   sessionId?: string;
   turnId?: string;
   /** OpenClaw's Warp run id, when this session was spawned from one (imajin-ai#2204). */
@@ -76,6 +78,7 @@ export interface ForwardHeaders {
  */
 function correlationHeaders(headers: ForwardHeaders): Record<string, string> {
   const out: Record<string, string> = {};
+  if (headers.actingAs) out['X-Acting-As'] = headers.actingAs;
   if (headers.sessionId) out['X-Imajin-Session'] = headers.sessionId;
   if (headers.turnId) out['X-Imajin-Turn'] = headers.turnId;
   if (headers.warpRunId) out['X-Imajin-Run'] = headers.warpRunId;
@@ -116,9 +119,12 @@ export async function forwardModelsToKernel(
   kernelBaseUrl: string,
   token: string,
   timeoutMs: number,
+  actingAs?: string,
 ): Promise<Response> {
   const url = `${stripTrailingSlashes(kernelBaseUrl)}/infer/v1/models/usable`;
-  return fetchWithTtfbTimeout(url, { method: 'GET', headers: { Authorization: `Bearer ${token}` } }, timeoutMs, 'Kernel');
+  return fetchWithTtfbTimeout(url, {
+    method: 'GET', headers: { Authorization: `Bearer ${token}`, ...correlationHeaders({ actingAs }) },
+  }, timeoutMs, 'Kernel');
 }
 
 /**
@@ -144,7 +150,7 @@ export async function forwardDirect(
   return fetchWithTtfbTimeout(url, { method: 'POST', headers: reqHeaders, body: bodyText }, timeoutMs, `Direct provider '${route.id}'`);
 }
 
-export interface McpForwardHeaders {
+export interface McpForwardHeaders extends Pick<ForwardHeaders, 'actingAs'> {
   mcpProtocolVersion?: string;
   /** Streamable HTTP session continuation (MCP spec) — forwarded pass-through even though the kernel's `/mcp` is currently stateless and never reads it, for forward-compat with a future stateful revision (#2368). */
   mcpSessionId?: string;
@@ -171,6 +177,7 @@ export async function forwardMcpToKernel(
   const reqHeaders: Record<string, string> = {
     'Content-Type': 'application/json',
     Authorization: `Bearer ${token}`,
+    ...correlationHeaders(headers),
   };
   if (headers.mcpProtocolVersion) reqHeaders['Mcp-Protocol-Version'] = headers.mcpProtocolVersion;
   if (headers.mcpSessionId) reqHeaders['Mcp-Session-Id'] = headers.mcpSessionId;

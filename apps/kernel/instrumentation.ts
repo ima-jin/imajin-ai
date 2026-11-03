@@ -27,6 +27,8 @@
 export async function register() {
   if (process.env.NEXT_RUNTIME === 'nodejs') {
     await import('@imajin/logger/db');
+    const { registerKernelSessionResolver } = await import('@/src/lib/auth/session-resolver');
+    registerKernelSessionResolver();
 
     const { loadVaultAtBoot } = await import('@/src/lib/vault/vault-repository');
     await loadVaultAtBoot();

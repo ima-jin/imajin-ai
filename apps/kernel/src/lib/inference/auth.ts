@@ -1,9 +1,14 @@
-import { requireAppAuth, requireAuth, resolveActingDid } from '@imajin/auth';
+import { requireAppAuth, requireAuth } from '@imajin/auth';
+import type { ConnectionCaller } from '@/src/lib/kernel/connection-principal-policy';
+import { resolveInferenceRouteContext } from './route-context';
 
 export interface InferenceAuthContext {
   ownerDid: string;
   appDid?: string;
+  orgContext?: VerifiedInferenceOrgContext;
+  caller?: ConnectionCaller;
 }
+export interface VerifiedInferenceOrgContext { memberDid: string; orgDid: string; assignedAgentDid?: string }
 
 export type InferenceAuthResult =
   | { ok: true; context: InferenceAuthContext }
@@ -42,33 +47,30 @@ export async function resolveInferenceAuth(
   request: Request,
   scope: string = 'infer:provide',
 ): Promise<InferenceAuthResult> {
-  const appResult = await requireAppAuth(withApiKeyBearerFallback(request), { scope });
-  if ('appAuth' in appResult) {
-    const ownerDid = appResult.appAuth.userDid || request.headers.get('x-acting-for') || '';
-    if (!ownerDid) {
-      return {
-        ok: false,
-        error: 'App-authenticated inference requires a delegating user DID or X-Acting-For header',
-        status: 400,
-      };
-    }
-    return { ok: true, context: { ownerDid, appDid: appResult.appAuth.appDid } };
-  }
+  const appResult = await requireAppAuth(withApiKeyBearerFallback(request), { scope, service: 'infer', allowMemberActAs: true });
+  if ('appAuth' in appResult) return resolveInferenceRouteContext({ app: appResult.appAuth });
 
-  const authResult = await requireAuth(request);
+  // A verified app denied scope or act-as must not degrade to a cookie session.
+  const credentialHint = request.headers.get('x-api-key') || request.headers.get('x-app-did')
+    || request.headers.get('x-app-authorization');
+  if (appResult.status === 403 || credentialHint
+    || (!appResult.notAppToken && (request.headers.has('authorization') || appResult.status !== 401))) {
+    return { ok: false, error: appResult.error, status: appResult.status };
+  }
+  const authResult = await requireAuth(request, { service: 'infer', allowMemberActAs: true });
   if ('error' in authResult) {
     const hasAppAuthHint = Boolean(
       request.headers.get('x-app-did') ||
       request.headers.get('x-app-authorization') ||
       request.headers.get('x-acting-for'),
     );
-    if (hasAppAuthHint || appResult.status === 403) {
+    if (hasAppAuthHint) {
       return { ok: false, error: appResult.error, status: appResult.status };
     }
     return { ok: false, error: authResult.error, status: authResult.status };
   }
 
-  return { ok: true, context: { ownerDid: resolveActingDid(authResult.identity) } };
+  return resolveInferenceRouteContext({ identity: authResult.identity });
 }
 
 /**

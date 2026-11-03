@@ -31,10 +31,10 @@ export const dynamic = 'force-dynamic';
 export async function GET(request: NextRequest) {
   const guarded = await guardAnthropicAuth(request);
   if (!guarded.ok) return guarded.response;
-  const { cors, ownerDid, appDid } = guarded.value;
+  const { cors, ownerDid, appDid, orgContext, caller } = guarded.value;
 
   try {
-    const brain = await resolveAnthropicBrain(ownerDid, appDid);
+    const brain = await resolveAnthropicBrain(ownerDid, appDid, undefined, orgContext, caller);
     const querySuffix = new URL(request.url).search;
 
     const upstreamResponse = await forwardAnthropicModelsList(brain, querySuffix);

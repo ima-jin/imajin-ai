@@ -20,6 +20,9 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { InferenceRoutes } from './components/InferenceRoutes';
+import { getActingAs, getActingAsHeaders } from '@imajin/ui/server';
+import OrgServiceKeys from './components/OrgServiceKeys';
 import {
   CONNECTOR_REGISTRY,
   type ConnectorEntry,
@@ -86,7 +89,7 @@ function ConnectorGridCard({ entry }: Readonly<{ entry: ConnectorEntry }>) {
     if (entry.backendPending || !entry.statusEndpoint) return;
 
     let cancelled = false;
-    fetch(entry.statusEndpoint)
+    fetch(entry.statusEndpoint, { headers: getActingAsHeaders(), cache: 'no-store' })
       .then((r) => (r.ok ? r.json() as Promise<GridStatus> : Promise.reject(new Error(String(r.status)))))
       .then((status) => {
         if (cancelled) return;
@@ -124,11 +127,23 @@ export default function ConnectionsPage() {
   // handle the unauthenticated edge case gracefully.
   const [sessionLoading, setSessionLoading] = useState(true);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [actingDid, setActingDid] = useState<string | null>(null);
+  const [humanSession, setHumanSession] = useState(false);
 
   useEffect(() => {
     fetch('/auth/api/session')
-      .then((r) => { setIsLoggedIn(r.ok); setSessionLoading(false); })
+      .then(async (r) => {
+        if (r.ok) {
+          const session = await r.json();
+          setHumanSession(session.subtype !== 'agent' && session.scope === 'actor');
+        }
+        setIsLoggedIn(r.ok); setSessionLoading(false);
+      })
       .catch(() => { setIsLoggedIn(false); setSessionLoading(false); });
+    const syncActingDid = () => setActingDid(getActingAs());
+    syncActingDid();
+    globalThis.addEventListener('imajin:acting-as-changed', syncActingDid);
+    return () => globalThis.removeEventListener('imajin:acting-as-changed', syncActingDid);
   }, []);
 
   if (sessionLoading) {
@@ -173,9 +188,12 @@ export default function ConnectionsPage() {
         </Link>
       </div>
 
+      <InferenceRoutes />
+
+      {actingDid && <OrgServiceKeys key={actingDid} orgDid={actingDid} humanSession={humanSession} />}
       {/* Connector grid */}
       <div className="grid gap-4 sm:grid-cols-2">
-        {CONNECTOR_REGISTRY.map((entry) => (
+        {CONNECTOR_REGISTRY.filter(entry => !actingDid || entry.backendPending || !['static-secret', 'token-paste'].includes(entry.ingestionPattern)).map((entry) => (
           <ConnectorGridCard key={entry.id} entry={entry} />
         ))}
       </div>

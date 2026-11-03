@@ -4,6 +4,7 @@ import { useState, useEffect, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { SCOPES } from '@imajin/auth/scope-vocabulary';
 import type { Scope } from '@imajin/auth/scope-vocabulary';
+import { AgentConsentBinding, type SelectedAgentBinding } from './agent-consent-binding';
 
 interface AppInfo {
   id: string;
@@ -35,6 +36,8 @@ function AuthorizeForm() {
   const state = searchParams.get('state');
   const codeChallengeMethod = searchParams.get('code_challenge_method');
   const resource = searchParams.get('resource');
+  const [agentMode, setAgentMode] = useState(searchParams.get('agent_did') !== null);
+  const [agentBinding, setAgentBinding] = useState<SelectedAgentBinding | null>(null);
 
   const [app, setApp] = useState<AppInfo | null>(null);
   const [loading, setLoading] = useState(true);
@@ -108,6 +111,7 @@ function AuthorizeForm() {
 
   async function handleAuthorize() {
     if (!app || submitting) return;
+    if (isOAuth && agentMode && !agentBinding) return;
     setSubmitting(true);
 
     const granted = Object.entries(enabledScopes)
@@ -129,6 +133,9 @@ function AuthorizeForm() {
             code_challenge_method: codeChallengeMethod ?? 'S256',
             scope: granted.join(' '),
             resource,
+            ...(agentMode && agentBinding ? {
+              agent_did: agentBinding.agentDid, acting_for: agentBinding.principalDid,
+            } : {}),
           }),
         });
 
@@ -218,6 +225,18 @@ function AuthorizeForm() {
             {app.description ?? `Grant access to the ${app.name} actor in your graph. It becomes an actor you can see and revoke at any time.`}
           </p>
 
+          {isOAuth && <div className="mb-6">
+            <label className="flex gap-2 text-sm text-gray-300">
+              <input type="checkbox" checked={agentMode} onChange={event => {
+                setAgentMode(event.target.checked);
+                setAgentBinding(null);
+              }} />
+              <span>Authorize an agent on its assigned identity’s keys</span>
+            </label>
+            {agentMode && <AgentConsentBinding initialAgentDid={searchParams.get('agent_did') ?? ''}
+              onChange={setAgentBinding} />}
+          </div>}
+
           {/* Scope toggles */}
           {scopeEntries.length > 0 ? (
             <div className="space-y-2 mb-6">
@@ -268,7 +287,7 @@ function AuthorizeForm() {
             </button>
             <button type="button"
               onClick={handleAuthorize}
-              disabled={submitting}
+              disabled={submitting || (isOAuth && agentMode && !agentBinding)}
               className="flex-1 px-4 py-2.5 rounded-lg bg-[#F59E0B] text-black hover:bg-[#D97706] transition font-medium text-sm disabled:opacity-50"
             >
               {submitting ? 'Authorizing...' : 'Authorize'}

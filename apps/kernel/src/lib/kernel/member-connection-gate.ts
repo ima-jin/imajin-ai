@@ -2,32 +2,35 @@ import { and, eq, isNull, isNotNull, or } from 'drizzle-orm';
 import { db, channelLinks, connectors, identities, registryApps, orgConnectionSuspensions, type ConnectorRow } from '@/src/db';
 import { isActiveGroupMember } from '@/src/lib/auth/group-membership';
 import { APP_AUTHORIZATION_CHANNEL } from '@/src/lib/auth/app-authorization-grant';
-import { ExternalMcpError, EXTERNAL_MCP_SCOPE, POSTMAN_PROVIDER } from './external-mcp-policy';
+import { ExternalMcpError, EXTERNAL_MCP_SCOPE, POSTMAN_PROVIDER, type ConnectionErrorCode } from './external-mcp-policy';
+import { missingConnection, resolveConnectionPrincipal, type ConnectionCaller } from './connection-principal';
+import { orgHeldProvider } from './org-held-connection-policy';
 
 export type ConnectionTransaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
-export interface ExternalMcpCaller { memberDid: string; appDid?: string; serviceToken?: boolean }
-export interface MemberConnectionTarget { provider: string; scope: string; binding?: string }
+export interface ExternalMcpCaller { memberDid: string; appDid?: string; serviceToken?: boolean; caller?: ConnectionCaller }
+export interface MemberConnectionTarget { provider: string; scope: string; binding?: string; service?: string }
 export const POSTMAN_CONNECTION = { provider: POSTMAN_PROVIDER, scope: EXTERNAL_MCP_SCOPE };
-export const connectionUnavailable = () => new ExternalMcpError(403, 'No active personal external MCP connection or grant');
+export const connectionUnavailable = (code: ConnectionErrorCode = 'connection_not_loaded') =>
+  new ExternalMcpError(403, 'No active personal external MCP connection or grant', code);
 export const isLiveConnection = (row: { status: string; expiresAt: Date | null; revokedAt: Date | null }) =>
   row.status === 'active' && !row.revokedAt && (!row.expiresAt || row.expiresAt.getTime() > Date.now());
 
-export async function findMemberConnection(tx: Pick<ConnectionTransaction, 'select'>, memberDid: string, provider: string) {
+export async function findMemberConnection(tx: Pick<ConnectionTransaction, 'select'>, memberDid: string, provider: string, orgHeld = false) {
   const [row] = await tx.select().from(connectors).where(and(
-    eq(connectors.ownerDid, memberDid), eq(connectors.provider, provider), eq(connectors.slot, 'primary'),
+    eq(connectors.ownerDid, memberDid), eq(connectors.provider, orgHeld ? orgHeldProvider(provider) : provider), eq(connectors.slot, 'primary'),
   )).limit(1);
   return row;
 }
 async function activeIdentity(tx: Pick<ConnectionTransaction, 'select'>, did: string) {
   const [identity] = await tx.select({ id: identities.id }).from(identities)
     .where(and(eq(identities.id, did), isNull(identities.suspendedAt))).limit(1);
-  if (!identity) throw connectionUnavailable();
+  if (!identity) throw connectionUnavailable('identity_inactive');
 }
 export async function checkMemberStanding(tx: Pick<ConnectionTransaction, 'select'>, memberDid: string, orgDid: string | null) {
   await activeIdentity(tx, memberDid);
-  if (!orgDid) return;
+  if (!orgDid || orgDid === memberDid) return;
   await activeIdentity(tx, orgDid);
-  if (!await isActiveGroupMember(orgDid, memberDid, tx)) throw connectionUnavailable();
+  if (!await isActiveGroupMember(orgDid, memberDid, tx)) throw connectionUnavailable('org_membership_required');
 }
 export async function requireConnectionApp(tx: Pick<ConnectionTransaction, 'select'>, appDid: string, scope: string, serviceToken: boolean) {
   const [app] = await tx.select().from(registryApps)
@@ -55,22 +58,35 @@ export async function authorizeMemberConnection(
   tx: ConnectionTransaction, caller: ExternalMcpCaller, target: MemberConnectionTarget = POSTMAN_CONNECTION,
 ): Promise<ConnectorRow> {
   await authorizeCaller(tx, caller, target.scope);
-  const row = await findMemberConnection(tx, caller.memberDid, target.provider);
+  const principal = caller.caller
+    ? await resolveConnectionPrincipal(caller.caller, target.service ?? 'connections', tx) : { ownerDid: caller.memberDid };
+  const orgContext = 'orgContext' in principal ? principal.orgContext : undefined;
+  if (orgContext && !orgContext.assignedAgentDid) {
+    const { requireOrgConnectionMemberGrant } = await import('./org-connection-member-grants');
+    await requireOrgConnectionMemberGrant({
+      memberDid: orgContext.memberDid, orgDid: orgContext.orgDid, actingDid: orgContext.orgDid, provider: target.provider,
+    }, tx);
+  }
+  const row = await findMemberConnection(tx, principal.ownerDid, target.provider, !!orgContext);
+  if (caller.caller && (!row || !isLiveConnection(row) || !row.sealedKeyField)) throw missingConnection(principal.ownerDid);
   if (!row || !isLiveConnection(row) || !row.sealedKeyField) throw connectionUnavailable();
+  if (orgContext && (!row.loadedByDid || !row.loadedAt)) throw missingConnection(principal.ownerDid);
   if (target.binding !== undefined && row.upstreamBinding !== target.binding) throw connectionUnavailable();
-  await checkMemberStanding(tx, caller.memberDid, row.orgContextDid);
-  if (row.orgContextDid) {
+  await checkMemberStanding(tx, principal.ownerDid, row.orgContextDid);
+  const orgDid = orgContext?.orgDid ?? row.orgContextDid;
+  if (orgDid) {
     const [suspension] = await tx.select({ provider: orgConnectionSuspensions.provider })
       .from(orgConnectionSuspensions).where(and(
-        eq(orgConnectionSuspensions.orgDid, row.orgContextDid),
-        eq(orgConnectionSuspensions.provider, row.provider),
+        eq(orgConnectionSuspensions.orgDid, orgDid),
+        or(eq(orgConnectionSuspensions.provider, row.provider), eq(orgConnectionSuspensions.provider, target.provider)),
         isNotNull(orgConnectionSuspensions.suspendedAt),
         or(
           eq(orgConnectionSuspensions.memberDid, ''),
-          and(eq(orgConnectionSuspensions.memberDid, caller.memberDid), eq(orgConnectionSuspensions.slot, row.slot)),
+          and(eq(orgConnectionSuspensions.memberDid, caller.caller?.actorDid ?? caller.memberDid),
+            or(eq(orgConnectionSuspensions.slot, ''), eq(orgConnectionSuspensions.slot, row.slot))),
         ),
       )).limit(1);
-    if (suspension) throw connectionUnavailable();
+    if (suspension) throw connectionUnavailable('connection_suspended');
   }
   return row;
 }

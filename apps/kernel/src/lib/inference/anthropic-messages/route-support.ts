@@ -17,10 +17,11 @@ import { NextResponse } from 'next/server';
 import type { Logger } from '@imajin/logger';
 import { corsHeaders } from '@/src/lib/kernel/cors';
 import { rateLimit, getClientIP } from '@imajin/config';
-import { resolveInferenceAuth } from '../auth';
+import { resolveInferenceAuth, type InferenceAuthContext, type VerifiedInferenceOrgContext } from '../auth';
 import { resolveBrain, type ResolvedBrain, type ResolveBrainOptions } from '../brain';
 import { mapBrainErrorToHttp } from '../brain-http-errors';
 import { mapUpstreamErrorToHttp } from '../completions/errors';
+import type { ConnectionCaller } from '@/src/lib/kernel/connection-principal';
 
 /** Same scope as #1925's completions passthrough — no new scope for this wire format. */
 export const ANTHROPIC_MESSAGES_SCOPE = 'infer:completions';
@@ -28,10 +29,8 @@ export const ANTHROPIC_MESSAGES_SCOPE = 'infer:completions';
 /** Every route in this family speaks Anthropic's wire format exclusively — see `resolveAnthropicBrain`. */
 const ANTHROPIC_ONLY = ['anthropic'] as const;
 
-export interface GuardedAuth {
+export interface GuardedAuth extends InferenceAuthContext {
   cors: Record<string, string>;
-  ownerDid: string;
-  appDid?: string;
 }
 
 export type GuardResult<T> = { ok: true; value: T } | { ok: false; response: NextResponse };
@@ -57,7 +56,7 @@ export async function guardAnthropicAuth(request: NextRequest): Promise<GuardRes
     return { ok: false, response: NextResponse.json({ error: auth.error }, { status: auth.status, headers: cors }) };
   }
 
-  return { ok: true, value: { cors, ownerDid: auth.context.ownerDid, appDid: auth.context.appDid } };
+  return { ok: true, value: { cors, ...auth.context } };
 }
 
 export interface GuardedRequest extends GuardedAuth {
@@ -94,9 +93,13 @@ export function resolveAnthropicBrain(
   ownerDid: string,
   appDid: string | undefined,
   model?: string,
+  orgContext?: VerifiedInferenceOrgContext,
+  caller?: ConnectionCaller,
 ): Promise<ResolvedBrain> {
   const options: ResolveBrainOptions = model ? { connectors: ANTHROPIC_ONLY, model } : { connectors: ANTHROPIC_ONLY };
-  return resolveBrain(appDid ? { ownerDid, appDid } : ownerDid, options);
+  const context = appDid || orgContext || caller
+    ? { ownerDid, ...(appDid ? { appDid } : {}), ...(orgContext ? { orgContext } : {}), ...(caller ? { caller } : {}) } : ownerDid;
+  return resolveBrain(context, options);
 }
 
 /**
