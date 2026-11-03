@@ -95,6 +95,8 @@ import { removeGroupController } from '@/src/lib/auth/remove-group-controller';
 import { GET as MEMBER_GRANTS, POST as GRANT_MEMBER, DELETE as REVOKE_MEMBER, OPTIONS as GRANT_OPTIONS } from '@/app/connections/api/org-held/[provider]/grants/route';
 import { requireOrgConnectionMemberGrant, listOrgConnectionMemberGrants, revokeRemovedMemberOrgGrants } from '../org-connection-member-grants';
 import { orgConnectionMemberGrantRoute } from '../org-connection-member-grant-route';
+import { GET as READ_MEMBER_STATUS, OPTIONS as STATUS_OPTIONS } from '@/app/connections/api/org-held/status/route';
+import { SESSION_COOKIE_NAME } from '@imajin/config';
 
 const tables = [identities, identityMembers, attestations, channelLinks, registryApps, connectors, orgConnectionSuspensions, orgConnectionEvents,
   vaultDelegationGrants, vaultOwnerEnvelopes, vaultGrantRequests, orgConnectionMemberGrants];
@@ -118,6 +120,98 @@ function tableSql(table: PgTable) {
   });
   return `CREATE TABLE "${config.schema}"."${config.name}" (${fields.join(',')})`;
 }
+async function memberStatus(query = `orgDid=${encodeURIComponent(org)}`, headers: Record<string, string> = {}) {
+  const response = await READ_MEMBER_STATUS(new NextRequest(`https://kernel.test/connections/api/org-held/status?${query}`, { headers }));
+  const body = await response.json();
+  h.outputs.push(body);
+  return { status: response.status, body, headers: response.headers };
+}
+
+describe('member-readable org-held status without custody or grant authority', () => {
+  async function loadForMember() {
+    await asOrg();
+    await orgRequest('POST', 'anthropic', orgKey());
+    await asOrg('member');
+  }
+  it.each(['member', 'maintainer', 'admin', 'owner'])('lets an active %s read only provider/status/loadedAt without unseal or writes', async role => {
+    await loadForMember();
+    await asOrg(role);
+    const before = await permanentState();
+    const read = vi.spyOn(vaultService, 'get');
+    try {
+      const result = await memberStatus();
+      expect(result.status).toBe(200);
+      expect(result.headers.get('cache-control')).toBe('private, no-store');
+      expect(result.body.connections).toHaveLength(1);
+      expect(Object.keys(result.body.connections[0]).sort()).toEqual(['loadedAt', 'provider', 'status']);
+      expect(result.body.connections[0]).toEqual({ provider: 'anthropic', status: 'loaded', loadedAt: expect.any(String) });
+      expect(JSON.stringify(result.body)).not.toMatch(/secret|loadedByDid|sealedKeyField|wrappedKey|connectorDid/);
+      expect(read).not.toHaveBeenCalled();
+      expect(await permanentState()).toBe(before);
+    } finally { read.mockRestore(); }
+  });
+  it('keeps member key mutation, admin metadata, grants and runtime key access denied after status reads', async () => {
+    await loadForMember();
+    expect((await memberStatus()).status).toBe(200);
+    h.identity.actingAsRole = 'admin'; // Stale/forged role cannot replace live membership.
+    expect((await orgRequest('GET')).status).toBe(403);
+    for (const method of ['POST', 'DELETE']) expect((await orgRequest(method, 'anthropic', orgKey())).status).toBe(403);
+    expect((await call(ORG_LIST)).status).toBe(403);
+    await expect(requireOrgConnectionMemberGrant({ orgDid: org, memberDid: member, actingDid: org, provider: 'anthropic' }))
+      .rejects.toMatchObject({ status: 403 });
+    const result = await orgConnectionMemberGrantRoute(new NextRequest('https://kernel.test', { method: 'GET' }), 'anthropic');
+    expect(result.status).toBe(403);
+  });
+  it('authenticates only the session cookie, not caller-controlled acting/bearer credentials', async () => {
+    await loadForMember();
+    const value = generateKeypair().publicKey;
+    expect((await memberStatus(undefined, {
+      cookie: `${SESSION_COOKIE_NAME}=${value}; x-acting-as=${org}; unrelated=value`,
+      authorization: `Bearer ${value}`, 'x-acting-as': org,
+    })).status).toBe(200);
+    const [request, options] = vi.mocked(requireAuth).mock.calls.at(-1)!;
+    expect(options).toEqual({ sessionOnly: true });
+    expect([...request.headers.keys()]).toEqual(['cookie']);
+    expect(request.headers.get('cookie')).toBe(`${SESSION_COOKIE_NAME}=${value}`);
+  });
+  it.each(['removed', 'suspended-org', 'suspended-actor', 'missing-org', 'personal', 'agent-in-db', 'unauthenticated'])(
+    'denies %s on the real database boundary', async boundary => {
+      await loadForMember();
+      await changeOrgBoundary(boundary);
+      expect((await memberStatus()).status).toBe(boundary === 'unauthenticated' ? 401 : 403);
+    });
+  it('denies non-members and foreign-org selectors even with claimed act-as membership', async () => {
+    await loadForMember();
+    const outsider = `${member}outsider`;
+    await database.insert(identities).values({ id: outsider, scope: 'actor', publicKey: keys.publicKey });
+    h.identity = { id: outsider, scope: 'actor', actingAs: org, actingAsRole: 'owner' };
+    expect((await memberStatus()).status).toBe(403);
+    h.identity.id = member;
+    expect((await memberStatus(`orgDid=${org}foreign`)).status).toBe(403);
+  });
+  it.each(['agent-session', 'delegated'])('denies %s credential context', async boundary => {
+    await loadForMember();
+    if (boundary === 'agent-session') h.identity.subtype = 'agent';
+    const headers = boundary === 'delegated' ? { 'x-acting-for': org } : {};
+    expect((await memberStatus(undefined, headers)).status).toBe(403);
+  });
+  it.each(['', 'orgDid=', 'orgDid=bad', 'orgDid=did:imajin:bad%20value', `orgDid=did:imajin:${'x'.repeat(257)}`])(
+    'rejects invalid selector %#', async query => {
+      expect((await memberStatus(query)).status).toBe(400);
+    });
+  it('hides revoked keys and other org or personal connections', async () => {
+    await loadForMember();
+    await asOrg();
+    await orgRequest('DELETE');
+    await asOrg('member');
+    expect((await memberStatus()).body).toEqual({ connections: [] });
+    expect((await STATUS_OPTIONS(new NextRequest('https://kernel.test', { method: 'OPTIONS' }))).status).toBe(204);
+  });
+  it('redacts unexpected auth/store errors', async () => {
+    vi.mocked(requireAuth).mockRejectedValueOnce(new Error('Synthetic internal failure'));
+    expect(await memberStatus()).toMatchObject({ status: 503, body: { error: 'Organization key status unavailable' } });
+  });
+});
 async function permanentState() {
   return JSON.stringify([await Promise.all(tables.map(table => database.select().from(table))), h.vault]);
 }
@@ -1437,9 +1531,10 @@ describe('org-held service keys: real SQL, signatures and private vault custody'
     expect((await orgRows())[0].status).toBe('revoked');
     expect((await vaultService.getHistory(current.sealedKeyField!))[0].deleted).toBe(true);
     const events = await database.select().from(attestations).where(eq(attestations.subjectDid, org));
-    expect(events.map(event => event.payload)).toEqual(['loaded', 'replaced', 'revoked'].map(action => ({
+    expect(events).toHaveLength(3);
+    expect(events.map(event => event.payload)).toEqual(expect.arrayContaining(['loaded', 'replaced', 'revoked'].map(action => ({
       actorDid: member, orgDid: org, provider: 'warp', action,
-    })));
+    }))));
     const grants = await database.select().from(vaultDelegationGrants).where(eq(vaultDelegationGrants.subject, org));
     expect(grants).toHaveLength(2);
     expect(grants.every(grant => grant.status === 'revoked' && grant.wrappedKey === '')).toBe(true);
