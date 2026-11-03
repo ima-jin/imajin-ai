@@ -28,6 +28,8 @@ vi.mock('@/src/lib/inference/context', () => ({ gatherContext: mockGatherContext
 
 const mockInfer = vi.hoisted(() => vi.fn());
 vi.mock('@/src/lib/inference/policy', () => ({ infer: mockInfer }));
+const mockCredentialContext = vi.hoisted(() => vi.fn());
+vi.mock('../agent-binding', () => ({ mcpCredentialContext: mockCredentialContext }));
 
 const mockResolveConsentGate = vi.hoisted(() => vi.fn());
 vi.mock('@/src/lib/inference/consent', () => ({ resolveConsentGate: mockResolveConsentGate }));
@@ -65,6 +67,24 @@ beforeEach(() => {
 });
 
 describe('inference_capture — brain credential context (#1762)', () => {
+  it.each([false, true])('uses the fixed assigned principal without the gateway app fallback (org=%s)', async org => {
+    const principalDid = org ? 'did:imajin:artifact' : 'did:imajin:ryan';
+    const ctx = { did: OWNER_DID, appDid: APP_DID, actingFor: principalDid,
+      authorizationId: 'att_agent', scopes: new Set(['inference:write']) };
+    const caller = { actorDid: OWNER_DID, ...(org ? { actingAs: principalDid } : { actingFor: principalDid }) };
+    mockCredentialContext.mockResolvedValue({ ownerDid: principalDid, caller });
+    await captureTool.handler({ text: 'hello' }, ctx);
+    expect(mockCredentialContext).toHaveBeenCalledWith(ctx, 'infer');
+    expect(mockInfer.mock.calls[0][2]).toEqual({ ownerDid: principalDid, caller });
+    expect(mockInfer.mock.calls[0][2]).not.toHaveProperty('appDid');
+  });
+  it('refuses inference when its live credential binding is no longer authorized', async () => {
+    mockCredentialContext.mockRejectedValue(new Error('Restore the assignment on /auth/agents.'));
+    await expect(captureTool.handler({ text: 'hello' }, {
+      did: OWNER_DID, appDid: APP_DID, actingFor: 'did:imajin:ryan', scopes: new Set(['inference:write']),
+    })).rejects.toThrow('/auth/agents');
+    expect(mockInfer).not.toHaveBeenCalled();
+  });
   it('forwards both ownerDid and appDid to infer(), not a bare owner DID string', async () => {
     const ctx = { did: OWNER_DID, appDid: APP_DID, scopes: new Set(['inference:write']) };
 

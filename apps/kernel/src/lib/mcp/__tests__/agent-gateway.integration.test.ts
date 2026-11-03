@@ -202,12 +202,38 @@ describe('explicit agent consent and immutable signed OAuth binding', () => {
     expect(result.response.status).toBeGreaterThanOrEqual(400);
     expect(await database.select().from(oauthAuthorizationCodes)).toEqual([]);
   });
+  it('refuses a connector scope lacking a fixed-assignment adapter, rather than spending agent or gateway keys', async () => {
+    await database.update(registryApps).set({ requestedScopes: ['github:read'] });
+    const response = await consent(request('/oauth/authorize', {
+      client_id: 'app_gateway', redirect_uri: CALLBACK, scope: 'github:read',
+      code_challenge: randomBytes(32).toString('base64url'), code_challenge_method: 'S256',
+      agent_did: JIN, acting_for: RYAN,
+    }));
+    expect((await response.json()).error).toBe('agent_scope_unsupported');
+    expect(await database.select().from(oauthAuthorizationCodes)).toEqual([]);
+  });
   it('refuses a personal agent selecting an unassigned org', async () => {
     expect((await authorize(JIN, ORG)).body.error).toBe('agent_binding_invalid');
+  });
+  it('refuses empty agent consent scopes rather than restoring the registered default', async () => {
+    const response = await consent(request('/oauth/authorize', {
+      client_id: 'app_gateway', redirect_uri: CALLBACK, scope: '',
+      code_challenge: randomBytes(32).toString('base64url'), code_challenge_method: 'S256',
+      agent_did: JIN, acting_for: RYAN,
+    }));
+    expect((await response.json()).error).toBe('invalid_scope');
+    expect(await database.select().from(oauthAuthorizationCodes)).toEqual([]);
   });
   it.each([MEMBER, BOT])('refuses consent by non-admin/non-human %s', async signer => {
     h.sessionDid = signer;
     expect((await authorize(BOT, ORG)).body.error).toBe('agent_consent_forbidden');
+  });
+  it.each(['removed', 'restricted', 'suspended-org', 'suspended-human'])('refuses org-admin consent that is %s', async boundary => {
+    if (boundary === 'removed') await database.update(identityMembers).set({ removedAt: new Date() }).where(eq(identityMembers.memberDid, RYAN));
+    if (boundary === 'restricted') await database.update(identityMembers).set({ allowedServices: [] }).where(eq(identityMembers.memberDid, RYAN));
+    if (boundary === 'suspended-org') await database.update(identities).set({ suspendedAt: new Date() }).where(eq(identities.id, ORG));
+    if (boundary === 'suspended-human') await database.update(identities).set({ suspendedAt: new Date() }).where(eq(identities.id, RYAN));
+    expect((await authorize(BOT, ORG)).response.status).toBe(403);
   });
   it('requires the assigned human, not an unrelated human or an acting-as cookie', async () => {
     h.sessionDid = MEMBER;
@@ -250,6 +276,13 @@ describe('explicit agent consent and immutable signed OAuth binding', () => {
 });
 
 describe('live credential boundaries and restoration controls', () => {
+  it('refuses an expired or missing OAuth authorization at the next access', async () => {
+    const ctx = await context((await granted()).access_token);
+    await database.update(attestations).set({ expiresAt: new Date(0) }).where(eq(attestations.id, ctx.authorizationId!));
+    await expect(mcpCredentialContext(ctx, 'warp')).rejects.toMatchObject({ code: 'agent_authorization_required' });
+    await expect(mcpCredentialContext({ ...ctx, authorizationId: 'att_missing' }, 'warp'))
+      .rejects.toMatchObject({ code: 'agent_authorization_required' });
+  });
   it.each([[JIN, RYAN], [BOT, ORG]])('authenticates %s at the real MCP route as itself', async (agent, principal) => {
     const result = await granted(agent, principal);
     const response = await mcpPost(new NextRequest(`${BASE}/mcp`, {
@@ -268,7 +301,7 @@ describe('live credential boundaries and restoration controls', () => {
     expect(response.status).toBe(403);
     expect((await response.json()).error).toBe('agent_binding_immutable');
   });
-  it.each(['assignment', 'authorization', 'scope', 'service'])('refuses the next credential access after %s revocation', async boundary => {
+  it.each(['assignment', 'authorization', 'scope', 'service', 'client'])('refuses the next credential access after %s revocation', async boundary => {
     const result = await granted();
     const ctx = await context(result.access_token);
     await mcpCredentialContext(ctx, 'warp');
@@ -281,7 +314,8 @@ describe('live credential boundaries and restoration controls', () => {
     } }).where(eq(attestations.id, ctx.authorizationId!));
     if (boundary === 'service') await database.update(identityMembers).set({ allowedServices: ['infer'] })
       .where(eq(identityMembers.memberDid, JIN));
-    await expect(mcpCredentialContext(ctx, 'warp')).rejects.toThrow(boundary === 'authorization' || boundary === 'scope'
+    if (boundary === 'client') await database.update(registryApps).set({ status: 'revoked', revokedAt: new Date() });
+    await expect(mcpCredentialContext(ctx, 'warp')).rejects.toThrow(['authorization', 'scope', 'client'].includes(boundary)
       ? '/jin' : '/auth/agents');
   });
   it.each(['revoked', 'expired', 'unloaded', 'suspended'])('refuses an org connection that is %s, without falling back to personal keys', async boundary => {

@@ -314,6 +314,9 @@ async function validateConsentRequest(
   // registered set when `scope` is absent (RFC 6749 §3.3 default). The GET gate
   // normally forwards a resolved scope to the consent UI, so this mirrors it for
   // defence in depth rather than as the primary path.
+  if ((body.agent_did !== undefined || body.acting_for !== undefined) && !scopeParam?.trim()) {
+    return { error: NextResponse.json({ error: 'invalid_scope' }, { status: 400 }) };
+  }
   const granted = resolveGrantedScopes(scopeParam, client.requestedScopes);
   if (granted.length === 0) {
     return { error: NextResponse.json({ error: 'invalid_scope' }, { status: 400 }) };
@@ -349,8 +352,9 @@ export async function POST(request: NextRequest) {
   }
   let agentBinding: import('@/src/lib/mcp/agent-binding').AgentOAuthBinding | undefined;
   if (agentDid !== undefined || actingFor !== undefined) {
-    const { approveAgentBinding, AgentOAuthError } = await import('@/src/lib/mcp/agent-binding');
+    const { approveAgentBinding, validateAgentScopes, AgentOAuthError } = await import('@/src/lib/mcp/agent-binding');
     try {
+      validateAgentScopes(granted);
       agentBinding = await approveAgentBinding(agentDid, actingFor, sessionDid);
     } catch (error) {
       if (!(error instanceof AgentOAuthError)) throw error;

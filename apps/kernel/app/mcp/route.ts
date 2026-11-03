@@ -72,7 +72,7 @@ function insufficientScope(error = 'insufficient_scope') {
 type McpAuthResult = { ok: true; ctx: McpToolContext } | { ok: false; response: NextResponse };
 
 async function authenticatedOAuthContext(request: NextRequest, payload: AppTokenPayload): Promise<McpAuthResult> {
-  if (request.headers.get('x-acting-as') !== null || request.headers.get('x-acting-for') !== null) {
+  if (payload.actingFor && (request.headers.get('x-acting-as') !== null || request.headers.get('x-acting-for') !== null)) {
     return { ok: false, response: NextResponse.json({
       error: 'agent_binding_immutable', error_description: 'Use the consent-bound identity; consent again to change it.',
     }, { status: 403, headers: MCP_CORS_HEADERS }) };

@@ -36,7 +36,7 @@ function AuthorizeForm() {
   const state = searchParams.get('state');
   const codeChallengeMethod = searchParams.get('code_challenge_method');
   const resource = searchParams.get('resource');
-  const [agentMode, setAgentMode] = useState(searchParams.has('agent_did'));
+  const [agentMode, setAgentMode] = useState(searchParams.get('agent_did') !== null);
   const [agentBinding, setAgentBinding] = useState<SelectedAgentBinding | null>(null);
 
   const [app, setApp] = useState<AppInfo | null>(null);

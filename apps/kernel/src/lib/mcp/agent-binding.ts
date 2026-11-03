@@ -1,5 +1,5 @@
 import { and, eq, isNull } from 'drizzle-orm';
-import { db, attestations, identities, identityMembers } from '@/src/db';
+import { db, attestations, identities, identityMembers, registryApps } from '@/src/db';
 import { listServiceOf } from '@/src/lib/auth/agent-service';
 import { isLiveAppAuthorization } from '@/src/lib/auth/live-app-authorization';
 import { isOrgScope } from '@/src/lib/kernel/connection-principal-policy';
@@ -7,6 +7,7 @@ import { resolveConnectionPrincipal } from '@/src/lib/kernel/connection-principa
 import type { AppTokenPayload } from '@/src/lib/auth/jwt';
 import type { McpToolContext } from './types';
 import type { ConnectionCaller } from '@/src/lib/kernel/connection-principal-policy';
+import { scopeEntry } from '@imajin/auth/scope-vocabulary';
 
 /** Signed consent context, not a gateway identity or a per-request selector. */
 export interface AgentOAuthBinding {
@@ -26,6 +27,14 @@ const assignmentRequired = () => new AgentOAuthError('agent_assignment_required'
   'Restore the agent assignment on /auth/agents, then consent again.');
 const authorizationRequired = () => new AgentOAuthError('agent_authorization_required',
   'Restore this agent’s OAuth authorization on /jin → Grants, then consent again.');
+
+/** Never spend an agent's own or gateway's keys through an unmigrated adapter. */
+export function validateAgentScopes(scopes: readonly string[]): void {
+  if (scopes.some(scope => !['mcp', 'warp'].includes(scopeEntry(scope)?.connector ?? ''))) {
+    throw new AgentOAuthError('agent_scope_unsupported',
+      'Request MCP-native or Warp scopes on /auth/authorize. Keep other connector flows on the existing plugin path.', 400);
+  }
+}
 
 async function activeIdentity(did: string) {
   const [identity] = await db.select().from(identities).where(and(
@@ -98,11 +107,16 @@ export async function oauthAgentBinding(
   authorizationId: string, agentDid: string, appDid: string, scope?: string,
 ): Promise<AgentOAuthBinding | undefined> {
   const [authorization] = await db.select().from(attestations).where(eq(attestations.id, authorizationId)).limit(1);
-  const binding = readAgentBinding(authorization?.payload);
+  if (!authorization) throw authorizationRequired();
+  const binding = readAgentBinding(authorization.payload);
   if (!binding) return undefined;
-  if (!authorization || !isLiveAppAuthorization(authorization)
+  if (!isLiveAppAuthorization(authorization)
     || authorization.type !== 'app.authorized' || authorization.issuerDid !== agentDid
     || authorization.subjectDid !== appDid || binding.agentDid !== agentDid) throw authorizationRequired();
+  const [client] = await db.select({ id: registryApps.id }).from(registryApps).where(and(
+    eq(registryApps.appDid, appDid), eq(registryApps.status, 'active'), isNull(registryApps.revokedAt),
+  )).limit(1);
+  if (!client) throw authorizationRequired();
   if (!new Set(await listServiceOf(agentDid)).has(binding.principalDid)) throw assignmentRequired();
   if (scope !== undefined) {
     const granted = (authorization.payload as { scopes?: unknown }).scopes;
