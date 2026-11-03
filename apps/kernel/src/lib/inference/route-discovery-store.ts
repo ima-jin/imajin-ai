@@ -4,6 +4,7 @@ import { connectorRegistryId, readConnectorRegistration } from '@/src/lib/kernel
 import { requireAgentAssignment, resolveConnectionPrincipal } from '@/src/lib/kernel/connection-principal';
 import { isOrgScope, type ConnectionCaller } from '@/src/lib/kernel/connection-principal-policy';
 import { ExternalMcpError } from '@/src/lib/kernel/external-mcp-policy';
+import { forEachSequential } from '@/src/lib/async/sequential';
 import { resolveInferenceRouteContext } from './route-context';
 import type { BrainConnectorId } from './brain';
 import type { DiscoveryContext, InferenceRouteCandidate, InferenceRouteKind } from './route-discovery';
@@ -31,7 +32,7 @@ async function relatedPrincipals(actorDid: string, agent: boolean): Promise<stri
   ));
   for (const grant of grants) dids.add(grant.did);
   const held: string[] = [];
-  for (const did of dids) {
+  await forEachSequential(dids, async did => {
     try {
       await requireAgentAssignment(db, actorDid, did, 'infer');
       held.push(did);
@@ -41,7 +42,7 @@ async function relatedPrincipals(actorDid: string, agent: boolean): Promise<stri
       if (error instanceof ExternalMcpError && error.code === 'service_not_allowed') held.push(did);
       else if (!(error instanceof ExternalMcpError)) throw error;
     }
-  }
+  });
   return held;
 }
 
@@ -87,14 +88,14 @@ async function memberOrgCandidates(actor: Principal, member: InferenceRouteCandi
   const dids = new Set(await relatedPrincipals(member.principal.did, false));
   if (selected.caller?.actingFor === member.principal.did && selected.caller.actingAs) dids.add(selected.caller.actingAs);
   const candidates: InferenceRouteCandidate[] = [];
-  for (const did of dids) {
+  await forEachSequential(dids, async did => {
     const principal = await readPrincipal(did);
-    if (!principal || !isOrgScope(principal.scope)) continue;
+    if (!principal || !isOrgScope(principal.scope)) return;
     const candidate = await makeCandidate(actor, principal, {
       actorDid: actor.did, actingFor: member.principal.did, actingAs: did,
     }, selected);
     if (candidate) candidates.push(candidate);
-  }
+  });
   return candidates;
 }
 
@@ -105,15 +106,15 @@ export async function loadInferenceRouteCandidates(selected: DiscoveryContext): 
   const selectedPrincipal = selected.caller?.actingFor ?? selected.caller?.actingAs ?? selected.ownerDid;
   const dids = new Set([actorDid, selectedPrincipal, ...await relatedPrincipals(actorDid, actor.subtype === 'agent')]);
   const candidates: InferenceRouteCandidate[] = [];
-  for (const did of dids) {
+  await forEachSequential(dids, async did => {
     const principal = did === actorDid ? actor : await readPrincipal(did);
-    if (!principal) continue;
+    if (!principal) return;
     const candidate = await makeCandidate(actor, principal, directCaller(actor, principal), selected);
     if (candidate) candidates.push(candidate);
-  }
-  for (const member of [...candidates]) {
+  });
+  await forEachSequential(candidates, async member => {
     if (member.kind === 'B') candidates.push(...await memberOrgCandidates(actor, member, selected));
-  }
+  });
   return candidates;
 }
 

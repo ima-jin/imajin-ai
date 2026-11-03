@@ -4,6 +4,7 @@ import { inferenceBrainContext } from './route-context';
 import type { InferenceAuthContext } from './auth';
 import { ExternalMcpError, type ConnectionErrorCode } from '@/src/lib/kernel/external-mcp-policy';
 import { loadInferenceRouteCandidates, readInferenceCard } from './route-discovery-store';
+import { forEachSequential } from '@/src/lib/async/sequential';
 
 export type InferenceRouteKind = 'own' | 'A' | 'B' | 'C';
 export type InferenceRouteReason =
@@ -106,13 +107,13 @@ export async function listInferenceRoutes(context: DiscoveryContext, options?: {
   const candidates = await loadInferenceRouteCandidates(context);
   const routes: InferenceRoute[] = [];
   // Sequential: the existing resolver uses custody locks and provider-priority ordering.
-  for (const candidate of candidates) {
+  await forEachSequential(candidates, async candidate => {
     const providers = candidate.orgHeld ? ['anthropic'] as const : listBrainConnectors();
-    for (const provider of providers) {
+    await forEachSequential(providers, async provider => {
       const card = await readInferenceCard(candidate.principal.did, provider, candidate.orgHeld);
       const resolution = await resolveCard(candidate, provider, options?.model);
       routes.push(describeInferenceRoute(candidate, card, resolution));
-    }
-  }
+    });
+  });
   return routes;
 }
