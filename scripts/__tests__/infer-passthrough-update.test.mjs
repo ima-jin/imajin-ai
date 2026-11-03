@@ -14,6 +14,8 @@ let previous;
 let env;
 let sha;
 let logFile;
+let envFile;
+let fixtureUpdater;
 
 function stub(name, script) {
   writeFileSync(join(dir, 'bin', name), `#!/usr/bin/env bash\nset -eu\n${script}\n`, { mode: 0o755 });
@@ -42,6 +44,12 @@ beforeEach(() => {
   execFileSync('git', ['clone', '--bare', '--shared', origin, repo], { stdio: 'pipe' });
   logFile = join(dir, 'calls');
   writeFileSync(logFile, '');
+  envFile = join(dir, 'infer-passthrough.env');
+  writeFileSync(envFile, '');
+  fixtureUpdater = join(dir, 'update.sh');
+  // Redirect only the fixed host env path; never read or modify host configuration.
+  writeFileSync(fixtureUpdater, readFileSync(updater, 'utf8')
+    .replaceAll('/etc/imajin/infer-passthrough.env', envFile));
   env = {
     ...process.env,
     PATH: `${join(dir, 'bin')}:${process.env.PATH}`,
@@ -66,6 +74,7 @@ if [[ "$1" == */production-deployment.mjs ]]; then
   exit 0
 fi
 printf "health %s\\n" "$*" >> "$CALLS"
+printf "health-mode <%s>\\n" "\${3:-}" >> "$CALLS"
 [[ "$FAIL_PHASE" != preflight || "\${2:-}" != 8788 ]] || exit 1
 if [[ "$FAIL_PHASE" == live && "\${2:-}" == 8787 && "$(readlink -f "$INFER_UPDATE_STATE_DIR/current")" != "$PREVIOUS" ]]; then exit 1; fi
 `);
@@ -74,7 +83,7 @@ if [[ "$FAIL_PHASE" == live && "\${2:-}" == 8787 && "$(readlink -f "$INFER_UPDAT
 afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
 function run(args = []) {
-  return spawnSync('bash', [updater, ...args], { env, encoding: 'utf8', timeout: 30_000 });
+  return spawnSync('bash', [fixtureUpdater, ...args], { env, encoding: 'utf8', timeout: 30_000 });
 }
 const calls = () => readFileSync(logFile, 'utf8');
 const current = () => realpathSync(join(state, 'current'));
@@ -87,6 +96,58 @@ function unrelatedCommit() {
 }
 
 describe('pull-based passthrough release updater (#3041, #3082)', () => {
+  it.each([
+    ['unset', 'OTHER_SETTING=ignored\n', ''],
+    ['commented', '#INFER_PROXY_AUTH_MODE=agent\n  # INFER_PROXY_AUTH_MODE=agent\n', ''],
+    ['empty', 'INFER_PROXY_AUTH_MODE=\n', ''],
+    ['agent', 'INFER_PROXY_AUTH_MODE=agent\n', 'agent'],
+    ['host-static', 'INFER_PROXY_AUTH_MODE=host-static\n', 'host-static'],
+    ['junk', 'INFER_PROXY_AUTH_MODE=unknown-mode\n', 'unknown-mode'],
+    ['unanchored', 'OTHER_INFER_PROXY_AUTH_MODE=agent\n', ''],
+    ['last assignment', 'INFER_PROXY_AUTH_MODE=agent\nINFER_PROXY_AUTH_MODE=\n', ''],
+    ['no final newline', 'INFER_PROXY_AUTH_MODE=agent', 'agent'],
+  ])('reads %s from the candidate env file for every health invocation', (_name, text, declared) => {
+    writeFileSync(envFile, text);
+    env.INFER_PROXY_AUTH_MODE = 'agent';
+    env.INFER_HEALTH_AUTH_MODE = 'agent';
+    const result = run();
+    expect(result.status, result.stderr).toBe(0);
+    expect(calls()).toContain(`--property=EnvironmentFile=${envFile}`);
+    expect(calls().match(/health-mode <.*>/g)).toEqual([
+      `health-mode <${declared}>`, `health-mode <${declared}>`,
+    ]);
+    expect(run(['--check']).status).toBe(0);
+    expect(calls().match(/health-mode <.*>/g).at(-1)).toBe(`health-mode <${declared}>`);
+  });
+
+  it('never executes env-file contents or expands a declared value', () => {
+    const marker = join(dir, 'must-not-exist');
+    const text = `INFER_PROXY_AUTH_MODE=$(touch ${marker})\n`;
+    writeFileSync(envFile, text);
+    expect(run(['--check']).status).toBe(0);
+    expect(existsSync(marker)).toBe(false);
+    expect(calls()).toContain(`health-mode <$(touch ${marker})>`);
+  });
+
+  it('refuses an unreadable env file without fetching or changing the service', () => {
+    unlinkSync(envFile);
+    const result = run();
+    expect(result.status).toBe(2);
+    expect(result.stderr).toBe('Cannot read health authentication mode file\n');
+    expect(calls()).toBe('');
+    expect(current()).toBe(previous);
+  });
+
+  it('passes the declaration through rollback and already-current health checks', () => {
+    writeFileSync(envFile, 'INFER_PROXY_AUTH_MODE=agent\n');
+    env.FAIL_PHASE = 'live';
+    expect(run().status).toBe(1);
+    expect(calls().match(/health-mode <agent>/g)).toHaveLength(3);
+    env.FAIL_PHASE = '';
+    expect(run().status).toBe(0);
+    expect(run().status).toBe(0);
+    expect(calls().match(/health-mode <agent>/g)).toHaveLength(6);
+  });
   it('builds the first current only from the verified tag, never resolving a home-checkout link', () => {
     unlinkSync(join(state, 'current'));
     symlinkSync(join(dir, 'private-home-checkout'), join(state, 'current'));
@@ -250,7 +311,7 @@ describe('pull-based passthrough release updater (#3041, #3082)', () => {
     expect(trace).toContain('install --frozen-lockfile --ignore-scripts');
     expect(trace).toContain('turbo run build --filter=@imajin/auth');
     expect(trace).toContain('--uid=fixture-user');
-    expect(trace).toContain('--property=EnvironmentFile=/etc/imajin/infer-passthrough.env');
+    expect(trace).toContain(`--property=EnvironmentFile=${envFile}`);
     expect(trace).toContain('INFER_PROXY_HOST=127.0.0.1 INFER_PROXY_PORT=8788');
     expect(trace).toContain('--property=TimeoutStopSec=10s --property=KillMode=control-group');
     expect(trace).toContain(`TURBO_CACHE_DIR=${state}/releases/.turbo`);
