@@ -6,6 +6,7 @@ import { isLiveAppAuthorization } from './live-app-authorization';
 import { revokeAttestationOnce } from './revoke-attestation';
 import { projectAppAuthorizationGrant } from './app-authorization-grant';
 import { forEachSequential } from '@/src/lib/async/sequential';
+import type { AgentOAuthBinding } from '@/src/lib/mcp/agent-binding';
 
 type Transaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
@@ -47,11 +48,15 @@ interface Consent {
   callbackUrl: string;
   scopes: string[];
   privateKey: string;
+  agentBinding?: AgentOAuthBinding;
 }
 
 async function mintGrant(tx: Transaction, consent: Consent, scopes: string[]) {
   const issuedAt = Date.now();
-  const payload = { scopes, appId: consent.appId, callbackUrl: consent.callbackUrl };
+  const payload = {
+    scopes, appId: consent.appId, callbackUrl: consent.callbackUrl,
+    ...(consent.agentBinding ? { agentBinding: consent.agentBinding } : {}),
+  };
   const signature = authCrypto.signSync(canonicalize({
     subject_did: consent.appDid, type: 'app.authorized',
     context_id: consent.appId, context_type: 'app', payload, issued_at: issuedAt,
@@ -72,7 +77,9 @@ export function upsertAppAuthorization(consent: Consent): Promise<string> {
     const grants = await liveGrants(tx, consent.ownerDid, consent.appDid);
     const scopes = [...new Set(consent.scopes)];
     const newest = grants[0];
-    const reuse = newest && sameScopes(grantScopes(newest.payload), scopes);
+    const previousBinding = (newest?.payload as { agentBinding?: AgentOAuthBinding } | null)?.agentBinding;
+    const reuse = newest && sameScopes(grantScopes(newest.payload), scopes)
+      && canonicalize(previousBinding ?? null) === canonicalize(consent.agentBinding ?? null);
     const surplus = reuse ? grants.slice(1) : grants;
     await forEachSequential(surplus, async grant => {
       const result = await revokeAttestationOnce({

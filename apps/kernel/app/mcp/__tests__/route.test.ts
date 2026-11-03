@@ -6,6 +6,13 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
+vi.mock('@/src/lib/mcp/agent-binding', () => ({
+  AgentOAuthError: class extends Error {},
+  mcpOAuthContext: async (payload: { sub: string; azp: string; scope: string }) => ({
+    did: payload.sub, appDid: payload.azp, scopes: new Set(payload.scope.split(' ')),
+  }),
+}));
+
 const { mockVerifyAppToken, mockResolveDelegateGrantBearer, mockHandleMcpRpc } = vi.hoisted(() => ({
   mockVerifyAppToken: vi.fn(),
   mockResolveDelegateGrantBearer: vi.fn(),

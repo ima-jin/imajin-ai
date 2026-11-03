@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { verifyAppToken } from '@/src/lib/auth/jwt';
+import { verifyAppToken, type AppTokenPayload } from '@/src/lib/auth/jwt';
 import { getMcpResource, getProtectedResourceMetadataUrl, MCP_SCOPE_SET } from '@/src/lib/mcp/oauth-config';
 import { handleMcpRpc } from '@/src/lib/mcp/server';
 import { agentCardUrl } from '@/src/lib/http/node-url';
 import { resolveDelegateGrantBearer } from '@/src/lib/access/delegate-grant';
+import { AgentOAuthError, mcpOAuthContext } from '@/src/lib/mcp/agent-binding';
+import type { McpToolContext } from '@/src/lib/mcp/types';
 import {
   headerMismatchError,
   httpStatusForModernResponse,
@@ -67,13 +69,23 @@ function insufficientScope(error = 'insufficient_scope') {
   );
 }
 
-interface McpAuthContext {
-  did: string;
-  appDid: string;
-  scopes: Set<string>;
-}
+type McpAuthResult = { ok: true; ctx: McpToolContext } | { ok: false; response: NextResponse };
 
-type McpAuthResult = { ok: true; ctx: McpAuthContext } | { ok: false; response: NextResponse };
+async function authenticatedOAuthContext(request: NextRequest, payload: AppTokenPayload): Promise<McpAuthResult> {
+  if (request.headers.get('x-acting-as') !== null || request.headers.get('x-acting-for') !== null) {
+    return { ok: false, response: NextResponse.json({
+      error: 'agent_binding_immutable', error_description: 'Use the consent-bound identity; consent again to change it.',
+    }, { status: 403, headers: MCP_CORS_HEADERS }) };
+  }
+  try {
+    return { ok: true, ctx: await mcpOAuthContext(payload) };
+  } catch (error) {
+    if (!(error instanceof AgentOAuthError)) throw error;
+    return { ok: false, response: NextResponse.json({
+      error: error.code, error_description: error.message,
+    }, { status: error.status, headers: MCP_CORS_HEADERS }) };
+  }
+}
 
 /**
  * Resolve the bearer on an `/mcp` request to a `{did, appDid, scopes}`
@@ -102,10 +114,7 @@ async function authenticateMcpRequest(request: NextRequest): Promise<McpAuthResu
     if (!payload.sub || payload.aud !== getMcpResource()) {
       return { ok: false, response: unauthorized() };
     }
-    return {
-      ok: true,
-      ctx: { did: payload.sub, appDid: payload.azp, scopes: new Set(payload.scope ? payload.scope.split(' ') : []) },
-    };
+    return authenticatedOAuthContext(request, payload);
   }
 
   const bearerResult = await resolveDelegateGrantBearer(token, 'mcp');
@@ -169,7 +178,7 @@ export async function POST(request: NextRequest) {
   if (!authResult.ok) {
     return authResult.response;
   }
-  const { did, appDid, scopes } = authResult.ctx;
+  const { scopes } = authResult.ctx;
 
   // Surface gate: the token must carry at least one recognized MCP scope to reach
   // the MCP surface at all. The authoritative read-vs-write decision is per-tool in
@@ -192,7 +201,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const ctx = { did, appDid, scopes };
+  const ctx = authResult.ctx;
 
   // Echo the protocol version header back when the client sends one.
   const protocolHeader = request.headers.get('mcp-protocol-version');

@@ -100,6 +100,7 @@ export async function GET(request: NextRequest) {
     return new NextResponse('Too Many Requests', { status: 429, headers: { 'Retry-After': String(ipLimit.retryAfter) } });
   }
 
+
   const { searchParams } = new URL(request.url);
   const responseType = searchParams.get('response_type');
   const clientId = searchParams.get('client_id');
@@ -198,6 +199,8 @@ export async function GET(request: NextRequest) {
   consentUrl.searchParams.set('code_challenge_method', 'S256');
   consentUrl.searchParams.set('resource', resource ?? getMcpResource());
   if (state) consentUrl.searchParams.set('state', state);
+  const agentDid = searchParams.get('agent_did');
+  if (agentDid !== null) consentUrl.searchParams.set('agent_did', agentDid);
   return NextResponse.redirect(consentUrl);
 }
 
@@ -233,6 +236,8 @@ type ValidatedConsent = {
   granted: string[];
   scope: string;
   state: string | null;
+  agentDid?: unknown;
+  actingFor?: unknown;
 };
 
 /**
@@ -314,7 +319,11 @@ async function validateConsentRequest(
     return { error: NextResponse.json({ error: 'invalid_scope' }, { status: 400 }) };
   }
 
-  return { ok: { client, redirectUri, codeChallenge, granted, scope: granted.join(' '), state } };
+  return { ok: {
+    client, redirectUri, codeChallenge, granted, scope: granted.join(' '), state,
+    ...(body.agent_did !== undefined || body.acting_for !== undefined
+      ? { agentDid: body.agent_did, actingFor: body.acting_for } : {}),
+  } };
 }
 
 export async function POST(request: NextRequest) {
@@ -328,9 +337,9 @@ export async function POST(request: NextRequest) {
   if ('error' in validated) {
     return validated.error;
   }
-  const { client, redirectUri, codeChallenge, granted, scope, state } = validated.ok;
+  const { client, redirectUri, codeChallenge, granted, scope, state, agentDid, actingFor } = validated.ok;
 
-  // Require a logged-in DID session (real session DID, not acting-as / acting-for).
+  // The real human session authorizes consent; cookies never select an agent's payer.
   const { sessionDid } = await getEffectiveDid();
   if (!sessionDid) {
     return NextResponse.json({ error: 'login_required' }, { status: 401 });
@@ -338,6 +347,17 @@ export async function POST(request: NextRequest) {
   if (!await canConsentToApp(client, sessionDid)) {
     return NextResponse.json({ error: 'access_denied', error_description: PRIVATE_APP_CONSENT_ERROR }, { status: 403 });
   }
+  let agentBinding: import('@/src/lib/mcp/agent-binding').AgentOAuthBinding | undefined;
+  if (agentDid !== undefined || actingFor !== undefined) {
+    const { approveAgentBinding, AgentOAuthError } = await import('@/src/lib/mcp/agent-binding');
+    try {
+      agentBinding = await approveAgentBinding(agentDid, actingFor, sessionDid);
+    } catch (error) {
+      if (!(error instanceof AgentOAuthError)) throw error;
+      return NextResponse.json({ error: error.code, error_description: error.message }, { status: error.status });
+    }
+  }
+  const ownerDid = agentBinding?.agentDid ?? sessionDid;
 
   const privateKey = process.env.AUTH_PRIVATE_KEY;
   if (!privateKey) {
@@ -345,21 +365,21 @@ export async function POST(request: NextRequest) {
   }
 
   const attestationId = await upsertAppAuthorization({
-    ownerDid: sessionDid, appDid: client.appDid, appId: client.id,
+    ownerDid, appDid: client.appDid, appId: client.id,
     callbackUrl: client.callbackUrl, scopes: granted, privateKey,
+    ...(agentBinding ? { agentBinding } : {}),
   });
-  await addConsentedApp(sessionDid, client.slug);
+  await addConsentedApp(ownerDid, client.slug);
 
   // Promote the client into a first-class actor identity (#1170), storing its
   // real Ed25519 public key and linking it to the granting DID via
-  // identity_members (#1735). Uses the real session DID as owner — never the
-  // acting-as/acting-for effective DID — matching the resource-owner policy
-  // above. Idempotent + non-fatal.
+  // identity_members (#1735). The owner is the explicitly consented agent or,
+  // for legacy human OAuth, the session DID. Idempotent + non-fatal.
   await promoteActorOnGrant({
     appId: client.id,
     appDid: client.appDid,
     publicKey: client.publicKey,
-    ownerDid: sessionDid,
+    ownerDid,
     name: client.name,
     avatarUrl: client.logoUrl,
     adapter: 'oauth',
@@ -373,7 +393,7 @@ export async function POST(request: NextRequest) {
   // find. Non-fatal: a failure here degrades to the pre-#1804 behavior (manual
   // publish still available on the connector card), never blocks consent.
   try {
-    await projectConsentedScopes({ ownerDid: sessionDid, appDid: client.appDid, scopes: granted });
+    await projectConsentedScopes({ ownerDid, appDid: client.appDid, scopes: granted });
   } catch (err) {
     log.error(
       { err: String(err), clientId: client.id, userDid: sessionDid },
@@ -387,7 +407,7 @@ export async function POST(request: NextRequest) {
     id: `oac_${nanoid(16)}`,
     codeHash: hashToken(code),
     clientId: client.id,
-    userDid: sessionDid,
+    userDid: ownerDid,
     redirectUri,
     scope,
     codeChallenge,

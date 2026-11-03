@@ -1,5 +1,13 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
+// Assignment/auth storage is exercised with the real DB in agent-gateway tests.
+vi.mock('@/src/lib/mcp/agent-binding', () => ({
+  AgentOAuthError: class extends Error {},
+  mcpOAuthContext: async (payload: { sub: string; azp: string; scope?: string }) => ({
+    did: payload.sub, appDid: payload.azp, scopes: new Set(payload.scope?.split(' ') ?? []),
+  }),
+}));
+
 // ─── Mock next/server ───────────────────────────────────────────────────────
 function mockResponse(body: unknown, init?: { status?: number; headers?: Record<string, string> }) {
   return {
