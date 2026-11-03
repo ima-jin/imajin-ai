@@ -231,7 +231,7 @@ function AuthorizeForm() {
                 setAgentMode(event.target.checked);
                 setAgentBinding(null);
               }} />
-              Authorize an agent on its assigned identity’s keys
+              <span>Authorize an agent on its assigned identity’s keys</span>
             </label>
             {agentMode && <AgentConsentBinding initialAgentDid={searchParams.get('agent_did') ?? ''}
               onChange={setAgentBinding} />}

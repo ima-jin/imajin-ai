@@ -66,12 +66,12 @@ export async function agentConsentChoices(agentDid: string, consenterDid: string
   }
   const principals = await listServiceOf(agentDid);
   if (principals.length === 0) throw assignmentRequired();
-  const choices: Array<{ did: string; handle: string | null; name: string | null }> = [];
-  for (const did of principals) {
-    if (!await mayConsent(did, consenterDid)) continue;
+  const candidates = await Promise.all(principals.map(async did => {
+    if (!await mayConsent(did, consenterDid)) return null;
     const identity = await activeIdentity(did);
-    if (identity) choices.push({ did, handle: identity.handle, name: identity.name });
-  }
+    return identity ? { did, handle: identity.handle, name: identity.name } : null;
+  }));
+  const choices = candidates.filter(principal => principal !== null);
   if (choices.length === 0) {
     throw new AgentOAuthError('agent_consent_forbidden', 'Only the assigned human or an org admin can consent on /auth/authorize.');
   }
@@ -130,7 +130,7 @@ export async function oauthAgentBinding(
 async function requireBoundAuthorization(ctx: McpToolContext) {
   if (!ctx.actingFor || !ctx.authorizationId) throw authorizationRequired();
   const binding = await oauthAgentBinding(ctx.authorizationId, ctx.did, ctx.appDid, [...ctx.scopes].join(' '));
-  if (!binding || binding.principalDid !== ctx.actingFor) throw authorizationRequired();
+  if (binding?.principalDid !== ctx.actingFor) throw authorizationRequired();
   return binding;
 }
 

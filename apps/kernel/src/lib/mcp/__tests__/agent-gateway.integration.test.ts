@@ -36,7 +36,7 @@ import { POST as tokenPost } from '../../../../app/oauth/token/route';
 import { GET as choicesGet } from '../../../../app/oauth/agent-bindings/route';
 import { POST as mcpPost } from '../../../../app/mcp/route';
 import { verifyAppToken, createAppToken } from '@/src/lib/auth/jwt';
-import { pkceChallengeFromVerifier } from '../oauth-config';
+import { hashToken, pkceChallengeFromVerifier } from '../oauth-config';
 import { approveAgentBinding, mcpCredentialContext, mcpOAuthContext, readAgentBinding } from '../agent-binding';
 import { authorizeMemberConnection } from '@/src/lib/kernel/member-connection-gate';
 import { canonicalize, crypto as authCrypto } from '@imajin/auth';
@@ -182,11 +182,11 @@ describe('explicit agent consent and immutable signed OAuth binding', () => {
   it('issues separate tokens and authorization lineages to two agents on the same client', async () => {
     const jin = await granted();
     const bot = await granted(BOT, ORG);
-    expect(jin.access_token === bot.access_token).toBe(false);
-    expect(jin.refresh_token === bot.refresh_token).toBe(false);
+    expect(hashToken(jin.access_token)).not.toBe(hashToken(bot.access_token));
+    expect(hashToken(jin.refresh_token)).not.toBe(hashToken(bot.refresh_token));
     const first = await verifyAppToken(jin.access_token);
     const second = await verifyAppToken(bot.access_token);
-    expect(first!.attestationId === second!.attestationId).toBe(false);
+    expect(first!.attestationId).not.toBe(second!.attestationId);
     expect((await mcpCredentialContext(await context(jin.access_token), 'warp')).ownerDid).toBe(RYAN);
     expect((await mcpCredentialContext(await context(bot.access_token), 'warp')).ownerDid).toBe(ORG);
   });

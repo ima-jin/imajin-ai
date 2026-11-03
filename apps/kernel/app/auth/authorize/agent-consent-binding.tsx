@@ -9,10 +9,10 @@ interface Choices {
 }
 
 /** A placeholder remains selected even when exactly one assignment is available. */
-export function AgentConsentBinding({ initialAgentDid, onChange }: {
+export function AgentConsentBinding({ initialAgentDid, onChange }: Readonly<{
   initialAgentDid: string;
   onChange: (binding: SelectedAgentBinding | null) => void;
-}) {
+}>) {
   const [agentDid, setAgentDid] = useState(initialAgentDid);
   const [choices, setChoices] = useState<Choices | null>(null);
   const [principalDid, setPrincipalDid] = useState('');
@@ -58,7 +58,7 @@ export function AgentConsentBinding({ initialAgentDid, onChange }: {
   return (
     <section className="mb-6 space-y-3 text-sm text-gray-300" aria-label="Agent OAuth binding">
       <label className="block">
-        Agent DID (token subject)
+        <span>Agent DID (token subject)</span>
         <input className="mt-1 w-full rounded bg-gray-900 p-2" value={agentDid}
           onChange={event => changeAgent(event.target.value)} autoComplete="off" />
       </label>
@@ -70,7 +70,7 @@ export function AgentConsentBinding({ initialAgentDid, onChange }: {
       {choices && <>
         <p className="break-all">Agent: {choices.agent.handle ? `@${choices.agent.handle} · ` : ''}{choices.agent.did}</p>
         <label className="block">
-          Assigned identity (keys and billing)
+          <span>Assigned identity (keys and billing)</span>
           <select className="mt-1 w-full rounded bg-gray-900 p-2" value={principalDid}
             onChange={event => {
               const selected = event.target.value;
@@ -84,9 +84,9 @@ export function AgentConsentBinding({ initialAgentDid, onChange }: {
           </select>
         </label>
       </>}
-      {principalDid && <p className="break-all" role="status">
+      {principalDid && <output className="block break-all" aria-live="polite">
         {choices?.agent.did} will act for {principalDid}. This token cannot switch identities.
-      </p>}
+      </output>}
       <p className="text-xs text-gray-500">Only the assigned human or an org admin may approve.
         Each agent needs its own consent and token; never share a token across a gateway.</p>
     </section>
