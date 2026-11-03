@@ -168,11 +168,30 @@ describe('org service-key cards', () => {
     expect(card.queryByRole('button')).toBeNull();
   });
 
-  it.each([401, 403, 503])('does not expose controls after group read failure %i', async status => {
+  it.each([401, 503])('does not expose controls after group read failure %i', async status => {
     const fetch = transport();
     fetch.mockResolvedValueOnce(Response.json({}, { status }));
     render(<OrgServiceKeys orgDid={orgDid} humanSession />);
     await screen.findByRole('alert');
+    expect(screen.queryByRole('button')).toBeNull();
+  });
+  it('lets an ordinary member read verified status even when group act-as is forbidden', async () => {
+    const fetch = transport({ role: 'member' });
+    fetch.mockResolvedValueOnce(Response.json({}, { status: 403 }));
+    const card = await panel();
+    expect(card.getByText('Loaded')).toBeDefined();
+    expect(card.getByText('Read-only')).toBeDefined();
+    expect(card.queryByRole('button')).toBeNull();
+    expect(card.queryByText(/Loaded by/)).toBeNull();
+    expect(screen.getByText(new RegExp(`Keys held by ${orgDid}`))).toBeDefined();
+    expect(fetch.mock.calls.some(([url]) => url === '/connections/api/org-held' || url.endsWith('/grants'))).toBe(false);
+  });
+  it('shows no cards or controls when group act-as and membership status are both denied', async () => {
+    const fetch = transport({ role: 'member', readStatus: 403 });
+    fetch.mockResolvedValueOnce(Response.json({}, { status: 403 }));
+    render(<OrgServiceKeys orgDid={orgDid} humanSession />);
+    await screen.findByRole('alert');
+    expect(screen.queryByRole('article')).toBeNull();
     expect(screen.queryByRole('button')).toBeNull();
   });
 

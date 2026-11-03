@@ -10,6 +10,18 @@ interface LoadedKey {
   loadedByDid?: string;
   loadedAt: string;
 }
+async function readGroup(orgDid: string, options: RequestInit): Promise<Group | null> {
+  const response = await fetch(`/auth/api/groups/${encodeURIComponent(orgDid)}`, options);
+  // Ordinary members cannot impersonate the group. They may still ask the
+  // metadata-only endpoint, which independently enforces real membership.
+  if (response.status === 403) return null;
+  if (!response.ok) throw new Error('Organization membership read failed');
+  const data: Group = await response.json();
+  if (data.groupDid !== orgDid || !['business', 'community', 'family'].includes(data.scope)) {
+    throw new Error('Organization identity mismatch');
+  }
+  return data;
+}
 interface Member {
   controllerDid: string;
   name: string | null;
@@ -202,16 +214,12 @@ export default function OrgServiceKeys({ orgDid, humanSession }: Readonly<{ orgD
     async function load() {
       try {
         const options = { headers: actingHeaders(orgDid), cache: 'no-store' as const, signal: controller.signal };
-        const response = await fetch(`/auth/api/groups/${encodeURIComponent(orgDid)}`, options);
-        if (!response.ok) throw new Error('Organization membership read failed');
-        const data: Group = await response.json();
-        if (data.groupDid !== orgDid || !['business', 'community', 'family'].includes(data.scope)) {
-          throw new Error('Organization identity mismatch');
-        }
-        const endpoint = canManageGroup(data, humanSession)
+        const data = await readGroup(orgDid, options);
+        const endpoint = data && canManageGroup(data, humanSession)
           ? '/connections/api/org-held'
           : `/connections/api/org-held/status?orgDid=${encodeURIComponent(orgDid)}`;
         const read = await fetch(endpoint, options);
+        if (!read.ok && data === null) throw new Error('Organization status read denied');
         const keys = read.ok ? (await read.json()).connections.map(loadedMetadata) : [];
         if (controller.signal.aborted) return;
         setGroup(data); setConnections(keys); setStatusUnavailable(!read.ok);
