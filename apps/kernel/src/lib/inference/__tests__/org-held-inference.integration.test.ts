@@ -33,6 +33,7 @@ vi.mock('@/src/lib/auth/emit-mechanical-attestation', () => ({ prepareMechanical
 vi.mock('@/src/lib/inference/spend-cap', () => ({ enforceSpendCap: vi.fn(), SpendCapExceededError: class extends Error {} }));
 vi.mock('@/src/lib/kernel/connector-registry-store', () => ({
   readConnectorRegistration: vi.fn().mockResolvedValue(undefined), connectorRegistryId: () => 'connector-fixture',
+  listConnectorRegistrations: vi.fn().mockResolvedValue([]),
 }));
 vi.mock('@/src/lib/kernel/app-registrant', () => ({ lookupAppRegistrantDid: h.fallback }));
 vi.mock('@/src/lib/kernel/node-identity', () => ({ getNodeDid: async () => 'did:imajin:node' }));
@@ -58,6 +59,7 @@ import { POST } from '@/app/infer/v1/messages/route';
 import { POST as countTokens } from '@/app/infer/v1/messages/count_tokens/route';
 import { GET as models } from '@/app/infer/v1/models/route';
 import { GET as usableModels } from '@/app/infer/v1/models/usable/route';
+import { GET as discoverSelf } from '@/app/infer/v1/self/route';
 import { POST as completions } from '@/app/infer/v1/chat/completions/route';
 import type { InferenceRoute } from '../route-discovery';
 import type { ConnectionCaller } from '@/src/lib/kernel/connection-principal-policy';
@@ -266,6 +268,86 @@ beforeAll(async () => {
   }
   database = drizzle(client);
   h.db = database;
+});
+
+describe('self-discovery with real app auth, assignment and grant SQL (#3250)', () => {
+  function selfRequest(actingAs?: string, actingFor?: string) {
+    h.tokenDid = AGENT;
+    return new NextRequest('https://kernel.test/infer/v1/self', { headers: {
+      authorization: 'Bearer fixture-app-token',
+      ...(actingAs ? { 'x-acting-as': actingAs } : {}),
+      ...(actingFor ? { 'x-acting-for': actingFor } : {}),
+    } });
+  }
+  async function bodyAndParity(req: NextRequest) {
+    const response = await discoverSelf(req);
+    expect(response.status).toBe(200);
+    const body = await response.clone().json();
+    const catalog = await usableModels(new NextRequest('https://kernel.test/infer/v1/models/usable', { headers: req.headers }));
+    expect(catalog.status).toBe(200);
+    expect(body.usableModels.map((row: { id: string }) => row.id))
+      .toEqual((await catalog.json()).data.map((row: { id: string }) => row.id));
+    await assertPrivate(response);
+    expect(await response.text()).not.toContain(FIELD);
+    return body;
+  }
+  it('lists an autonomous org agent on org-held Anthropic with catalog-parity models and no member grant', async () => {
+    await database.insert(identityMembers).values({ identityDid: ORG, memberDid: AGENT, role: 'agent', allowedServices: ['infer'] });
+    await database.update(identities).set({ handle: 'artifact' }).where(eq(identities.id, ORG));
+    const body = await bodyAndParity(selfRequest(ORG));
+    expect(body.identity).toMatchObject({ did: AGENT, kind: 'agent', actAs: ORG });
+    expect(body.connectors.find((row: { kind?: string }) => row.kind === 'A')).toMatchObject({
+      authority: 'org-held', family: 'anthropic', billedPrincipal: { did: ORG, handle: 'artifact' },
+      usable: true, usableModels: ['claude-org-model'],
+    });
+    expect(await database.select().from(orgConnectionMemberGrants)).toEqual([]);
+  });
+  it('keeps a personal agent on its own identity and its human principal model list', async () => {
+    await database.insert(identityMembers).values({ identityDid: MEMBER, memberDid: AGENT, role: 'agent' });
+    const body = await bodyAndParity(selfRequest(undefined, MEMBER));
+    expect(body.identity).toMatchObject({ did: AGENT, kind: 'agent', actAs: null });
+    expect(body.connectors.find((row: { kind?: string; provider: string }) => row.kind === 'B' && row.provider === 'anthropic'))
+      .toMatchObject({ authority: 'delegated', billedPrincipal: { did: MEMBER }, usable: true });
+  });
+  it('rechecks the member grant after revocation and names the exact existing control', async () => {
+    await database.insert(identityMembers).values({ identityDid: MEMBER, memberDid: AGENT, role: 'agent' });
+    await database.insert(orgConnectionMemberGrants).values({
+      id: 'self-grant', orgDid: ORG, memberDid: MEMBER, connectionId: 'org-connection',
+      provider: 'anthropic', grantedByDid: MEMBER, grantedAt: new Date(),
+    });
+    const before = await bodyAndParity(selfRequest(ORG, MEMBER));
+    expect(before.connectors.find((row: { kind?: string }) => row.kind === 'C')).toMatchObject({ usable: true });
+    await database.update(orgConnectionMemberGrants).set({ revokedAt: new Date() });
+    const response = await discoverSelf(selfRequest(ORG, MEMBER));
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      usableModels: [], connectors: expect.arrayContaining([expect.objectContaining({
+        kind: 'C', authority: 'member-grant', usable: false, grantStatus: 'denied',
+        reason: expect.objectContaining({ code: 'no_grant' }),
+        fix: expect.objectContaining({
+          control: 'Org service keys → Member grants → Grant',
+          href: '/auth/connectors#org-connector-anthropic-grants', actingDid: ORG,
+        }),
+      })]),
+    });
+  });
+  it.each(['unassigned', 'removed', 'service-excluded', 'wrong-scope'] as const)(
+    'preserves usable-model 403 shape for %s selection without a partial response', async boundary => {
+      if (boundary !== 'unassigned') await database.insert(identityMembers).values({
+        identityDid: ORG, memberDid: AGENT, role: 'agent',
+        allowedServices: boundary === 'service-excluded' ? ['warp'] : ['infer'],
+        ...(boundary === 'removed' ? { removedAt: new Date() } : {}),
+      });
+      h.deniedScope = boundary === 'wrong-scope';
+      const req = selfRequest(ORG);
+      const response = await discoverSelf(req);
+      const catalog = await usableModels(new NextRequest('https://kernel.test/infer/v1/models/usable', { headers: req.headers }));
+      expect(response.status).toBe(403);
+      expect(await response.json()).toEqual(await catalog.json());
+      expect(h.get).not.toHaveBeenCalled();
+      expect(h.unseal).not.toHaveBeenCalled();
+    },
+  );
 });
 
 describe('route discovery ≡ chat/completions (real auth, assignment and grant SQL)', () => {

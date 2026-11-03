@@ -15,6 +15,104 @@ components:
       scheme: bearer
       bearerFormat: JWT
   schemas:
+    DiscoveryFix:
+      type: object
+      additionalProperties: false
+      required: [control, href, actingDid]
+      properties:
+        control: { type: string, description: Existing /jin-linked control name. }
+        href: { type: string, description: Existing kernel admin page or anchor. }
+        actingDid: { type: string, description: Identity the operator must select before using the control. }
+    SelfDiscovery:
+      type: object
+      additionalProperties: false
+      required: [identity, usableModels, connectors]
+      properties:
+        identity:
+          type: object
+          additionalProperties: false
+          required: [did, handle, kind, tier, actAs]
+          properties:
+            did: { type: string, description: "Authenticated signer DID, never replaced by the org DID." }
+            handle: { type: [string, "null"] }
+            kind: { type: string, description: "Identity subtype, or scope when no subtype exists." }
+            tier: { type: string }
+            actAs: { type: [string, "null"], description: Verified acting-org selector. }
+        usableModels:
+          type: array
+          description: Same routing winners and model IDs as the current caller's usable-model catalog.
+          items:
+            type: object
+            additionalProperties: false
+            required: [id, connector, credentialDid, picked]
+            properties:
+              id: { type: string }
+              connector: { type: string }
+              credentialDid: { type: string }
+              picked: { type: boolean }
+        connectors:
+          type: array
+          items: { $ref: "#/components/schemas/SelfDiscoveryConnector" }
+    SelfDiscoveryConnector:
+      type: object
+      additionalProperties: false
+      required: [provider, family, authority, configured, grantStatus, usable, usableModels]
+      properties:
+        provider: { type: string }
+        family: { type: string, enum: [openai-compatible, anthropic, mcp, http] }
+        authority:
+          type: [string, "null"]
+          enum: [own-key, org-held, delegated, member-grant, null]
+          description: Pure mapping of inference route kind; null for metadata-only connectors.
+        kind: { type: string, enum: [own, A, B, C] }
+        billedPrincipal:
+          type: object
+          additionalProperties: false
+          required: [did, handle]
+          properties:
+            did: { type: string }
+            handle: { type: [string, "null"] }
+        card:
+          type: object
+          additionalProperties: false
+          required: [id, label]
+          properties:
+            id: { type: string }
+            label: { type: string }
+        ownerDid: { type: string, description: Signer-owned metadata only; no unrelated principal's tool rows. }
+        configured:
+          type: boolean
+          description: Inference resolver loaded flag; for metadata-only connectors, active registry installation, not custody verification.
+        grantStatus:
+          type: string
+          enum: [granted, denied, not-required, not-evaluated]
+        selectedModels:
+          type: array
+          description: Resolver probe using the first current catalog model, or default discovery when empty.
+          items: { type: string }
+        usableModels:
+          type: array
+          description: Current catalog winners for this route's matching selectors; empty for alternative selectors and metadata rows.
+          items: { type: string }
+        usable:
+          type: [boolean, "null"]
+          description: Canonical inference route result; null means tool authority was not evaluated.
+        selectors:
+          type: object
+          additionalProperties: false
+          properties:
+            actingAs: { type: string }
+            actingFor: { type: string }
+        reason:
+          type: object
+          additionalProperties: false
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              enum: [no_grant, no_model_selected, not_a_member, key_not_loaded, not_authorized, route_unavailable]
+            message: { type: string }
+        fix: { $ref: "#/components/schemas/DiscoveryFix" }
     UsableModelList:
       type: object
       required: [object, data]
@@ -94,6 +192,49 @@ components:
                   actingAs: { type: string }
                   actingFor: { type: string }
 paths:
+  /v1/self:
+    get:
+      operationId: discoverInferenceSelf
+      summary: Discover the signing agent, connectors, usable models and authority
+      description: |
+        Read-only, private/no-store projection using exactly resolveInferenceAuth
+        with infer:completions, listUsableModels and listInferenceRoutes.
+        Uses the signer's own app token; selectors never authorize.
+        The first usable catalog model is passed to route discovery because
+        org-held cards choose a model per call. Top-level usableModels matches
+        the current catalog; alternative held selectors are not separate catalogs.
+        Downstream grant/model denials return diagnostic rows and an empty model
+        list. Auth/scope/act-as failures keep the usable-model route's 401/403
+        error shape, without a partial identity response.
+        Every unusable inference row names an existing fixing control and the
+        identity the operator should select on /jin before opening it.
+        MCP/HTTP rows are signer-owned configuration metadata only: authority
+        and usable are null and grantStatus is not-evaluated. Configuration
+        means an active registry installation, not verified tool permission.
+        Known unconfigured providers remain listed; unknown providers use http.
+        No credentials, vault references or private exception details are returned.
+      security:
+        - appToken: []
+      parameters:
+        - in: header
+          name: x-acting-as
+          schema: { type: string }
+          description: Existing verified org selector, never an authorization.
+        - in: header
+          name: x-acting-for
+          schema: { type: string }
+          description: Existing verified principal/speaker selector; member grant rules remain unchanged.
+      responses:
+        "200":
+          description: Caller-scoped self-discovery.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SelfDiscovery" }
+        "401": { description: Missing or invalid credentials. }
+        "403": { description: Same scope or act-as rejection as the usable-model route. }
+        "404": { description: Signer identity not found or suspended. }
+        "429": { description: Rate limit exceeded. }
+        "503": { description: Discovery unavailable; no private exception details. }
   /v1/models/usable:
     get:
       operationId: listUsableModels

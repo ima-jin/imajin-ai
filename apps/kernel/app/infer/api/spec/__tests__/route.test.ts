@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { parse } from 'yaml';
+import SwaggerParser from '@apidevtools/swagger-parser';
 import { GET } from '../route';
 import { renderSpecRoute } from '@/src/lib/kernel/__tests__/spec-route-test-helpers';
 
@@ -26,5 +27,14 @@ describe('inference discovery spec (#3027)', () => {
     expect(entry.required).toEqual(['id', 'object', 'owned_by', 'created', 'imajin']);
     expect(entry.properties.imajin.required).toContain('picked');
     expect(entry.properties.imajin.properties.picked.type).toBe('boolean');
+    const self = spec.paths['/v1/self'].get;
+    expect(self.security).toEqual(listing.security);
+    expect(self.description).toContain('infer:completions');
+    expect(self.parameters.map((parameter: { name: string }) => parameter.name)).toEqual(['x-acting-as', 'x-acting-for']);
+    expect(self.responses['200'].content['application/json'].schema).toEqual({ $ref: '#/components/schemas/SelfDiscovery' });
+    expect(spec.components.schemas.SelfDiscovery.additionalProperties).toBe(false);
+    expect(spec.components.schemas.SelfDiscoveryConnector.properties.authority.enum)
+      .toEqual(['own-key', 'org-held', 'delegated', 'member-grant', null]);
+    await SwaggerParser.validate(spec);
   });
 });

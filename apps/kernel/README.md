@@ -5,7 +5,6 @@ The kernel — the Next.js application implementing the six primitives (Attestat
 As of 2026-10-21, all six extracted verticals live in their own repositories behind the [registered-app contract](https://github.com/ima-jin/imajin-ai/issues/1981): [coffee](https://github.com/ima-jin/coffee/blob/main/README.md), [dykil](https://github.com/ima-jin/dykil/blob/main/README.md), [events](https://github.com/ima-jin/events/blob/main/README.md), [learn](https://github.com/ima-jin/learn/blob/main/README.md), [links](https://github.com/ima-jin/links/blob/main/README.md) and [market](https://github.com/ima-jin/market/blob/main/README.md). Events' kernel copy was pruned in [#2517](https://github.com/ima-jin/imajin-ai/issues/2517); its cutover closed on 2026-10-20 with buy/QR smoke deferred to [#2989](https://github.com/ima-jin/imajin-ai/issues/2989). Dykil's node-witnessed legacy import remains incomplete in [#2522](https://github.com/ima-jin/imajin-ai/issues/2522). See the [root README](../../README.md) for the generated inventory and dated acceptance status; source extraction alone is not operational acceptance.
 
 ## Run it
-Agent self-discovery work is tracked in #3250; live acceptance remains an operator step after merge.
 
 ```bash
 pnpm --filter @imajin/kernel dev   # http://localhost:3000
@@ -227,6 +226,37 @@ information-only Reach inbox card: **No action needed**, with the
 revokes the stub and erases its bearer hashes immediately.
 
 ## Inference connectors
+`GET /infer/v1/self` (#3250) accepts the agent's own app token with
+`infer:completions` and the existing `x-acting-as` / `x-acting-for` selectors.
+It returns the signer's DID/handle/kind/tier, the verified act-as DID, the same
+usable model IDs as `/infer/v1/models/usable`, and held inference routes with
+`authority` (`own-key`, `org-held`, `delegated`, `member-grant`), grant status,
+models and safe denial reasons. Unusable rows name an existing control under
+`fix: {control, href, actingDid}`; an operator must select that acting identity
+on `/jin` before opening the linked control. For example, member-grant denial
+links to **Org service keys → Member grants → Grant** on `/auth/connectors`.
+Autonomous assigned org agents do not require member grants.
+
+The route reuses `resolveInferenceAuth`, `listUsableModels` and
+`listInferenceRoutes`; it adds no gate or scope. The first usable catalog model
+is passed to route discovery because org-held keys select a model per call.
+`selectedModels` records that resolver probe; per-row `usableModels` expands
+only the matching current selectors and routing winner. Top-level `usableModels`
+is the catalog for the current request, not for every alternative selector.
+An authorized request with a downstream model/grant denial returns diagnostic
+rows and an empty catalog; an invalid token/scope/act-as returns the existing
+401/403 error shape without a partial identity body.
+
+MCP/HTTP connectors are configuration metadata only (`authority: null`,
+`grantStatus: not-evaluated`, `usable: null`), not a promise that a tool call is
+authorized. Their `configured` flag means an active registry installation,
+not live custody or scope verification. Only the signer's own non-inference
+registrations are read; an inference grant does not expose an assigned
+principal's unrelated tool configuration. Known unconfigured connectors remain
+listed; unknown registered providers use `family: http`. Gateway-host/channel
+fallbacks are outside this kernel projection. Responses are private/no-store
+and never include credentials, vault references or raw exception details.
+Live curl/revoke acceptance remains Ryan's operator step after merge.
 As of **2026-10-22**, `GET /infer/v1/models/usable` exposes each usable sealed connector's full picker list in OpenAI list shape; `imajin.picked` marks the current selection, not the only callable model. Non-picked listed models resolve through the same connector and metering path; unsealed/ungranted/modelless cards contribute no models ([#3045](https://github.com/ima-jin/imajin-ai/pull/3045)). See the [inference spec](api-spec/infer.yaml).
 
 Delegated app-token minting can resolve the live consent by `principalDid`, mutually exclusive with the legacy `attestationId` selector ([#3042](https://github.com/ima-jin/imajin-ai/pull/3042)). The [OpenClaw passthrough runbook](../../packages/openclaw-infer-passthrough/README.md) already documents principal-based configuration, catalog routing, consent-failure recovery and operator-only rollout cleanup from [#3048](https://github.com/ima-jin/imajin-ai/pull/3048). Re-granting needs no proxy restart after that rollout; auth/scope failures never trigger direct fallback.
