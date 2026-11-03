@@ -25,7 +25,7 @@ Disabling or removing the org connection refuses the **next call** with HTTP
 registrant or direct key. Until the org connectors UI (#3181) is on main, this
 stable kernel code is the acceptance contract, not an invented control label.
 
-### Operator smoke (Anthropic lane only for now)
+### Operator smoke (Anthropic lane only)
 
 `node scripts/artifact-org-bot-smoke.mjs --dry-run` runs locally without
 credentials, network traffic or billing. It does **not** claim a live proof.
@@ -55,7 +55,7 @@ token. Do not work around this by granting the org to itself or relaxing auth;
 the plugin/kernel credential contract must agree before claiming live proof.
 
 This script intentionally has **no Warp implementation or placeholder**.
-The combined operator proof awaits #2278's implementation and #3203 on main.
+Warp implementation and proof are split to #3203, not a gate for #3184.
 Connection-off production verification, the proof comment on #3178 and removing
 static OpenClaw keys remain operator-only after both lanes work.
 

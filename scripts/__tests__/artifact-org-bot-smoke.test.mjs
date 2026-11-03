@@ -55,6 +55,25 @@ describe('Artifact org bot operator Anthropic smoke', () => {
     expect(JSON.stringify(result)).not.toContain(config.agentToken);
     expect(JSON.stringify(result)).not.toContain(config.auditToken);
   });
+  it('waits for correlated usage sequentially without replaying the completion', async () => {
+    const deps = fixture();
+    deps.fetcher
+      .mockResolvedValueOnce(Response.json({ principalDid: orgDid, turns: [] }))
+      .mockResolvedValueOnce(Response.json(deps.audit));
+    expect(await runAnthropicSmoke(input(), deps))
+      .toEqual({ status: 'passed', billedOrg: 'artifact', usageIds: ['usage_proof'] });
+    expect(deps.fetcher).toHaveBeenCalledTimes(4);
+    expect(deps.sleep).toHaveBeenCalledTimes(1);
+    expect(deps.sleep).toHaveBeenCalledWith(1000);
+    expect(deps.fetcher.mock.calls.filter(([, init]) => init.method === 'POST')).toHaveLength(1);
+  });
+  it('bounds missing-usage retries to five reads with four delays', async () => {
+    const deps = fixture();
+    deps.audit.turns = [];
+    await expect(runAnthropicSmoke(input(), deps)).rejects.toThrow('Org bot smoke failed');
+    expect(deps.fetcher).toHaveBeenCalledTimes(7);
+    expect(deps.sleep).toHaveBeenCalledTimes(4);
+  });
   it.each([
     { sub: orgDid }, { azp: orgDid }, { exp: 0 }, { exp: 'later' }, { aud: 'different' },
   ])('refuses invalid caller claims before dispatch: %j', async claims => {

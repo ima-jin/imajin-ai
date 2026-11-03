@@ -30,7 +30,24 @@ async function jsonRequest(fetcher, url, init) {
   return response.json();
 }
 
-/** Anthropic lane only. Warp must not be added until #2278 and #3203 are on main. */
+async function pollUsage(input, session, externalId, fetcher, sleep, attempts = 5) {
+  const audit = await jsonRequest(fetcher, `${KERNEL}/usage/api/audit/sessions/${session}`, {
+    headers: { Authorization: `Bearer ${input.auditToken}`, 'x-acting-as': input.orgDid },
+  });
+  if (audit.principalDid !== input.orgDid) throw failure();
+  const rows = audit.turns?.flatMap(turn => turn.usage) ?? [];
+  const matching = rows.filter(row => row.source === 'inference-passthrough'
+    && row.provider === 'anthropic' && row.agentDid === input.agentDid
+    && row.externalId === externalId && row.status !== 'error');
+  if (matching.length > 0 && matching.every(row => typeof row.id === 'string' && SAFE_ID.test(row.id))) {
+    return matching.map(row => row.id);
+  }
+  if (attempts <= 1) throw failure();
+  await sleep(1000);
+  return pollUsage(input, session, externalId, fetcher, sleep, attempts - 1);
+}
+
+/** Anthropic lane only. Warp implementation and proof are separate work in #3203. */
 export async function runAnthropicSmoke(input, {
   dryRun = false, fetcher = globalThis.fetch, sleep = delay,
 } = {}) {
@@ -54,21 +71,8 @@ export async function runAnthropicSmoke(input, {
     }),
   });
   if (typeof completion.id !== 'string') throw failure();
-  for (let attempt = 0; attempt < 5; attempt++) {
-    const audit = await jsonRequest(fetcher, `${KERNEL}/usage/api/audit/sessions/${session}`, {
-      headers: { Authorization: `Bearer ${input.auditToken}`, 'x-acting-as': input.orgDid },
-    });
-    if (audit.principalDid !== input.orgDid) throw failure();
-    const rows = audit.turns?.flatMap(turn => turn.usage) ?? [];
-    const matching = rows.filter(row => row.source === 'inference-passthrough'
-      && row.provider === 'anthropic' && row.agentDid === input.agentDid
-      && row.externalId === completion.id && row.status !== 'error');
-    if (matching.length > 0 && matching.every(row => typeof row.id === 'string' && SAFE_ID.test(row.id))) {
-      return { status: 'passed', billedOrg: 'artifact', usageIds: matching.map(row => row.id) };
-    }
-    await sleep(1000);
-  }
-  throw failure();
+  const usageIds = await pollUsage(input, session, completion.id, fetcher, sleep);
+  return { status: 'passed', billedOrg: 'artifact', usageIds };
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
