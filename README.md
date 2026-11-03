@@ -44,6 +44,12 @@ not a guarantee that every concrete use case is implemented.
 - Use principal-based inference minting and the usable model catalog. Re-grant after
   revoked/expired consent; the [release updater](deploy/infer-passthrough/README.md)
   requires exact-SHA production evidence and mint-backed health before promotion.
+- Connect OpenClaw gateways through mcp.imajin.ai with explicit agent/principal choice at
+  consent ([runbook](docs/ops/openclaw-mcp.md)). The inference passthrough authenticates each
+  call as the calling agent (no shared fallback), and its health gate needs a declared
+  `INFER_PROXY_AUTH_MODE=agent` ([updater](deploy/infer-passthrough/README.md)).
+- See per-caller inference routes and manage org-held keys and member grants on
+  `/auth/connectors`; members read org key status as metadata only.
 
 Current chat uses **TLS in transit and plaintext at rest** on the hosting node;
 push previews include the first 200 characters. MLS with mandatory hybrid
