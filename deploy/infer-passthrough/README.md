@@ -1,6 +1,6 @@
 # Release deployment for infer-passthrough (#3041, #3082)
 Release interlock #3230: agent-mode promotion requires an explicitly declared host auth mode after plugin PR #151 is deployed.
-Shutdown contract (#3249): SIGTERM must drain active calls within a bounded grace and exit successfully; live restart proof follows the production release.
+SIGTERM/SIGINT stops accepting requests, drains active responses, then exits 0; `INFER_PROXY_SHUTDOWN_GRACE_MS` defaults to 5000 ms (positive integer, hard cap 8000 ms; invalid values use the default), after which remaining connections/calls are cut. A second signal exits immediately. Live restart proof follows the production release (#3249).
 
 ## Calling-agent contract (#3224)
 
