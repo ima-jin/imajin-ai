@@ -29,6 +29,7 @@
  */
 import type { McpTool } from '../types';
 import { str, num, json } from './utils';
+import { callerArguments } from '@/src/lib/kernel/connection-principal-policy';
 import { assertWarpBriefSize, WARP_BRIEF_MAX_BYTES } from '@/src/lib/warp/brief-limit';
 import { sealWarpAgentKey, WARP_DISPATCH_SCOPE } from '@/src/lib/warp/connector';
 import { CORPUS_CONTEXT_MAX_LIMIT, type CorpusContextInput } from '@/src/lib/warp/corpus-context';
@@ -230,7 +231,7 @@ const dispatchTool: McpTool = {
     const mcpServers = mcpServersArg(args);
     const corpusContext = corpusContextArg(args);
 
-    const run = await dispatchAgentRun(ctx.did, {
+    const run = await dispatchAgentRun(ctx.credentialDid ?? ctx.did, {
       prompt,
       ...(title === undefined ? {} : { title }),
       ...(skillSpec === undefined ? {} : { skillSpec }),
@@ -244,7 +245,7 @@ const dispatchTool: McpTool = {
       ...(typeof args.attach_imajin_mcp === 'boolean'
         ? { attachImajinMcp: args.attach_imajin_mcp }
         : {}),
-    });
+    }, ...callerArguments(ctx.connectionCaller));
 
     return json(run);
   },
@@ -275,7 +276,7 @@ const getRunTool: McpTool = {
     additionalProperties: false,
   },
   async handler(args, ctx) {
-    return json(await getAgentRun(ctx.did, requireRunIdArg(args)));
+    return json(await getAgentRun(ctx.credentialDid ?? ctx.did, requireRunIdArg(args), ...callerArguments(ctx.connectionCaller)));
   },
 };
 
@@ -381,7 +382,7 @@ const listRunsTool: McpTool = {
     additionalProperties: false,
   },
   async handler(args, ctx) {
-    return json(await listAgentRuns(ctx.did, listFilters(args)));
+    return json(await listAgentRuns(ctx.credentialDid ?? ctx.did, listFilters(args), ...callerArguments(ctx.connectionCaller)));
   },
 };
 
@@ -420,9 +421,10 @@ const getTranscriptTool: McpTool = {
 
     return json(
       await getAgentRunTranscript(
-        ctx.did,
+        ctx.credentialDid ?? ctx.did,
         runId,
         maxChars === undefined ? {} : { maxChars },
+        ...callerArguments(ctx.connectionCaller),
       ),
     );
   },
@@ -451,7 +453,7 @@ const getConversationTool: McpTool = {
     additionalProperties: false,
   },
   async handler(args, ctx) {
-    return json(await getAgentRunConversation(ctx.did, requireRunIdArg(args)));
+    return json(await getAgentRunConversation(ctx.credentialDid ?? ctx.did, requireRunIdArg(args), ...callerArguments(ctx.connectionCaller)));
   },
 };
 
@@ -510,11 +512,11 @@ const sendFollowupTool: McpTool = {
     const resume = typeof args.resume === 'boolean' ? args.resume : undefined;
 
     return json(
-      await sendFollowup(ctx.did, runId, {
+      await sendFollowup(ctx.credentialDid ?? ctx.did, runId, {
         message,
         ...(mode === undefined ? {} : { mode }),
         ...(resume === undefined ? {} : { resume }),
-      }),
+      }, ...callerArguments(ctx.connectionCaller)),
     );
   },
 };
@@ -541,11 +543,11 @@ const cancelRunTool: McpTool = {
     additionalProperties: false,
   },
   async handler(args, ctx) {
-    return json(await cancelAgentRun(ctx.did, requireRunIdArg(args)));
+    return json(await cancelAgentRun(ctx.credentialDid ?? ctx.did, requireRunIdArg(args), ...callerArguments(ctx.connectionCaller)));
   },
 };
 
-export const warpTools: McpTool[] = [
+const tools: McpTool[] = [
   sealKeyTool,
   dispatchTool,
   getRunTool,
@@ -555,3 +557,23 @@ export const warpTools: McpTool[] = [
   sendFollowupTool,
   cancelRunTool,
 ];
+
+/** No alternate custody implementation: use the same caller-aware HTTP twin. */
+export const warpTools: McpTool[] = tools.map(tool => ({
+  ...tool,
+  async handler(args, ctx) {
+    if (!ctx.actingFor) return tool.handler(args, ctx);
+    const { AgentOAuthError, mcpCredentialContext } = await import('../agent-binding');
+    if (tool.name === 'warp_seal_key') {
+      throw new AgentOAuthError('agent_key_management_forbidden',
+        'Manage the assigned identity’s Warp connection on /auth/connectors; gateway consent never accepts service keys.');
+    }
+    const principal = await mcpCredentialContext(ctx, 'warp');
+    try {
+      return await tool.handler(args, { ...ctx, credentialDid: principal.ownerDid, connectionCaller: principal.caller });
+    } catch {
+      throw new AgentOAuthError('agent_connection_unavailable',
+        'Restore the assigned identity’s active Warp connection and custody on /auth/connectors.');
+    }
+  },
+}));

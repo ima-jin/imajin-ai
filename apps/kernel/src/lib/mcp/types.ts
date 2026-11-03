@@ -14,6 +14,13 @@ export interface McpToolContext {
   appDid: string;
   /** Granted scopes (access token `scope`). */
   scopes: Set<string>;
+  /** Fixed assigned DID from signed OAuth consent; did remains the agent signer. */
+  actingFor?: string;
+  /** Live authorization rechecked before credential access. */
+  authorizationId?: string;
+  /** Internal credential-boundary result; never read from tool arguments. */
+  credentialDid?: string;
+  connectionCaller?: import('@/src/lib/kernel/connection-principal-policy').ConnectionCaller;
 }
 
 /** MCP tool result content. Text only for now; extend with image/resource later. */
