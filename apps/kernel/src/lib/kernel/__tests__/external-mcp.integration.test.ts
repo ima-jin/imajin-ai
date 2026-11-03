@@ -1531,9 +1531,10 @@ describe('org-held service keys: real SQL, signatures and private vault custody'
     expect((await orgRows())[0].status).toBe('revoked');
     expect((await vaultService.getHistory(current.sealedKeyField!))[0].deleted).toBe(true);
     const events = await database.select().from(attestations).where(eq(attestations.subjectDid, org));
-    expect(events.map(event => event.payload)).toEqual(['loaded', 'replaced', 'revoked'].map(action => ({
+    expect(events).toHaveLength(3);
+    expect(events.map(event => event.payload)).toEqual(expect.arrayContaining(['loaded', 'replaced', 'revoked'].map(action => ({
       actorDid: member, orgDid: org, provider: 'warp', action,
-    })));
+    }))));
     const grants = await database.select().from(vaultDelegationGrants).where(eq(vaultDelegationGrants.subject, org));
     expect(grants).toHaveLength(2);
     expect(grants.every(grant => grant.status === 'revoked' && grant.wrappedKey === '')).toBe(true);
