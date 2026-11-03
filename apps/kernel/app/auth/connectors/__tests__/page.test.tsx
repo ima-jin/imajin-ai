@@ -121,6 +121,16 @@ describe('acting identity context', () => {
     const fetch = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url === '/auth/api/session') return jsonResponse({ scope: 'actor', name: 'Personal name', handle: 'personal' });
+      if (url === '/infer/v1/models/usable?explain=1') {
+        const actingDid = localStorage.getItem('imajin:acting-as');
+        return jsonResponse({ routes: [{
+          kind: actingDid ? 'C' : 'own',
+          billedPrincipal: { did: actingDid ?? actorDid, handle: actingDid ? 'artifact' : 'personal' },
+          card: { provider: 'anthropic', id: 'discovery-card', label: 'Discovery account', loaded: true },
+          selectedModels: ['fixture-model'], usable: true,
+          selectors: actingDid ? { actingAs: actingDid } : {},
+        }] });
+      }
       if (url.startsWith('/auth/api/groups/')) return jsonResponse({
         groupDid: orgDid, scope: 'business', name: 'Artifact', viewerRole: 'admin', viewerDid: actorDid,
         controllers: [{ controllerDid: actorDid, scope: 'actor', subtype: null, role: 'admin', allowedServices: null }],
@@ -138,6 +148,7 @@ describe('acting identity context', () => {
     await screen.findByText('Anthropic Claude');
     expect(screen.queryByRole('region', { name: 'Org service keys' })).toBeNull();
     expect(fetch.mock.calls.some(([url]) => String(url).includes('/org-held'))).toBe(false);
+    expect(await screen.findByText('Billed to: @personal')).toBeDefined();
   });
   it('uses the org name and DID with controls on provider cards, not personal key links', async () => {
     localStorage.setItem('imajin:acting-as', orgDid);
@@ -147,6 +158,11 @@ describe('acting identity context', () => {
     expect(screen.queryByText(/Keys held by Personal name/)).toBeNull();
     const card = await screen.findByRole('article', { name: 'Anthropic Claude org service key' });
     expect(within(card).getByRole('button', { name: 'Load key' })).toBeDefined();
+    expect(within(card).getByRole('region', { name: 'Anthropic Claude member grants' })).toBeDefined();
+    const discovery = screen.getByRole('region', { name: 'Inference routes' });
+    expect(await within(discovery).findByText('Billed to: @artifact')).toBeDefined();
+    expect(within(discovery).getByText('C · Member grant')).toBeDefined();
+    expect(within(discovery).getByText('Selected model: fixture-model')).toBeDefined();
     expect(card.closest('a')).toBeNull();
     expect(fetch.mock.calls.some(([url]) => String(url) === '/anthropic/api/scope-manifest')).toBe(false);
   });
