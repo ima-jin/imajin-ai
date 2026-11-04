@@ -156,9 +156,13 @@ function parseEnvelope(raw: unknown): ParseResult<LoopEnvelope> {
 
   const refsResult = parseRefs(refs);
   if (!refsResult.ok) return refsResult;
+  return parseEnvelopeOutput(raw as Record<string, unknown>);
+}
+
+function parseEnvelopeOutput(raw: Record<string, unknown>): ParseResult<LoopEnvelope> {
   if (!isBoundedLoopJson(raw)) return { ok: false, error: 'payload must contain bounded JSON' };
-  const { output } = raw as Record<string, unknown>;
-  if (!isWithinLoopMetadataBudget(raw as Record<string, unknown>)) {
+  const { output } = raw;
+  if (!isWithinLoopMetadataBudget(raw)) {
     return { ok: false, error: 'payload metadata exceeds 16 KiB' };
   }
   if (output !== undefined && !isLoopOutput(output)) {
