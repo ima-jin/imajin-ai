@@ -350,7 +350,10 @@ describe('self-discovery with real app auth, assignment and grant SQL (#3250)', 
   );
 });
 
-describe('route discovery ≡ chat/completions (real auth, assignment and grant SQL)', () => {
+describe.each(['agent', 'presence'])('route discovery ≡ chat/completions for %s (real auth, assignment and grant SQL)', subtype => {
+  beforeEach(async () => {
+    await database.update(identities).set({ subtype }).where(eq(identities.id, AGENT));
+  });
   const ORG_MODEL = 'claude-sonnet-5-5';
   async function assignTo(did: string, allowedServices: string[] | null = null) {
     await database.insert(identityMembers).values({ identityDid: did, memberDid: AGENT, role: 'agent', allowedServices });
@@ -622,12 +625,13 @@ describe('assigned agents use only the assigned DID keys, without member-grant r
     await database.update(identityMembers).set({ allowedServices: ['infer'] }).where(eq(identityMembers.memberDid, AGENT));
     await expect(authorizeExternalMcp(agent, target)).rejects.toMatchObject({ status: 403 });
   });
-  it('sends the org Warp key through the actual tool route and rechecks assignment on the next call', async () => {
+  it.each(['agent', 'presence'])('sends the org Warp key for %s through the actual tool route and rechecks assignment', async subtype => {
+    await database.update(identities).set({ subtype }).where(eq(identities.id, AGENT));
     await assign();
     await database.update(connectors).set({ provider: 'org-held-warp' });
     h.tokenDid = AGENT;
     const req = () => new NextRequest('https://kernel.test/warp/api/runs', {
-      headers: { authorization: 'Bearer fixture-app-token', 'x-acting-as': ORG },
+      headers: { authorization: 'Bearer fixture-app-token', 'x-acting-for': ORG },
     });
     const response = await warpRuns(req());
     expect(response.status).toBe(200);

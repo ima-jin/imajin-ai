@@ -2,7 +2,7 @@ import { and, eq, gt, isNull } from 'drizzle-orm';
 import { db, identities, identityMembers, delegationGrants } from '@/src/db';
 import { connectorRegistryId, readConnectorRegistration } from '@/src/lib/kernel/connector-registry-store';
 import { requireAgentAssignment, resolveConnectionPrincipal } from '@/src/lib/kernel/connection-principal';
-import { isOrgScope, type ConnectionCaller } from '@/src/lib/kernel/connection-principal-policy';
+import { isAgentCapableSubtype, isOrgScope, type ConnectionCaller } from '@/src/lib/kernel/connection-principal-policy';
 import { ExternalMcpError } from '@/src/lib/kernel/external-mcp-policy';
 import { forEachSequential } from '@/src/lib/async/sequential';
 import { resolveInferenceRouteContext } from './route-context';
@@ -48,12 +48,12 @@ async function relatedPrincipals(actorDid: string, agent: boolean): Promise<stri
 
 function routeKind(actor: Principal, principal: Principal, caller: ConnectionCaller): InferenceRouteKind {
   if (principal.did === actor.did) return 'own';
-  if (actor.subtype !== 'agent' || (caller.actingFor && caller.actingFor !== principal.did)) return 'C';
+  if (!isAgentCapableSubtype(actor.subtype) || (caller.actingFor && caller.actingFor !== principal.did)) return 'C';
   return isOrgScope(principal.scope) ? 'A' : 'B';
 }
 
 async function makeCandidate(actor: Principal, principal: Principal, caller: ConnectionCaller, selected: DiscoveryContext) {
-  if (principal.did !== actor.did && actor.subtype !== 'agent' && !isOrgScope(principal.scope)) return undefined;
+  if (principal.did !== actor.did && !isAgentCapableSubtype(actor.subtype) && !isOrgScope(principal.scope)) return undefined;
   const route = resolveInferenceRouteContext({ caller, appDid: selected.appDid });
   let authorizationError: ExternalMcpError | undefined;
   try {
@@ -104,7 +104,7 @@ export async function loadInferenceRouteCandidates(selected: DiscoveryContext): 
   const actor = await readInferencePrincipal(actorDid);
   if (!actor) return [];
   const selectedPrincipal = selected.caller?.actingFor ?? selected.caller?.actingAs ?? selected.ownerDid;
-  const dids = new Set([actorDid, selectedPrincipal, ...await relatedPrincipals(actorDid, actor.subtype === 'agent')]);
+  const dids = new Set([actorDid, selectedPrincipal, ...await relatedPrincipals(actorDid, isAgentCapableSubtype(actor.subtype))]);
   const candidates: InferenceRouteCandidate[] = [];
   await forEachSequential(dids, async did => {
     const principal = did === actorDid ? actor : await readInferencePrincipal(did);
