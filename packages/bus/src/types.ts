@@ -23,6 +23,7 @@ export interface ReactorConfig {
   config: Record<string, unknown>;  // type-specific config
   condition?: string;        // optional: future use for conditional execution
   await?: boolean;           // default false (fire-and-forget)
+  propagateError?: boolean;  // awaited persistence steps may fail their publisher
   enabled: boolean;
 }
 
