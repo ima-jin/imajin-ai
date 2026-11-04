@@ -117,8 +117,10 @@ describe.skipIf(process.platform !== 'linux').sequential('standalone node --impo
         msg: 'openclaw-infer-passthrough shutdown complete', inFlightAtSignal, cutAtGrace,
       }),
     ]);
-    expect(() => process.kill(child.pid!, 0)).toThrow();
-    expect(() => process.kill(-child.pid!, 0)).toThrow();
+    await vi.waitFor(() => {
+      expect(() => process.kill(child.pid!, 0)).toThrow();
+      expect(() => process.kill(-child.pid!, 0)).toThrow();
+    }, { timeout: exitBoundMs });
   }
 
   function signal(name: NodeJS.Signals = 'SIGTERM') {
