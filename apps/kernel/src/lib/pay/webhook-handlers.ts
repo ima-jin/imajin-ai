@@ -1,5 +1,5 @@
 /**
- * Webhook handler helpers — kernel pay domain
+ * Stripe webhook handler helpers — kernel pay domain
  *
  * Extracted from apps/kernel/app/pay/api/webhook/route.ts to bring
  * handleCheckoutCompleted's cognitive complexity (S3776) below 15.
