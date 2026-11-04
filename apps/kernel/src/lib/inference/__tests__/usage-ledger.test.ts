@@ -65,6 +65,7 @@ vi.mock('@/src/lib/kernel/node-identity', () => ({
 
 import { recordInferenceUsage, publishUsageIncurred } from '../usage-ledger';
 import { recordTypesafeUsage } from '../../typesafe/usage';
+import { recordPresenceQueryUsage } from '../presence-query-usage';
 import { usageProjectionReactor } from '../../../../../../packages/bus/src/reactors/usage-projection';
 import type { BusEvent } from '../../../../../../packages/bus/src/types';
 
@@ -351,6 +352,54 @@ describe('recordInferenceUsage', () => {
 });
 
 describe('receipt projection SQL integration', () => {
+  it.each([OWNER, 'did:imajin:business'])('Ask Me %s publishes a system receipt, then only the reactor creates its row', async (actingForDid) => {
+    const pg = new PGlite();
+    try {
+      const baseline = readFileSync(new URL('../../../../../../migrations/0001_kernel_baseline.sql', import.meta.url), 'utf8');
+      const table = baseline.match(/CREATE TABLE usage\.incurred \([\s\S]*?\n\);/)?.[0];
+      await pg.exec(`CREATE SCHEMA usage; ${table} ALTER TABLE usage.incurred ADD PRIMARY KEY (id);`);
+      projectionSql.mockImplementation(async (strings: TemplateStringsArray, ...values: unknown[]) => {
+        const text = strings.reduce((result, part, index) => result + (index ? `$${index}` : '') + part, '');
+        return (await pg.query(text, values)).rows;
+      });
+
+      await recordPresenceQueryUsage({
+        queryId: 'query_ask_me', actingForDid, requesterDid: 'did:imajin:requester',
+        mode: 'query', provider: 'anthropic', modelId: 'claude-sonnet-4-20250514',
+        promptTokens: 10, completionTokens: 5, costUsd: 0.001, settled: true,
+      });
+      await flushMicrotasks();
+      expect(insertCalls).toHaveLength(0);
+      expect(mockPublish).toHaveBeenCalledTimes(1);
+      const [type, published] = mockPublish.mock.calls[0];
+      expect(type).toBe('usage.incurred');
+      expect(published).toMatchObject({
+        issuer: 'did:imajin:testnode', subject: actingForDid, scope: 'usage',
+        payload: {
+          attestationClass: 'system', issuerDid: 'did:imajin:testnode', actingFor: actingForDid,
+          context_id: 'usage_test', context_type: 'usage', source: 'presence:query',
+          metadata: { queryId: 'query_ask_me', requesterDid: 'did:imajin:requester', mode: 'query', settled: true, settleAmount: 0.001 },
+        },
+      });
+      expect((await pg.query('SELECT * FROM usage.incurred')).rows).toHaveLength(0);
+
+      const event = { ...published, type } as BusEvent;
+      await usageProjectionReactor(event, {});
+      const projected = await pg.query('SELECT * FROM usage.incurred');
+      expect(projected.rows).toHaveLength(1);
+      expect(projected.rows[0]).toMatchObject({
+        id: 'usage_test', principal_did: actingForDid, agent_did: 'did:imajin:requester',
+        source: 'presence:query', resource: 'model:anthropic/claude-sonnet-4-20250514',
+        provider: 'anthropic', model: 'claude-sonnet-4-20250514',
+        tokens_in: 10, tokens_out: 5, cost_usd: '0.00100000', quantity: '15.000000', unit: 'tokens',
+        external_id: 'query_ask_me', created_at: new Date(published.payload.ts),
+      });
+      await usageProjectionReactor({ ...event, id: 'replayed-delivery' }, {});
+      expect(await pg.query('SELECT * FROM usage.incurred')).toEqual(projected);
+    } finally {
+      await pg.close();
+    }
+  }, 30_000);
   it.each([OWNER, 'did:imajin:business'])('TypeSafe %s publishes the system receipt as its only write, then projects and replays it', async (ownerDid) => {
     const pg = new PGlite();
     try {
