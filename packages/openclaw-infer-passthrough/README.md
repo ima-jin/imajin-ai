@@ -556,6 +556,8 @@ Either supervisor works; use whichever the gateway host already runs its
 other services under (see `docs/ENVIRONMENTS.md`'s pm2 convention) — this
 proxy does not need its own daemon-management approach.
 
+Use `node --import tsx`: the tsx CLI relays process-group signals twice under contention (#3270).
+
 **pm2** (matches the host's existing `dev-*`/bare-name convention):
 
 ```js
@@ -563,8 +565,8 @@ proxy does not need its own daemon-management approach.
 {
   name: 'infer-passthrough', // 'dev-infer-passthrough' in dev
   cwd: '/path/to/imajin-ai',
-  script: 'node_modules/.bin/tsx',
-  args: 'packages/openclaw-infer-passthrough/src/server.ts',
+  script: 'packages/openclaw-infer-passthrough/src/server.ts',
+  node_args: '--import tsx',
   env_file: '/etc/imajin/infer-passthrough.env', // secrets live here, not inline — see step 2
   env: {
     INFER_PROXY_HOST: '127.0.0.1',
@@ -591,7 +593,7 @@ After=network-online.target
 [Service]
 Type=simple
 WorkingDirectory=/path/to/imajin-ai
-ExecStart=/usr/bin/node node_modules/.bin/tsx packages/openclaw-infer-passthrough/src/server.ts
+ExecStart=/usr/bin/env node --import tsx packages/openclaw-infer-passthrough/src/server.ts
 # OPENCLAW_APP_PRIVATE_KEY and OPENAI_DIRECT_API_KEY live in this file,
 # root-only-readable — never inline in the unit file itself:
 EnvironmentFile=/etc/imajin/infer-passthrough.env
