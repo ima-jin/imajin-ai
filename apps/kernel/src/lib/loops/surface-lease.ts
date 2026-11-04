@@ -10,7 +10,7 @@ export interface SurfaceConflict {
   loopId: string;
   holderDid?: string;
 }
-export function loopObservationId(request: LoopIngestRequest): string {
+export function loopObservationId(request: { type: string; payload: Record<string, unknown>; publisherDid: string; signature: LoopIngestRequest['signature'] }): string {
   return `signed-loop:${createHash('sha256').update(canonicalize(request)).digest('hex')}`;
 }
 

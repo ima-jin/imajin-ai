@@ -55,6 +55,7 @@ async function applyMigrations() {
     if (!name) throw new Error('Missing loop output artifact migration');
     await pg.exec(readFileSync(join(migrationsDir, name), 'utf8'));
   }
+  await pg.exec(readFileSync(resolve(migrationsDir, '../../0231_loop_event_signed_receipts.sql'), 'utf8'));
 }
 
 beforeAll(async () => {

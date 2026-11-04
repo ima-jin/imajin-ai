@@ -127,8 +127,8 @@ describe('loop output route/ingest/read roundtrip', () => {
     expect((await read()).status).toBe(404);
   });
 
-  it('stores only redacted overflow and returns its full output through a private artifact ref', async () => {
-    const result = { message: '🙂'.repeat(6000), apiKey: 'private-value' };
+  it('stores credential-free overflow and returns its full output through a private artifact ref', async () => {
+    const result = { message: '🙂'.repeat(6000) };
     expect((await publish({ kind: 'tool_result', callId: 'c1', result })).status).toBe(201);
     const history = await (await read()).json();
     const output = history.events[0].payload.output;

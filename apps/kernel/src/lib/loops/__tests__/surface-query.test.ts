@@ -110,6 +110,7 @@ describe('listLoopSurfaces', () => {
       conflicts: [{
         id: 'evt_conflict', loopId: 'loop_claimant', type: 'surface.conflicted',
         issuer: 'did:imajin:witness', principal: PRINCIPAL, payload: conflict.payload,
+        signature: null, publisherDid: null, causeEventId: null,
         occurredAt: timestamp, createdAt: timestamp,
       }],
       warnOnly: true,

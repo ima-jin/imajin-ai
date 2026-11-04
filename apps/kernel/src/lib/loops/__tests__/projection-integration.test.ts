@@ -23,6 +23,7 @@ beforeAll(async () => {
     );`);
   await pg.exec(readFileSync(new URL('../../../../../../migrations/archive/pre-kernel-baseline/0157_loops_rail.sql', import.meta.url), 'utf8'));
   await pg.exec(readFileSync(new URL('../../../../../../migrations/archive/pre-kernel-baseline/0194_surface_lease.sql', import.meta.url), 'utf8'));
+  await pg.exec(readFileSync(new URL('../../../../../../migrations/0231_loop_event_signed_receipts.sql', import.meta.url), 'utf8'));
   sql.mockImplementation(taggedSql(pg));
   Object.assign(sql, {
     begin: (work: (tx: ReturnType<typeof taggedSql>) => Promise<void>) =>

@@ -75,16 +75,11 @@ describe('surface signed ingest contract', () => {
     const request = signed('surface.acquired', { refs: { conflictingHolderDid: 'did:imajin:injected' } });
     expect(signSurfaceConflict(request, { loopId: 'foreign-loop' }).payload.refs).toEqual({ conflictingLoopId: 'foreign-loop' });
   });
-  it('passes only redacted prepared data to surface evidence after verifying the original', async () => {
+  it('rejects redaction-changing signed surface data before evidence or publication', async () => {
     const request = signed('surface.acquired', { summary: 'Bearer original-secret', metadata: { apiKey: 'private-value' } });
-    expect(await ingestLoopEvent(request)).toEqual({ ok: true });
-    expect(project.mock.calls[0][0]).toBe(request);
-    expect(project.mock.calls[0][2]).toBe(false);
-    const prepared = project.mock.calls[0][1];
-    expect(prepared.summary).toBe('Bearer [REDACTED]');
-    expect(JSON.stringify(prepared)).not.toContain('private-value');
-    expect(prepared).not.toHaveProperty('publisherProof');
-    expect(publish.mock.calls[0][1].payload).toEqual(prepared);
+    expect(await ingestLoopEvent(request)).toMatchObject({ status: 400 });
+    expect(project).not.toHaveBeenCalled();
+    expect(publish).not.toHaveBeenCalled();
   });
 
   it('keeps spilled output behind the artifact ref rather than copying it into surface evidence', async () => {
