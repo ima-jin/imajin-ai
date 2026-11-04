@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { AgentIdentityPanel } from '../agent-identity-panel';
 import { AgentIdentityCard, type OperatorIdentityCard } from '../agent-identity-card';
+import { discoveryInferenceRoutes } from '@/src/lib/inference/self-discovery';
 
 const acting = vi.hoisted(() => ({ headers: {} as Record<string, string> }));
 vi.mock('@imajin/ui/server', () => ({ getActingAsHeaders: () => acting.headers }));
@@ -66,6 +67,30 @@ describe('/jin agent identity cards', () => {
     expect(screen.getByText('Usable')).toBeDefined();
     expect(screen.getByText('model-one')).toBeDefined();
     expect(screen.getByText(/Uses another principal/)).toBeDefined();
+  });
+  it.each(['A', 'C'] as const)('links private-custody org-held route %s to load/replace, never re-grant', async kind => {
+    // Both org-held lanes use private custody. Use the real discovery projection,
+    // not a hand-authored repair href; custody field references never reach the UI.
+    const connectors = discoveryInferenceRoutes([{
+      kind, billedPrincipal: { did: org, handle: 'artifact' },
+      card: { id: 'private-held', provider: 'anthropic', label: 'Anthropic', loaded: false },
+      selectedModels: [], usable: false, selectors: { actingAs: org },
+      reason: { code: 'key_not_loaded', message: 'Organization key unavailable' },
+    }], [], { ownerDid: org, caller: { actorDid: card.identity.did, actingAs: org } });
+    const mock = install({ ...body, cards: [{ ...card, connectors }] });
+    acting.headers = { 'X-Acting-As': org };
+    render(<AgentIdentityPanel />);
+    const article = await screen.findByRole('article', { name: 'Identity card for Artifact-Jin' });
+    const repair = within(article).getByRole('link', { name: 'Org service keys → Load key' });
+    // This existing page offers Load key or Replace key according to current state.
+    expect(repair.getAttribute('href')).toBe('/auth/connectors');
+    expect(article.textContent).toContain(`Use acting identity: ${org}`);
+    expect(within(article).queryByRole('button', { name: /re-?grant|renew/i })).toBeNull();
+    expect(within(article).queryByRole('link', { name: /re-?grant|renew/i })).toBeNull();
+    expect(within(article).getAllByRole('link').every(link =>
+      !link.getAttribute('href')?.includes('/api/vault/delegation'))).toBe(true);
+    expect(mock.mock.calls.every(([url, init]) =>
+      url === '/infer/v1/self?agents=1' && (!init.method || init.method === 'GET'))).toBe(true);
   });
   it('supports metadata-only rows without asserting usable authority', () => {
     render(<AgentIdentityCard card={{ ...card, name: null, identity: { ...card.identity, handle: null, actAs: null }, connectors: [{
