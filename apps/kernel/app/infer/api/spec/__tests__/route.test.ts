@@ -30,8 +30,11 @@ describe('inference discovery spec (#3027)', () => {
     const self = spec.paths['/v1/self'].get;
     expect(self.security).toEqual(listing.security);
     expect(self.description).toContain('infer:completions');
-    expect(self.parameters.map((parameter: { name: string }) => parameter.name)).toEqual(['x-acting-as', 'x-acting-for']);
-    expect(self.responses['200'].content['application/json'].schema).toEqual({ $ref: '#/components/schemas/SelfDiscovery' });
+    expect(self.parameters.map((parameter: { name: string }) => parameter.name)).toEqual(['agents', 'x-acting-as', 'x-acting-for']);
+    expect(self.responses['200'].content['application/json'].schema.oneOf).toEqual([
+      { $ref: '#/components/schemas/SelfDiscovery' }, { $ref: '#/components/schemas/OperatorSelfDiscovery' },
+    ]);
+    expect(spec.components.schemas.OperatorSelfDiscovery.required).toEqual(['principalDid', 'cards']);
     expect(spec.components.schemas.SelfDiscovery.additionalProperties).toBe(false);
     expect(spec.components.schemas.SelfDiscoveryConnector.properties.authority.enum)
       .toEqual(['own-key', 'org-held', 'delegated', 'member-grant', null]);

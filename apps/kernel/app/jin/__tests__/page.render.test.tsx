@@ -20,6 +20,7 @@ const { default: JinPage } = await import('../page');
 
 function installFetch() {
   const spy = vi.fn(async (url: string) => {
+    if (url === '/infer/v1/self?agents=1') return Response.json({ principalDid: 'did:imajin:personal', cards: [] });
     if (url === '/jin/api/app-secrets') return new Response(null, { status: 403 });
     if (url.startsWith('/jin/api/events?')) return Response.json({ events: [], total: 0, limit: 50, offset: 0 });
     return { ok: true, status: 200, json: async () => ({ isOperator: false, approvals: [], entries: [] }) } as unknown as Response;
@@ -46,6 +47,7 @@ describe('JinPage', () => {
     let pending = 0;
     let approved = false;
     const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      if (url === '/infer/v1/self?agents=1') return Response.json({ principalDid: 'did:imajin:org', cards: [] });
       let data: object = { isOperator: false, approvals: [], entries: [] };
       if (url.startsWith('/jin/api/events?')) {
         const org = Boolean(localStorage.getItem('imajin:acting-as'));
@@ -123,6 +125,6 @@ describe('JinPage', () => {
     render(<JinPage />);
 
     expect(await screen.findByText('/jin')).toBeDefined();
-    expect(screen.getByText('Pending proposals — human approval surface')).toBeDefined();
+    expect(screen.getByText('Agent identities and pending proposals — human approval surface')).toBeDefined();
   });
 });

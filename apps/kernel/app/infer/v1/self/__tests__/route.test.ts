@@ -4,7 +4,12 @@ import { NextRequest } from 'next/server';
 
 const h = vi.hoisted(() => ({
   auth: vi.fn(), identity: vi.fn(), models: vi.fn(), routes: vi.fn(), metadata: vi.fn(), limit: vi.fn(),
+  principal: vi.fn(), serving: vi.fn(), grants: vi.fn(),
 }));
+vi.mock('@imajin/auth', () => ({ resolveActingDid: (identity: { id: string; actingAs?: string }) => identity.actingAs ?? identity.id }));
+vi.mock('@/src/lib/auth/grant-principal', () => ({ requireGrantPrincipal: h.principal }));
+vi.mock('@/src/lib/auth/agent-service', () => ({ listServingAgents: h.serving }));
+vi.mock('@/src/lib/auth/grants', () => ({ listGrantDetailsForDelegator: h.grants }));
 vi.mock('@/src/lib/inference/auth', () => ({ resolveInferenceAuth: h.auth }));
 vi.mock('@/src/lib/inference/brain', () => ({ listUsableModels: h.models }));
 vi.mock('@/src/lib/inference/route-discovery', () => ({ listInferenceRoutes: h.routes }));
@@ -31,6 +36,9 @@ beforeEach(() => {
   h.models.mockResolvedValue([]);
   h.routes.mockResolvedValue([]);
   h.metadata.mockResolvedValue([]);
+  h.principal.mockResolvedValue({ identity: { id: 'did:imajin:ryan', actingAs: org } });
+  h.serving.mockResolvedValue([{ did: actor, name: 'Artifact-Jin' }]);
+  h.grants.mockResolvedValue([]);
 });
 
 describe('GET /infer/v1/self', () => {
@@ -120,5 +128,81 @@ describe('GET /infer/v1/self', () => {
     const body = await (await GET(request())).json();
     expect(body.identity).toEqual({ did: actor, handle: 'ryan', kind: 'actor', tier: 'soft', actAs: null });
     expect(h.models).toHaveBeenCalledWith(actor);
+  });
+  it.each([false, true])('lists only the acting principal agents (org: %s)', async actingAsOrg => {
+    const principalDid = actingAsOrg ? org : 'did:imajin:ryan';
+    h.principal.mockResolvedValue({ identity: { id: 'did:imajin:ryan', ...(actingAsOrg ? { actingAs: org } : {}) } });
+    const selectors = actingAsOrg ? { actingAs: org } : { actingFor: principalDid };
+    const route = {
+      kind: actingAsOrg ? 'A' : 'B', billedPrincipal: { did: principalDid, handle: 'principal' },
+      card: { provider: 'anthropic', id: 'held', label: 'Anthropic', loaded: false },
+      selectedModels: [], usable: false, selectors,
+      reason: { code: 'key_not_loaded', message: 'Key unavailable' },
+    };
+    h.routes.mockResolvedValue([
+      route,
+      { ...route, billedPrincipal: { did: 'did:imajin:other-client', handle: 'private' } },
+      { ...route, selectors: { ...selectors, actingFor: 'did:imajin:other-human' } },
+    ]);
+    h.grants.mockResolvedValue([{ agentDid: actor }, { agentDid: 'did:imajin:grant-only' }]);
+    h.identity.mockImplementation(async did => ({ did, handle: 'artifact-jin', scope: 'actor', subtype: 'agent', tier: 'established' }));
+    const response = await GET(new NextRequest('https://kernel.test/infer/v1/self?agents=1'));
+    expect(response.status).toBe(200);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store');
+    const body = await response.json();
+    expect(body.principalDid).toBe(principalDid);
+    expect(body.cards).toHaveLength(2);
+    expect(body.cards[0]).toMatchObject({
+      name: 'Artifact-Jin', identity: { did: actor, actAs: actingAsOrg ? org : null },
+      connectors: [{ authority: actingAsOrg ? 'org-held' : 'delegated', usable: false,
+        fix: { actingDid: principalDid, href: actingAsOrg ? '/auth/connectors' : '/auth/connectors/anthropic' } }],
+    });
+    expect(body.cards[0].connectors).toHaveLength(1);
+    expect(JSON.stringify(body)).not.toContain('other-client');
+    expect(JSON.stringify(body)).not.toContain('other-human');
+    expect(h.serving).toHaveBeenCalledWith(principalDid);
+    expect(h.grants).toHaveBeenCalledWith(principalDid);
+    expect(h.metadata).not.toHaveBeenCalled();
+    expect(h.auth).not.toHaveBeenCalled();
+  });
+  it('retains red operator rows on a known unavailable credential without changing self failure semantics', async () => {
+    h.models.mockRejectedValue(new ExternalMcpError(503, 'Private custody detail', 'credential_unavailable'));
+    h.routes.mockResolvedValue([{
+      kind: 'A', billedPrincipal: { did: org, handle: 'artifact' },
+      card: { provider: 'anthropic', id: 'held', label: 'Anthropic', loaded: false },
+      selectedModels: [], usable: false, selectors: { actingAs: org },
+      reason: { code: 'key_not_loaded', message: 'Organization key unavailable' },
+    }]);
+    const response = await GET(new NextRequest('https://kernel.test/infer/v1/self?agents=1'));
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.cards[0]).toMatchObject({ usableModels: [], connectors: [{ usable: false }] });
+    expect(JSON.stringify(body)).not.toContain('Private custody detail');
+    expect((await GET(request())).status).toBe(503);
+  });
+  it.each([401, 403])('denies operator metadata before enumerating agents (%s)', async status => {
+    h.principal.mockResolvedValue({ error: 'Principal required', status });
+    const response = await GET(new NextRequest('https://kernel.test/infer/v1/self?agents=1'));
+    expect(response.status).toBe(status);
+    expect(h.serving).not.toHaveBeenCalled();
+    expect(h.grants).not.toHaveBeenCalled();
+    expect(h.routes).not.toHaveBeenCalled();
+  });
+  it.each(['0', '', 'true'])('rejects invalid operator selector %j', async value => {
+    expect((await GET(new NextRequest(`https://kernel.test/infer/v1/self?agents=${value}`))).status).toBe(400);
+    expect(h.principal).not.toHaveBeenCalled();
+  });
+  it('omits suspended and non-agent grant subjects, retaining an empty principal view', async () => {
+    h.serving.mockResolvedValue([]);
+    h.grants.mockResolvedValue([{ agentDid: 'suspended' }, { agentDid: 'human' }]);
+    h.identity.mockImplementation(async did => did === 'suspended' ? null : { did, scope: 'actor', subtype: 'human', tier: 'soft' });
+    const response = await GET(new NextRequest('https://kernel.test/infer/v1/self?agents=1'));
+    expect(await response.json()).toEqual({ principalDid: org, cards: [] });
+  });
+  it.each(['serving', 'grants'] as const)('fails closed when operator %s storage fails', async source => {
+    h[source].mockRejectedValue(new Error('private details'));
+    const response = await GET(new NextRequest('https://kernel.test/infer/v1/self?agents=1'));
+    expect(response.status).toBe(503);
+    expect(await response.json()).toEqual({ error: 'self_discovery_unavailable' });
   });
 });
