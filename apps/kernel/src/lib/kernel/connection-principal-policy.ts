@@ -19,6 +19,8 @@ export function sessionConnectionCaller(identity: Identity): { caller?: Connecti
   return { caller: connectionCaller(identity.id, identity) };
 }
 export const callerArguments = (caller?: ConnectionCaller): [ConnectionCaller] | [] => caller ? [caller] : [];
+/** Eligibility for assignment checks only; subtype never grants authority. */
+export const isAgentCapableSubtype = (subtype: string | null) => subtype === 'agent' || subtype === 'presence';
 export const missingConnection = (did: string) => new ExternalMcpError(
   403, `No active connection for ${did}. Configure that identity's connectors on /auth/connectors while acting as ${did}`,
   'connection_not_loaded',

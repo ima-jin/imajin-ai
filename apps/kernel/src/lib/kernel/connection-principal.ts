@@ -3,7 +3,7 @@ import { audienceAllows, isDelegationAudience } from '@imajin/auth';
 import { db, delegationGrants, identities, identityMembers } from '@/src/db';
 import { ExternalMcpError } from './external-mcp-policy';
 import type { ConnectionTransaction } from './member-connection-gate';
-import { isOrgScope, type ConnectionCaller } from './connection-principal-policy';
+import { isAgentCapableSubtype, isOrgScope, type ConnectionCaller } from './connection-principal-policy';
 export { missingConnection, type ConnectionCaller } from './connection-principal-policy';
 type Reader = Pick<ConnectionTransaction, 'select'>;
 const forbidden = (code: 'agent_not_assigned' | 'service_not_allowed' | 'identity_inactive' = 'agent_not_assigned') =>
@@ -43,7 +43,7 @@ export async function resolveConnectionPrincipal(caller: ConnectionCaller, servi
   const principalDid = caller.actingFor ?? caller.actingAs ?? caller.actorDid;
   const principal = principalDid === caller.actorDid ? actor : await activeIdentity(tx, principalDid);
   const delegated = principalDid !== caller.actorDid;
-  if (actor.subtype === 'agent' && delegated) {
+  if (isAgentCapableSubtype(actor.subtype) && delegated) {
     await requireAgentAssignment(tx, caller.actorDid, principalDid, service);
   } else if (caller.actingFor && delegated) {
     throw forbidden();
@@ -54,7 +54,7 @@ export async function resolveConnectionPrincipal(caller: ConnectionCaller, servi
 }
 
 function principalContext(caller: ConnectionCaller, subtype: string | null, principalDid: string, orgDid?: string) {
-  const assignedAgentDid = subtype === 'agent' && caller.actorDid !== principalDid && principalDid === orgDid ? caller.actorDid : undefined;
+  const assignedAgentDid = isAgentCapableSubtype(subtype) && caller.actorDid !== principalDid && principalDid === orgDid ? caller.actorDid : undefined;
   return {
     ownerDid: orgDid ?? principalDid,
     actorDid: caller.actorDid,
