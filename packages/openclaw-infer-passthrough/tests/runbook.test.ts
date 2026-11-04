@@ -72,7 +72,9 @@ describe('principal migration runbook (#3041)', () => {
     expect(env).toContain('INFER_PROXY_PRINCIPAL_DID=');
     expect(env).not.toMatch(/^[^#\n]*(?:GRANT_ID|ATTESTATION_ID|INFER_PROXY_ROUTES_CONFIG)=/m);
     expect(unit).toContain('EnvironmentFile=/etc/imajin/infer-passthrough.env');
-    expect(unit).toContain('/current/node_modules/.bin/tsx');
+    // The tsx CLI can relay a process-group signal twice if its IPC acknowledgement is delayed.
+    expect(unit).toContain('ExecStart=/usr/bin/env node --import tsx packages/openclaw-infer-passthrough/src/server.ts');
+    expect(unit).toContain('KillMode=control-group');
     expect(unit).not.toMatch(/GRANT_ID|ATTESTATION_ID/);
     expect(timer).toContain('OnUnitInactiveSec=2min');
     const runbook = readFileSync(new URL('README.md', deployUrl), 'utf8');

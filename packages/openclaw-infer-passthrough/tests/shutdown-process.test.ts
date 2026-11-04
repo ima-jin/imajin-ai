@@ -1,6 +1,6 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import { generateKeyPairSync, sign } from 'node:crypto';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { createServer, type Server, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
@@ -8,16 +8,21 @@ import { join, resolve } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+const serverPath = 'packages/openclaw-infer-passthrough/src/server.ts';
+
 // These are real POSIX process-group signals, not Windows' forceful kill emulation.
 // Shutdown regressions must assert drain/exit events, not minimum elapsed time (#3270).
-describe.skipIf(process.platform !== 'linux')('standalone tsx process-group shutdown', () => {
+// Each case owns the shared process group until cleanup, even with --sequence.concurrent.
+describe.skipIf(process.platform !== 'linux').sequential('standalone node --import tsx process-group shutdown', () => {
+  const graceMs = 1000;
+  const exitBoundMs = graceMs + 5000;
+  const testTimeoutMs = exitBoundMs + 5000;
   let child: ChildProcess;
   let upstream: Server;
   let upstreamResponse: ServerResponse;
   let output: string;
   let directory: string;
   let baseUrl: string;
-  let childPids: number[];
   let exited: Promise<{ code: number | null; signal: NodeJS.Signals | null }>;
 
   async function listen(server: Server) {
@@ -49,21 +54,22 @@ describe.skipIf(process.platform !== 'linux')('standalone tsx process-group shut
     baseUrl = `http://127.0.0.1:${port}`;
     output = '';
     child = spawn(process.execPath, [
-      resolve('node_modules/tsx/dist/cli.mjs'), '--tsconfig', tsconfig,
-      resolve('packages/openclaw-infer-passthrough/src/server.ts'),
+      '--import', 'tsx', resolve(serverPath),
     ], {
       detached: true,
       env: {
         PATH: process.env.PATH,
+        TSX_TSCONFIG_PATH: tsconfig,
         KERNEL_BASE_URL: `http://127.0.0.1:${upstreamPort}`,
         INFER_PROXY_AUTH_MODE: 'agent', INFER_PROXY_PORT: String(port),
-        INFER_PROXY_SHUTDOWN_GRACE_MS: '1000',
+        INFER_PROXY_SHUTDOWN_GRACE_MS: String(graceMs),
       },
       stdio: ['ignore', 'pipe', 'pipe'],
     });
     exited = new Promise((resolveExit, reject) => {
       child.once('error', reject);
-      child.once('exit', (code, signal) => resolveExit({ code, signal }));
+      // close follows exit AND stdout/stderr EOF, so final drain logs are available.
+      child.once('close', (code, signal) => resolveExit({ code, signal }));
     });
     child.stdout!.on('data', data => { output += data.toString(); });
     child.stderr!.on('data', data => { output += data.toString(); });
@@ -71,10 +77,6 @@ describe.skipIf(process.platform !== 'linux')('standalone tsx process-group shut
       expect(child.exitCode, output).toBeNull();
       expect(output).toContain('openclaw-infer-passthrough listening');
     }, { timeout: 10_000 });
-    childPids = (await readFile(`/proc/${child.pid}/task/${child.pid}/children`, 'utf8'))
-      .trim().split(/\s+/).map(Number);
-    expect(childPids.length).toBeGreaterThan(0);
-    expect(childPids.every(pid => pid > 0)).toBe(true);
   }, 15_000);
 
   afterEach(async () => {
@@ -87,13 +89,36 @@ describe.skipIf(process.platform !== 'linux')('standalone tsx process-group shut
     if (directory) await rm(directory, { recursive: true, force: true });
   });
 
-  async function assertExited(started: number, boundMs: number) {
-    expect(await Promise.race([exited, delay(boundMs).then(() => 'shutdown timed out')]), output)
-      .toEqual({ code: 0, signal: null });
-    expect(performance.now() - started).toBeLessThan(boundMs);
-    for (const pid of [child.pid!, ...childPids]) {
-      await vi.waitFor(() => expect(() => process.kill(pid, 0)).toThrow());
+  function shutdownEvents() {
+    return output.split('\n').slice(0, -1)
+      .filter(line => line.includes('"msg":"openclaw-infer-passthrough draining"')
+        || line.includes('"msg":"openclaw-infer-passthrough shutdown complete"'))
+      .map(line => JSON.parse(line));
+  }
+
+  async function assertDraining(inFlightAtSignal: number) {
+    await vi.waitFor(() => expect(shutdownEvents(), output).toContainEqual(expect.objectContaining({
+      msg: 'openclaw-infer-passthrough draining', inFlightAtSignal,
+    })), { timeout: exitBoundMs });
+  }
+
+  async function assertExited(inFlightAtSignal: number, cutAtGrace: boolean) {
+    const deadline = new AbortController();
+    try {
+      expect(await Promise.race([
+        exited, delay(exitBoundMs, 'shutdown timed out', { signal: deadline.signal }),
+      ]), output).toEqual({ code: 0, signal: null });
+    } finally {
+      deadline.abort();
     }
+    expect(shutdownEvents(), output).toEqual([
+      expect.objectContaining({ msg: 'openclaw-infer-passthrough draining', inFlightAtSignal }),
+      expect.objectContaining({
+        msg: 'openclaw-infer-passthrough shutdown complete', inFlightAtSignal, cutAtGrace,
+      }),
+    ]);
+    expect(() => process.kill(child.pid!, 0)).toThrow();
+    expect(() => process.kill(-child.pid!, 0)).toThrow();
   }
 
   function signal(name: NodeJS.Signals = 'SIGTERM') {
@@ -114,47 +139,40 @@ describe.skipIf(process.platform !== 'linux')('standalone tsx process-group shut
     });
   }
 
-  it.each(['SIGTERM', 'SIGINT'] as const)('idle %s exits 0 with both PIDs gone in < 1s', async name => {
+  it.each(['SIGTERM', 'SIGINT'] as const)('idle %s reports drain and exits 0 with the process group gone', async name => {
     await (await fetch(`${baseUrl}/healthz`)).text();
-    const started = performance.now();
     signal(name);
-    await assertExited(started, 1000);
-  });
+    await assertExited(0, false);
+  }, testTimeoutMs);
 
   it('SIGTERM lets an in-flight upstream stream complete 200 and exits 0 within grace', async () => {
     const response = await stream();
     const text = response.text();
-    const started = performance.now();
     signal();
-    await vi.waitFor(() => expect(output).toContain('passthrough draining'));
-    await delay(100);
-    expect(child.exitCode).toBeNull();
+    await assertDraining(1);
+    expect(child.exitCode, output).toBeNull();
     upstreamResponse.end('data: done\n\n');
     expect(response.status).toBe(200);
     expect(await text).toBe('data: first\n\ndata: done\n\n');
-    await assertExited(started, 1000);
-    expect(output).toContain('"inFlightAtSignal":1,"cutAtGrace":false');
-  });
+    await assertExited(1, false);
+  }, testTimeoutMs);
 
-  it('SIGTERM cuts a hung upstream at grace and exits 0 without a lingering wrapper', async () => {
+  it('SIGTERM cuts a hung upstream at grace and exits 0 with the process group gone', async () => {
     const response = await stream();
     const text = response.text().catch(() => 'cut');
-    const started = performance.now();
     signal();
-    await assertExited(started, 1800);
-    expect(performance.now() - started).toBeGreaterThanOrEqual(950);
+    await assertExited(1, true);
+    expect(response.status).toBe(200);
     expect(await text).toBe('cut');
-    expect(output).toContain('"inFlightAtSignal":1,"cutAtGrace":true');
-  });
+  }, testTimeoutMs);
 
   it('a second signal skips the remaining grace', async () => {
     const response = await stream();
     const text = response.text().catch(() => 'cut');
     signal();
-    await vi.waitFor(() => expect(output).toContain('passthrough draining'));
-    const started = performance.now();
+    await assertDraining(1);
     signal();
-    await assertExited(started, 500);
+    await assertExited(1, false);
     expect(await text).toBe('cut');
-  });
+  }, testTimeoutMs);
 });
