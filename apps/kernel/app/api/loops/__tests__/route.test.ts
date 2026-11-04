@@ -16,7 +16,8 @@ const { mockRequireAuth, mockIngestLoopEvent, mockListLoops } = vi.hoisted(() =>
 
 vi.mock('@imajin/auth', () => ({
   requireAuth: mockRequireAuth,
-  resolveActingDid: (identity: { id: string; actingFor?: string }) => identity.actingFor ?? identity.id,
+  resolveActingDid: (identity: { id: string; actingFor?: string; actingAs?: string }) =>
+    identity.actingFor ?? identity.actingAs ?? identity.id,
   SIGNED_MESSAGE_MAX_AGE: 5 * 60 * 1000,
   FUTURE_TOLERANCE: 30 * 1000,
 }));
@@ -174,6 +175,26 @@ describe('POST /api/loops (signed ingest)', () => {
 });
 
 describe('GET /api/loops (per-principal list)', () => {
+  it('refuses the personal principal while the human is acting as an org', async () => {
+    mockRequireAuth.mockResolvedValueOnce({
+      identity: { id: OPERATOR_DID, actingAs: 'did:imajin:org' },
+    });
+    const response = await GET(makeGetReq(`?principal=${OPERATOR_DID}&sessionKey=obsolete`) as Parameters<typeof GET>[0]);
+    expect(response.status).toBe(403);
+    expect(mockListLoops).not.toHaveBeenCalled();
+  });
+  it.each([
+    { id: OPERATOR_DID },
+    { id: OPERATOR_DID, actingAs: 'did:imajin:org' },
+  ])('ignores an obsolete session filter while preserving acting ownership (%j)', async identity => {
+    mockRequireAuth.mockResolvedValueOnce({ identity });
+    mockListLoops.mockResolvedValueOnce([]);
+    const response = await GET(makeGetReq('?sessionKey=obsolete') as Parameters<typeof GET>[0]);
+    expect(response.status).toBe(200);
+    const filters = mockListLoops.mock.calls[0][0];
+    expect(filters.principal).toBe(identity.actingAs ?? identity.id);
+    expect(filters).not.toHaveProperty('sessionKey');
+  });
   it('returns 401 without querying when unauthenticated', async () => {
     mockRequireAuth.mockResolvedValueOnce({ error: 'Unauthorized', status: 401 });
 
@@ -219,7 +240,6 @@ describe('GET /api/loops (per-principal list)', () => {
       runId: 'run1',
       issue: 'o/r#1',
       pr: 'o/r#2',
-      sessionKey: 'session1',
     });
   });
 

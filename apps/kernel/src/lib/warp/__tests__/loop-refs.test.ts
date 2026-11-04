@@ -18,7 +18,7 @@ describe('Warp loop refs', () => {
       ...base, triggerUrl: 'https://github.com/ima-jin/imajin-ai/issues/2290',
       artifacts: [artifact('https://github.com/ima-jin/imajin-ai/pull/2300#discussion')],
     })).toEqual({
-      runId: 'run', sessionKey: 'session', issue: 'https://github.com/ima-jin/imajin-ai/issues/2290',
+      runId: 'run', issue: 'https://github.com/ima-jin/imajin-ai/issues/2290',
       pr: 'https://github.com/ima-jin/imajin-ai/pull/2300',
     });
   });

@@ -64,6 +64,38 @@ beforeEach(() => {
 afterEach(() => vi.useRealTimers());
 
 describe('ingestLoopEvent', () => {
+  it.each(['loop.started', 'loop.progress', 'surface.acquired'] as const)(
+    'verifies legacy refs but never stores or republishes them for %s',
+    async type => {
+      mockVerify.mockResolvedValueOnce({ ok: true });
+      const payload = {
+        ...REQUEST.payload, refs: { runId: 'run', sessionKey: 'harness-only', futureRef: 'ignored' },
+        ...(type === 'surface.acquired' ? { surface: 'issue:#3259' } : {}),
+      };
+      expect(await ingestLoopEvent({ ...REQUEST, type, payload })).toEqual({ ok: true });
+      expect(mockVerify.mock.calls[0][1].payload).toBe(payload);
+      const published = mockPublish.mock.calls[0][1].payload;
+      expect(published.refs).toEqual({ runId: 'run' });
+      expect(published).not.toHaveProperty('publisherProof');
+      expect(JSON.stringify(mockSql.mock.calls)).not.toContain('harness-only');
+      expect(JSON.stringify(published)).not.toContain('sessionKey');
+      expect(payload.refs.sessionKey).toBe('harness-only');
+      expect(projectSurfaceLease).toHaveBeenCalledWith(
+        expect.objectContaining({ payload }), published, false,
+      );
+    },
+  );
+
+  it('does not bypass signature or authorization checks for stripped legacy refs', async () => {
+    const request = { ...REQUEST, payload: { ...REQUEST.payload, refs: { runId: 'run', sessionKey: 'harness-only' } } };
+    mockVerify.mockResolvedValueOnce({ ok: false, error: 'invalid' });
+    expect(await ingestLoopEvent(request)).toMatchObject({ status: 400 });
+    mockVerify.mockResolvedValueOnce({ ok: true });
+    mockAuthorize.mockResolvedValueOnce({ authorized: false });
+    expect(await ingestLoopEvent(request)).toMatchObject({ status: 403 });
+    expect(mockSql).not.toHaveBeenCalled();
+    expect(mockPublish).not.toHaveBeenCalled();
+  });
   const stepRequest = (): LoopIngestRequest => ({
     ...REQUEST, type: 'step.queued', publisherDid: queuedStep().issuer,
     payload: queuedStep().payload as LoopIngestRequest['payload'],

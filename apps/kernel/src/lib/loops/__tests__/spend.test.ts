@@ -24,7 +24,7 @@ beforeAll(async () => {
       id text PRIMARY KEY, principal_did text, session_id text, cost_usd numeric,
       status text, created_at timestamptz DEFAULT '2026-10-04'
     );
-    CREATE TABLE kernel.loop_events (loop_id text, principal text, payload jsonb);
+    CREATE TABLE kernel.loop_events (loop_id text, principal text, payload jsonb, type text DEFAULT 'loop.started');
   `);
   const migration = readFileSync('migrations/archive/pre-kernel-baseline/0192_loop_refs_spend.sql', 'utf8');
   await pg.exec(migration);
@@ -59,27 +59,56 @@ describe('registry usage join', () => {
     expect(result.runs[0].metered?.usd).toBe(2);
     expect(result.prs).toEqual([{ ref: 'o/r#10', runCount: 1, meteredUsd: 2 }]);
   });
-  it('includes previous signed sessions after a run resumes, without cross-principal aliases', async () => {
+  it('includes previous signed run ids after a resume, without cross-principal aliases', async () => {
     await loop('run1', 'r1', 'new-session');
-    await pg.query('INSERT INTO kernel.loop_events VALUES ($1,$2,$3), ($1,$4,$5)', [
-      'run1', principal, JSON.stringify({ refs: { runId: 'r1', sessionKey: 'old-session' } }),
-      'did:imajin:other', JSON.stringify({ refs: { runId: 'r1', sessionKey: 'foreign' } }),
+    await pg.query('INSERT INTO kernel.loop_events(loop_id,principal,payload) VALUES ($1,$2,$3), ($1,$4,$5)', [
+      'run1', principal, JSON.stringify({ refs: { runId: 'old-run', sessionKey: 'old-session' } }),
+      'did:imajin:other', JSON.stringify({ refs: { runId: 'foreign' } }),
     ]);
-    await usage('old', 'old-session', 2);
-    await usage('new', 'new-session', 3);
+    await usage('old', 'old-run', 2);
+    await usage('new', 'r1', 3);
+    await usage('legacy-old', 'old-session', 90);
+    await usage('legacy-new', 'new-session', 90);
     await usage('foreign', 'foreign', 90);
     const result = await readRegistrySpend(principal, from, to);
     expect(result.runs[0].metered).toEqual({ usd: 5, turns: 2 });
-    expect(await unregisteredSessionIds(principal, ['old-session', 'foreign'])).toEqual(['foreign']);
+    expect(result.runs[0].refs).toEqual({ runId: 'r1' });
+    expect(await unregisteredSessionIds(principal, ['old-run', 'foreign', 'old-session'])).toEqual(['foreign', 'old-session']);
   });
-  it('correlates session-only loops using their stable loop id', async () => {
+  it('correlates legacy loops only through their stable loop id, ignoring historical harness keys', async () => {
     await pg.query(`INSERT INTO kernel.loops(loop_id, principal, kind, refs) VALUES ('session-loop', $1, 'openclaw.subagent', $2)`,
       [principal, JSON.stringify({ sessionKey: 'session-only', issue: 'o/r#9' })]);
-    await usage('u1', 'session-only', 2);
+    await usage('u1', 'session-loop', 2);
+    await usage('historical', 'session-only', 90);
     const result = await readRegistrySpend(principal, from, to);
     expect(result.runs[0]).toMatchObject({ runId: 'session-loop', loopId: 'session-loop', metered: { usd: 2, turns: 1 } });
     expect(result.issues).toEqual([{ ref: 'o/r#9', runCount: 1, meteredUsd: 2 }]);
     expect(await registeredRunIds(principal, ['session-loop'])).toEqual(new Set(['session-loop']));
+  });
+
+  it('aliases a resumed signed run through parentLoopId without a harness key', async () => {
+    await loop('parent-loop', 'parent-run');
+    await pg.query('INSERT INTO kernel.loop_events(loop_id,principal,payload) VALUES ($1,$2,$3)', [
+      'resumed-loop', principal, JSON.stringify({ parentLoopId: 'parent-loop', refs: { runId: 'resumed-run' } }),
+    ]);
+    await usage('resumed', 'resumed-run', 4);
+    expect((await readRegistrySpend(principal, from, to)).runs[0].metered).toEqual({ usd: 4, turns: 1 });
+    expect(await unregisteredSessionIds(principal, ['resumed-run'])).toEqual([]);
+    // Once the child has its own projection, its exact run id wins.
+    await loop('resumed-loop', 'resumed-run');
+    const result = await readRegistrySpend(principal, from, to);
+    expect(result.runs.find(run => run.runId === 'parent-run')?.metered).toBeNull();
+    expect(result.runs.find(run => run.runId === 'resumed-run')?.metered).toEqual({ usd: 4, turns: 1 });
+  });
+
+  it('does not use non-lifecycle events as run alias assertions', async () => {
+    await loop('run1', 'r1');
+    await pg.query('INSERT INTO kernel.loop_events VALUES ($1,$2,$3,$4)', [
+      'run1', principal, JSON.stringify({ refs: { runId: 'not-a-run' } }), 'loop.command.queued',
+    ]);
+    await usage('untrusted', 'not-a-run', 90);
+    expect((await readRegistrySpend(principal, from, to)).runs[0].metered).toBeNull();
+    expect(await unregisteredSessionIds(principal, ['not-a-run'])).toEqual(['not-a-run']);
   });
 
   it('never presents partially known run or subject costs as complete', async () => {
@@ -95,16 +124,16 @@ describe('registry usage join', () => {
   it('reserves registry sessions from fallback without leaking another principal', async () => {
     await loop('run1', 'r1', 's1');
     await loop('other', 'r2', 's2', {}, 'did:imajin:other');
-    expect((await unregisteredSessionIds(principal, ['r1', 's1', 's2', 'legacy'])).sort()).toEqual(['legacy', 's2']);
+    expect((await unregisteredSessionIds(principal, ['r1', 'run1', 's1', 's2', 'legacy'])).sort()).toEqual(['legacy', 's1', 's2']);
     expect(await unregisteredSessionIds(principal, [])).toEqual([]);
   });
-  it('joins both runId and sessionKey, deduplicates duplicate loops and groups issues/PRs', async () => {
+  it('joins runId and loopId, deduplicates duplicate loops and groups issues/PRs', async () => {
     await loop('run1', 'r1', 's1', { issue: 'o/repo#1', pr: 'o/repo#2' });
     await loop('review1', 'r1', 's1');
     await loop('run2', 'r2', 's2', { issue: 'o/repo#1', pr: 'o/repo#2' });
     await usage('u1', 'r1', 2);
-    await usage('u2', 's1', 3);
-    await usage('u3', 's2', 4);
+    await usage('u2', 'review1', 3);
+    await usage('u3', 'run2', 4);
     const result = await readRegistrySpend(principal, from, to);
     expect(result.runs).toHaveLength(2);
     expect(result.runs.find((r) => r.runId === 'r1')?.metered).toEqual({ usd: 5, turns: 2 });
@@ -112,10 +141,14 @@ describe('registry usage join', () => {
     expect(result.prs).toEqual([{ ref: 'o/repo#2', runCount: 2, meteredUsd: 9 }]);
   });
 
-  it('does not assign a shared session to multiple runs; exact run id wins an alias collision', async () => {
+  it('does not assign a shared run alias to multiple runs; exact run id wins an alias collision', async () => {
     await loop('run1', 'r1', 'shared');
     await loop('run2', 'r2', 'shared');
     await loop('run3', 'r3', 'r1');
+    for (const [loopId, runId] of [['run1', 'shared'], ['run2', 'shared'], ['run3', 'r1']]) {
+      await pg.query('INSERT INTO kernel.loop_events(loop_id,principal,payload) VALUES ($1,$2,$3)',
+        [loopId, principal, JSON.stringify({ refs: { runId } })]);
+    }
     await usage('ambiguous', 'shared', 50);
     await usage('exact', 'r1', 2);
     const result = await readRegistrySpend(principal, from, to);
@@ -126,11 +159,11 @@ describe('registry usage join', () => {
   it('isolates both principals and the half-open usage window; excludes errors', async () => {
     await loop('run1', 'r1', 's1');
     await loop('other', 'r2', 's1', {}, 'did:imajin:other');
-    await usage('own', 's1', 1);
-    await usage('other-owner', 's1', 90, 'did:imajin:other');
-    await usage('before', 's1', 90, principal, '2026-09-30');
-    await usage('boundary', 's1', 90, principal, to);
-    await usage('error', 's1', 90, principal, '2026-10-04', 'error');
+    await usage('own', 'r1', 1);
+    await usage('other-owner', 'r1', 90, 'did:imajin:other');
+    await usage('before', 'r1', 90, principal, '2026-09-30');
+    await usage('boundary', 'r1', 90, principal, to);
+    await usage('error', 'r1', 90, principal, '2026-10-04', 'error');
     await usage('unlinked', null, 90);
     const result = await readRegistrySpend(principal, from, to);
     expect(result.runs).toHaveLength(1);

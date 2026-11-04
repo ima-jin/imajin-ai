@@ -174,11 +174,19 @@ describe('listLoops', () => {
   });
 
   it('queries signed refs without interpolating them as SQL identifiers', async () => {
-    await listLoops({ principal: PRINCIPAL, runId: 'run1', issue: 'ima-jin/imajin-ai#2290', pr: 'pr1', sessionKey: 'session1' });
+    await listLoops({ principal: PRINCIPAL, runId: 'run1', issue: 'ima-jin/imajin-ai#2290', pr: 'pr1' });
     expect(calls[0].text).toContain('refs @>');
     expect(JSON.parse(calls[0].values[1] as string)).toEqual({
-      runId: 'run1', issue: 'ima-jin/imajin-ai#2290', pr: 'pr1', sessionKey: 'session1',
+      runId: 'run1', issue: 'ima-jin/imajin-ai#2290', pr: 'pr1',
     });
+  });
+
+  it('ignores historical harness refs without rewriting the stored row', async () => {
+    const row = rawLoopRow({ refs: { runId: 'run', sessionKey: 'historical' } });
+    resolveWith([row]);
+    const result = await listLoops({ principal: PRINCIPAL });
+    expect(result[0].refs).toEqual({ runId: 'run' });
+    expect(row.refs).toEqual({ runId: 'run', sessionKey: 'historical' });
   });
 
   it('clamps limit to the max and falls back to the default for invalid values', async () => {

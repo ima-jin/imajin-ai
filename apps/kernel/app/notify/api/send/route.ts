@@ -383,6 +383,9 @@ export const POST = withLogger('kernel', async (request, { log }) => {
   // the guard still normalizes before POST proceeds.
   const operatorApprovalGuard = await rejectInvalidOperatorApprovalRequest(scope, data, to, cors);
   if (operatorApprovalGuard.response) return operatorApprovalGuard.response;
+  // Hash validation consumed the original wire detail. Notifications and all
+  // deliveries must use the same public projection as the approval row.
+  if (operatorApprovalGuard.normalized) data.detail = operatorApprovalGuard.normalized.detail;
   const recipientDid = notificationRecipient(to, operatorApprovalGuard.normalized);
   const sender = await resolvePaymentMailSender({ internal: auth.internal, sender: auth.sender, scope, to: recipientDid, data });
 

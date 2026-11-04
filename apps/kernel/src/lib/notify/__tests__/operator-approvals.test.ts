@@ -252,7 +252,6 @@ describe('validateApprovalRequestedPayload — exec.command (#2221)', () => {
         host: 'gateway-01',
         cwd: '/opt/openclaw',
         agentId: 'agent_123',
-        sessionKey: 'session_abc',
         requestedBy: 'did:imajin:jin-agent',
         approvalId: 'oc_approval_1',
         expiresAt: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
@@ -272,6 +271,18 @@ describe('validateApprovalRequestedPayload — exec.command (#2221)', () => {
     return { ...merged, contentHash };
   }
 
+  it('verifies legacy detail hashes before stripping harness addressing from storage', () => {
+    const base = execCommandPayload();
+    const payload = execCommandPayload({ detail: { ...base.detail, sessionKey: 'harness-only' } });
+    const result = validateApprovalRequestedPayload(payload);
+    expect(result.ok).toBe(true);
+    expect(result.detail).toEqual(base.detail);
+    expect(result.contentHash).toBe(payload.contentHash);
+    expect(validateApprovalRequestedPayload({
+      ...payload, detail: { ...payload.detail, sessionKey: 'tampered' },
+    }).ok).toBe(false);
+  });
+
   it('accepts a well-formed exec.command payload with a matching contentHash', () => {
     const payload = execCommandPayload();
     const result = validateApprovalRequestedPayload(payload);
@@ -284,7 +295,7 @@ describe('validateApprovalRequestedPayload — exec.command (#2221)', () => {
     });
   });
 
-  it.each(['command', 'host', 'cwd', 'agentId', 'sessionKey', 'requestedBy', 'approvalId', 'expiresAt'])(
+  it.each(['command', 'host', 'cwd', 'agentId', 'requestedBy', 'approvalId', 'expiresAt'])(
     'rejects exec.command detail missing %s',
     (field) => {
       const payload = execCommandPayload();

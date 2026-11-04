@@ -45,7 +45,6 @@ export interface LoopRefs {
   issue?: string;
   pr?: string;
   runId?: string;
-  sessionKey?: string;
   sessionId?: string;
   conflictingLoopId?: string;
   conflictingHolderDid?: string;
@@ -81,7 +80,12 @@ export interface LoopIngestRequest {
 const ED25519_PUBLIC_KEY_HEX = /^[0-9a-f]{64}$/i;
 const ED25519_SIGNATURE_HEX = /^[0-9a-f]{128}$/i;
 const MAX_SUMMARY_LENGTH = 2000;
-const REFS_KEYS = new Set(['issue', 'pr', 'runId', 'sessionKey', 'sessionId', 'conflictingLoopId', 'conflictingHolderDid']);
+const REFS_KEYS = new Set(['issue', 'pr', 'runId', 'sessionId', 'conflictingLoopId', 'conflictingHolderDid']);
+
+/** Project recognized refs only; legacy harness addressing is never a kernel fact. */
+export function kernelLoopRefs(raw: object): LoopRefs & Record<string, unknown> {
+  return Object.fromEntries(Object.entries(raw).filter(([key]) => REFS_KEYS.has(key)));
+}
 
 export type ParseResult<T> = { ok: true; value: T } | { ok: false; error: string };
 
@@ -97,7 +101,7 @@ function parseRefs(raw: unknown): ParseResult<LoopRefs | null | undefined> {
   const refs: LoopRefs = {};
   for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
     if (!REFS_KEYS.has(key)) {
-      return { ok: false, error: 'payload.refs contains an unrecognized ref' };
+      continue;
     }
     if (typeof value !== 'string' || value.length === 0) {
       return { ok: false, error: 'payload.refs values must be non-empty strings' };
