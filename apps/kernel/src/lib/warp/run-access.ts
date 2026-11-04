@@ -86,6 +86,14 @@ function owns(callerDid: string, receipt: WarpRunReceipt): boolean {
   return callerDid === receipt.principalDid || callerDid === receipt.actorDid;
 }
 
+async function readAncestor(runId: string, seen: Set<string>): Promise<WarpRunReceipt> {
+  if (seen.has(runId)) throw new WarpRunAccessError();
+  seen.add(runId);
+  const receipt = await readRunReceipt(runId);
+  if (!receipt) throw new WarpRunAccessError();
+  return receipt;
+}
+
 /**
  * One fail-closed boundary for every HTTP/MCP operation and internal observer.
  * No caller means the explicitly supplied personal principal, NEVER a system
@@ -103,19 +111,17 @@ export async function assertRunAccess(
   const system = isSystemCaller(caller);
   let allowed = system ? receipt.principalDid === principalDid : owns(callerDid, receipt);
   let descendant = ancestorRunId === undefined;
+  if (allowed && descendant) return receipt;
   let parent = receipt.parentRunId;
   const seen = new Set([runId]);
   for (let depth = 0; parent && depth < MAX_LINEAGE_DEPTH; depth += 1) {
-    if (seen.has(parent)) throw new WarpRunAccessError();
-    seen.add(parent);
-    const ancestor = await readRunReceipt(parent);
-    if (!ancestor) throw new WarpRunAccessError();
+    const ancestor = await readAncestor(parent, seen);
     if (!system && owns(callerDid, ancestor)) allowed = true;
     if (parent === ancestorRunId) descendant = true;
+    if (allowed && descendant) return receipt;
     parent = ancestor.parentRunId;
   }
-  if (parent || !allowed || !descendant) throw new WarpRunAccessError();
-  return receipt;
+  throw new WarpRunAccessError();
 }
 
 export async function canAccessRun(

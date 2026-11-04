@@ -16,6 +16,10 @@ vi.mock('../environment', () => ({ readEnvironmentId: async () => undefined }));
 vi.mock('../loop-emit', () => ({ emitWarpRunLoopEvent: h.emit }));
 vi.mock('../brief-ledger', () => ({ recordWarpBrief: async () => ({ hash: 'a'.repeat(64), storage: 'hash-only', assetId: null }) }));
 vi.mock('../run-watch-sweep', () => ({ claimTerminalPublish: vi.fn(), countPriorResumes: async () => 0 }));
+vi.mock('../../mcp/agent-binding', () => ({
+  AgentOAuthError: class extends Error {},
+  mcpCredentialContext: async () => ({ ownerDid: 'did:org', caller: { actorDid: 'did:member-b', actingAs: 'did:org' } }),
+}));
 vi.mock('@imajin/bus', () => ({ publish: h.publish }));
 vi.mock('@imajin/logger', () => ({ createLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }) }));
 vi.mock('@/src/lib/kernel/cors', () => ({ corsHeaders: () => ({}), corsOptions: () => new Response(null, { status: 204 }) }));
@@ -119,6 +123,11 @@ describe('original signed dispatch authority', () => {
     await expect(assertRunAccess(ORG, 'legacy')).resolves.toBeDefined();
     await expect(assertRunAccess(ORG, 'legacy', caller(A))).rejects.toBeInstanceOf(WarpRunAccessError);
   });
+  it('does not require an ancestor receipt when the run itself names the principal or actor', async () => {
+    receipt('direct', ORG, A, 'unrecorded-parent');
+    await expect(assertRunAccess(ORG, 'direct')).resolves.toBeDefined();
+    await expect(assertRunAccess(ORG, 'direct', caller(A))).resolves.toBeDefined();
+  });
   it('fails closed on absent projection/dispatch or inconsistent principal data', async () => {
     await expect(assertRunAccess(ORG, 'missing')).rejects.toBeInstanceOf(WarpRunAccessError);
     rows.set('bad', { principal: 12 as unknown as string, parent_loop_id: null, payload: {} });
@@ -195,6 +204,19 @@ describe('all dispatch operations share the receipt boundary', () => {
     expect(fetch).not.toHaveBeenCalled();
     expect(h.key).not.toHaveBeenCalled();
   });
+  it('rejects a blank supplied parent rather than forwarding an ungated parent field', async () => {
+    await expect(dispatchAgentRun(ORG, { prompt: 'go', parentRunId: ' ' }, caller(A))).rejects.toThrow('warp_invalid_run_id');
+    expect(fetch).not.toHaveBeenCalled();
+  });
+  it('checks an unexpected confirmed parent before witnessing accepted work', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(response({ run_id: 'accepted', parent_run_id: 'run-b' }));
+    await expect(dispatchAgentRun(ORG, { prompt: 'go' }, caller(A))).rejects.toMatchObject({
+      name: 'WarpBriefEventError', runId: 'accepted',
+    });
+    expect(h.emit).not.toHaveBeenCalled();
+    vi.mocked(fetch).mockResolvedValueOnce(response({ run_id: 'accepted', parent_run_id: 'run-a' }));
+    await expect(dispatchAgentRun(ORG, { prompt: 'go' }, caller(A))).resolves.toBeDefined();
+  });
   it('refuses a conversation not belonging to the authorized parent without dispatching', async () => {
     await expect(dispatchAgentRun(ORG, { prompt: 'go', parentRunId: 'run-a', conversationId: 'foreign' }, caller(A))).rejects.toBeInstanceOf(WarpRunAccessError);
     expect(fetch).toHaveBeenCalledTimes(1);
@@ -250,6 +272,14 @@ describe('attribution survives every emitted lifecycle and sweep', () => {
 });
 
 describe('HTTP and MCP reach the same real gate', () => {
+  it('retains receipt 403 for delegated agents rather than converting it to a key error', async () => {
+    await expect(tool('warp_get_run').handler({ run_id: 'run-a' }, { ...ctx(B), actingFor: ORG }))
+      .rejects.toMatchObject({ status: 403, message: 'warp_run_forbidden' });
+    h.key.mockRejectedValueOnce(new Error('credential unavailable'));
+    await expect(tool('warp_get_run').handler({ run_id: 'run-b' }, { ...ctx(B), actingFor: ORG }))
+      .rejects.toThrow('agent_connection_unavailable');
+    expect(fetch).not.toHaveBeenCalled();
+  });
   const handlers = [httpGet, httpCancel, httpTranscript, httpConversation, httpFollowup];
   it.each(handlers)('HTTP returns the same detail-free 403 for a stranger and an absent receipt', async handler => {
     h.identity = { id: B, actingAs: ORG };

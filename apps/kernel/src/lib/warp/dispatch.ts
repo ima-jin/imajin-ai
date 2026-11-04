@@ -4,9 +4,9 @@
  * The wire: caller DID → active `warp:dispatch` grant → unwrap *their* sealed
  * Warp Agent key → `POST /agent/run` stamped `{username}-jin`.
  *
- * Every run is fired with the caller's own credential, so Warp attributes it to
- * that key's service account. Nothing here has to enforce "don't puppet the
- * human" — the credential does it structurally.
+ * Credentials authorize the provider wire; they do not confer run ownership.
+ * Run operations additionally require the original node-witnessed signed loop
+ * receipt naming the caller as principal/actor or owner of an ancestor run.
  *
  * ## Secret handling
  * The Agent key is read inside `dispatchAgentRun` / `getAgentRun`, used as a
@@ -22,10 +22,8 @@
  * lifecycle state and `session_link`.
  *
  * ## Surface (#1639)
- * Every call below is the same wire — caller DID → `warp:dispatch` grant →
- * *their* sealed key — so a caller can only ever reach runs its own credential
- * created. Reads and mutations are gated by the one scope for that reason:
- * there is no cross-DID surface to grant separately.
+ * All HTTP and MCP operations share `assertRunAccess` before reaching Warp.
+ * A shared org key never promotes another member to the run's recorded actor.
  *   - `GET  /agent/runs/{runId}`             → {@link getAgentRun}
  *   - `GET  /agent/runs/{runId}/transcript`  → {@link getAgentRunTranscript}
  *   - `GET  /agent/runs/{runId}/conversation`→ {@link getAgentRunConversation}
@@ -84,8 +82,9 @@
  * publishing a terminal outcome, {@link watchRun} calls the
  * `claimTerminalPublish` function passed in via {@link WatchRunOptions} —
  * when provided — and skips the publish if the claim was not won. This
- * module still holds no DB dependency of its own (see the top of this
- * file): the production implementation
+ * claim implementation remains injected; the separate receipt authorization
+ * module reads durable loop history on every operation. The production claim
+ * implementation
  * (`claimTerminalPublish`, `run-watch-sweep.ts`) is wired in by the
  * dispatch route's call site, not imported here.
  *
@@ -135,8 +134,7 @@ import { readEnvironmentId } from './environment';
 import { WarpApiError, WarpBriefEventError, WarpRunAccessError } from './errors';
 import { assertRunAccess, canAccessRun, dispatchRunAttribution, readRunReceipt, runCredentialCaller } from './run-access';
 // Type-only: erased at compile time, so this adds no runtime dependency on
-// './loop-emit' (and therefore none of its DB dependency either) — see that
-// module's "Why this lives in its own module" doc. The real implementation is
+// './loop-emit'. The signing/ingest implementation is
 // reached only through the dynamic `import()` in `bridgeWarpRunToLoop` below.
 import type { WarpRunLoopTransition } from './loop-emit';
 import { warpRunLoopRefs, warpRunPrArtifacts } from './loop-refs';
@@ -157,12 +155,9 @@ const log = createLogger('kernel');
 
 /**
  * Bridge one warp.run.* transition onto the kernel loop registry rail
- * (#2296) via a dynamic `import()` of `./loop-emit` — see that module's
- * "Why this lives in its own module" doc for why this stays dynamic rather
- * than a static import: it keeps this module's own promise of holding no DB
- * dependency, so this module's existing unit tests (none of which mock
- * `./loop-emit` or its transitive DB dependency) are unaffected by a failed
- * import in a test process with no real database configured.
+ * (#2296). Only dispatch supplies new attribution. All subsequent observations,
+ * including sweeps and resumes, recover the original attribution from durable
+ * receipts, never from an in-process run cache or the observer's node identity.
  *
  * Lifecycle telemetry stays best-effort. Brief-bearing observations are awaited
  * and report failure explicitly, including the already-accepted provider run ID.
@@ -172,14 +167,15 @@ type PendingTransition = Omit<WarpRunLoopTransition, 'actorDid'> & { actorDid?: 
 async function bridgeWarpRunToLoop(transition: PendingTransition): Promise<void> {
   try {
     const receipt = transition.actorDid ? null : await readRunReceipt(transition.runId);
-    if (!transition.actorDid && !receipt) throw new WarpRunAccessError();
+    const actorDid = transition.actorDid ?? receipt?.actorDid ?? receipt?.principalDid;
+    if (!actorDid) throw new WarpRunAccessError();
     const { emitWarpRunLoopEvent } = await import('./loop-emit');
     const recorded = await emitWarpRunLoopEvent({
       ...transition,
       ...(receipt ? {
         principalDid: receipt.principalDid, parentRunId: receipt.parentRunId, orgDid: receipt.orgDid,
       } : {}),
-      actorDid: transition.actorDid ?? receipt?.actorDid ?? receipt!.principalDid,
+      actorDid,
     });
     if (transition.brief && recorded !== true) throw new Error('Brief event was not recorded');
   } catch (err) {
@@ -1043,6 +1039,19 @@ async function resolvePrompt(
   };
 }
 
+/** Do not witness an unrequested parent without checking the same actor boundary. */
+async function authorizeConfirmedParent(
+  principalDid: string, run: WarpAgentRun, parentRunId?: string, caller?: ConnectionCaller,
+): Promise<void> {
+  if (!run.parentRunId || run.parentRunId === parentRunId) return;
+  // Work was already accepted: report audit failure, not a retryable dispatch denial.
+  try {
+    await assertRunAccess(principalDid, run.parentRunId, caller);
+  } catch {
+    throw new WarpBriefEventError(run.runId);
+  }
+}
+
 /**
  * Dispatch a Warp cloud agent as `principalDid`.
  *
@@ -1063,6 +1072,7 @@ async function resolvePrompt(
  * used — what was retrieved (source, ref, hit count, content hashes), but
  * never the prompt, the retrieved snippet text, or the key.
  */
+
 export async function dispatchAgentRun(
   principalDid: string,
   input: DispatchAgentRunInput,
@@ -1073,9 +1083,10 @@ export async function dispatchAgentRun(
   if (trimmedPrompt.length === 0) {
     throw new Error('warp_invalid_prompt: prompt must be a non-empty string');
   }
-  if (input.conversationId && !input.parentRunId) throw new WarpRunAccessError();
-  if (input.parentRunId) {
-    await assertRunAccess(principalDid, requireRunId(input.parentRunId), caller);
+  const parentRunId = input.parentRunId === undefined ? undefined : requireRunId(input.parentRunId);
+  if (input.conversationId && !parentRunId) throw new WarpRunAccessError();
+  if (parentRunId) {
+    await assertRunAccess(principalDid, parentRunId, caller);
   }
 
   // Authority gate + unwrap. Everything below holds credential material.
@@ -1085,8 +1096,8 @@ export async function dispatchAgentRun(
   // work before being turned away.
   const agentKey = await (caller ? requireAgentKey(principalDid, caller) : requireAgentKey(principalDid));
   const attribution = await dispatchRunAttribution(principalDid, caller);
-  if (input.conversationId) {
-    const parent = await fetchAgentRun(agentKey, requireRunId(input.parentRunId!));
+  if (input.conversationId && parentRunId) {
+    const parent = await fetchAgentRun(agentKey, parentRunId);
     if (parent.conversationId !== input.conversationId) throw new WarpRunAccessError();
   }
   const [jinName, environmentId] = await Promise.all([
@@ -1110,12 +1121,13 @@ export async function dispatchAgentRun(
       prompt,
       ...(input.title === undefined ? {} : { title: input.title }),
       ...(input.conversationId === undefined ? {} : { conversation_id: input.conversationId }),
-      ...(input.parentRunId === undefined ? {} : { parent_run_id: input.parentRunId }),
+      ...(parentRunId === undefined ? {} : { parent_run_id: parentRunId }),
       config,
     },
   });
 
   const run = toAgentRun(payload);
+  await authorizeConfirmedParent(principalDid, run, parentRunId, caller);
 
   log.info(
     {
@@ -1175,11 +1187,17 @@ export async function dispatchAgentRun(
   return run;
 }
 
+/** Receipt authorization always precedes unwrapping, including system reads. */
+async function requireRunKey(principalDid: string, runId: string, caller?: ConnectionCaller): Promise<string> {
+  await assertRunAccess(principalDid, runId, caller);
+  const credentialCaller = runCredentialCaller(caller);
+  return credentialCaller ? requireAgentKey(principalDid, credentialCaller) : requireAgentKey(principalDid);
+}
+
 /**
  * Read a run's full detail as `principalDid`.
  *
- * Gated by the same grant as dispatch, and read with the same key — so a caller
- * can only ever see runs their own credential created.
+ * The signed receipt gate precedes credential unwrapping and any provider read.
  *
  * Parses everything the response carries except the prompt (#1639): lifecycle
  * timestamps, `run_time`, `status_message`, cost, provenance, and the run's
@@ -1187,11 +1205,6 @@ export async function dispatchAgentRun(
  * body — and it is what makes a failed run diagnosable and a finished one
  * measurable.
  */
-async function requireRunKey(principalDid: string, runId: string, caller?: ConnectionCaller): Promise<string> {
-  await assertRunAccess(principalDid, runId, caller);
-  const credentialCaller = runCredentialCaller(caller);
-  return credentialCaller ? requireAgentKey(principalDid, credentialCaller) : requireAgentKey(principalDid);
-}
 
 export async function getAgentRun(principalDid: string, runId: string, caller?: ConnectionCaller): Promise<WarpAgentRun> {
   const id = requireRunId(runId);
@@ -1254,9 +1267,9 @@ function buildRunsQuery(input: ListAgentRunsInput): string {
 /**
  * List runs as `principalDid`, newest-updated first.
  *
- * Same key, so the listing is naturally scoped to what that credential created —
- * the `name` filter then narrows it to a single `{username}-jin` tag, which is
- * how run history and cost tracking per jin are read.
+ * Every returned run is filtered through the same signed receipt gate. Vendor
+ * filters and caller-editable names never authorize a run; ancestor filters
+ * require ownership first and locally verified descendant lineage afterwards.
  *
  * A run item that carries no id is skipped rather than failing the page: one
  * malformed entry should not cost the caller the other nineteen.

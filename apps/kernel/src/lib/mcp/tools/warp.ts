@@ -3,8 +3,8 @@
  *
  * Adds `warp_*` tools to the MCP registry. All tools act on behalf of `ctx.did`
  * (the resource-owner DID from the OAuth access token); no tool can reach a
- * different DID's vault, grant, or runs — the vault field name encodes the DID
- * and the run is only visible to the key that created it.
+ * different DID's vault or grant. Run access additionally requires the shared
+ * signed-receipt gate, even when several actors share an org credential.
  *
  * This is the agent-to-agent wire: a `{username}-jin` speaking MCP dispatches a
  * Warp cloud agent under its own sealed credential, so the spawned run is
@@ -19,10 +19,8 @@
  * only readable field was the lifecycle state, so a failed run was a dead end and
  * a running one could not be corrected. These tools close that loop over the
  * client functions the same issue added — list, read, transcript, conversation,
- * follow-up, cancel — and every one of them rides the caller's *own* sealed key,
- * so a DID can only ever reach runs its own credential created. That is why they
- * share the single `warp:dispatch` gate rather than splitting read from write:
- * there is no cross-DID surface here to grant separately.
+ * follow-up, cancel. Every operation uses dispatch.ts's receipt boundary;
+ * key custody and the `warp:dispatch` scope alone never authorize a run ID.
  *
  * Template: modelled on tools/discord.ts.
  * RFC-32 federated-growth contract: only this file + tools/index.ts change.
@@ -166,13 +164,13 @@ const dispatchTool: McpTool = {
         type: 'string',
         description:
           'Optional conversation id to continue — Warp resumes from where a prior ' +
-          'run under this conversation left off',
+          'run left off. Requires parent_run_id naming an owned run in that conversation.',
       },
       parent_run_id: {
         type: 'string',
         description:
           'Optional parent run id for an orchestration hierarchy. The parent run ' +
-          'must exist and be visible to your own sealed key.',
+          'must have a signed receipt authorizing your actor.',
       },
       model_id: {
         type: 'string',

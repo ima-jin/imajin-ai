@@ -110,7 +110,7 @@ async function reconcileOne(principal: string, loop: LoopJson): Promise<LoopJson
     if (derived.state === 'blocked' && loop.state === 'blocked' && derived.summary === loop.summary) return loop;
     const at = new Date().toISOString();
     const accepted = await emitWarpRunLoopEvent({
-      ...derived, runId: loop.loopId, principalDid: principal, parentRunId: run.parentRunId ?? loop.parentLoopId,
+      ...derived, runId: loop.loopId, principalDid: principal, parentRunId: receipt.parentRunId,
       actorDid: receipt.actorDid ?? receipt.principalDid, orgDid: receipt.orgDid,
       at, refs: warpRunLoopRefs(run),
     });

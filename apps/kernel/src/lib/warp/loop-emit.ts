@@ -18,17 +18,10 @@
  * projection path rather than re-implementing any piece of the rail.
  *
  * ## Why this lives in its own module
- * `dispatch.ts` documents itself as holding no DB dependency of its own (see
- * its module doc, "Duplicate-publish race guard" — `claimTerminalPublish` is
- * injected rather than imported for the same reason). This module is where
- * the loop rail's DB dependency (`ingestLoopEvent` → DB-backed publisher-key
- * resolution, `getNodeSigningIdentity()` → vault key derivation) actually
- * lives; `dispatch.ts` reaches it only through a dynamic `import()` at the
- * point of use (mirroring `packages/bus/src/config.ts`'s own "dynamic import
- * to avoid pulling in the DB connection at module load time" pattern), so
- * `dispatch.ts`'s own unit tests — which never touch a real DB — are
- * unaffected: a dynamic import that fails (e.g. no `DATABASE_URL` in a test
- * process) is caught and logged, never thrown.
+ * Signing and verified ingest stay separate from the provider client and its
+ * receipt reader. The node witnesses the principal and dispatcher actor; it
+ * never substitutes itself for either. Dispatch receipts are awaited before
+ * acknowledgment, and later transitions copy their original attribution.
  *
  * ## Idempotency
  * Idempotency comes for free from the SAME guard that already protects each

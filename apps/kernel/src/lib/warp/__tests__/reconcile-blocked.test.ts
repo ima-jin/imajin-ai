@@ -55,6 +55,7 @@ describe('current Warp blocker reconciliation', () => {
     expect(emit).toHaveBeenCalledWith(expect.objectContaining({
       type: current.state === 'closed' ? 'loop.finished' : 'loop.progress',
       runId: 'loop-1', principalDid: principal, summary,
+      actorDid: 'did:imajin:dispatch-actor',
     }));
     expect(pr).toHaveBeenCalledWith(principal, 'ima-jin/imajin-ai', 2993);
   });
@@ -90,7 +91,7 @@ describe('current Warp blocker reconciliation', () => {
     const result = await reconcile();
     expect(result.state).toBe('superseded');
     expect(isBlockedLoop(result)).toBe(false);
-    expect(emit).toHaveBeenCalledWith(expect.objectContaining({ type: 'loop.finished', parentRunId: 'parent' }));
+    expect(emit).toHaveBeenCalledWith(expect.objectContaining({ type: 'loop.finished', parentRunId: 'run-parent-1' }));
   });
 
   it('keeps children of active parents held', async () => {
