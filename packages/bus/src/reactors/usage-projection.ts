@@ -18,6 +18,13 @@ function validatePayload(payload: Record<string, unknown>): void {
       throw new TypeError(`Invalid usage receipt: ${field} must be a nonempty string`);
     }
   }
+  validateNumericFields(payload);
+  if (payload.pricing != null && (typeof payload.pricing !== 'object' || Array.isArray(payload.pricing))) {
+    throw new TypeError('Invalid usage receipt: pricing must be an object');
+  }
+}
+
+function validateNumericFields(payload: Record<string, unknown>): void {
   for (const field of ['quantity', 'costEstimateUsd', 'tokensIn', 'tokensOut']) {
     const value = payload[field];
     if (value != null && (typeof value !== 'number' || !Number.isFinite(value) || value < 0)) {
@@ -29,9 +36,6 @@ function validatePayload(payload: Record<string, unknown>): void {
     if (value != null && (!Number.isInteger(value) || (value as number) > 2_147_483_647)) {
       throw new TypeError(`Invalid usage receipt: ${field} must fit a nonnegative SQL integer`);
     }
-  }
-  if (payload.pricing != null && (typeof payload.pricing !== 'object' || Array.isArray(payload.pricing))) {
-    throw new TypeError('Invalid usage receipt: pricing must be an object');
   }
 }
 
