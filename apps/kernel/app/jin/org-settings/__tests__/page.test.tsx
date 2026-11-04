@@ -5,6 +5,8 @@ import { DEFAULT_SENDERS } from '@/src/lib/mail/types';
 import OrgSettingsPage from '../page';
 import { SenderForm } from '../sender-form';
 
+vi.mock('../mail-domains-panel', () => ({ MailDomainsPanel: ({ ownerDid }: { ownerDid: string }) => <section aria-label="Mail domains" data-owner={ownerDid} /> }));
+
 const group: { groupDid: string; role: string; scope: string; name: string | null; handle: string | null } = { groupDid: 'did:imajin:org', role: 'owner', scope: 'business', name: 'Example', handle: 'example' };
 const sender = { ownerDid: group.groupDid, purpose: 'signin' as const, appDid: '', domain: 'example.org', localPart: 'login', displayName: 'Example Login', replyTo: 'help@example.org' };
 const settings = { senders: [sender], defaults: DEFAULT_SENDERS, readiness: { 'example.org': false } };

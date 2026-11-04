@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import { validateMailDomain, validateSenderConfig } from '../validation';
-import { isDomainMailReady } from '../readiness';
 import { MAIL_PURPOSES, DEFAULT_SENDERS, type SenderConfig } from '../types';
 
 const config: SenderConfig = {
@@ -36,9 +35,5 @@ describe('sender validation', () => {
     expect(() => validateSenderConfig({ ...config, purpose: 'custom' as never })).toThrow('purpose');
     expect(() => validateSenderConfig({ ...config, ownerDid: 'owner' })).toThrow('DID');
     expect(() => validateSenderConfig({ ...config, appDid: 'app\r\n' })).toThrow('DID');
-  });
-  it('never authorizes configured or unconfigured domains in production', async () => {
-    await expect(isDomainMailReady(config.ownerDid, config.domain)).resolves.toBe(false);
-    await expect(isDomainMailReady(config.ownerDid, 'imajin.ai')).resolves.toBe(false);
   });
 });

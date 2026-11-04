@@ -13,18 +13,21 @@ const state = vi.hoisted(() => ({
   signer: vi.fn(),
   org: vi.fn(),
   warn: vi.fn(),
+  vault: vi.fn(),
 }));
 vi.mock('@/src/db', async () => ({
   get db() { return state.db; },
   ...await import('@/src/db/schemas/domains'),
   ...await import('@/src/db/schemas/auth'),
   ...await import('@/src/db/schemas/registry'),
+  ...await import('@/src/db/schemas/mail'),
 }));
 vi.mock('node:dns/promises', () => ({ Resolver: class { resolveTxt = state.txt; } }));
 vi.mock('@/src/lib/domains/signing', () => ({
   domainSigningIdentity: state.signer, getImajinOrganization: state.org,
 }));
-vi.mock('@/src/lib/kernel/node-identity', () => ({ getNodeDid: vi.fn() }));
+vi.mock('@/src/lib/kernel/node-identity', () => ({ getNodeDid: vi.fn().mockResolvedValue('did:node') }));
+vi.mock('@/src/lib/vault', () => ({ loadAndUnseal: state.vault }));
 vi.mock('@imajin/logger', () => ({ createLogger: () => ({ warn: state.warn, error: vi.fn() }) }));
 
 import {
@@ -33,6 +36,9 @@ import {
 } from '../service';
 import { DomainError, normalizeDomain } from '../normalize';
 import { provisionAppDomain } from '@/src/lib/apps/provision-domain';
+import { checkMailDomain, getMailDomainStatus, listMailDomainStates, pollMailDomains, provisionMailDomain } from '@/src/lib/mail/postal-domains';
+import { isDomainMailReady } from '@/src/lib/mail/readiness';
+import { postalFixture } from '@/src/lib/mail/__tests__/postal-fixture';
 
 const migration = readFileSync('migrations/archive/pre-kernel-baseline/0211_domain_bindings.sql', 'utf8');
 const key = '1'.repeat(64);
@@ -65,22 +71,161 @@ beforeAll(async () => {
     CREATE FUNCTION pg_advisory_xact_lock(bigint) RETURNS void LANGUAGE sql AS 'SELECT NULL::void';
   `);
   await pg.exec(migration);
+  await pg.exec("CREATE SCHEMA IF NOT EXISTS kernel");
+  await pg.exec(readFileSync('migrations/0233_mail_domains.sql', 'utf8'));
   state.db = drizzle(pg, { schema: { ...domains, ...auth, ...registry } });
 }, 30000);
 afterAll(async () => { await pg.close(); });
 beforeEach(async () => {
   vi.clearAllMocks();
+  vi.stubEnv('AUTH_PRIVATE_KEY', key);
   state.signer.mockResolvedValue({ issuerDid: 'did:node', privateKey: key });
   state.org.mockResolvedValue({ id: 'did:org', publicKey: authCrypto.getPublicKey(key) });
   state.txt.mockResolvedValue([['did:owner']]);
   await pg.exec(`
-    TRUNCATE auth.domain_bindings, auth.attestations, auth.identities, registry.apps, registry.nodes, profile.forest_config;
+    TRUNCATE kernel.mail_domains, auth.domain_bindings, auth.attestations, auth.identities, registry.apps, registry.nodes, profile.forest_config;
     INSERT INTO auth.identities (id, public_key, suspended_at)
       VALUES ('did:owner','pub',NULL),('did:other','other',NULL),('did:site','site',NULL),('did:org','org',NULL);
     INSERT INTO registry.apps VALUES
       ('did:app','did:site','active','https://example.com/app','https://example.com/callback',NULL),
       ('did:other-app','did:other','active',NULL,NULL,NULL);
   `);
+});
+afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
+
+describe('Postal mail domains with actual owner bindings and signed state history', () => {
+  async function verified() {
+    await addDomain({ domain: 'example.org', zoneOwner: 'did:owner' });
+    await verifyDomain('example.org', 'did:owner');
+  }
+  function postal() {
+    vi.stubEnv('POSTAL_ADMIN_URL', 'https://postal.example');
+    vi.stubEnv('POSTAL_ORGANIZATION', 'node-org');
+    state.vault.mockResolvedValue(crypto.randomUUID());
+    const http = vi.fn().mockImplementation(async () => Response.json(postalFixture()));
+    vi.stubGlobal('fetch', http);
+    return http;
+  }
+  it('provisions idempotently, reads stored state offline, checks pending to verified, and disables atomically on revoke', async () => {
+    await verified();
+    const http = postal();
+    http.mockResolvedValueOnce(Response.json(postalFixture(), { status: 201 }));
+    expect(await provisionMailDomain('did:owner', 'EXAMPLE.org')).toMatchObject({ state: 'pending', records: postalFixture().records });
+    expect(await provisionMailDomain('did:owner', 'example.org')).toMatchObject({ state: 'pending' });
+    expect(await isDomainMailReady('did:owner', 'example.org')).toBe(false);
+    http.mockResolvedValueOnce(Response.json(postalFixture(true)));
+    expect(await checkMailDomain('did:owner', 'example.org')).toMatchObject({ state: 'verified', checkedAt: '2026-11-04T21:00:00.000Z' });
+    expect(await isDomainMailReady('did:owner', 'example.org')).toBe(true);
+    const calls = http.mock.calls.length;
+    expect(await getMailDomainStatus('did:owner', 'example.org')).toMatchObject({ state: 'verified' });
+    expect(await getMailDomainStatus('did:other', 'example.org')).toBeNull();
+    expect(await getMailDomainStatus('did:owner', 'missing.org')).toBeNull();
+    expect(http).toHaveBeenCalledTimes(calls);
+    await removeDomain('example.org', 'did:owner');
+    expect(await getMailDomainStatus('did:owner', 'example.org')).toMatchObject({ state: 'disabled' });
+    expect(await isDomainMailReady('did:owner', 'example.org')).toBe(false);
+    await removeDomain('example.org', 'did:owner');
+    expect(await query('SELECT * FROM kernel.mail_domains')).toHaveLength(1);
+    const history = await query<{ type: string; signature: string; payload: Record<string, unknown>; issued_at: string }>("SELECT * FROM auth.attestations WHERE type = 'mail.domain.changed'");
+    expect(history).toHaveLength(7);
+    expect(history.every(evidence => !!evidence.signature)).toBe(true);
+    expect(history.at(-1)?.payload).toMatchObject({ state: 'disabled', error: 'domain_revoked' });
+    await expect(checkMailDomain('did:owner', 'example.org')).rejects.toMatchObject({ code: 'domain_not_verified' });
+    expect(http).toHaveBeenCalledTimes(calls);
+  });
+  it('refuses pending, foreign, revoked and invalid owner claims before any Postal request', async () => {
+    const http = postal();
+    await expect(provisionMailDomain('did:owner', 'bad/path')).rejects.toMatchObject({ code: 'invalid_domain' });
+    await expect(provisionMailDomain('did:owner', 'example.org')).rejects.toMatchObject({ code: 'domain_not_verified' });
+    await addDomain({ domain: 'example.org', zoneOwner: 'did:owner' });
+    await expect(provisionMailDomain('did:owner', 'example.org')).rejects.toMatchObject({ code: 'domain_not_verified' });
+    await verifyDomain('example.org', 'did:owner');
+    await expect(provisionMailDomain('did:other', 'example.org')).rejects.toMatchObject({ code: 'domain_not_verified' });
+    await expect(checkMailDomain('did:owner', 'example.org')).rejects.toMatchObject({ code: 'mail_domain_not_provisioned' });
+    await removeDomain('example.org', 'did:owner');
+    await expect(provisionMailDomain('did:owner', 'example.org')).rejects.toMatchObject({ code: 'domain_not_verified' });
+    expect(http).not.toHaveBeenCalled();
+    expect(await query('SELECT * FROM kernel.mail_domains')).toHaveLength(0);
+  });
+  it('records a defined failure, never verifies after 401, and retries failed create idempotently', async () => {
+    await verified();
+    const http = postal();
+    http.mockResolvedValueOnce(Response.json({ error: 'unauthorized' }, { status: 401 }));
+    await expect(provisionMailDomain('did:owner', 'example.org')).rejects.toMatchObject({ code: 'postal_unauthorized' });
+    expect(await listMailDomainStates('did:owner')).toMatchObject([{ state: 'pending', error: 'postal_unauthorized' }]);
+    expect(await isDomainMailReady('did:owner', 'example.org')).toBe(false);
+    await checkMailDomain('did:owner', 'example.org');
+    expect(new URL(http.mock.calls[1][0]).pathname).toBe('/imajin/v1/domains');
+  });
+  it('a failed recheck immediately removes previously verified readiness and retains exact records', async () => {
+    await verified();
+    const http = postal();
+    http.mockResolvedValueOnce(Response.json(postalFixture(true)));
+    await provisionMailDomain('did:owner', 'example.org');
+    http.mockRejectedValueOnce(new DOMException('timeout', 'TimeoutError'));
+    await expect(checkMailDomain('did:owner', 'example.org')).rejects.toMatchObject({ code: 'postal_unavailable' });
+    expect(await getMailDomainStatus('did:owner', 'example.org')).toMatchObject({ state: 'pending', records: postalFixture(true).records });
+    expect(await isDomainMailReady('did:owner', 'example.org')).toBe(false);
+  });
+  it('does not hold a transaction over Postal HTTP; revocation during a request wins', async () => {
+    await verified();
+    const http = postal();
+    http.mockImplementationOnce(async () => {
+      await removeDomain('example.org', 'did:owner');
+      return Response.json(postalFixture(true));
+    });
+    expect(await provisionMailDomain('did:owner', 'example.org')).toMatchObject({ state: 'disabled' });
+    expect(await isDomainMailReady('did:owner', 'example.org')).toBe(false);
+  });
+  it('does not resurrect an old response after revoke/reverify and newer provisioning', async () => {
+    await verified();
+    const http = postal();
+    http.mockImplementationOnce(async () => {
+      await removeDomain('example.org', 'did:owner');
+      await addDomain({ domain: 'example.org', zoneOwner: 'did:owner' });
+      await verifyDomain('example.org', 'did:owner');
+      await provisionMailDomain('did:owner', 'example.org');
+      return Response.json(postalFixture(true));
+    });
+    expect(await provisionMailDomain('did:owner', 'example.org')).toMatchObject({ state: 'pending' });
+    expect(await isDomainMailReady('did:owner', 'example.org')).toBe(false);
+  });
+  it('shared DNS-revocation path disables mail, while missing or expired bindings always gate readiness', async () => {
+    await verified();
+    const http = postal();
+    http.mockImplementation(async () => Response.json(postalFixture(true)));
+    await provisionMailDomain('did:owner', 'example.org');
+    await pg.exec("UPDATE auth.domain_bindings SET checked_at = now() - interval '49 hours'");
+    expect(await isDomainMailReady('did:owner', 'example.org')).toBe(false);
+    state.txt.mockResolvedValue([]);
+    await verifyDomain('example.org', 'did:owner');
+    expect(await getMailDomainStatus('did:owner', 'example.org')).toMatchObject({ state: 'disabled' });
+  });
+  it('polls only due pending rows, backs off errors, stops once verified, and disables expired claims', async () => {
+    await verified();
+    const http = postal();
+    await provisionMailDomain('did:owner', 'example.org');
+    expect(await pollMailDomains()).toEqual({ checked: 0, failed: 0 });
+    await pg.exec("UPDATE kernel.mail_domains SET next_check_at = now() - interval '1 minute'");
+    http.mockResolvedValueOnce(Response.json({ error: 'dns_unavailable' }, { status: 503 }));
+    expect(await pollMailDomains()).toEqual({ checked: 0, failed: 1 });
+    const [row] = await query<{ attempts: number; next_check_at: Date }>('SELECT * FROM kernel.mail_domains');
+    expect(row.attempts).toBe(2);
+    expect(new Date(row.next_check_at).getTime()).toBeGreaterThan(Date.now() + 100_000);
+    await pg.exec("UPDATE kernel.mail_domains SET next_check_at = now() - interval '1 minute'");
+    http.mockResolvedValueOnce(Response.json(postalFixture(true)));
+    expect(await pollMailDomains()).toEqual({ checked: 1, failed: 0 });
+    expect(await pollMailDomains()).toEqual({ checked: 0, failed: 0 });
+    await provisionMailDomain('did:owner', 'example.org');
+    await pg.exec("UPDATE kernel.mail_domains SET next_check_at = now() - interval '1 minute'; UPDATE auth.domain_bindings SET checked_at = now() - interval '49 hours'");
+    expect(await pollMailDomains()).toEqual({ checked: 0, failed: 1 });
+    expect(await getMailDomainStatus('did:owner', 'example.org')).toMatchObject({ state: 'disabled' });
+  });
+  it('migration is idempotent and database constraints refuse fabricated readiness', async () => {
+    await pg.exec(readFileSync('migrations/0233_mail_domains.sql', 'utf8'));
+    await expect(pg.exec("INSERT INTO kernel.mail_domains (owner_did,domain,binding_attestation_id,state) VALUES ('did:owner','example.org','binding','verified')"))
+      .rejects.toThrow();
+  });
 });
 
 describe('hostname normalization', () => {

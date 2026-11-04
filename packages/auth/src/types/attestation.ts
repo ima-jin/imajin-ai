@@ -31,6 +31,7 @@ export const ATTESTATION_TYPES = [
   'domain.revoked',
   'cloudflare.mutation',
   'mail.sent',
+  'mail.domain.changed',
   'event.attendance',
   'institution.verified',
   'vouch.given',
@@ -361,6 +362,7 @@ export const MECHANICAL_ATTESTATION_TYPES = [
   'cloudflare.mutation',
   'mail.sent',
   'identity.owner.transferred',
+  'mail.domain.changed',
   // #2894 — unilateral read provenance, never awaiting a countersignature.
   'google.data.read',
   'session.created',
