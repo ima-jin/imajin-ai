@@ -45,13 +45,14 @@ describe('chain config DEFAULTS reconcile (#1873, #1874)', () => {
     expect(cfg.reactors.every((r) => r.enabled)).toBe(true);
   });
 
-  it('usage.incurred routes to attestation + emit with NO settle reactor (#1147/#1148)', async () => {
+  it('usage.incurred routes to attestation + emit + projection with NO settle reactor (#3261)', async () => {
     const cfg = await getChainConfig('usage.incurred', 'default');
     const types = cfg.reactors.map((r) => r.type);
 
-    expect(types).toEqual(['attestation', 'emit']);
+    expect(types).toEqual(['attestation', 'emit', 'usage-projection']);
     expect(types).not.toContain('settle');
     expect(cfg.reactors.every((r) => r.enabled)).toBe(true);
+    expect(cfg.reactors.every((r) => !r.await)).toBe(true);
   });
 
   it('usage.rollup routes to attestation (awaited) + emit with NO settle reactor (#1148)', async () => {
@@ -221,5 +222,9 @@ describe('broker reactor registry (#1874)', () => {
 
   it('intersection-scope reactor is exported from the bus package', () => {
     expect(typeof bus.intersectionScopeReactor).toBe('function');
+  });
+
+  it('usage-projection is registered by the bus barrel', () => {
+    expect(typeof bus.getReactor('usage-projection')).toBe('function');
   });
 });
