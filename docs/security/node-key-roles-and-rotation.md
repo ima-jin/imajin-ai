@@ -658,6 +658,7 @@ file: ``- `path` — role``.
 - `apps/kernel/src/lib/loops/authorize-publisher.ts` — S5
 - `apps/kernel/src/lib/loops/verify-publisher-signature.ts` — S5
 - `apps/kernel/src/lib/warp/loop-emit.ts` — S5
+- `apps/kernel/src/lib/warp/run-access.ts` — S5 (public node-witness DID comparison for signed dispatch receipts and explicit internal callers; does not sign or expose key material; witness-DID rotation fails closed on old receipts until the existing S5 key-history gap is addressed)
 - `apps/kernel/src/lib/auth/reach-delivery.ts` — S5 (node-signed reach delivery events; delivery attestations use S3 preparation)
 - `apps/kernel/src/lib/github/approvals-execution.ts` — S5
 - `apps/kernel/src/lib/access/approvals-execution.ts` — S5

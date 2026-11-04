@@ -15,6 +15,7 @@ const mocks = vi.hoisted(() => ({
   requireKey: vi.fn(), searchCorpus: vi.fn(),
   log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
+vi.mock('../run-access', async () => import('./run-access-stub'));
 vi.mock('../connector', () => ({ requireAgentKey: mocks.requireKey }));
 vi.mock('../environment', () => ({ readEnvironmentId: async () => undefined }));
 vi.mock('../loop-emit', () => ({ emitWarpRunLoopEvent: async () => true }));

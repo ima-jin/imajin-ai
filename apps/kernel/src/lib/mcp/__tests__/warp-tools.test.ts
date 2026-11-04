@@ -9,6 +9,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { McpContent, McpToolContext } from '../types';
 import { makeAgentRun } from '@/src/lib/warp/__tests__/run-fixture';
+import { WarpRunAccessError } from '@/src/lib/warp/errors';
 
 // ─── Mocks ─────────────────────────────────────────────────────────────────
 
@@ -107,6 +108,14 @@ beforeEach(() => {
 // ─── Registry ──────────────────────────────────────────────────────────────
 
 describe('registration', () => {
+  it('passes the verified org actor to the same dispatch gate and preserves its denial', async () => {
+    const caller = { actorDid: 'did:imajin:member-b', actingAs: 'did:imajin:org' };
+    vi.mocked(getAgentRun).mockRejectedValueOnce(new WarpRunAccessError());
+    await expect(tool('warp_get_run').handler({ run_id: RUN_ID }, {
+      ...ctx, credentialDid: caller.actingAs, connectionCaller: caller,
+    })).rejects.toMatchObject({ status: 403, message: 'warp_run_forbidden' });
+    expect(getAgentRun).toHaveBeenCalledWith(caller.actingAs, RUN_ID, caller);
+  });
   it('exports the seal, dispatch, and run-surface tools', () => {
     expect(warpTools.map((t) => t.name)).toEqual([
       'warp_seal_key',

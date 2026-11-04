@@ -7,6 +7,16 @@
  * alongside the client that throws it.
  */
 
+/** Same non-disclosing denial for foreign runs and absent signed receipts. */
+export class WarpRunAccessError extends Error {
+  readonly status = 403;
+
+  constructor() {
+    super('warp_run_forbidden');
+    this.name = 'WarpRunAccessError';
+  }
+}
+
 /** Byte budget refusal before any brief storage or provider call. */
 export class WarpBriefSizeError extends Error {
   constructor(readonly maxBytes: number) {

@@ -1,9 +1,8 @@
 /**
  * GET /warp/api/runs (#1639)
  *
- * List the Warp cloud-agent runs the caller's own sealed Agent key can see. The
- * key *is* the scope: a DID lists only what its own credential created, so run
- * history is per-jin by construction rather than by a filter we have to trust.
+ * List only the runs authorized by the shared signed-receipt gate in dispatch.
+ * Sharing a credential does not grant access to another member's runs.
  *
  * Query params (camelCase, matching the dispatch route's body):
  *   ?name=veteze-jin            — Warp `config.name`, i.e. the {username}-jin tag
@@ -12,7 +11,7 @@
  *   ?createdAfter=2026-08-01T00:00:00Z — RFC-3339 lower bound
  *   ?limit=50                   — 1–500, clamped rather than rejected
  *   ?cursor=…                   — `nextCursor` from a previous page
- *   ?ancestorRunId=…            — descendants of this run id (#1939), Warp's own lineage query
+ *   ?ancestorRunId=…            — locally verified descendants of an authorized run
  *
  * Returns `{ runs, hasNextPage, nextCursor }`.
  */

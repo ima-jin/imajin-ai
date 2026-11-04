@@ -7,6 +7,7 @@ const { sql, meter, getRun, list, log } = vi.hoisted(() => ({
 }));
 vi.mock('@imajin/db', () => ({ getClient: () => sql }));
 vi.mock('@imajin/logger', () => ({ createLogger: () => log }));
+vi.mock('../run-access', async () => import('./run-access-stub'));
 vi.mock('../dispatch', () => ({ getAgentRun: getRun, listAgentRuns: list }));
 vi.mock('../../usage/warp-incurred', () => ({
   recordWarpRunUsage: meter, WARP_INCURRED_SOURCE: 'adapter:warp', WARP_INCURRED_SINCE: '2026-10-19T00:00:00.000Z',
@@ -43,10 +44,10 @@ describe('Warp incurred lifecycle recovery', () => {
     list.mockResolvedValueOnce({ runs: [child], hasNextPage: true, nextCursor: 'two' })
       .mockResolvedValueOnce({ runs: [{ ...child, runId: 'grandchild', parentRunId: 'child', state: 'FAILED' }], hasNextPage: false, nextCursor: null });
     await sweepWarpIncurredUsage();
-    expect(getRun).toHaveBeenCalledWith(OWNER, 'root');
+    expect(getRun).toHaveBeenCalledWith(OWNER, 'root', { actorDid: 'did:imajin:node-witness' });
     expect(list.mock.calls).toEqual([
-      [OWNER, { ancestorRunId: 'root', limit: 500 }],
-      [OWNER, { ancestorRunId: 'root', limit: 500, cursor: 'two' }],
+      [OWNER, { ancestorRunId: 'root', limit: 500 }, { actorDid: 'did:imajin:node-witness' }],
+      [OWNER, { ancestorRunId: 'root', limit: 500, cursor: 'two' }, { actorDid: 'did:imajin:node-witness' }],
     ]);
     expect(meter.mock.calls.map(([, run]) => run.runId)).toEqual(['root', 'child', 'grandchild']);
     expect(sql.mock.calls[1][0].join('')).toContain("event_type = 'warp.agent.dispatched'");

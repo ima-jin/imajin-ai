@@ -32,7 +32,7 @@ vi.mock('@/src/lib/warp/dispatch', () => ({
 
 import { GET, OPTIONS } from '../route';
 import { listAgentRuns } from '@/src/lib/warp/dispatch';
-import { WarpApiError } from '@/src/lib/warp/errors';
+import { WarpApiError, WarpRunAccessError } from '@/src/lib/warp/errors';
 import { makeAgentRun } from '@/src/lib/warp/__tests__/run-fixture';
 
 // ─── Fixtures ────────────────────────────────────────────────────────────────
@@ -68,6 +68,19 @@ beforeEach(() => {
 // ─── Tests ───────────────────────────────────────────────────────────────────
 
 describe('GET /warp/api/runs', () => {
+  it('retains the member actor while listing in the authenticated acting-as-org context', async () => {
+    mockRequireAuth.mockResolvedValueOnce({ identity: { id: OWNER_DID, actingAs: 'did:imajin:org' } });
+    await GET(makeReq());
+    expect(listAgentRuns).toHaveBeenCalledWith('did:imajin:org', {}, {
+      actorDid: OWNER_DID, actingAs: 'did:imajin:org',
+    });
+  });
+  it('returns a detail-free 403 for an unauthorized ancestor filter', async () => {
+    vi.mocked(listAgentRuns).mockRejectedValueOnce(new WarpRunAccessError());
+    const res = await GET(makeReq('?ancestorRunId=foreign-run'));
+    expect(res.status).toBe(403);
+    expect(await res.json()).toEqual({ error: 'warp_run_forbidden' });
+  });
   it('returns 401 without a lookup when unauthenticated', async () => {
     mockRequireAuth.mockResolvedValueOnce({ error: 'Unauthorized', status: 401 });
 

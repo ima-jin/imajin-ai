@@ -5,6 +5,7 @@ const { meter, publish, log } = vi.hoisted(() => ({
   meter: vi.fn(), publish: vi.fn(),
   log: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
+vi.mock('../run-access', async () => import('./run-access-stub'));
 vi.mock('../../usage/warp-incurred', () => ({ recordWarpRunUsage: meter }));
 vi.mock('@imajin/bus', () => ({ publish }));
 vi.mock('@imajin/logger', () => ({ createLogger: () => log }));

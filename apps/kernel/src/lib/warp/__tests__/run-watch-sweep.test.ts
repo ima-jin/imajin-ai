@@ -65,6 +65,7 @@ const {
 vi.mock('@imajin/logger', () => ({
   createLogger: () => safeLog,
 }));
+vi.mock('../run-access', async () => import('./run-access-stub'));
 vi.mock('../usage-sweep', () => ({ sweepWarpIncurredUsage: usageRecovery }));
 
 vi.mock('@imajin/db', () => {
@@ -196,7 +197,7 @@ describe('sweepInFlightWarpRuns', () => {
 
     const outcome = await sweepInFlightWarpRuns();
 
-    expect(getAgentRunMock).toHaveBeenCalledWith(PRINCIPAL, 'run-1');
+    expect(getAgentRunMock).toHaveBeenCalledWith(PRINCIPAL, 'run-1', { actorDid: 'did:imajin:node-witness' });
     expect(publishTerminalRunOutcomeMock).toHaveBeenCalledWith(
       PRINCIPAL,
       run('SUCCEEDED', 'run-1'),

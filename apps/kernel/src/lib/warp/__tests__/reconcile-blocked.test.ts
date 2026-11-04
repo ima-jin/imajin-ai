@@ -6,6 +6,7 @@ import { isBlockedLoop } from '@/src/lib/jin/runs-lane';
 const { getRun, pr, issue, emit } = vi.hoisted(() => ({
   getRun: vi.fn(), pr: vi.fn(), issue: vi.fn(), emit: vi.fn(),
 }));
+vi.mock('../run-access', async () => import('./run-access-stub'));
 vi.mock('../dispatch', () => ({
   getAgentRun: getRun,
   isTerminalRunState: (state: string) => ['SUCCEEDED', 'FAILED', 'CANCELLED'].includes(state),
@@ -54,6 +55,7 @@ describe('current Warp blocker reconciliation', () => {
     expect(emit).toHaveBeenCalledWith(expect.objectContaining({
       type: current.state === 'closed' ? 'loop.finished' : 'loop.progress',
       runId: 'loop-1', principalDid: principal, summary,
+      actorDid: 'did:imajin:dispatch-actor',
     }));
     expect(pr).toHaveBeenCalledWith(principal, 'ima-jin/imajin-ai', 2993);
   });
@@ -89,7 +91,7 @@ describe('current Warp blocker reconciliation', () => {
     const result = await reconcile();
     expect(result.state).toBe('superseded');
     expect(isBlockedLoop(result)).toBe(false);
-    expect(emit).toHaveBeenCalledWith(expect.objectContaining({ type: 'loop.finished', parentRunId: 'parent' }));
+    expect(emit).toHaveBeenCalledWith(expect.objectContaining({ type: 'loop.finished', parentRunId: 'run-parent-1' }));
   });
 
   it('keeps children of active parents held', async () => {
@@ -175,7 +177,7 @@ describe('current Warp blocker reconciliation', () => {
     vi.advanceTimersByTime(61_000);
     getRun.mockResolvedValue(run({ parentRunId: 'parent' }));
     expect((await reconcile()).state).toBe('blocked');
-    expect(getRun).toHaveBeenLastCalledWith(principal, 'loop-1');
+    expect(getRun).toHaveBeenLastCalledWith(principal, 'loop-1', { actorDid: 'did:imajin:node-witness' });
   });
 
   it('does not let issue closure hide a held draft PR', async () => {
@@ -196,7 +198,7 @@ describe('current Warp blocker reconciliation', () => {
     await reconcile();
     const other = 'did:imajin:other';
     await reconcileWarpBlockers(other, [runLoop({ ...blocked(), principal: other })]);
-    expect(getRun).toHaveBeenCalledWith(other, 'loop-1');
+    expect(getRun).toHaveBeenCalledWith(other, 'loop-1', { actorDid: 'did:imajin:node-witness' });
     expect(pr).toHaveBeenCalledWith(other, 'ima-jin/imajin-ai', 2993);
   });
 

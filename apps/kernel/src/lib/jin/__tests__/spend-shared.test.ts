@@ -23,6 +23,7 @@ vi.mock('@/src/db', () => ({
   usageIncurred: { sessionId: 'sessionId', costUsd: 'costUsd', principalDid: 'principalDid' },
 }));
 vi.mock('@/src/lib/warp/dispatch', () => ({ listAgentRuns: mockListAgentRuns }));
+vi.mock('@/src/lib/warp/run-access', async () => import('../../warp/__tests__/run-access-stub'));
 vi.mock('@/src/lib/github/connector', () => ({ getIssue: mockGetIssue, getPullRequest: mockGetPullRequest }));
 vi.mock('@/src/lib/github/bug-import', () => ({ BUG_TRACKER_REPO: 'ima-jin/imajin-ai' }));
 
@@ -448,7 +449,8 @@ describe('default readers', () => {
   it('lists this month\'s runs through the existing Warp reader', async () => {
     mockListAgentRuns.mockResolvedValueOnce({ runs: [run()], hasNextPage: true, nextCursor: 'c' });
     const page = await defaultSpendDeps(OPERATOR).listRuns(OPERATOR, '2026-10-01T00:00:00.000Z');
-    expect(mockListAgentRuns).toHaveBeenCalledWith(OPERATOR, { createdAfter: '2026-10-01T00:00:00.000Z', limit: 100 });
+    expect(mockListAgentRuns).toHaveBeenCalledWith(OPERATOR, { createdAfter: '2026-10-01T00:00:00.000Z', limit: 100 },
+      { actorDid: 'did:imajin:node-witness' });
     expect(page.hasNextPage).toBe(true);
     expect(page.runs).toHaveLength(1);
   });
