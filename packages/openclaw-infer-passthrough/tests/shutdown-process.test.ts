@@ -110,7 +110,8 @@ describe.skipIf(process.platform !== 'linux').sequential('standalone node --impo
       try {
         stat = await readFile(`/proc/${pid}/stat`, 'utf8');
       } catch (error) {
-        if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined;
+        // Exit can remove the path before open (ENOENT) or the process before read (ESRCH).
+        if (['ENOENT', 'ESRCH'].includes((error as NodeJS.ErrnoException).code ?? '')) return undefined;
         throw error;
       }
       const [state, , group] = stat.slice(stat.lastIndexOf(')') + 2).split(' ');
