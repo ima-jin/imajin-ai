@@ -30,7 +30,7 @@ describe('one pure route context for auth/call and discovery', () => {
       expect(resolveInferenceRouteContext({ identity })).toEqual(resolveInferenceRouteContext({ caller }));
     });
   });
-  it.each(['human', 'device', null])('does not promote a personal %s session to an agent caller', subtype => {
+  it.each(['human', 'device', undefined])('does not promote a personal %s session to an agent caller', subtype => {
     expect(sessionConnectionCaller({ id: HUMAN, scope: 'actor', subtype })).toEqual({});
   });
   it('preserves the personal session owner-only contract', () => {
@@ -38,7 +38,7 @@ describe('one pure route context for auth/call and discovery', () => {
       ok: true, context: { ownerDid: HUMAN },
     });
   });
-  it.each(['human', 'device', null])('rejects conflicting %s selectors and missing app delegation exactly as authentication does', subtype => {
+  it.each(['human', 'device', undefined])('rejects conflicting %s selectors and missing app delegation exactly as authentication does', subtype => {
     expect(resolveInferenceRouteContext({ identity: {
       id: HUMAN, scope: 'actor', subtype, actingFor: HUMAN, actingAs: ORG,
     } })).toMatchObject({ ok: false, status: 403 });
