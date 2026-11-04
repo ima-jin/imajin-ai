@@ -1,10 +1,32 @@
 import type { ReactorHandler } from '../types';
+interface UsageProjectionPayload extends Record<string, unknown> {
+  usageId: string;
+  actingFor: string;
+  source: string;
+  resource: string;
+  provider: string;
+  model: string;
+  ts: string;
+  sessionId?: string | null;
+  turnId?: string | null;
+  agentDid?: string | null;
+  connectorId?: string | null;
+  tokensIn?: number | null;
+  tokensOut?: number | null;
+  costEstimateUsd?: number | null;
+  quantity?: number | null;
+  unit?: string | null;
+  transactionId?: string | null;
+  externalId?: string | null;
+  status?: string | null;
+  pricing?: Record<string, unknown> | null;
+}
 
 function nonemptyString(value: unknown): value is string {
   return typeof value === 'string' && value.trim().length > 0;
 }
 
-function validatePayload(payload: Record<string, unknown>): void {
+function validatePayload(payload: Record<string, unknown>): asserts payload is UsageProjectionPayload {
   for (const field of ['usageId', 'actingFor', 'source', 'resource', 'provider', 'model', 'ts']) {
     if (!nonemptyString(payload[field])) {
       throw new TypeError(`Invalid usage receipt: ${field} is required`);
@@ -62,8 +84,8 @@ export const usageProjectionReactor: ReactorHandler = async (event) => {
        ${payload.provider}, ${payload.model}, ${payload.sessionId ?? null}, ${payload.turnId ?? null},
        ${payload.agentDid ?? null}, ${payload.connectorId ?? null},
        ${payload.tokensIn ?? null}, ${payload.tokensOut ?? null},
-       ${payload.costEstimateUsd == null ? null : (payload.costEstimateUsd as number).toFixed(8)},
-       ${payload.quantity == null ? null : (payload.quantity as number).toFixed(6)},
+       ${payload.costEstimateUsd?.toFixed(8) ?? null},
+       ${payload.quantity?.toFixed(6) ?? null},
        ${payload.unit ?? null}, ${payload.transactionId ?? null}, ${payload.externalId ?? null},
        ${payload.status ?? null}, ${payload.pricing == null ? null : JSON.stringify(payload.pricing)}::jsonb,
        ${payload.ts}::timestamptz)
