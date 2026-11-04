@@ -68,16 +68,37 @@ describe('principal migration runbook (#3041)', () => {
     const deployUrl = new URL('../../../deploy/infer-passthrough/', import.meta.url);
     const env = readFileSync(new URL('infer-passthrough.env.example', deployUrl), 'utf8');
     const unit = readFileSync(new URL('infer-passthrough.service', deployUrl), 'utf8');
+    const updater = readFileSync(new URL('update.sh', deployUrl), 'utf8');
     const timer = readFileSync(new URL('infer-passthrough-update.timer', deployUrl), 'utf8');
     expect(env).toContain('INFER_PROXY_PRINCIPAL_DID=');
     expect(env).not.toMatch(/^[^#\n]*(?:GRANT_ID|ATTESTATION_ID|INFER_PROXY_ROUTES_CONFIG)=/m);
     expect(unit).toContain('EnvironmentFile=/etc/imajin/infer-passthrough.env');
-    expect(unit).toContain('/current/node_modules/.bin/tsx');
+    // The tsx CLI can relay a process-group signal twice if its IPC acknowledgement is delayed.
+    const launch = 'node --import tsx packages/openclaw-infer-passthrough/src/server.ts';
+    expect(unit).toContain(`ExecStart=/usr/bin/env ${launch}`);
+    const candidateLaunch = updater.slice(
+      updater.indexOf('systemd-run --unit=infer-passthrough-candidate'),
+      updater.indexOf('health "$candidate_port"'),
+    );
+    expect(candidateLaunch).toContain(launch);
+    expect(candidateLaunch).toContain('--working-directory="$candidate"');
+    expect(candidateLaunch).toContain('/usr/bin/env INFER_PROXY_HOST=127.0.0.1 INFER_PROXY_PORT="$candidate_port"');
+    expect(updater).not.toContain(['node_modules', '.bin', 'tsx'].join('/'));
+    expect(unit).toContain('KillMode=control-group');
     expect(unit).not.toMatch(/GRANT_ID|ATTESTATION_ID/);
     expect(timer).toContain('OnUnitInactiveSec=2min');
     const runbook = readFileSync(new URL('README.md', deployUrl), 'utf8');
     expect(runbook).toContain('systemctl enable --now infer-passthrough-update.timer');
     expect(runbook).toContain('check-health.mjs 8787');
+  });
+  it('documents in-process tsx loading for both pm2 and systemd', () => {
+    const readme = readFileSync(new URL('README.md', packageUrl), 'utf8');
+    expect(readme).toContain("script: 'packages/openclaw-infer-passthrough/src/server.ts'");
+    expect(readme).toContain("interpreter: 'node'");
+    expect(readme).toContain("node_args: '--import tsx'");
+    expect(readme).toContain('ExecStart=/usr/bin/env node --import tsx packages/openclaw-infer-passthrough/src/server.ts');
+    expect(readme).not.toContain(['node_modules', '.bin', 'tsx'].join('/'));
+    expect(readme).toContain('the tsx CLI relays process-group signals twice under contention (#3270)');
   });
   it('ships grant-free optional example routes', () => {
     const routes = loadRoutes(fileURLToPath(new URL('config/routes.example.json', packageUrl)));

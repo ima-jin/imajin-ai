@@ -145,7 +145,7 @@ systemd-run --unit=infer-passthrough-candidate --collect --service-type=exec \
   --property=EnvironmentFile="$env_file" \
   --property=TimeoutStopSec=10s --property=KillMode=control-group \
   /usr/bin/env INFER_PROXY_HOST=127.0.0.1 INFER_PROXY_PORT="$candidate_port" \
-  "$candidate/node_modules/.bin/tsx" packages/openclaw-infer-passthrough/src/server.ts
+  node --import tsx packages/openclaw-infer-passthrough/src/server.ts
 health "$candidate_port"
 systemctl is-active --quiet infer-passthrough-candidate.service
 systemctl stop infer-passthrough-candidate.service
