@@ -1,4 +1,4 @@
-# CLAUDE.md
+# Imajin contributor guide
 
 Read these before doing anything:
 
