@@ -1,5 +1,5 @@
 /**
- * TypeSafe.ai (Jev) usage-ledger writer (#2197).
+ * TypeSafe.ai (Jev) usage metering (#2197; receipt projection migration #3261).
  *
  * Writes one `usage.incurred` row per `POST /typesafe/api/decide` call, for
  * cost visibility only — deliberately NOT `recordInferenceUsage`
