@@ -3,11 +3,12 @@ import { rateLimit, getClientIP } from '@imajin/config';
 import { corsHeaders } from '@/src/lib/kernel/cors';
 import { resolveInferenceAuth } from '@/src/lib/inference/auth';
 import { resolveInferenceRouteContext } from '@/src/lib/inference/route-context';
-import { readSelfDiscoveryCard } from '@/src/lib/inference/self-discovery-card';
+import { readSelfDiscoveryCard, type SelfDiscoveryCard } from '@/src/lib/inference/self-discovery-card';
 import { requireGrantPrincipal } from '@/src/lib/auth/grant-principal';
 import { listServingAgents } from '@/src/lib/auth/agent-service';
 import { listGrantDetailsForDelegator } from '@/src/lib/auth/grants';
 import { resolveActingDid } from '@imajin/auth';
+import { forEachSequential } from '@/src/lib/async/sequential';
 
 export const dynamic = 'force-dynamic';
 
@@ -48,8 +49,8 @@ async function operatorCards(request: NextRequest, headers: Record<string, strin
   for (const grant of await listGrantDetailsForDelegator(principalDid)) {
     if (!agents.has(grant.agentDid)) agents.set(grant.agentDid, { did: grant.agentDid, name: null, handle: null, servingSince: null });
   }
-  const cards = [];
-  for (const agent of agents.values()) {
+  const cards: (SelfDiscoveryCard & { name: string | null })[] = [];
+  await forEachSequential(agents.values(), async agent => {
     const caller = {
       actorDid: agent.did,
       ...(auth.identity.actingAs ? { actingAs: principalDid } : { actingFor: principalDid }),
@@ -57,7 +58,7 @@ async function operatorCards(request: NextRequest, headers: Record<string, strin
     const { context } = resolveInferenceRouteContext({ caller });
     const card = await readSelfDiscoveryCard(context, principalDid);
     if (card?.identity.kind === 'agent') cards.push({ ...card, name: agent.name });
-  }
+  });
   return NextResponse.json({ principalDid, cards }, { headers });
 }
 export { corsOptions as OPTIONS } from '@/src/lib/kernel/cors';
