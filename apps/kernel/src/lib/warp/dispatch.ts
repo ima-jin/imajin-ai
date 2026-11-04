@@ -140,6 +140,7 @@ import type { WarpRunLoopTransition } from './loop-emit';
 import { warpRunLoopRefs, warpRunPrArtifacts } from './loop-refs';
 import type { WarpBrief } from './brief';
 import { assertWarpBriefSize } from './brief-limit';
+import { mapWithConcurrency } from '@/src/lib/async/sequential';
 
 // Re-exported for callers that need to catch it without importing
 // corpus-context.ts directly (mirroring the WarpApiError re-export below).
@@ -1292,17 +1293,18 @@ export async function listAgentRuns(
     throw new WarpApiError('warp_api_error: run list response was not an object', { status: 502 });
   }
 
-  const runs: WarpAgentRun[] = [];
+  const candidates: WarpAgentRun[] = [];
   for (const entry of Array.isArray(body.runs) ? body.runs : []) {
-    let run: WarpAgentRun;
     try {
-      run = toAgentRun(entry);
+      candidates.push(toAgentRun(entry));
     } catch {
       continue;
     }
-    if (await canAccessRun(principalDid, run.runId, caller, ancestorRunId)) runs.push(run);
   }
 
+  const visible = await mapWithConcurrency(candidates, 8, async run =>
+    await canAccessRun(principalDid, run.runId, caller, ancestorRunId) ? run : null);
+  const runs = visible.filter((run): run is WarpAgentRun => run !== null);
   const pageInfo = objectOrNull(body.page_info);
 
   return {
