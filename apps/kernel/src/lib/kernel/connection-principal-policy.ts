@@ -15,7 +15,7 @@ export function connectionCaller(actorDid: string, selectors: Pick<ConnectionCal
   };
 }
 export function sessionConnectionCaller(identity: Identity): { caller?: ConnectionCaller } {
-  if (!identity.actingAs && !identity.actingFor && identity.subtype !== 'agent') return {};
+  if (!identity.actingAs && !identity.actingFor && !isAgentCapableSubtype(identity.subtype)) return {};
   return { caller: connectionCaller(identity.id, identity) };
 }
 export const callerArguments = (caller?: ConnectionCaller): [ConnectionCaller] | [] => caller ? [caller] : [];
