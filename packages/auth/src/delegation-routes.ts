@@ -34,12 +34,12 @@ export interface DelegationRouteEntry {
 
 export const DELEGATION_ROUTES = {
   "kernel.mail.domain.provision": {
-    class: "irreversible", action: "provision-mail-domain", app: "kernel", method: "POST",
+    class: "irreversible", action: "provision", app: "kernel", method: "POST",
     path: "/jin/api/orgs/[ownerDid]/mail-domains",
     why: "creates external sending authority; the owner must countersign",
   },
   "kernel.mail.domain.check": {
-    class: "irreversible", action: "check-mail-domain", app: "kernel", method: "POST",
+    class: "irreversible", action: "check", app: "kernel", method: "POST",
     path: "/jin/api/orgs/[ownerDid]/mail-domains/[domain]/check",
     why: "refreshes external sending authority; the owner must countersign",
   },
