@@ -98,6 +98,27 @@ beforeEach(async () => {
 afterAll(() => pg.close());
 
 describe('signed receipt store', () => {
+  it.each(['publisherProof', 'evidence', 'observedConflictingLoopId', 'observedConflictingHolderDid'])(
+    'rejects oversized surface output with reserved %s before writes', async field => {
+      const request = signed({
+        surface: 'issue:#3268', [field]: 'caller-metadata',
+        output: { kind: 'text', text: 'x'.repeat(20000) },
+      }, 'surface.acquired');
+      expect(await ingestLoopEvent(request)).toMatchObject({ status: 400 });
+      expect((await pg.query('SELECT id FROM kernel.loop_events')).rows).toEqual([]);
+      expect((await pg.query('SELECT id FROM kernel.loop_output_artifacts')).rows).toEqual([]);
+    },
+  );
+  it('retains exact inline publisher metadata inside its server proof without trusting it', async () => {
+    expect(await ingestLoopEvent(signed())).toEqual({ ok: true });
+    const request = signed({
+      publisherProof: 'caller-metadata', evidence: { description: 'caller-evidence' },
+      observedConflictingLoopId: 'untrusted', surface: 'issue:#3268',
+    }, 'surface.acquired');
+    expect(await ingestLoopEvent(request)).toEqual({ ok: true });
+    const event = (await history()).events.find(row => row.type === 'surface.acquired')!;
+    expect(await verifyStoredLoopReceipt(event)).toEqual({ ok: true });
+  });
   it('round-trips a real signed POST through SQL and the loop read API', async () => {
     const request = signed();
     expect((await post(request)).status).toBe(201);

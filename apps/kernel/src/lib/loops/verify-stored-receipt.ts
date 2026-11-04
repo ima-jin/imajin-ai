@@ -47,6 +47,11 @@ async function signedPayload(event: LoopEventJson): Promise<LoopEnvelope | null>
   if (!proof.payload) return null;
   const original = { ...proof.payload };
   delete original.publisherProof;
+  if (isSurfaceEventType(event.type)) {
+    delete original.evidence;
+    delete original.observedConflictingLoopId;
+    delete original.observedConflictingHolderDid;
+  }
   // Server proof metadata must not mask a tampered history projection.
   if (canonicalize(original) !== canonicalize(stored)) return null;
   return proof.payload;

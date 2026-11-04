@@ -23,8 +23,8 @@ import { rateLimit } from '@imajin/config';
 import * as bus from '@imajin/bus';
 import { verifyLoopPublisherSignature } from './verify-publisher-signature';
 import { authorizeLoopPublisher } from './authorize-publisher';
-import { isLoopLifecycleType, parseCauseEventId, type LoopIngestRequest } from './types';
-import { prepareLoopOutput, redactLoopEnvelope, reserveLoopOwnership } from './prepare-output';
+import { isLoopLifecycleType, isSurfaceEventType, parseCauseEventId, type LoopIngestRequest } from './types';
+import { MAX_INLINE_LOOP_OUTPUT_BYTES, prepareLoopOutput, redactLoopEnvelope, reserveLoopOwnership } from './prepare-output';
 import { isBoundedLoopJson, isLoopOutput, isWithinLoopMetadataBudget } from './output-validation';
 import { redactLoopText } from './output-redaction';
 import { canonicalize } from '@imajin/auth';
@@ -126,6 +126,9 @@ function validateLoopFacts(request: LoopIngestRequest):
   if (!isBoundedLoopJson(payload) || !isWithinLoopMetadataBudget(payload) || (payload.output !== undefined && !isLoopOutput(payload.output))) {
     return { ok: false, error: 'Invalid loop output', status: 400 };
   }
+  if (!canRecoverSignedOutput(request)) {
+    return { ok: false, error: 'Oversized signed output cannot include reserved receipt metadata', status: 400 };
+  }
   const sanitized = redactLoopEnvelope(payload);
   if (canonicalize(payload) !== canonicalize(sanitized)) {
     return { ok: false, error: 'Signed receipts must contain only credential-free facts', status: 400 };
@@ -137,6 +140,14 @@ function validateLoopFacts(request: LoopIngestRequest):
     return { ok: false, error: 'Loop identity fields must not contain credentials', status: 400 };
   }
   return { ok: true, payload: sanitized };
+}
+
+function canRecoverSignedOutput({ type, payload }: LoopIngestRequest): boolean {
+  if (!payload.output || Buffer.byteLength(canonicalize(payload.output), 'utf8') <= MAX_INLINE_LOOP_OUTPUT_BYTES) return true;
+  const reserved = isSurfaceEventType(type)
+    ? ['publisherProof', 'evidence', 'observedConflictingLoopId', 'observedConflictingHolderDid']
+    : ['publisherProof'];
+  return !reserved.some(field => Object.hasOwn(payload, field));
 }
 
 /** A collision is data, never a dispatch denial or harness call. */
