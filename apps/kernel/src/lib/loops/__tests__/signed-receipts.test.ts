@@ -39,7 +39,7 @@ const pg = new PGlite();
 const principal = 'did:imajin:person';
 const publisherDid = 'did:imajin:publisher';
 const key = crypto.generateKeypair();
-const migration = readFileSync(new URL('../../../../../../migrations/0231_loop_event_signed_receipts.sql', import.meta.url), 'utf8');
+const migration = readFileSync(new URL('../../../../../../migrations/0232_loop_event_signed_receipts.sql', import.meta.url), 'utf8');
 function tagged(executor: Pick<PGlite, 'query'>) {
   return async (strings: TemplateStringsArray, ...values: unknown[]) => {
     const query = strings.reduce((text, part, index) => text + (index ? `$${index}` : '') + part, '');
@@ -83,6 +83,7 @@ beforeAll(async () => {
   for (const name of ['0157_loops_rail.sql', '0193_loop_output_artifacts.sql', '0194_surface_lease.sql']) {
     await pg.exec(readFileSync(new URL(`../../../../../../migrations/archive/pre-kernel-baseline/${name}`, import.meta.url), 'utf8'));
   }
+  await pg.exec(readFileSync(new URL('../../../../../../migrations/0231_usage_projection_chain.sql', import.meta.url), 'utf8'));
   await pg.exec(migration);
   mocks.sql.mockImplementation(tagged(pg));
   Object.assign(mocks.sql, { begin: (work: (tx: ReturnType<typeof tagged>) => Promise<unknown>) =>
