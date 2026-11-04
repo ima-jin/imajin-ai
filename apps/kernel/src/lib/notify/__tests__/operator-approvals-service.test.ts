@@ -427,6 +427,21 @@ describe('app-secret terminal cleanup', () => {
 });
 
 describe('recordApprovalRequested', () => {
+  it('stores only public exec detail even when called directly, preserving the original hash', async () => {
+    mockSelectLimit.mockResolvedValueOnce([]);
+    const detail = { command: 'pwd', approvalId: 'native-approval' };
+    await recordApprovalRequested({
+      proposalId: PROPOSAL_ID, operatorDid: OPERATOR_DID,
+      source: EXEC_COMMAND_SOURCE, kind: EXEC_COMMAND_KIND,
+      summary: 'Print working directory', keysTouched: [],
+      detail: { ...detail, sessionKey: 'harness-only' }, contentHash: 'a'.repeat(64),
+      notificationId: null, signerDid: AGENT_DID,
+    });
+    expect(mockInsertValues).toHaveBeenCalledWith(expect.objectContaining({
+      detail, contentHash: 'a'.repeat(64),
+    }));
+    expect(JSON.stringify(mockInsertValues.mock.calls)).not.toContain('sessionKey');
+  });
   it.each([AGENT_DID, null])('projects only the recorded DecisionCard requesting agent: %s', async signerDid => {
     const { db } = await import('@/src/db');
     vi.mocked(db.select).mockReturnValueOnce({

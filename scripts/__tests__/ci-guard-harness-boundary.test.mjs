@@ -5,9 +5,11 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { parse } from 'yaml';
-import { ALLOWLIST, KINDS, validateAllowlist } from '../ci-guard-harness-boundary.mjs';
+import { createRequire } from 'node:module';
 
 const SCRIPT = fileURLToPath(new URL('../ci-guard-harness-boundary.mjs', import.meta.url));
+// Native Node loading keeps a CRLF shebang at byte zero on Windows.
+const { ALLOWLIST, KINDS, validateAllowlist } = createRequire(import.meta.url)(SCRIPT);
 const SOURCE = 'apps/kernel/src/lib/fixture.ts';
 const FORBIDDEN_IMPORT = "import 'openclaw';";
 
@@ -32,6 +34,12 @@ function runGuard(root, args = []) {
 }
 
 const FORBIDDEN = [
+  ['stored session ref', 'const sessionKey = event.payload.refs.sessionKey;', KINDS.SESSION_KEY],
+  ['plural identifier', 'const sessionKeys = [];', KINDS.SESSION_KEY],
+  ['string key', "const refs = { 'sessionKey': value };", KINDS.SESSION_KEY],
+  ['computed key', "const key = refs['sessionKey'];", KINDS.SESSION_KEY],
+  ['JSON path match', "query(sql`refs->>'sessionKey' = ${value}`);", KINDS.SESSION_KEY],
+  ['JSON literal', 'const refs = `{"sessionKey":"value"}`;', KINDS.SESSION_KEY],
   ['static import', "import { Client } from 'openclaw';", KINDS.PACKAGE],
   ['multiline import', "import {\n Client\n} from '@openclaw/client';", KINDS.PACKAGE],
   ['side-effect import', "import 'openclaw/register';", KINDS.PACKAGE],
@@ -84,16 +92,15 @@ describe('ci-guard-harness-boundary', () => {
   });
 
   it.each([
-    ['signed session ref', 'const sessionKey = event.payload.refs.sessionKey;'],
-    ['query/spend ref', "query.where(sql`${events.refs}->>'sessionKey' = ${refs.sessionKey}`);"],
     ['signed transcript event', "bus.subscribe('meet.transcript.available', handle);"],
-    ['signed harness identity', "publish({ kind: 'openclaw.session', refs: { sessionKey } });"],
+    ['signed loop identity', "publish({ kind: 'openclaw.session', refs: { runId } });"],
     ['comments', "// await rpc('sessions_list');\n/* import c from 'openclaw'; fetch('/tools/invoke'); */"],
     ['ordinary URLs', "await fetch('https://api.example.com/history');"],
     ['kernel session', "await getSession(); const column = text('session_id');"],
     ['media transcript data', "const label = 'Transcript'; const field = text('transcript');"],
     ['text mentioning imports', 'const note = "import c from \'openclaw\'";'],
-    ['event payload access', 'const value = event.transcript; const key = refs.sessionKey;'],
+    ['event payload access', 'const value = event.transcript; const key = refs.runId;'],
+    ['session-key comment', '// refs.sessionKey is not code\nconst runId = refs.runId;'],
   ])('allows %s', (_name, content) => {
     const result = runGuard(fixture(content));
     expect(result.status).toBe(0);
@@ -134,7 +141,7 @@ describe('ci-guard-harness-boundary', () => {
     expect(runGuard(fixture(FORBIDDEN_IMPORT, file)).status).toBe(0);
   });
 
-  it('passes on the current kernel without runtime changes', () => {
+  it('passes on the current kernel with only exact recorded exceptions', () => {
     const root = fileURLToPath(new URL('../../', import.meta.url));
     const result = runGuard(root);
     expect(result.stderr).toBe('');
@@ -193,7 +200,7 @@ describe('ci-guard-harness-boundary', () => {
     const contract = readFileSync(new URL('../../docs/loops-rail-contract.md', import.meta.url), 'utf8');
     expect(contract).toContain('CI-enforced by');
     expect(contract).toContain('scripts/ci-guard-harness-boundary.mjs');
-    expect(contract).toContain('refs.sessionKey');
+    expect(contract).toContain('stripped after signature verification');
     expect(contract).toContain('meet.transcript.available');
     expect(contract).toContain('static tripwire, not a proof');
     for (const limitation of [

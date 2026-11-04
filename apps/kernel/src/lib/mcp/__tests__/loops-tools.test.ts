@@ -108,8 +108,13 @@ describe('loops tool registration', () => {
 // ─── loops_list — happy path ─────────────────────────────────────────────────
 
 describe('loops_list', () => {
+  it.each(['did:imajin:alice', 'did:imajin:org'])('never advertises or forwards harness addressing for %s', async principal => {
+    expect(tool('loops_list').inputSchema.properties).not.toHaveProperty('sessionKey');
+    await call('loops_list', { sessionKey: 'obsolete', runId: 'run' }, ctxFor(principal));
+    expect(mockListLoopsPage).toHaveBeenCalledWith({ principal, runId: 'run' });
+  });
   it('forwards queryable signed refs', async () => {
-    const refs = { runId: 'run1', issue: 'o/r#1', pr: 'o/r#2', sessionKey: 'session1' };
+    const refs = { runId: 'run1', issue: 'o/r#1', pr: 'o/r#2' };
     await call('loops_list', refs, ctxFor('did:imajin:alice'));
     expect(mockListLoopsPage).toHaveBeenCalledWith({ principal: 'did:imajin:alice', ...refs });
   });

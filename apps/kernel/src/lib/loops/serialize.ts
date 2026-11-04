@@ -5,6 +5,7 @@
  * `GET /api/loops` / `GET /api/loops/:loopId` routes return.
  */
 import type { LoopOutput, StoredLoopOutput } from '@imajin/bus';
+import { kernelLoopRefs } from './types';
 
 export interface LoopJson {
   loopId: string;
@@ -76,7 +77,7 @@ export function serializeLoop(row: RawLoopRow): LoopJson {
     kind: row.kind,
     principal: row.principal,
     parentLoopId: row.parent_loop_id,
-    refs: row.refs ?? {},
+    refs: kernelLoopRefs(row.refs ?? {}),
     state: row.state,
     summary: row.summary,
     lastEventType: row.last_event_type,

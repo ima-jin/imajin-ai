@@ -396,8 +396,8 @@ export async function deriveSpend(
   }
   page = { ...page, runs: [...new Map(page.runs.map((run) => [run.runId, run])).values()] };
   const owners = sessionOwners(page.runs);
-  const sessionKeys = page.runs.flatMap((r) => [r.runId, r.sessionId, r.conversationId]).filter((k): k is string => !!k);
-  const metered = await deps.meteredBySession(principalDid, [...new Set(sessionKeys)]).catch((err) => {
+  const runAliasKeys = page.runs.flatMap((r) => [r.runId, r.sessionId, r.conversationId]).filter((k): k is string => !!k);
+  const metered = await deps.meteredBySession(principalDid, [...new Set(runAliasKeys)]).catch((err) => {
     log.warn({ err: String(err) }, 'spend lane: metered join unavailable');
     return new Map<string, MeteredCost>();
   });

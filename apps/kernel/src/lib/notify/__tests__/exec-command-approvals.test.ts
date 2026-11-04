@@ -19,7 +19,6 @@ function validDetail(overrides: Record<string, unknown> = {}) {
     host: 'gateway-01',
     cwd: '/opt/openclaw',
     agentId: 'agent_123',
-    sessionKey: 'session_abc',
     requestedBy: 'did:imajin:jin-agent',
     approvalId: 'oc_approval_1',
     expiresAt: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
@@ -36,6 +35,13 @@ describe('EXEC_COMMAND_SOURCE / EXEC_COMMAND_KIND', () => {
 });
 
 describe('validateExecCommandDetail', () => {
+  it('ignores legacy harness addressing and returns only public approval fields', () => {
+    const detail = validDetail();
+    const result = validateExecCommandDetail({ ...detail, sessionKey: 'harness-only' });
+    expect(result).toEqual({ ok: true, detail });
+    if (!result.ok) throw new Error('expected success');
+    expect(result.detail).not.toHaveProperty('sessionKey');
+  });
   it('accepts a well-formed detail object', () => {
     const detail = validDetail();
     const result = validateExecCommandDetail(detail);
@@ -52,7 +58,6 @@ describe('validateExecCommandDetail', () => {
     'host',
     'cwd',
     'agentId',
-    'sessionKey',
     'requestedBy',
     'approvalId',
     'expiresAt',
@@ -64,7 +69,7 @@ describe('validateExecCommandDetail', () => {
     expect(result.error).toMatch(new RegExp(`detail\\.${field}`));
   });
 
-  it.each(['command', 'host', 'cwd', 'agentId', 'sessionKey', 'requestedBy', 'approvalId'])(
+  it.each(['command', 'host', 'cwd', 'agentId', 'requestedBy', 'approvalId'])(
     'rejects an empty-string %s',
     (field) => {
       const result = validateExecCommandDetail(validDetail({ [field]: '' }));

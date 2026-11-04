@@ -703,6 +703,23 @@ describe('operator.approval.requested boundary (#2059, generalized #2152)', () =
     );
   });
 
+  it('never stores or delivers discarded exec addressing in the notification', async () => {
+    const detail = { command: 'pwd', approvalId: 'approval' };
+    mockValidateApprovalRequestedPayload.mockReturnValueOnce({
+      ok: true, source: 'gateway-exec', kind: 'gateway-exec:command', detail, contentHash: 'a'.repeat(64),
+    });
+    const res = await POST(makeReq(operatorApprovalBody({
+      source: 'gateway-exec', kind: 'gateway-exec:command', detail: { ...detail, sessionKey: 'harness-only' },
+    })));
+    expect(res.status).toBe(200);
+    expect(mockInsertValues).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ detail }),
+    }));
+    expect(mockRecordApprovalRequested).toHaveBeenCalledWith(expect.objectContaining({ detail }));
+    expect(JSON.stringify(mockInsertValues.mock.calls)).not.toContain('sessionKey');
+    expect(JSON.stringify(mockPush.mock.calls)).not.toContain('sessionKey');
+  });
+
   it('rejects (400) a payload the validator flags, without touching the db', async () => {
     mockValidateApprovalRequestedPayload.mockReturnValueOnce({ ok: false, error: 'summary must not contain secret values' });
 

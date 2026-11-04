@@ -1475,7 +1475,7 @@ async function publishRunResumed(
       parentRunId,
       'running',
       `Warp run resumed from ${previousState ?? 'unknown'}`,
-      { at: resumedAt, brief, ...(newSessionId ? { refs: { sessionKey: newSessionId } } : {}) },
+      { at: resumedAt, brief },
     ),
   );
 }

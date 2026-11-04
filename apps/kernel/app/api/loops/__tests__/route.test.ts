@@ -174,6 +174,18 @@ describe('POST /api/loops (signed ingest)', () => {
 });
 
 describe('GET /api/loops (per-principal list)', () => {
+  it.each([
+    { id: OPERATOR_DID },
+    { id: OPERATOR_DID, actingFor: 'did:imajin:org' },
+  ])('ignores an obsolete session filter while preserving acting ownership (%j)', async identity => {
+    mockRequireAuth.mockResolvedValueOnce({ identity });
+    mockListLoops.mockResolvedValueOnce([]);
+    const response = await GET(makeGetReq('?sessionKey=obsolete') as Parameters<typeof GET>[0]);
+    expect(response.status).toBe(200);
+    const filters = mockListLoops.mock.calls[0][0];
+    expect(filters.principal).toBe(identity.actingFor ?? identity.id);
+    expect(filters).not.toHaveProperty('sessionKey');
+  });
   it('returns 401 without querying when unauthenticated', async () => {
     mockRequireAuth.mockResolvedValueOnce({ error: 'Unauthorized', status: 401 });
 
@@ -219,7 +231,6 @@ describe('GET /api/loops (per-principal list)', () => {
       runId: 'run1',
       issue: 'o/r#1',
       pr: 'o/r#2',
-      sessionKey: 'session1',
     });
   });
 

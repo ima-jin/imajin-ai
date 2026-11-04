@@ -5,7 +5,8 @@
  * Scans production TS/JS under apps/kernel/{src,app}; comments and tests
  * are not code paths. Uses the existing TypeScript dependency to handle
  * multiline imports, dynamic imports, computed calls and URL literals without
- * mistaking signed refs.sessionKey / meet.transcript.available for calls.
+ * mistaking meet.transcript.available for a harness read. Harness session
+ * keys are forbidden as data too (#3259).
  *
  * This is a static guard, not whole-program dataflow analysis: dynamically
  * constructed/obfuscated endpoints still require boundary review.
@@ -30,11 +31,32 @@ export const KINDS = Object.freeze({
   SURFACE: 'gateway-surface',
   STORE: 'harness-store',
   READ: 'harness-read',
+  SESSION_KEY: 'session-key',
 });
 
 // Exact (file, kind, value) exceptions only, never a whole directory/file.
 // Ratchet: remove an entry when its legacy path goes away; do not add new calls.
 export const ALLOWLIST = [
+  {
+    file: 'apps/kernel/src/db/schemas/loops.ts',
+    kind: KINDS.SESSION_KEY, value: 'sessionKey',
+    reason: 'Historical index, dropping it needs a card (#3259); no schema change or migration.',
+  },
+  {
+    file: 'apps/kernel/app/auth/api/attestations/usage/usage-rollup.ts',
+    kind: KINDS.SESSION_KEY, value: 'sessionKey',
+    reason: '#3261 owns usage projection reads of signed claim.session; remove with that migration.',
+  },
+  {
+    file: 'apps/kernel/app/jin/usage-feed-grouping.ts',
+    kind: KINDS.SESSION_KEY, value: 'sessionKey',
+    reason: '#3261 owns usage projection grouping of signed claim.session; remove with that migration.',
+  },
+  {
+    file: 'apps/kernel/app/jin/usage-feed-panel.tsx',
+    kind: KINDS.SESSION_KEY, value: 'sessionKey',
+    reason: '#3261 owns usage projection rendering of signed claim.session; remove with that migration.',
+  },
   {
     file: 'apps/kernel/app/warp/api/runs/[runId]/transcript/route.ts',
     kind: KINDS.READ, value: 'getAgentRunTranscript',
@@ -174,6 +196,11 @@ function scanFile(filePath) {
     }
 
     const value = literalText(node);
+    const dataKey = ts.isIdentifier(node) ? node.text : value;
+    if (dataKey) {
+      const keys = new Set(dataKey.match(/\bsessionKeys?\b/g) ?? []);
+      for (const key of keys) add(node, KINDS.SESSION_KEY, key);
+    }
     const kind = value && literalKind(value);
     if (kind) add(node, kind, value);
     if (value && rpcName(value)) add(node, KINDS.RPC, value);

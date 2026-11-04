@@ -95,9 +95,9 @@ describe('emitWarpRunLoopEvent', () => {
     expect(observeArtifactMock).not.toHaveBeenCalled();
   });
   it('includes available refs but never permits overriding the authoritative runId', async () => {
-    await emitWarpRunLoopEvent({ ...TRANSITION, refs: { runId: 'wrong', issue: 'https://github.com/o/r/issues/1', pr: 'https://github.com/o/r/pull/2', sessionKey: 'session' } });
+    await emitWarpRunLoopEvent({ ...TRANSITION, refs: { runId: 'wrong', issue: 'https://github.com/o/r/issues/1', pr: 'https://github.com/o/r/pull/2' } });
     expect(ingestLoopEventMock.mock.calls[0][0].payload.refs).toEqual({
-      runId: TRANSITION.runId, issue: 'https://github.com/o/r/issues/1', pr: 'https://github.com/o/r/pull/2', sessionKey: 'session',
+      runId: TRANSITION.runId, issue: 'https://github.com/o/r/issues/1', pr: 'https://github.com/o/r/pull/2',
     });
   });
   it('ingests with publisherDid = the kernel node witness, never the dispatching DID', async () => {

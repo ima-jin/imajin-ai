@@ -1,10 +1,11 @@
 /**
  * Registry-owned run → subject → usage read (#2290).
- * session_id is the external-ingest contract: it may contain a runId or a
- * publisher's sessionKey. Exact run ids win; shared session aliases are not
- * allocated speculatively. Each usage row is counted at most once.
+ * session_id is the external-ingest column; only loop/run identifiers match.
+ * Signed run history supplies aliases, never harness addressing. Exact run
+ * ids win; ambiguous aliases are not allocated speculatively.
  */
 import { getClient } from '@imajin/db';
+import { kernelLoopRefs } from './types';
 
 export interface RegistryRunCost {
   runId: string;
@@ -69,7 +70,6 @@ export async function readRegistrySpend(principal: string, from: string, to: str
     WITH scoped AS (
       SELECT *, COALESCE(NULLIF(refs->>'runId', ''), loop_id) AS run_id FROM kernel.loops
       WHERE principal = ${principal}
-        AND (COALESCE(refs->>'runId', '') <> '' OR COALESCE(refs->>'sessionKey', '') <> '')
     ), runs AS (
       SELECT DISTINCT ON (run_id) * FROM scoped
       ORDER BY run_id, (kind = 'warp.run') DESC, last_seen_at DESC, loop_id
@@ -79,22 +79,22 @@ export async function readRegistrySpend(principal: string, from: string, to: str
         CASE WHEN COUNT(DISTINCT NULLIF(refs->>'pr', '')) = 1 THEN MIN(NULLIF(refs->>'pr', '')) END AS pr
       FROM scoped GROUP BY run_id
     ), aliases AS (
-      SELECT DISTINCT run_id, refs->>'sessionKey' AS session_key FROM scoped
-      WHERE COALESCE(refs->>'sessionKey', '') <> ''
+      SELECT DISTINCT run_id, loop_id AS run_alias FROM scoped
       UNION
-      SELECT s.run_id, e.payload->'refs'->>'sessionKey' AS session_key
-      FROM scoped s JOIN kernel.loop_events e ON e.loop_id = s.loop_id
+      SELECT s.run_id, e.payload->'refs'->>'runId' AS run_alias
+      FROM scoped s JOIN kernel.loop_events e
+        ON e.loop_id = s.loop_id OR e.payload->>'parentLoopId' = s.loop_id
       WHERE e.principal = ${principal}
-        AND COALESCE(e.payload->'refs'->>'sessionKey', '') <> ''
-        AND COALESCE(e.payload->'refs'->>'runId', s.run_id) = s.run_id
+        AND e.type IN ('loop.started', 'loop.progress', 'loop.blocked', 'loop.finished')
+        AND COALESCE(e.payload->'refs'->>'runId', '') <> ''
     ), unique_aliases AS (
-      SELECT session_key, MIN(run_id) AS run_id FROM aliases
-      GROUP BY session_key HAVING COUNT(DISTINCT run_id) = 1
+      SELECT run_alias, MIN(run_id) AS run_id FROM aliases
+      GROUP BY run_alias HAVING COUNT(DISTINCT run_id) = 1
     ), matched AS (
       SELECT u.id, u.cost_usd, COALESCE(exact.run_id, alias.run_id) AS run_id
       FROM usage.incurred u
       LEFT JOIN runs exact ON exact.run_id = u.session_id
-      LEFT JOIN unique_aliases alias ON alias.session_key = u.session_id
+      LEFT JOIN unique_aliases alias ON alias.run_alias = u.session_id
       WHERE u.principal_did = ${principal}
         AND u.created_at >= ${from}::timestamptz AND u.created_at < ${to}::timestamptz
         AND u.status IS DISTINCT FROM 'error'
@@ -116,7 +116,7 @@ export async function readRegistrySpend(principal: string, from: string, to: str
   const runs = rows.map((row): RegistryRunCost => ({
     runId: row.run_id,
     loopId: row.loop_id,
-    refs: row.refs,
+    refs: kernelLoopRefs(row.refs),
     summary: row.summary,
     state: row.state,
     startedAt: new Date(row.started_at).toISOString(),
@@ -148,11 +148,12 @@ export async function unregisteredSessionIds(principal: string, sessionIds: stri
     SELECT DISTINCT u.session_id FROM unnest(${sessionIds}::text[]) AS u(session_id)
     WHERE NOT EXISTS (
       SELECT 1 FROM kernel.loops l WHERE l.principal = ${principal}
-        AND (l.refs->>'runId' = u.session_id OR l.refs->>'sessionKey' = u.session_id)
+        AND (l.refs->>'runId' = u.session_id OR l.loop_id = u.session_id)
     )
     AND NOT EXISTS (
       SELECT 1 FROM kernel.loop_events e WHERE e.principal = ${principal}
-        AND e.payload->'refs'->>'sessionKey' = u.session_id
+        AND e.type IN ('loop.started', 'loop.progress', 'loop.blocked', 'loop.finished')
+        AND e.payload->'refs'->>'runId' = u.session_id
     )
   ` as unknown as { session_id: string }[];
   return rows.map((row) => row.session_id);
