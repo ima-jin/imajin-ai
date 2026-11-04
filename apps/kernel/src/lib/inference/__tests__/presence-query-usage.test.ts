@@ -1,31 +1,19 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const { insertCalls, insertMock } = vi.hoisted(() => {
-  const insertCalls: Array<{ table: string; values: Record<string, unknown> }> = [];
-  const insertMock = vi.fn((table: { __name: string }) => ({
-    values: (v: Record<string, unknown>) => {
-      insertCalls.push({ table: table.__name, values: v });
-      return Promise.resolve(undefined);
-    },
-  }));
-  return { insertCalls, insertMock };
-});
+const { insertMock, mockPublishUsageIncurred, logError, generateIdMock } = vi.hoisted(() => ({
+  insertMock: vi.fn(),
+  mockPublishUsageIncurred: vi.fn(async () => undefined),
+  logError: vi.fn(),
+  generateIdMock: vi.fn((prefix: string) => `${prefix}_test`),
+}));
 
 vi.mock('@/src/db', () => ({
   db: { insert: insertMock },
   usageIncurred: { __name: 'usageIncurred' },
 }));
-
-vi.mock('@/src/lib/kernel/id', () => ({
-  generateId: (prefix: string) => `${prefix}_test`,
-}));
-
+vi.mock('@/src/lib/kernel/id', () => ({ generateId: generateIdMock }));
 vi.mock('@imajin/logger', () => ({
-  createLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
-}));
-
-const { mockPublishUsageIncurred } = vi.hoisted(() => ({
-  mockPublishUsageIncurred: vi.fn(() => Promise.resolve()),
+  createLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: logError }),
 }));
 vi.mock('../usage-ledger', () => ({ publishUsageIncurred: mockPublishUsageIncurred }));
 
@@ -34,22 +22,9 @@ import { recordPresenceQueryUsage, PRESENCE_QUERY_SOURCE } from '../presence-que
 const OWNER = 'did:imajin:presence-owner';
 const REQUESTER = 'did:imajin:requester';
 
-/** Flush the microtask queue so the fire-and-forget publish().catch() chain settles. */
-function flushMicrotasks(): Promise<void> {
-  return new Promise((resolve) => setImmediate(resolve));
-}
-
 beforeEach(() => {
-  insertCalls.length = 0;
-  insertMock.mockClear();
-  mockPublishUsageIncurred.mockClear();
+  vi.clearAllMocks();
   mockPublishUsageIncurred.mockResolvedValue(undefined);
-});
-
-describe('PRESENCE_QUERY_SOURCE', () => {
-  it('is the #1956 source literal', () => {
-    expect(PRESENCE_QUERY_SOURCE).toBe('presence:query');
-  });
 });
 
 describe('recordPresenceQueryUsage', () => {
@@ -66,39 +41,29 @@ describe('recordPresenceQueryUsage', () => {
     settled: true,
   };
 
-  it('writes a usage.incurred row with the #1147 emitter/resource discriminators', async () => {
-    await recordPresenceQueryUsage(baseParams);
-
-    const usageInsert = insertCalls.find((c) => c.table === 'usageIncurred');
-    expect(usageInsert?.values).toMatchObject({
-      id: 'usage_test',
-      principalDid: OWNER,
-      agentDid: REQUESTER,
-      source: 'presence:query',
-      resource: 'model:anthropic/claude-sonnet-4-20250514',
-      provider: 'anthropic',
-      model: 'claude-sonnet-4-20250514',
-      tokensIn: 10,
-      tokensOut: 5,
-      unit: 'tokens',
-      externalId: 'query_1',
-    });
-    expect(usageInsert?.values.quantity).toBe('15.000000');
-    expect(usageInsert?.values.costUsd).toBe('0.00100000');
+  it('keeps the reporting source literal', () => {
+    expect(PRESENCE_QUERY_SOURCE).toBe('presence:query');
   });
 
-  it('publishes usage.incurred on the bus with mode/settled/settleAmount in metadata', async () => {
-    await recordPresenceQueryUsage(baseParams);
-    await flushMicrotasks();
+  it.each([OWNER, 'did:imajin:business'])('publishes all projection fields for acting identity %s with no direct insert', async (actingForDid) => {
+    await recordPresenceQueryUsage({ ...baseParams, actingForDid });
 
+    expect(insertMock).not.toHaveBeenCalled();
+    expect(mockPublishUsageIncurred).toHaveBeenCalledTimes(1);
     expect(mockPublishUsageIncurred).toHaveBeenCalledWith({
       usageId: 'usage_test',
-      principalDid: OWNER,
+      principalDid: actingForDid,
       resource: 'model:anthropic/claude-sonnet-4-20250514',
       quantity: 15,
       unit: 'tokens',
       costUsd: 0.001,
       source: 'presence:query',
+      provider: 'anthropic',
+      model: 'claude-sonnet-4-20250514',
+      tokensIn: 10,
+      tokensOut: 5,
+      agentDid: REQUESTER,
+      externalId: 'query_1',
       metadata: {
         queryId: 'query_1',
         requesterDid: REQUESTER,
@@ -107,54 +72,80 @@ describe('recordPresenceQueryUsage', () => {
         mode: 'query',
       },
     });
+    expect(logError).not.toHaveBeenCalled();
   });
 
-  it('derives settleAmount as 0 when the query was not settled, even with a nonzero cost estimate', async () => {
+  it('keeps estimated cost but sets settleAmount to zero for an unsettled query', async () => {
     await recordPresenceQueryUsage({ ...baseParams, settled: false });
-    await flushMicrotasks();
-
-    expect(mockPublishUsageIncurred).toHaveBeenCalledWith(
-      expect.objectContaining({ metadata: expect.objectContaining({ settled: false, settleAmount: 0 }) }),
-    );
+    expect(mockPublishUsageIncurred).toHaveBeenCalledWith(expect.objectContaining({
+      costUsd: 0.001,
+      metadata: expect.objectContaining({ settled: false, settleAmount: 0 }),
+    }));
   });
 
-  it('sets metadata.mode to "stream" for the streaming route', async () => {
-    await recordPresenceQueryUsage({ ...baseParams, mode: 'stream' });
-    await flushMicrotasks();
+  it('preserves known zero cost and token counts', async () => {
+    await recordPresenceQueryUsage({ ...baseParams, costUsd: 0, promptTokens: 0, completionTokens: 0 });
+    expect(mockPublishUsageIncurred).toHaveBeenCalledWith(expect.objectContaining({
+      costUsd: 0, tokensIn: 0, tokensOut: 0, quantity: 0,
+    }));
+  });
 
+  it('marks streaming queries in the receipt metadata', async () => {
+    await recordPresenceQueryUsage({ ...baseParams, mode: 'stream' });
     expect(mockPublishUsageIncurred).toHaveBeenCalledWith(
       expect.objectContaining({ metadata: expect.objectContaining({ mode: 'stream' }) }),
     );
   });
 
-  it('never throws when the DB write fails — a ledger failure must not fail an already-served query', async () => {
-    insertMock.mockImplementationOnce(() => {
-      throw new Error('relation "usage.incurred" does not exist');
-    });
+  it.each(['rejection', 'synchronous throw'])('fails open on publisher %s with one countable error and no fallback insert', async (failure) => {
+    const error = new Error('bus unavailable');
+    if (failure === 'rejection') {
+      mockPublishUsageIncurred.mockRejectedValueOnce(error);
+    } else {
+      mockPublishUsageIncurred.mockImplementationOnce(() => { throw error; });
+    }
 
     await expect(recordPresenceQueryUsage(baseParams)).resolves.toBeUndefined();
+    expect(logError).toHaveBeenCalledTimes(1);
+    expect(logError).toHaveBeenCalledWith({
+      event: 'usage_publish_failed',
+      source: 'presence:query',
+      err: 'Error: bus unavailable',
+      queryId: 'query_1',
+      actingForDid: OWNER,
+      provider: 'anthropic',
+      modelId: 'claude-sonnet-4-20250514',
+      mode: 'query',
+    }, expect.any(String));
+    expect(insertMock).not.toHaveBeenCalled();
+  });
+
+  it('logs receipt preparation failures and still serves the query without a DB fallback', async () => {
+    generateIdMock.mockImplementationOnce(() => { throw new Error('ID unavailable'); });
+    await expect(recordPresenceQueryUsage(baseParams)).resolves.toBeUndefined();
+    expect(logError).toHaveBeenCalledTimes(1);
+    expect(logError).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'usage_publish_failed', source: 'presence:query', err: 'Error: ID unavailable',
+    }), expect.any(String));
     expect(mockPublishUsageIncurred).not.toHaveBeenCalled();
+    expect(insertMock).not.toHaveBeenCalled();
   });
 
-  it('never throws when the bus publish fails — the row is already written', async () => {
-    mockPublishUsageIncurred.mockRejectedValueOnce(new Error('bus unavailable'));
-
-    await expect(recordPresenceQueryUsage(baseParams)).resolves.toBeUndefined();
-    await flushMicrotasks();
-  });
-
-  it('never puts secrets or raw prompt/completion text in the row or the published metadata', async () => {
-    const SECRET = 'sk-ant-SHOULD-NEVER-APPEAR';
+  it('does not wait for a slow publisher', async () => {
+    let complete = () => {};
+    mockPublishUsageIncurred.mockImplementationOnce(() => new Promise<void>((resolve) => { complete = resolve; }));
     await recordPresenceQueryUsage(baseParams);
-    await flushMicrotasks();
+    expect(mockPublishUsageIncurred).toHaveBeenCalledTimes(1);
+    expect(insertMock).not.toHaveBeenCalled();
+    complete();
+  });
 
-    const usageInsert = insertCalls.find((c) => c.table === 'usageIncurred');
-    const serializedRow = JSON.stringify(usageInsert?.values);
-    const serializedMetadata = JSON.stringify(mockPublishUsageIncurred.mock.calls[0][0]);
-    expect(serializedRow).not.toContain(SECRET);
-    expect(serializedMetadata).not.toContain(SECRET);
-    // Only token counts, never the underlying text, cross this boundary.
-    expect(Object.keys(usageInsert?.values ?? {})).not.toContain('message');
-    expect(Object.keys(usageInsert?.values ?? {})).not.toContain('response');
+  it('does not forward raw prompt, completion, or credential fields from the caller', async () => {
+    const params = { ...baseParams, prompt: 'private input', response: 'private output', credential: 'private credential' };
+    await recordPresenceQueryUsage(params);
+    const serialized = JSON.stringify(mockPublishUsageIncurred.mock.calls[0]);
+    for (const value of [params.prompt, params.response, params.credential]) {
+      expect(serialized).not.toContain(value);
+    }
   });
 });

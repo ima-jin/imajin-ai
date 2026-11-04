@@ -12,21 +12,18 @@
  * apart), `resource = 'model:{provider}/{modelId}'`, same discriminator the
  * completions passthrough (`usage-ledger.ts`) already writes.
  *
- * Deliberately thin: it reuses `usage-ledger.ts`'s row shape and its
- * `publishUsageIncurred` bus publisher rather than hand-rolling a second
- * writer or a second publisher (both routes call this one helper instead of
- * duplicating the emit block — the #1956 issue's own explicit ask).
+ * Deliberately thin: it reuses `usage-ledger.ts`'s `publishUsageIncurred`
+ * bus publisher. The signed receipt is the sole source of the row, which
+ * the existing usage-projection reactor materializes (#3262). Both routes
+ * call this helper rather than duplicating the emit block.
  *
  * Fire-and-forget / fail-open, same contract `recordInferenceUsage` uses for
- * the passthrough: every failure is caught and logged at `warn` (not
- * `error` — unlike the passthrough, this is a secondary metering signal
- * alongside an already-durable `query_logs` row and `.fair` settlement, not
- * itself the sole record of the call) so a ledger hiccup can never change
- * the HTTP response already computed, or hold up the `/stream` SSE
- * connection.
+ * the passthrough: every failure is caught and logged at `error` with the
+ * stable `usage_publish_failed` event and source for counting. A ledger
+ * hiccup cannot change the HTTP response or hold up the `/stream` SSE
+ * connection. There is no unsigned DB fallback.
  */
 import { createLogger } from '@imajin/logger';
-import { db, usageIncurred } from '@/src/db';
 import { generateId } from '@/src/lib/kernel/id';
 import { publishUsageIncurred } from './usage-ledger';
 
@@ -53,10 +50,10 @@ export interface RecordPresenceQueryUsageParams {
 }
 
 /**
- * Write one `usage.incurred` row + publish its bus event for one served Ask
- * Me query. Never throws.
+ * Publish one signed `usage.incurred` receipt for one served Ask Me query.
+ * The usage-projection reactor writes the row. Never throws.
  */
-export async function recordPresenceQueryUsage(params: RecordPresenceQueryUsageParams): Promise<void> {
+export function recordPresenceQueryUsage(params: RecordPresenceQueryUsageParams): Promise<void> {
   const {
     queryId,
     mode,
@@ -77,38 +74,17 @@ export async function recordPresenceQueryUsage(params: RecordPresenceQueryUsageP
   // The amount actually moved through pay for this query; 0 when it wasn't
   // settled (self-query, zero cost, or the settle call itself failed).
   const settleAmount = settled ? costUsd : 0;
+  const reportPublishFailure = (err: unknown): void => {
+    log.error(
+      { event: 'usage_publish_failed', source: PRESENCE_QUERY_SOURCE, err: String(err), queryId, actingForDid, provider, modelId, mode },
+      'presence usage.incurred receipt publish failed — response already served',
+    );
+  };
 
   try {
     const usageId = generateId('usage');
-
-    await db.insert(usageIncurred).values({
-      id: usageId,
-      principalDid: actingForDid,
-      // The invoking identity, distinct from the principal the spend is
-      // attributed to — same convention as the ingest route's own agentDid
-      // (incurred-ingest.ts / app/usage/api/incurred/route.ts).
-      agentDid: requesterDid,
-      source: PRESENCE_QUERY_SOURCE,
-      resource,
-      provider,
-      model: modelId,
-      tokensIn: promptTokens,
-      tokensOut: completionTokens,
-      costUsd: costUsd.toFixed(8),
-      quantity: quantity.toFixed(6),
-      unit: 'tokens',
-      // Each query is already exactly-once (one HTTP call, one queryId) —
-      // reusing it as the dedupe key costs nothing and mirrors the
-      // uniq_usage_incurred_source_external_id index's intent.
-      externalId: queryId,
-    });
-
-    // #1148: publish the bus event — turns the row into a signed
-    // system-class fact via the shared attestation + emit chain. NOT
-    // awaited: the row is already durably written above, so a slow or
-    // failed bus publish must never add latency to (or fail) an
-    // already-served query — same fail-open contract the rest of this
-    // function follows.
+    // Fire-and-forget keeps the served query independent of publisher
+    // latency. All row fields travel through the signed receipt only.
     publishUsageIncurred({
       usageId,
       principalDid: actingForDid,
@@ -117,17 +93,16 @@ export async function recordPresenceQueryUsage(params: RecordPresenceQueryUsageP
       unit: 'tokens',
       costUsd,
       source: PRESENCE_QUERY_SOURCE,
+      provider,
+      model: modelId,
+      tokensIn: promptTokens,
+      tokensOut: completionTokens,
+      agentDid: requesterDid,
+      externalId: queryId,
       metadata: { queryId, requesterDid, settled, settleAmount, mode },
-    }).catch((err: unknown) => {
-      log.warn(
-        { err: String(err), queryId, usageId },
-        'presence usage.incurred bus publish failed — row already written',
-      );
-    });
+    }).catch(reportPublishFailure);
   } catch (err) {
-    log.warn(
-      { err: String(err), queryId, actingForDid, provider, modelId, mode },
-      'presence usage.incurred ledger write failed — response already served',
-    );
+    reportPublishFailure(err);
   }
+  return Promise.resolve();
 }
