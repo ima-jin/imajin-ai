@@ -731,6 +731,7 @@ are omitted from the implemented reference and reported in the #2028 run-log.
 - OPTIONS, POST /infer/v1/messages/count_tokens — apps/kernel/app/infer/v1/messages/count_tokens/route.ts
 - GET, OPTIONS /infer/v1/models — apps/kernel/app/infer/v1/models/route.ts
 - GET, OPTIONS /infer/v1/models/usable — apps/kernel/app/infer/v1/models/usable/route.ts
+- GET, OPTIONS /infer/v1/self — authenticated agent identity, held inference routes/authority/grant status, usable model parity and fixing controls; MCP/HTTP rows are signer-owned configuration metadata only, not tool authorization. apps/kernel/app/infer/v1/self/route.ts
 - GET, OPTIONS, POST /jin/api/app-secrets — apps/kernel/app/jin/api/app-secrets/route.ts
 - GET, OPTIONS, PUT /jin/api/brief-settings — apps/kernel/app/jin/api/brief-settings/route.ts
 - GET, OPTIONS, POST /jin/api/cloudflare-grants — apps/kernel/app/jin/api/cloudflare-grants/route.ts

@@ -9,13 +9,13 @@ import { resolveInferenceRouteContext } from './route-context';
 import type { BrainConnectorId } from './brain';
 import type { DiscoveryContext, InferenceRouteCandidate, InferenceRouteKind } from './route-discovery';
 
-async function readPrincipal(did: string) {
+export async function readInferencePrincipal(did: string) {
   const [identity] = await db.select({
-    did: identities.id, handle: identities.handle, scope: identities.scope, subtype: identities.subtype,
+    did: identities.id, handle: identities.handle, scope: identities.scope, subtype: identities.subtype, tier: identities.tier,
   }).from(identities).where(and(eq(identities.id, did), isNull(identities.suspendedAt))).limit(1);
   return identity;
 }
-type Principal = NonNullable<Awaited<ReturnType<typeof readPrincipal>>>;
+type Principal = NonNullable<Awaited<ReturnType<typeof readInferencePrincipal>>>;
 
 /** Query only relationships held by this caller; canonical assignment checks decide service access. */
 async function relatedPrincipals(actorDid: string, agent: boolean): Promise<string[]> {
@@ -89,7 +89,7 @@ async function memberOrgCandidates(actor: Principal, member: InferenceRouteCandi
   if (selected.caller?.actingFor === member.principal.did && selected.caller.actingAs) dids.add(selected.caller.actingAs);
   const candidates: InferenceRouteCandidate[] = [];
   await forEachSequential(dids, async did => {
-    const principal = await readPrincipal(did);
+    const principal = await readInferencePrincipal(did);
     if (!principal || !isOrgScope(principal.scope)) return;
     const candidate = await makeCandidate(actor, principal, {
       actorDid: actor.did, actingFor: member.principal.did, actingAs: did,
@@ -101,13 +101,13 @@ async function memberOrgCandidates(actor: Principal, member: InferenceRouteCandi
 
 export async function loadInferenceRouteCandidates(selected: DiscoveryContext): Promise<InferenceRouteCandidate[]> {
   const actorDid = selected.caller?.actorDid ?? selected.orgContext?.memberDid ?? selected.ownerDid;
-  const actor = await readPrincipal(actorDid);
+  const actor = await readInferencePrincipal(actorDid);
   if (!actor) return [];
   const selectedPrincipal = selected.caller?.actingFor ?? selected.caller?.actingAs ?? selected.ownerDid;
   const dids = new Set([actorDid, selectedPrincipal, ...await relatedPrincipals(actorDid, actor.subtype === 'agent')]);
   const candidates: InferenceRouteCandidate[] = [];
   await forEachSequential(dids, async did => {
-    const principal = did === actorDid ? actor : await readPrincipal(did);
+    const principal = did === actorDid ? actor : await readInferencePrincipal(did);
     if (!principal) return;
     const candidate = await makeCandidate(actor, principal, directCaller(actor, principal), selected);
     if (candidate) candidates.push(candidate);
