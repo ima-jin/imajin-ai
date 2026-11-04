@@ -65,24 +65,20 @@ afterEach(() => vi.useRealTimers());
 
 describe('ingestLoopEvent', () => {
   it.each(['loop.started', 'loop.progress', 'surface.acquired'] as const)(
-    'verifies legacy refs but never stores or republishes them for %s',
+    'rejects legacy refs rather than storing unverifiable signed facts for %s',
     async type => {
       mockVerify.mockResolvedValueOnce({ ok: true });
       const payload = {
         ...REQUEST.payload, refs: { runId: 'run', sessionKey: 'harness-only', futureRef: 'ignored' },
         ...(type === 'surface.acquired' ? { surface: 'issue:#3259' } : {}),
       };
-      expect(await ingestLoopEvent({ ...REQUEST, type, payload })).toEqual({ ok: true });
+      expect(await ingestLoopEvent({ ...REQUEST, type, payload })).toMatchObject({ status: 400 });
       expect(mockVerify.mock.calls[0][1].payload).toBe(payload);
-      const published = mockPublish.mock.calls[0][1].payload;
-      expect(published.refs).toEqual({ runId: 'run' });
-      expect(published).not.toHaveProperty('publisherProof');
-      expect(JSON.stringify(mockSql.mock.calls)).not.toContain('harness-only');
-      expect(JSON.stringify(published)).not.toContain('sessionKey');
+      expect(mockAuthorize).toHaveBeenCalledWith(REQUEST.publisherDid, payload.principal);
+      expect(mockPublish).not.toHaveBeenCalled();
+      expect(mockSql).not.toHaveBeenCalled();
       expect(payload.refs.sessionKey).toBe('harness-only');
-      expect(projectSurfaceLease).toHaveBeenCalledWith(
-        expect.objectContaining({ payload }), published, false,
-      );
+      expect(projectSurfaceLease).not.toHaveBeenCalled();
     },
   );
 
@@ -159,11 +155,12 @@ describe('ingestLoopEvent', () => {
     );
   });
 
-  it('omits caller proof metadata when redaction prevents an exact server proof', async () => {
+  it('rejects caller proof metadata when redaction prevents an exact receipt', async () => {
     mockVerify.mockResolvedValueOnce({ ok: true });
     const payload = { ...REQUEST.payload, summary: 'Bearer original-secret', publisherProof: { forged: true } };
-    expect(await ingestLoopEvent({ ...REQUEST, payload })).toEqual({ ok: true });
-    expect(mockPublish.mock.calls[0][1].payload).not.toHaveProperty('publisherProof');
+    expect(await ingestLoopEvent({ ...REQUEST, payload })).toMatchObject({ status: 400 });
+    expect(mockPublish).not.toHaveBeenCalled();
+    expect(mockSql).not.toHaveBeenCalled();
   });
 
   it('does not duplicate oversized unredacted output inside a proof', async () => {
@@ -276,6 +273,9 @@ describe('ingestLoopEvent', () => {
       issuer: 'did:imajin:warp-node',
       subject: 'did:imajin:ryan',
       scope: 'loop',
+      signature: REQUEST.signature,
+      publisherDid: REQUEST.publisherDid,
+      causeEventId: null,
       payload: { ...REQUEST.payload, publisherProof: REQUEST },
       correlationId: 'loop_abc123',
     });
@@ -311,7 +311,7 @@ describe('ingestLoopEvent', () => {
     expect(mockSql).toHaveBeenCalledTimes(1);
   });
 
-  it('redacts the entire persisted envelope only after verifying the signed original', async () => {
+  it('rejects credential-bearing signed facts before any persistence rather than losing signed evidence', async () => {
     mockVerify.mockResolvedValueOnce({ ok: true });
     const payload = {
       ...REQUEST.payload,
@@ -320,22 +320,16 @@ describe('ingestLoopEvent', () => {
       metadata: { api_key: 'nested-secret' },
       output: { kind: 'tool_result' as const, callId: '1', result: { newField: [{ accessToken: 'secret', value: 'retained' }] } },
     };
-    expect(await ingestLoopEvent({ ...REQUEST, payload })).toEqual({ ok: true });
+    expect(await ingestLoopEvent({ ...REQUEST, payload })).toMatchObject({ status: 400 });
     expect(mockVerify.mock.calls[0][1].payload).toBe(payload);
     expect(payload.summary).toBe('Bearer original-secret');
-    const persisted = mockPublish.mock.calls[0][1].payload;
-    expect(persisted.summary).toBe('Bearer [REDACTED]');
-    expect(persisted.refs.sessionId).toBe('postgres://[REDACTED]@host/db');
-    expect(persisted.metadata.api_key).toBe('[REDACTED]');
-    expect(persisted.output.result.newField[0]).toEqual({ accessToken: '[REDACTED]', value: 'retained' });
-    expect(persisted).not.toHaveProperty('publisherProof');
-    expect(JSON.stringify(persisted)).not.toContain('original-secret');
-    expect(JSON.stringify(mockSql.mock.calls)).not.toContain('nested-secret');
+    expect(mockPublish).not.toHaveBeenCalled();
+    expect(mockSql).not.toHaveBeenCalled();
   });
 
-  it('spills redacted UTF8 output above 16KiB and publishes only the server wrapper', async () => {
+  it('spills credential-free UTF8 output above 16KiB and publishes only the server wrapper', async () => {
     mockVerify.mockResolvedValueOnce({ ok: true });
-    const output = { kind: 'text' as const, text: `Bearer original-secret ${'界'.repeat(6000)}` };
+    const output = { kind: 'text' as const, text: '界'.repeat(6000) };
     expect(await ingestLoopEvent({ ...REQUEST, payload: { ...REQUEST.payload, output } })).toEqual({ ok: true });
     expect(mockSql).toHaveBeenCalledTimes(2);
     const stored = mockPublish.mock.calls[0][1].payload.output;

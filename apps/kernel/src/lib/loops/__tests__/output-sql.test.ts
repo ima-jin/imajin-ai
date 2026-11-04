@@ -55,6 +55,8 @@ async function applyMigrations() {
     if (!name) throw new Error('Missing loop output artifact migration');
     await pg.exec(readFileSync(join(migrationsDir, name), 'utf8'));
   }
+  await pg.exec(readFileSync(resolve(migrationsDir, '../../0231_usage_projection_chain.sql'), 'utf8'));
+  await pg.exec(readFileSync(resolve(migrationsDir, '../../0232_loop_event_signed_receipts.sql'), 'utf8'));
 }
 
 beforeAll(async () => {
@@ -95,7 +97,7 @@ describe('loop output SQL isolation against real embedded Postgres', () => {
       'SELECT event_type FROM kernel.bus_chain_configs ORDER BY event_type',
     );
     expect(chains.rows.map(row => row.event_type))
-      .toEqual(['loop.blocked', 'loop.finished', 'loop.progress', 'loop.started', 'surface.acquired', 'surface.conflicted', 'surface.released']);
+      .toEqual(['loop.blocked', 'loop.finished', 'loop.progress', 'loop.started', 'surface.acquired', 'surface.conflicted', 'surface.released', 'usage.incurred']);
   });
 
   it('preserves opaque typed output and older history without regressing the projection', async () => {

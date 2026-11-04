@@ -43,8 +43,7 @@ import { canonicalize, crypto as authCrypto } from '@imajin/auth';
 import { createDbResolver } from '@imajin/auth/resolve-db';
 import { db, identities } from '@/src/db';
 import { getNodeSigningIdentity } from '@/src/lib/vault/sealing';
-import type { LoopEnvelope, LoopRailType, LoopPublisherSignature } from './types';
-import type { LoopReceiptRequest } from './receipt-types';
+import { parseSignature, type LoopPublisherSignature } from './types';
 
 export type VerifyLoopPublisherSignatureResult = { ok: true } | { ok: false; error: string };
 
@@ -73,12 +72,11 @@ async function resolvePublisherPublicKey(publisherDid: string): Promise<string |
  */
 export async function verifyLoopPublisherSignature(
   publisherDid: string,
-  fields: { type: LoopRailType; payload: LoopEnvelope } | Pick<LoopReceiptRequest, 'type' | 'payload'>,
+  fields: { type: string; payload: Record<string, unknown> },
   signature: LoopPublisherSignature,
 ): Promise<VerifyLoopPublisherSignatureResult> {
-  if (signature.alg !== 'ed25519') {
-    return { ok: false, error: 'Unsupported publisher signature algorithm' };
-  }
+  const parsed = parseSignature(signature);
+  if (!parsed.ok) return { ok: false, error: parsed.error };
 
   const publicKey = await resolvePublisherPublicKey(publisherDid);
   if (!publicKey) {

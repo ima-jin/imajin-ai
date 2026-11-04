@@ -96,6 +96,11 @@ export const loopProjectionReactor: ReactorHandler = async (event) => {
   const sql = getClient();
 
   await sql.begin(async (tx) => {
+    if (event.id) {
+      await tx`SELECT pg_advisory_xact_lock(hashtextextended(${event.id}, 3268))`;
+      const prior = await tx`SELECT id FROM kernel.loop_events WHERE id = ${event.id}`;
+      if (prior.length > 0) return;
+    }
     if (signedCompletion) {
       // Same principal/issuer/loop lock used by signed surface acquisitions.
       const loopLock = JSON.stringify([principal, event.issuer, loopId]);
@@ -142,10 +147,12 @@ export const loopProjectionReactor: ReactorHandler = async (event) => {
     // publishers may generate a local id.
     await tx`
       INSERT INTO kernel.loop_events
-        (id, loop_id, type, issuer, principal, payload, occurred_at)
+        (id, loop_id, type, issuer, principal, payload, occurred_at, signature, publisher_did, cause_event_id)
       VALUES
         (${event.id ?? randomUUID()}, ${loopId}, ${event.type}, ${event.issuer}, ${principal},
-         ${JSON.stringify(payload)}::jsonb, ${at}::timestamptz)
+         ${JSON.stringify(payload)}::jsonb, ${at}::timestamptz,
+         ${event.signature ? JSON.stringify(event.signature) : null}::jsonb,
+         ${event.publisherDid ?? null}, ${event.causeEventId ?? null})
       ON CONFLICT (id) DO NOTHING
     `;
     if (signedCompletion) {

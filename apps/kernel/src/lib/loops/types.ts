@@ -55,6 +55,8 @@ export interface LoopEnvelope {
   kind: string;
   principal: string;
   parentLoopId?: string | null;
+  /** Signed causal link to an existing receipt, independent of loop lineage. */
+  causeEventId?: string | null;
   refs?: LoopRefs | null;
   output?: LoopOutput;
   state: string;
@@ -124,6 +126,8 @@ function parseEnvelope(raw: unknown): ParseResult<LoopEnvelope> {
     return { ok: false, error: 'payload must be an object' };
   }
   const { loopId, kind, principal, parentLoopId, refs, state, summary, at } = raw as Record<string, unknown>;
+  const cause = parseCauseEventId((raw as Record<string, unknown>).causeEventId);
+  if (!cause.ok) return cause;
 
   if (typeof loopId !== 'string' || loopId.length === 0) {
     return { ok: false, error: 'payload.loopId must be a non-empty string' };
@@ -152,9 +156,13 @@ function parseEnvelope(raw: unknown): ParseResult<LoopEnvelope> {
 
   const refsResult = parseRefs(refs);
   if (!refsResult.ok) return refsResult;
+  return parseEnvelopeOutput(raw as Record<string, unknown>);
+}
+
+function parseEnvelopeOutput(raw: Record<string, unknown>): ParseResult<LoopEnvelope> {
   if (!isBoundedLoopJson(raw)) return { ok: false, error: 'payload must contain bounded JSON' };
-  const { output } = raw as Record<string, unknown>;
-  if (!isWithinLoopMetadataBudget(raw as Record<string, unknown>)) {
+  const { output } = raw;
+  if (!isWithinLoopMetadataBudget(raw)) {
     return { ok: false, error: 'payload metadata exceeds 16 KiB' };
   }
   if (output !== undefined && !isLoopOutput(output)) {
@@ -163,6 +171,14 @@ function parseEnvelope(raw: unknown): ParseResult<LoopEnvelope> {
 
   // Do not reconstruct: absent/null optionals and extensions are signed fields.
   return { ok: true, value: raw as LoopEnvelope };
+}
+
+export function parseCauseEventId(raw: unknown): ParseResult<string | null | undefined> {
+  if (raw === undefined || raw === null) return { ok: true, value: raw };
+  if (typeof raw !== 'string' || raw.trim().length === 0 || raw.length > 512) {
+    return { ok: false, error: 'payload.causeEventId must be a non-empty event id of at most 512 characters' };
+  }
+  return { ok: true, value: raw };
 }
 
 export function parseSignature(raw: unknown): ParseResult<LoopPublisherSignature> {

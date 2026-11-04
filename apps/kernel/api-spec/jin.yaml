@@ -717,6 +717,7 @@ components:
         kind: { type: string, example: "warp.run", description: "Open vocabulary, e.g. warp.run | openclaw.subagent | openclaw.automation | openclaw.keeper | bus.chain | review | pr. The kernel never branches on it." }
         principal: { type: string, description: "onBehalfOf DID this loop is scoped to — the GET /api/loops authz boundary." }
         parentLoopId: { type: string, nullable: true, description: "Lineage — the loop this one was spawned from, when known." }
+        causeEventId: { type: [string, "null"], minLength: 1, maxLength: 512, description: "Signed causal link to an existing kernel.loop_events.id; independent of parent loop lineage. Missing or null means a root receipt." }
         refs: { $ref: "#/components/schemas/LoopRefs" }
         state: { type: string, example: "running", description: "Publisher-defined state label." }
         summary: { type: string, maxLength: 2000 }
@@ -725,13 +726,14 @@ components:
         brief: { $ref: "#/components/schemas/WarpBrief" }
     StoredLoopEnvelope:
       type: object
-      description: "Sanitized envelope retaining loop metadata and optional inline output or private artifact wrapper."
+      description: "Signed facts retaining loop metadata and optional inline output or private artifact wrapper. Signed ingest rejects credential-bearing facts rather than persisting unverifiable redactions. Legacy unsigned rows remain readable."
       required: [loopId, kind, principal, state, summary, at]
       properties:
         loopId: { type: string }
         kind: { type: string }
         principal: { type: string }
         parentLoopId: { type: [string, "null"] }
+        causeEventId: { type: [string, "null"] }
         refs: { $ref: "#/components/schemas/LoopRefs" }
         state: { type: string }
         summary: { type: string }
@@ -820,6 +822,13 @@ components:
         issuer: { type: string, description: "The verified publisher DID." }
         principal: { type: string }
         payload: { $ref: "#/components/schemas/StoredLoopEnvelope" }
+        signature:
+          oneOf:
+            - $ref: "#/components/schemas/LoopPublisherSignature"
+            - type: "null"
+          description: "Original publisher signature, or null for legacy unsigned rows. Verify against publisherDid over the original type and payload; oversized output is reconstructed from its private artifact."
+        publisherDid: { type: [string, "null"], description: "DID whose registered key verifies the signature; null for historical unsigned rows." }
+        causeEventId: { type: [string, "null"], description: "Indexed self-FK to the causal event id; signed as payload.causeEventId." }
         occurredAt: { type: string, format: date-time }
         createdAt: { type: string, format: date-time }
     ApprovalRef:

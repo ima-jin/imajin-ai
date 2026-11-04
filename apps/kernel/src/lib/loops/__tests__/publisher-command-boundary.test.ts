@@ -36,18 +36,22 @@ beforeEach(() => {
   }));
 });
 
-async function ingestOrigin(principal: string, refs: Record<string, string>) {
+function originRequest(principal: string, refs: Record<string, string>): LoopIngestRequest {
   const payload = {
     loopId: 'loop', kind: 'openclaw.session', principal, parentLoopId: null,
     state: 'running', summary: 'Started', at: new Date().toISOString(), refs,
   };
-  const request: LoopIngestRequest = {
+  return {
     type: 'loop.started', payload, publisherDid: agent,
     signature: {
       alg: 'ed25519', keyId: key.publicKey,
       sig: crypto.signSync(canonicalize({ type: 'loop.started', payload }), key.privateKey),
     },
   };
+}
+
+async function ingestOrigin(principal: string, refs: Record<string, string>) {
+  const request = originRequest(principal, refs);
   expect(await ingestLoopEvent(request)).toEqual({ ok: true });
   const published = mocks.publish.mock.calls[0][1].payload;
   mocks.readProof.mockResolvedValue({
@@ -69,13 +73,16 @@ describe('signed publisher origin / native command boundary', () => {
     },
   );
 
-  it('accepts legacy ingest without storing its key, but fails native authority closed until the publisher is updated', async () => {
+  it('rejects a legacy-addressed signed origin and keeps native authority closed until the publisher is updated', async () => {
     const principal = 'did:imajin:personal';
-    const published = await ingestOrigin(principal, { runId: 'run', sessionKey: 'harness-only' });
-    expect(published.refs).toEqual({ runId: 'run' });
-    expect(published).not.toHaveProperty('publisherProof');
-    expect(JSON.stringify(published)).not.toContain('sessionKey');
-    expect(JSON.stringify(mocks.sql.mock.calls)).not.toContain('sessionKey');
+    const request = originRequest(principal, { runId: 'run', sessionKey: 'harness-only' });
+    expect(await ingestLoopEvent(request)).toMatchObject({ status: 400 });
+    expect(mocks.publish).not.toHaveBeenCalled();
+    expect(mocks.sql).not.toHaveBeenCalled();
+    mocks.readProof.mockResolvedValue({
+      loop: { state: 'running', parent_loop_id: null },
+      proofs: [{ type: request.type, issuer: agent, proof: undefined }],
+    });
     await expect(resolveSessionCommandTarget('loop', principal)).rejects.toThrow('stale or invalid');
   });
 });
