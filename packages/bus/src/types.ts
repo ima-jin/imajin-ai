@@ -1,3 +1,9 @@
+export interface ReceiptSignature {
+  keyId: string;
+  alg: 'ed25519';
+  sig: string;
+}
+
 export interface BusEvent {
   id?: string;               // stable signed-ingest observation id, when supplied
   type: string;              // 'ticket.purchased', 'newsletter.sent', etc.
@@ -7,6 +13,9 @@ export interface BusEvent {
   payload?: Record<string, unknown>;
   correlationId?: string;    // trace across reactors
   timestamp?: string;        // ISO 8601, defaults to now
+  signature?: ReceiptSignature;
+  publisherDid?: string;
+  causeEventId?: string | null;
 }
 
 export interface ReactorConfig {

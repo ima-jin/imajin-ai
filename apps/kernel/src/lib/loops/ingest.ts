@@ -23,7 +23,7 @@ import { rateLimit } from '@imajin/config';
 import * as bus from '@imajin/bus';
 import { verifyLoopPublisherSignature } from './verify-publisher-signature';
 import { authorizeLoopPublisher } from './authorize-publisher';
-import { isLoopLifecycleType, type LoopIngestRequest } from './types';
+import { isLoopLifecycleType, parseCauseEventId, type LoopIngestRequest } from './types';
 import { prepareLoopOutput, redactLoopEnvelope, reserveLoopOwnership } from './prepare-output';
 import { isBoundedLoopJson, isLoopOutput, isWithinLoopMetadataBudget } from './output-validation';
 import { redactLoopText } from './output-redaction';
@@ -85,6 +85,9 @@ export async function ingestLoopEvent(request: LoopIngestRequest): Promise<Inges
       issuer: publisherDid,
       subject: sanitized.principal,
       scope: 'loop',
+      signature,
+      publisherDid,
+      causeEventId: payload.causeEventId ?? null,
       // Never reintroduce credentials or spilled output through lease evidence.
       payload: publishedPayload,
       correlationId: sanitized.loopId,
@@ -115,6 +118,8 @@ function warnUnauthorizedPublisher(publisherDid: string, principal: string): voi
 function validateLoopFacts(request: LoopIngestRequest):
   { ok: true; payload: LoopIngestRequest['payload'] } | { ok: false; error: string; status: number } {
   const { type, payload, publisherDid } = request;
+  const cause = parseCauseEventId(payload.causeEventId);
+  if (!cause.ok) return { ok: false, error: cause.error, status: 400 };
   if (isStepEventType(type) && !validateStepPayload(type, payload, publisherDid)) {
     return { ok: false, error: 'Invalid step observation', status: 400 };
   }
@@ -122,6 +127,9 @@ function validateLoopFacts(request: LoopIngestRequest):
     return { ok: false, error: 'Invalid loop output', status: 400 };
   }
   const sanitized = redactLoopEnvelope(payload);
+  if (canonicalize(payload) !== canonicalize(sanitized)) {
+    return { ok: false, error: 'Signed receipts must contain only credential-free facts', status: 400 };
+  }
   if (!isWithinLoopMetadataBudget(sanitized)) {
     return { ok: false, error: 'Redacted loop metadata exceeds 16 KiB', status: 400 };
   }

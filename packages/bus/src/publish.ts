@@ -26,7 +26,7 @@ export interface PublishResult {
 
 export async function publish<T extends BusEventType>(
   type: T,
-  event: { id?: string; issuer: string; subject: string; scope: string; payload: BusEventMap[T]; correlationId?: string; timestamp?: string }
+  event: Omit<BusEvent, 'type' | 'payload'> & { payload: BusEventMap[T] }
 ): Promise<PublishResult> {
   const fullEvent: BusEvent = {
     ...event,
