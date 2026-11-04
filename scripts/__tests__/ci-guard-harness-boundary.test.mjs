@@ -177,6 +177,19 @@ describe('ci-guard-harness-boundary', () => {
     expect(runGuard(fixture(content)).status).toBe(1);
   });
 
+  it('lists both historical exceptions and new session-key violations without hiding either', () => {
+    const entry = ALLOWLIST.find(item => item.kind === KINDS.SESSION_KEY);
+    const root = fixture("const field = 'sessionKey';", entry.file);
+    writeSource(root, SOURCE, 'const value = refs.sessionKey;');
+    expect(runGuard(root).status).toBe(1);
+    const listed = runGuard(root, ['--list']);
+    expect(listed.status).toBe(0);
+    expect(JSON.parse(listed.stdout)).toEqual(expect.arrayContaining([
+      { file: entry.file, line: 1, kind: KINDS.SESSION_KEY, value: 'sessionKey' },
+      { file: SOURCE, line: 1, kind: KINDS.SESSION_KEY, value: 'sessionKey' },
+    ]));
+  });
+
   it('reports all violations with accurate lines through comments and multiline imports', () => {
     const result = runGuard(fixture("// comment\n/* block\n */\nimport {\nClient\n} from 'openclaw';\nrpc('sessions_list');"), ['--list']);
     expect(result.status).toBe(0);

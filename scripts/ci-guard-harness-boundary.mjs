@@ -176,6 +176,11 @@ function callKind(name) {
   return null;
 }
 
+function sessionDataKeys(node, literal) {
+  const value = ts.isIdentifier(node) ? node.text : literal;
+  return new Set(value?.match(/\bsessionKeys?\b/g) ?? []);
+}
+
 function scanFile(filePath) {
   const source = ts.createSourceFile(filePath, readFileSync(filePath, 'utf8'), ts.ScriptTarget.Latest, true);
   const file = relative(ROOT, filePath).replaceAll('\\', '/');
@@ -196,11 +201,7 @@ function scanFile(filePath) {
     }
 
     const value = literalText(node);
-    const dataKey = ts.isIdentifier(node) ? node.text : value;
-    if (dataKey) {
-      const keys = new Set(dataKey.match(/\bsessionKeys?\b/g) ?? []);
-      for (const key of keys) add(node, KINDS.SESSION_KEY, key);
-    }
+    for (const key of sessionDataKeys(node, value)) add(node, KINDS.SESSION_KEY, key);
     const kind = value && literalKind(value);
     if (kind) add(node, kind, value);
     if (value && rpcName(value)) add(node, KINDS.RPC, value);
