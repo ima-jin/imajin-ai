@@ -70,7 +70,7 @@ export function MailDomainsPanel({ ownerDid }: Readonly<{ ownerDid: string }>) {
       {settings?.availableDomains.length === 0 && <p>No verified owner domains. Verify a domain in identity settings first.</p>}
       {!!settings?.availableDomains.length && (
         <div className="space-y-2">
-          <label className="block">Verified owner domain
+          <label className="block"><span>Verified owner domain</span>
             <select className="mt-1 block w-full rounded bg-gray-900 p-3" value={selected} onChange={event => setSelected(event.target.value)}>
               {settings.availableDomains.map(domain => <option key={domain} value={domain}>{domain}</option>)}
             </select>

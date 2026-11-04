@@ -13,7 +13,7 @@ export async function requireMailDomainManager(request: Request, ownerDid: strin
   const [actor] = await db.select({ subtype: identities.subtype }).from(identities).where(and(
     eq(identities.id, caller.id), isNull(identities.suspendedAt),
   )).limit(1);
-  if (!actor || actor.subtype !== 'human') {
+  if (actor?.subtype !== 'human') {
     return Response.json({ error: 'Human owner countersign required', code: 'AGENT_APPROVAL_REQUIRED' }, { status: 403 });
   }
   const [member] = await db.select({ role: identityMembers.role }).from(identityMembers)

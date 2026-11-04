@@ -28,7 +28,9 @@ export async function requestPostalDomain(domain: string, operation: 'create' | 
   }
   if (!token || /\s/.test(token)) throw new MailDomainError('postal_credential_unavailable');
   const create = operation === 'create';
-  url.pathname = `/imajin/v1/domains${create ? '' : `/${encodeURIComponent(domain)}${operation === 'check' ? '/check' : ''}`}`;
+  const domainPath = create ? '' : `/${encodeURIComponent(domain)}`;
+  const checkPath = operation === 'check' ? '/check' : '';
+  url.pathname = `/imajin/v1/domains${domainPath}${checkPath}`;
   if (!create) url.searchParams.set('organization', organization);
   try {
     const response = await fetch(url, {

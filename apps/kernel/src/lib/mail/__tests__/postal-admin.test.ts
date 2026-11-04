@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const state = vi.hoisted(() => ({ vault: vi.fn() }));
@@ -16,11 +16,14 @@ afterEach(() => { vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
 describe('Postal admin HTTP contract', () => {
   it('uses the node vault on every request, sends exact create body, handles 201/200 and check/read routes', async () => {
     const credential = randomUUID();
+    const expectedHeaderHash = createHash('sha256').update(`Bearer ${credential}`).digest('hex');
     state.vault.mockResolvedValue(credential);
     let exists = false;
     const http = vi.fn(async (input: URL, init: RequestInit) => {
       const url = new URL(input);
-      expect(new Headers(init.headers).get('Authorization') === `Bearer ${credential}`).toBe(true);
+      // Matcher diagnostics may show hashes, never a runtime credential.
+      const headerHash = createHash('sha256').update(new Headers(init.headers).get('Authorization') ?? '').digest('hex');
+      expect(headerHash).toBe(expectedHeaderHash);
       expect(init).toMatchObject({ cache: 'no-store', redirect: 'error' });
       expect(init.signal).toBeInstanceOf(AbortSignal);
       if (url.pathname === '/imajin/v1/domains') {
@@ -77,11 +80,24 @@ describe('Postal admin HTTP contract', () => {
   it.each([
     { name: 'other.org' }, { organization: 'other-org' }, { state: 'verified' },
     { records: [] }, { dns_ok: 'true' }, { dns_checked_at: 'invalid' },
+    { ownership_verified: 'true' }, { verified_at: 'invalid' }, { id: '' }, { state: 'disabled' },
     { records: postalFixture().records.filter(record => record.kind !== 'ownership') },
     { records: postalFixture().records.map(record => record.kind === 'spf' ? { ...record, include: undefined } : record) },
   ])('rejects invalid or cross-organization response %j', async override => {
     state.vault.mockResolvedValue(randomUUID());
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({ ...postalFixture(), ...override })));
+    await expect(requestPostalDomain('example.org', 'create')).rejects.toMatchObject({ code: 'postal_invalid_response' });
+  });
+
+  it.each([
+    { kind: 'unknown' }, { type: 'AAAA' }, { name: '' }, { value: '' }, { required: false },
+    { status: 'invented' }, { error: 42 }, { include: 'not-an-include' },
+    { priority: -1 }, { priority: 1.5 }, { priority: '10' },
+  ])('rejects invalid DNS record fields %j', async invalid => {
+    state.vault.mockResolvedValue(randomUUID());
+    const fixture = postalFixture();
+    const records = fixture.records.map((record, index) => index === 0 ? { ...record, ...invalid } : record);
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({ ...fixture, records })));
     await expect(requestPostalDomain('example.org', 'create')).rejects.toMatchObject({ code: 'postal_invalid_response' });
   });
 

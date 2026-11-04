@@ -32,7 +32,7 @@ export async function listMailDomainStates(ownerDid: string): Promise<Array<Mail
 
 async function verifiedBinding(ownerDid: string, domain: string) {
   const binding = await resolveVerifiedDomain(domain);
-  if (!binding || binding.zoneOwner !== ownerDid) throw new MailDomainError('domain_not_verified', 403);
+  if (binding?.zoneOwner !== ownerDid) throw new MailDomainError('domain_not_verified', 403);
   return binding;
 }
 
@@ -41,7 +41,7 @@ function nextCheck(attempts: number): Date {
 }
 
 /** The HTTP request finishes BEFORE this transaction starts. Revoke/re-add invalidates old responses. */
-async function persistResult(
+function persistResult(
   ownerDid: string, domain: string, bindingId: string, postal: PostalDomain | null, error: string | null,
   operationId: string | null,
 ): Promise<MailDomainStatus> {
@@ -69,7 +69,7 @@ async function persistResult(
   });
 }
 
-async function claimOperation(ownerDid: string, domain: string, bindingId: string, operation: 'create' | 'check') {
+function claimOperation(ownerDid: string, domain: string, bindingId: string, operation: 'create' | 'check') {
   return db.transaction(async tx => {
     await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${domain}, 2902))`);
     const binding = await resolveVerifiedDomain(domain, tx);
