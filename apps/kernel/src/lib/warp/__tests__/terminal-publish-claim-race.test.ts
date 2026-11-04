@@ -24,6 +24,7 @@ const { requireAgentKeyMock, publishMock, logMock } = vi.hoisted(() => ({
   logMock: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 
+vi.mock('../run-access', async () => import('./run-access-stub'));
 vi.mock('../connector', () => ({
   requireAgentKey: requireAgentKeyMock,
 }));

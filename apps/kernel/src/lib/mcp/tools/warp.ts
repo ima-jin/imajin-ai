@@ -30,6 +30,7 @@
 import type { McpTool } from '../types';
 import { str, num, json } from './utils';
 import { callerArguments } from '@/src/lib/kernel/connection-principal-policy';
+import { WarpRunAccessError } from '@/src/lib/warp/errors';
 import { assertWarpBriefSize, WARP_BRIEF_MAX_BYTES } from '@/src/lib/warp/brief-limit';
 import { sealWarpAgentKey, WARP_DISPATCH_SCOPE } from '@/src/lib/warp/connector';
 import { CORPUS_CONTEXT_MAX_LIMIT, type CorpusContextInput } from '@/src/lib/warp/corpus-context';
@@ -571,7 +572,8 @@ export const warpTools: McpTool[] = tools.map(tool => ({
     const principal = await mcpCredentialContext(ctx, 'warp');
     try {
       return await tool.handler(args, { ...ctx, credentialDid: principal.ownerDid, connectionCaller: principal.caller });
-    } catch {
+    } catch (error) {
+      if (error instanceof WarpRunAccessError) throw error;
       throw new AgentOAuthError('agent_connection_unavailable',
         'Restore the assigned identity’s active Warp connection and custody on /auth/connectors.');
     }

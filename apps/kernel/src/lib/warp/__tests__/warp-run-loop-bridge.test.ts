@@ -29,6 +29,7 @@ const {
   emitWarpRunLoopEventMock: vi.fn(),
 }));
 
+vi.mock('../run-access', async () => import('./run-access-stub'));
 vi.mock('../connector', () => ({
   requireAgentKey: requireAgentKeyMock,
 }));

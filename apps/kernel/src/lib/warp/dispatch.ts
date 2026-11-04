@@ -132,7 +132,8 @@ import {
   type CorpusContextMetadata,
 } from './corpus-context';
 import { readEnvironmentId } from './environment';
-import { WarpApiError, WarpBriefEventError } from './errors';
+import { WarpApiError, WarpBriefEventError, WarpRunAccessError } from './errors';
+import { assertRunAccess, canAccessRun, dispatchRunAttribution, readRunReceipt, runCredentialCaller } from './run-access';
 // Type-only: erased at compile time, so this adds no runtime dependency on
 // './loop-emit' (and therefore none of its DB dependency either) — see that
 // module's "Why this lives in its own module" doc. The real implementation is
@@ -166,10 +167,20 @@ const log = createLogger('kernel');
  * Lifecycle telemetry stays best-effort. Brief-bearing observations are awaited
  * and report failure explicitly, including the already-accepted provider run ID.
  */
-async function bridgeWarpRunToLoop(transition: WarpRunLoopTransition): Promise<void> {
+type PendingTransition = Omit<WarpRunLoopTransition, 'actorDid'> & { actorDid?: string };
+
+async function bridgeWarpRunToLoop(transition: PendingTransition): Promise<void> {
   try {
+    const receipt = transition.actorDid ? null : await readRunReceipt(transition.runId);
+    if (!transition.actorDid && !receipt) throw new WarpRunAccessError();
     const { emitWarpRunLoopEvent } = await import('./loop-emit');
-    const recorded = await emitWarpRunLoopEvent(transition);
+    const recorded = await emitWarpRunLoopEvent({
+      ...transition,
+      ...(receipt ? {
+        principalDid: receipt.principalDid, parentRunId: receipt.parentRunId, orgDid: receipt.orgDid,
+      } : {}),
+      actorDid: transition.actorDid ?? receipt?.actorDid ?? receipt!.principalDid,
+    });
     if (transition.brief && recorded !== true) throw new Error('Brief event was not recorded');
   } catch (err) {
     log.warn(
@@ -196,8 +207,8 @@ function warpRunLoopTransition(
   parentRunId: string | null,
   state: string,
   summary: string,
-  details: Pick<WarpRunLoopTransition, 'at' | 'refs' | 'prArtifacts' | 'brief'>,
-): WarpRunLoopTransition {
+  details: Pick<WarpRunLoopTransition, 'at' | 'refs' | 'prArtifacts' | 'brief'> & { actorDid?: string; orgDid?: string },
+): PendingTransition {
   return { type, runId, principalDid, parentRunId, state, summary, ...details };
 }
 
@@ -1062,6 +1073,10 @@ export async function dispatchAgentRun(
   if (trimmedPrompt.length === 0) {
     throw new Error('warp_invalid_prompt: prompt must be a non-empty string');
   }
+  if (input.conversationId && !input.parentRunId) throw new WarpRunAccessError();
+  if (input.parentRunId) {
+    await assertRunAccess(principalDid, requireRunId(input.parentRunId), caller);
+  }
 
   // Authority gate + unwrap. Everything below holds credential material.
   //
@@ -1069,6 +1084,11 @@ export async function dispatchAgentRun(
   // hit the DB, and an unauthorized caller should not be able to make us do that
   // work before being turned away.
   const agentKey = await (caller ? requireAgentKey(principalDid, caller) : requireAgentKey(principalDid));
+  const attribution = await dispatchRunAttribution(principalDid, caller);
+  if (input.conversationId) {
+    const parent = await fetchAgentRun(agentKey, requireRunId(input.parentRunId!));
+    if (parent.conversationId !== input.conversationId) throw new WarpRunAccessError();
+  }
   const [jinName, environmentId] = await Promise.all([
     resolveJinName(principalDid),
     resolveEnvironmentId(principalDid, input.environmentId),
@@ -1117,7 +1137,7 @@ export async function dispatchAgentRun(
     payload: {
       runId: run.runId,
       principalDid,
-      actorDid: caller?.actorDid ?? principalDid,
+      actorDid: attribution.actorDid,
       configName: config.name,
       state: run.state,
       skillSpec: config.skill_spec ?? null,
@@ -1148,7 +1168,7 @@ export async function dispatchAgentRun(
       run.parentRunId,
       warpStateToLoopState(run.state),
       `Warp run dispatched (${config.name})`,
-      { at: new Date().toISOString(), refs: warpRunLoopRefs(run), prArtifacts: warpRunPrArtifacts(run), brief },
+      { at: new Date().toISOString(), refs: warpRunLoopRefs(run), prArtifacts: warpRunPrArtifacts(run), brief, ...attribution },
     ),
   );
 
@@ -1167,10 +1187,15 @@ export async function dispatchAgentRun(
  * body — and it is what makes a failed run diagnosable and a finished one
  * measurable.
  */
+async function requireRunKey(principalDid: string, runId: string, caller?: ConnectionCaller): Promise<string> {
+  await assertRunAccess(principalDid, runId, caller);
+  const credentialCaller = runCredentialCaller(caller);
+  return credentialCaller ? requireAgentKey(principalDid, credentialCaller) : requireAgentKey(principalDid);
+}
+
 export async function getAgentRun(principalDid: string, runId: string, caller?: ConnectionCaller): Promise<WarpAgentRun> {
   const id = requireRunId(runId);
-
-  const agentKey = await (caller ? requireAgentKey(principalDid, caller) : requireAgentKey(principalDid));
+  const agentKey = await requireRunKey(principalDid, id, caller);
   return fetchAgentRun(agentKey, id);
 }
 
@@ -1241,7 +1266,10 @@ export async function listAgentRuns(
   input: ListAgentRunsInput = {},
   caller?: ConnectionCaller,
 ): Promise<WarpAgentRunPage> {
-  const agentKey = await (caller ? requireAgentKey(principalDid, caller) : requireAgentKey(principalDid));
+  const ancestorRunId = optionalString(input.ancestorRunId?.trim());
+  if (ancestorRunId) await assertRunAccess(principalDid, ancestorRunId, caller);
+  const credentialCaller = runCredentialCaller(caller);
+  const agentKey = await (credentialCaller ? requireAgentKey(principalDid, credentialCaller) : requireAgentKey(principalDid));
   const payload = await warpFetch(agentKey, `/agent/runs${buildRunsQuery(input)}`, {
     method: 'GET',
   });
@@ -1253,11 +1281,13 @@ export async function listAgentRuns(
 
   const runs: WarpAgentRun[] = [];
   for (const entry of Array.isArray(body.runs) ? body.runs : []) {
+    let run: WarpAgentRun;
     try {
-      runs.push(toAgentRun(entry));
+      run = toAgentRun(entry);
     } catch {
       continue;
     }
+    if (await canAccessRun(principalDid, run.runId, caller, ancestorRunId)) runs.push(run);
   }
 
   const pageInfo = objectOrNull(body.page_info);
@@ -1340,7 +1370,7 @@ export async function getAgentRunTranscript(
       ? Math.trunc(options.maxChars)
       : TRANSCRIPT_MAX_CHARS;
 
-  const agentKey = await (caller ? requireAgentKey(principalDid, caller) : requireAgentKey(principalDid));
+  const agentKey = await requireRunKey(principalDid, id, caller);
   const response = await warpRequest(agentKey, runPath(id, '/transcript'), {
     method: 'GET',
     redirect: 'manual',
@@ -1372,7 +1402,7 @@ export async function getAgentRunConversation(
 ): Promise<WarpAgentRunConversation> {
   const id = requireRunId(runId);
 
-  const agentKey = await (caller ? requireAgentKey(principalDid, caller) : requireAgentKey(principalDid));
+  const agentKey = await requireRunKey(principalDid, id, caller);
   const payload = await warpFetch(agentKey, runPath(id, '/conversation'), { method: 'GET' });
 
   const body = objectOrNull(payload);
@@ -1406,7 +1436,7 @@ export async function cancelAgentRun(
 ): Promise<WarpAgentRunCancellation> {
   const id = requireRunId(runId);
 
-  const agentKey = await (caller ? requireAgentKey(principalDid, caller) : requireAgentKey(principalDid));
+  const agentKey = await requireRunKey(principalDid, id, caller);
   await warpFetch(agentKey, runPath(id, '/cancel'), { method: 'POST' });
 
   log.info({ principalDid, runId: id }, 'Warp cloud agent run cancelled');
@@ -1525,7 +1555,7 @@ export async function sendFollowup(
 
   const resume = input.resume === true;
 
-  const agentKey = await (caller ? requireAgentKey(principalDid, caller) : requireAgentKey(principalDid));
+  const agentKey = await requireRunKey(principalDid, id, caller);
 
   const current = await fetchAgentRun(agentKey, id);
   const wasTerminal = isTerminalRunState(current.state);

@@ -64,6 +64,8 @@ export interface WarpRunLoopTransition {
   type: LoopLifecycleType;
   runId: string;
   principalDid: string;
+  actorDid: string;
+  orgDid?: string;
   /** Warp-confirmed orchestration lineage (#1939), or null when unknown/absent. */
   parentRunId: string | null;
   /** Publisher-defined state label, e.g. 'queued' | 'running' | 'blocked' | 'succeeded' | 'failed' | 'cancelled' | 'timeout'. */
@@ -93,6 +95,8 @@ export async function emitWarpRunLoopEvent(transition: WarpRunLoopTransition): P
       loopId: transition.runId,
       kind: WARP_RUN_LOOP_KIND,
       principal: transition.principalDid,
+      actorDid: transition.actorDid,
+      ...(transition.orgDid ? { orgDid: transition.orgDid } : {}),
       parentLoopId: transition.parentRunId,
       refs: { ...transition.refs, runId: transition.runId },
       state: transition.state,

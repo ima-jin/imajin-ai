@@ -451,7 +451,8 @@ async function meteredBySession(principalDid: string, sessionIds: string[]): Pro
 export function defaultSpendDeps(operatorDid: string): SpendDeps {
   return {
     async listRuns(principalDid, createdAfter) {
-      const page = await listAgentRuns(principalDid, { createdAfter, limit: RUN_LIMIT });
+      const { nodeRunCaller } = await import('@/src/lib/warp/run-access');
+      const page = await listAgentRuns(principalDid, { createdAfter, limit: RUN_LIMIT }, nodeRunCaller());
       return { runs: page.runs, hasNextPage: page.hasNextPage };
     },
     meteredBySession,

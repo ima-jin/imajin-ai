@@ -433,7 +433,8 @@ async function mayPublishTerminalOutcome(runId: string, activityAt: Date, segmen
  * race this closes).
  */
 async function checkOneRun(candidate: InFlightRun, outcome: SweepOutcome, lookbackMs: number): Promise<void> {
-  const run = await getAgentRun(candidate.principalDid, candidate.runId);
+  const { nodeRunCaller } = await import('./run-access');
+  const run = await getAgentRun(candidate.principalDid, candidate.runId, nodeRunCaller());
   const segment = candidate.resumeCount + 1;
 
   if (isTerminalRunState(run.state)) {

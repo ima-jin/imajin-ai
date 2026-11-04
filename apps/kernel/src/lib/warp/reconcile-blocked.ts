@@ -6,6 +6,7 @@ import { getIssue, getPullRequest } from '@/src/lib/github/connector';
 import { getAgentRun, isTerminalRunState, type WarpAgentRun } from './dispatch';
 import { emitWarpRunLoopEvent, type WarpRunLoopTransition } from './loop-emit';
 import { githubLoopRef, warpRunLoopRefs, warpRunPrArtifacts } from './loop-refs';
+import { nodeRunCaller, readRunReceipt } from './run-access';
 
 const log = createLogger('kernel:warp-reconcile');
 
@@ -85,7 +86,7 @@ async function deriveUnlinkedRun(loop: LoopJson, run: WarpAgentRun): Promise<Der
   }
   const parentRunId = run.parentRunId ?? loop.parentLoopId;
   if (parentRunId) {
-    const parent = await observed(principal, `warp:${parentRunId}`, () => getAgentRun(principal, parentRunId));
+    const parent = await getAgentRun(principal, parentRunId, nodeRunCaller());
     if (isTerminalRunState(parent.state)) {
       return { type: 'loop.finished', state: 'superseded', summary: `superseded · parent run ${parent.state.toLowerCase()}` };
     }
@@ -98,7 +99,9 @@ async function reconcileOne(principal: string, loop: LoopJson): Promise<LoopJson
   if (loop.principal !== principal || loop.kind !== 'warp.run' || loop.finishedAt
     || !(loop.state.toLowerCase() === 'blocked' || loop.state === 'awaiting_review' || loop.lastEventType === 'loop.blocked')) return loop;
   try {
-    const run = await observed(principal, `warp:${loop.loopId}`, () => getAgentRun(principal, loop.loopId));
+    const run = await getAgentRun(principal, loop.loopId, nodeRunCaller());
+    const receipt = await readRunReceipt(loop.loopId);
+    if (!receipt) return loop;
     // A resumed/running segment is owned by the normal lifecycle watch.
     if (run.state !== 'BLOCKED') return loop;
     const observation = await derive(loop, run);
@@ -108,6 +111,7 @@ async function reconcileOne(principal: string, loop: LoopJson): Promise<LoopJson
     const at = new Date().toISOString();
     const accepted = await emitWarpRunLoopEvent({
       ...derived, runId: loop.loopId, principalDid: principal, parentRunId: run.parentRunId ?? loop.parentLoopId,
+      actorDid: receipt.actorDid ?? receipt.principalDid, orgDid: receipt.orgDid,
       at, refs: warpRunLoopRefs(run),
     });
     if (!accepted) return loop;

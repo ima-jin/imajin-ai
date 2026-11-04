@@ -18,6 +18,7 @@ const h = vi.hoisted(() => ({
 }));
 vi.mock('@imajin/db', () => ({ getClient: () => h.client! }));
 vi.mock('@imajin/logger', () => ({ createLogger: () => h.log }));
+vi.mock('../run-access', async () => import('./run-access-stub'));
 vi.mock('../dispatch', () => ({ getAgentRun: h.getRun, listAgentRuns: h.list }));
 vi.mock('@/src/lib/inference/usage-ledger', () => ({ publishUsageIncurred: h.publish }));
 import { sweepWarpIncurredUsage, WARP_USAGE_SETTLE_MS } from '../usage-sweep';
@@ -128,7 +129,7 @@ describe.skipIf(!adminUrl)('Warp sweep — real PostgreSQL parameter types (#313
     expect(await sql`SELECT id FROM usage.incurred`).toHaveLength(3);
     expect(h.publish).toHaveBeenCalledTimes(3);
     expect(h.getRun).not.toHaveBeenCalledWith(OWNER, 'too-old');
-    expect(h.getRun).toHaveBeenCalledWith(OWNER, 'legacy');
+    expect(h.getRun).toHaveBeenCalledWith(OWNER, 'legacy', { actorDid: 'did:imajin:node-witness' });
     expect(h.rootBindings).toHaveBeenCalledTimes(25);
     for (const [parameters] of h.rootBindings.mock.calls) {
       expect(parameters).toEqual([WARP_INCURRED_SINCE, 'adapter:warp', expect.any(String)]);

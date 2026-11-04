@@ -48,6 +48,7 @@ const TRANSITION: WarpRunLoopTransition = {
   type: 'loop.started',
   runId: 'run-123',
   principalDid: 'did:imajin:veteze',
+  actorDid: 'did:imajin:jin',
   parentRunId: 'run-parent-1',
   state: 'queued',
   summary: 'Warp run dispatched (veteze-jin)',
@@ -62,6 +63,20 @@ beforeEach(() => {
 });
 
 describe('emitWarpRunLoopEvent', () => {
+  it.each(['loop.started', 'loop.progress', 'loop.blocked', 'loop.finished'] as const)(
+    'signs actor/org attribution on %s without changing principal', async type => {
+      await emitWarpRunLoopEvent({ ...TRANSITION, type, orgDid: 'did:imajin:org' });
+      const request = ingestLoopEventMock.mock.calls[0][0];
+      expect(request.payload).toMatchObject({
+        principal: TRANSITION.principalDid, actorDid: TRANSITION.actorDid, orgDid: 'did:imajin:org',
+      });
+      expect(canonicalizeMock).toHaveBeenCalledWith({ type, payload: request.payload });
+    },
+  );
+  it('omits orgDid for a personal key', async () => {
+    await emitWarpRunLoopEvent(TRANSITION);
+    expect(ingestLoopEventMock.mock.calls[0][0].payload).not.toHaveProperty('orgDid');
+  });
   it('includes the text-free brief descriptor in the exact payload covered by the signature', async () => {
     const brief = { hash: 'a'.repeat(64), assetId: 'asset_brief', storage: 'full-text' as const, browserTesting: 'no' as const };
     await emitWarpRunLoopEvent({ ...TRANSITION, brief });
