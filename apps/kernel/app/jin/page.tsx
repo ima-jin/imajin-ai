@@ -38,7 +38,7 @@ export default function JinPage() {
           <span className="text-2xl font-bold text-amber-500">人</span>
           <div>
             <h1 className="text-base font-semibold leading-tight">/jin</h1>
-            <p className="text-xs text-gray-500">Pending proposals — human approval surface</p>
+            <p className="text-xs text-gray-500">Agent identities and pending proposals — human approval surface</p>
           </div>
         </div>
         {/* #2291 — phone push path: install-to-home-screen PWA + web-push
