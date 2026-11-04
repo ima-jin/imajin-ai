@@ -56,14 +56,14 @@ export interface RecordTypesafeUsageParams {
  * caught and logged so a metering hiccup cannot turn a successful decision
  * into a failed request.
  */
-export async function recordTypesafeUsage(params: RecordTypesafeUsageParams): Promise<void> {
+export function recordTypesafeUsage(params: RecordTypesafeUsageParams): Promise<void> {
   const { ownerDid, agentDid, model, tokensIn, tokensOut, sessionId, turnId, warpRunId, externalId } = params;
-  const costUsd = computeTypesafeCostUsd(tokensIn);
-  const connectorId = connectorRegistryId(ownerDid, 'typesafe');
-  const quantity = tokensIn !== undefined && tokensOut !== undefined ? tokensIn + tokensOut : undefined;
-  const resource = `model:typesafe/${model}`;
 
   try {
+    const costUsd = computeTypesafeCostUsd(tokensIn);
+    const connectorId = connectorRegistryId(ownerDid, 'typesafe');
+    const quantity = tokensIn !== undefined && tokensOut !== undefined ? tokensIn + tokensOut : undefined;
+    const resource = `model:typesafe/${model}`;
     const usageId = generateId('usage');
 
     // Fire-and-forget preserves /decide latency and fail-open behavior.
@@ -98,4 +98,5 @@ export async function recordTypesafeUsage(params: RecordTypesafeUsageParams): Pr
       'typesafe usage ledger write failed — decide call already served to the caller',
     );
   }
+  return Promise.resolve();
 }
