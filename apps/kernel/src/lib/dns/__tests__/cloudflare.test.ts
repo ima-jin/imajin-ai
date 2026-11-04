@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { inspect } from 'node:util';
 import { CloudflareDnsProvider, txtValue } from '../cloudflare';
-import type { DnsProvider, DnsRecord } from '../types';
+import { DnsError, type DnsProvider, type DnsRecord } from '../types';
 
 const zoneId = 'a'.repeat(32);
 const recordId = 'b'.repeat(32);
@@ -156,12 +156,61 @@ describe('Cloudflare adapter HTTP contract', () => {
     expect(mutations()).toHaveLength(0);
   });
 
-  it.each(['http', 'api', 'network', 'json'])('redacts %s failure with no cause or provider body', async (kind) => {
+  it.each([undefined, '1', '1048577'])('rejects an oversized preflight body with content-length %s before any write', async (length) => {
+    const cancel = vi.fn();
+    const response = new Response(new ReadableStream({
+      start(controller) {
+        const chunk = new TextEncoder().encode('é'.repeat(262_144));
+        controller.enqueue(chunk);
+        controller.enqueue(chunk);
+        controller.enqueue(new TextEncoder().encode(testToken));
+      },
+      cancel,
+    }), { headers: length === undefined ? {} : { 'Content-Length': length } });
+    http.mockResolvedValueOnce(envelope({ name: 'example.com' }))
+      .mockResolvedValueOnce(envelope([]))
+      .mockResolvedValueOnce(response);
+    const error = await provider.apply([dkim, cname]).catch((failure: unknown) => failure);
+    expect(error).toBeInstanceOf(DnsError);
+    expect(error).toMatchObject({ code: 'dns_provider_unavailable', message: 'dns_provider_unavailable' });
+    expect(inspect(error)).not.toContain(testToken);
+    expect(cancel).toHaveBeenCalledOnce();
+    expect(response.body?.locked).toBe(false);
+    expect(http).toHaveBeenCalledTimes(3);
+    expect(mutations()).toHaveLength(0);
+  });
+
+  it('rejects an oversized declared length before reading the stream', async () => {
+    const response = new Response('{}', { headers: { 'Content-Length': '1048577' } });
+    const getReader = vi.spyOn(response.body!, 'getReader');
+    http.mockResolvedValueOnce(response);
+    await expect(provider.apply([spf])).rejects.toMatchObject({ code: 'dns_provider_unavailable' });
+    expect(getReader).not.toHaveBeenCalled();
+    expect(mutations()).toHaveLength(0);
+  });
+
+  it('accepts a JSON response of exactly 1 MiB', async () => {
+    const json = JSON.stringify({ success: true, result: { name: 'example.com' } });
+    http.mockResolvedValueOnce(new Response(json.padEnd(1_048_576), {
+      headers: { 'Content-Length': '1048576' },
+    }));
+    await expect(provider.apply([dkim])).resolves.toMatchObject({ status: 'written' });
+    expect(mutations()).toHaveLength(1);
+  });
+
+  it('rejects an empty response body without writing', async () => {
+    http.mockResolvedValueOnce(new Response(null));
+    await expect(provider.apply([spf])).rejects.toBeInstanceOf(DnsError);
+    expect(mutations()).toHaveLength(0);
+  });
+
+  it.each(['http', 'api', 'network', 'non-JSON'])('redacts %s failure with no cause or provider body', async (kind) => {
     if (kind === 'http') http.mockResolvedValueOnce(new Response(testToken, { status: 403 }));
     if (kind === 'api') http.mockResolvedValueOnce(Response.json({ success: false, errors: [{ message: testToken }] }));
     if (kind === 'network') http.mockRejectedValueOnce(new Error(testToken));
-    if (kind === 'json') http.mockResolvedValueOnce(new Response(testToken));
+    if (kind === 'non-JSON') http.mockResolvedValueOnce(new Response(`<html>${testToken}</html>`));
     const error = await provider.apply([spf]).catch((failure: unknown) => failure);
+    expect(error).toBeInstanceOf(DnsError);
     expect(error).toMatchObject({ message: 'dns_provider_unavailable' });
     expect(inspect(error)).not.toContain(testToken);
     expect(mutations()).toHaveLength(0);

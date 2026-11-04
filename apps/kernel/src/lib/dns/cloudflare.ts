@@ -21,6 +21,35 @@ interface Write {
   unchanged: boolean;
 }
 
+const MAX_RESPONSE_BYTES = 1_048_576;
+
+async function readEnvelope(response: Response): Promise<Envelope> {
+  if (Number(response.headers.get('content-length')) > MAX_RESPONSE_BYTES) {
+    await response.body?.cancel();
+    throw new DnsError('dns_provider_unavailable');
+  }
+  const reader = response.body?.getReader();
+  if (!reader) throw new DnsError('dns_provider_unavailable');
+  const decoder = new TextDecoder();
+  let bytes = 0;
+  let text = '';
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      bytes += value.byteLength;
+      if (bytes > MAX_RESPONSE_BYTES) {
+        await reader.cancel();
+        throw new DnsError('dns_provider_unavailable');
+      }
+      text += decoder.decode(value, { stream: true });
+    }
+    return JSON.parse(text + decoder.decode()) as Envelope;
+  } finally {
+    reader.releaseLock();
+  }
+}
+
 /** Cloudflare can return quoted TXT chunks; compare the logical TXT value. */
 export function txtValue(content: string): string {
   if (!content.startsWith('"')) return content;
@@ -79,7 +108,7 @@ export class CloudflareDnsProvider implements DnsProvider {
         ...(body === undefined ? {} : { body: JSON.stringify(body) }),
       });
       if (!response.ok) throw new DnsError('dns_provider_unavailable');
-      const data = await response.json() as Envelope;
+      const data = await readEnvelope(response);
       if (data.success !== true) throw new DnsError('dns_provider_unavailable');
       return data;
     } catch {
