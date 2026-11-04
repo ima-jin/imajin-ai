@@ -28,12 +28,13 @@ components:
       additionalProperties: false
       required: [identity, usableModels, connectors]
       properties:
+        name: { type: [string, "null"], description: Serving-agent display name in the operator projection only. }
         identity:
           type: object
           additionalProperties: false
           required: [did, handle, kind, tier, actAs]
           properties:
-            did: { type: string, description: "Authenticated signer DID, never replaced by the org DID." }
+            did: { type: string, description: "Authenticated signer, or bound agent in operator mode; never replaced by the org DID." }
             handle: { type: [string, "null"] }
             kind: { type: string, description: "Identity subtype, or scope when no subtype exists." }
             tier: { type: string }
@@ -53,6 +54,16 @@ components:
         connectors:
           type: array
           items: { $ref: "#/components/schemas/SelfDiscoveryConnector" }
+    OperatorSelfDiscovery:
+      type: object
+      additionalProperties: false
+      required: [principalDid, cards]
+      properties:
+        principalDid: { type: string, description: Verified acting principal, not the raw personal session DID. }
+        cards:
+          type: array
+          description: Bound serving agents; only this principal's inference relationship is visible.
+          items: { $ref: "#/components/schemas/SelfDiscovery" }
     SelfDiscoveryConnector:
       type: object
       additionalProperties: false
@@ -216,6 +227,14 @@ paths:
       security:
         - appToken: []
       parameters:
+        - in: query
+          name: agents
+          schema: { type: string, const: "1" }
+          description: |
+            Operator view for /jin. Requires a direct principal session (org owner/admin
+            when acting as an org); refuses agent delegation. Lists bound serving
+            agents using the same discovery projection and live inference resolver.
+            Does not expose the agent's private connectors or other clients.
         - in: header
           name: x-acting-as
           schema: { type: string }
@@ -229,7 +248,11 @@ paths:
           description: Caller-scoped self-discovery.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/SelfDiscovery" }
+              schema:
+                oneOf:
+                  - { $ref: "#/components/schemas/SelfDiscovery" }
+                  - { $ref: "#/components/schemas/OperatorSelfDiscovery" }
+        "400": { description: Invalid agents selector. }
         "401": { description: Missing or invalid credentials. }
         "403": { description: Same scope or act-as rejection as the usable-model route. }
         "404": { description: Signer identity not found or suspended. }
