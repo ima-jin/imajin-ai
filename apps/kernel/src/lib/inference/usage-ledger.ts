@@ -169,6 +169,12 @@ export async function recordInferenceUsage(params: RecordInferenceUsageParams): 
       turnId,
       externalId,
       transactionId,
+      provider,
+      model,
+      connectorId,
+      tokensIn,
+      tokensOut,
+      status,
       agentDid,
       warpRunId,
       metadata,
@@ -187,6 +193,14 @@ export async function recordInferenceUsage(params: RecordInferenceUsageParams): 
 }
 
 export interface PublishUsageIncurredParams {
+  /** Full-row projection fields; optional while existing emitters migrate. */
+  provider?: string;
+  model?: string;
+  connectorId?: string;
+  tokensIn?: number;
+  tokensOut?: number;
+  pricing?: Record<string, unknown>;
+  status?: 'error';
   usageId: string;
   principalDid: string;
   resource: string;
@@ -269,6 +283,13 @@ export async function publishUsageIncurred(params: PublishUsageIncurredParams): 
       agentDid: agentDid ?? null,
       warpRunId: warpRunId ?? null,
       ...(metadata ? { metadata } : {}),
+      ...(params.provider === undefined ? {} : { provider: params.provider }),
+      ...(params.model === undefined ? {} : { model: params.model }),
+      ...(params.connectorId === undefined ? {} : { connectorId: params.connectorId }),
+      ...(params.tokensIn === undefined ? {} : { tokensIn: params.tokensIn }),
+      ...(params.tokensOut === undefined ? {} : { tokensOut: params.tokensOut }),
+      ...(params.pricing === undefined ? {} : { pricing: params.pricing }),
+      ...(params.status === undefined ? {} : { status: params.status }),
     },
   });
 }

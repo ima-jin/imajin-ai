@@ -689,10 +689,12 @@ const DEFAULTS: Record<string, ReactorConfig[]> = {
   // #1147/#1148 — Agent Resource-Accounting Layer's `usage.incurred` primitive.
   // "Bread is free" pattern: `attestation` writes the durable signed record,
   // `emit` makes it observable, deliberately NO `settle` (metered, not
-  // billed). Kept in sync with migration 0120.
+  // billed). usage-projection materializes the receipt; kept in sync with
+  // migration 0231_usage_projection_chain.sql (DB rows override defaults).
   'usage.incurred': [
     { type: 'attestation', config: { attestationType: 'usage.incurred' }, enabled: true },
     { type: 'emit', config: {}, enabled: true },
+    { type: 'usage-projection', config: {}, enabled: true },
   ],
   // #1148 — the daily clock-rollup's own signed record, one per (principal,
   // window). `await: true` on `attestation` only here (not on the per-call

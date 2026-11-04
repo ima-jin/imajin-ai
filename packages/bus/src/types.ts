@@ -2122,6 +2122,14 @@ export interface BusEventMap {
     transactionId?: string | null;
     agentDid?: string | null;
     warpRunId?: string | null;
+    /** Optional full-row receipt projection fields (#3261). */
+    provider?: string;
+    model?: string;
+    connectorId?: string;
+    tokensIn?: number;
+    tokensOut?: number;
+    pricing?: Record<string, unknown>;
+    status?: 'error';
   };
   /**
    * The daily clock-rollup over `usage.incurred` (#1148): one signed record
