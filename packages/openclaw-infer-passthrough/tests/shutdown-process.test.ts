@@ -9,6 +9,7 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 // These are real POSIX process-group signals, not Windows' forceful kill emulation.
+// Shutdown regressions must assert drain/exit events, not minimum elapsed time (#3270).
 describe.skipIf(process.platform !== 'linux')('standalone tsx process-group shutdown', () => {
   let child: ChildProcess;
   let upstream: Server;
