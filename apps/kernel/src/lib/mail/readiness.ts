@@ -1,7 +1,14 @@
-/**
- * Fail closed until domain ownership AND mail verification ship (#2902/#2918).
- * Deliberately has no environment/request override. Tests mock this module.
- */
-export function isDomainMailReady(_ownerDid: string, _domain: string): Promise<boolean> {
-  return Promise.resolve(false);
+import { resolveVerifiedDomain } from '@/src/lib/domains/service';
+import { getMailDomainStatus } from './postal-domains';
+
+/** No request/env override: both independent authorities must still be valid. */
+export async function isDomainMailReady(ownerDid: string, domain: string): Promise<boolean> {
+  try {
+    const status = await getMailDomainStatus(ownerDid, domain);
+    if (status?.state !== 'verified' || !status.ownershipVerified || !status.dnsOk) return false;
+    const binding = await resolveVerifiedDomain(domain);
+    return binding?.zoneOwner === ownerDid;
+  } catch {
+    return false;
+  }
 }

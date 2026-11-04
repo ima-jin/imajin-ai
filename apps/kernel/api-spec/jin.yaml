@@ -1267,6 +1267,81 @@ paths:
         "400": { description: Invalid scope or lease }
         "403": { description: Current human zone owner authority required }
         "503": { description: Delegation unavailable }
+  /api/orgs/{ownerDid}/mail-domains:
+    parameters:
+      - { name: ownerDid, in: path, required: true, schema: { type: string } }
+    get:
+      tags: [jin]
+      operationId: listOrganizationMailDomains
+      summary: Read stored mail-domain state and current send-only DNS guidance
+      description: >-
+        Session-only human with current owner/admin membership. The path selects
+        the org; X-Acting-For cannot select it. A supplied acting-as identity must
+        match. Returns domains plus availableDomains (currently verified zone-owner
+        bindings). Each domain has ownerDid, domain, state (pending/verified/disabled),
+        ownershipVerified, dnsOk, records, checkedAt, error and guidance.
+        records preserves Postal values; guidance.records is the only list to add:
+        ownership/SPF/DKIM/return-path, never MX. Guidance merges current DNS SPF
+        with Postal's include, preserving existing providers and all qualifiers.
+        DNS failures or multiple SPF policies withhold SPF guidance with an error.
+        This GET never calls Postal or writes DNS. Cache-Control private, no-store.
+      security: [{ cookieAuth: [] }]
+      responses:
+        "200": { description: "Stored domains, safe guidance and availableDomains" }
+        "401": { description: Real session required }
+        "403": { description: Current human organization owner/admin required }
+        "503": { description: Mail domain status unavailable }
+    post:
+      tags: [jin]
+      operationId: provisionOrganizationMailDomain
+      summary: Idempotently provision mail for an already owner-verified domain
+      description: >-
+        Same current human member gate as GET plus registered owner-countersign
+        policy. Agents cannot execute; the human must re-issue. Refuses unless
+        the domain binding is verified to this owner DID. Creates in Postal
+        with the runtime node vault credential, persists exact DNS records and
+        pending/verified state. No DNS writes, mailboxes or organization creation.
+        Failures persist pending with a safe error, never verified.
+      security: [{ cookieAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [domain]
+              properties:
+                domain: { type: string, minLength: 1, maxLength: 253 }
+      responses:
+        "200": { description: "MailDomainStatus envelope {domain}, Cache-Control no-store" }
+        "400": { description: Invalid JSON or domain }
+        "401": { description: Real session required }
+        "403": { description: Human owner/admin and verified domain binding required }
+        "503": { description: Postal unavailable or credential/configuration invalid; error is sanitized }
+  /api/orgs/{ownerDid}/mail-domains/{domain}/check:
+    parameters:
+      - { name: ownerDid, in: path, required: true, schema: { type: string } }
+      - { name: domain, in: path, required: true, schema: { type: string } }
+    post:
+      tags: [jin]
+      operationId: checkOrganizationMailDomain
+      summary: Check Postal ownership and sending DNS, persisting the new state
+      description: >-
+        Same session-only current human owner/admin and registered countersign
+        policy as provisioning. Uses Postal's narrow check endpoint. A failed
+        initial create is retried idempotently first. No transaction spans HTTP.
+        Revocation disables sending atomically; stale in-flight responses cannot
+        restore readiness. Pending domains are polled with bounded backoff by
+        authenticated cron; polling stops after verified or disabled.
+      security: [{ cookieAuth: [] }]
+      responses:
+        "200": { description: "MailDomainStatus envelope {domain}, Cache-Control no-store" }
+        "400": { description: Invalid domain }
+        "401": { description: Real session required }
+        "403": { description: Human owner/admin and verified domain binding required }
+        "409": { description: Provision the mail domain first }
+        "503": { description: Postal unavailable; sending remains gated }
   /api/orgs/{ownerDid}/mail-senders:
     parameters:
       - { name: ownerDid, in: path, required: true, schema: { type: string } }
@@ -1279,7 +1354,7 @@ paths:
         this exact business, community, or family identity. Bearer credentials
         and app tokens (including app tokens moved into cookies) are refused.
         Readiness is keyed by configured domain and is server-authoritative;
-        until ownership and mail verification are implemented it is always false.
+        it requires stored Postal verification and a current verified owner binding.
         Saving configuration never enables custom-domain delivery.
       security: [{ cookieAuth: [] }]
       responses:

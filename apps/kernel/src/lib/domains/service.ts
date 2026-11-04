@@ -7,6 +7,7 @@ import { prepareMechanicalAttestation } from '@/src/lib/auth/emit-mechanical-att
 import { domainSigningIdentity, getImajinOrganization } from './signing';
 import { DomainError, isImajinDomain, normalizeDomain } from './normalize';
 import { forEachSequential } from '@/src/lib/async/sequential';
+import { disableMailDomain } from '@/src/lib/mail/domain-state';
 
 export { DomainError, normalizeDomain } from './normalize';
 export type DomainBinding = Pick<DomainBindingRow,
@@ -166,6 +167,7 @@ async function transition(tx: Transaction, row: DomainBindingRow, status: 'verif
     status, method: row.method, attestation: publicAttestation, checkedAt: now,
     verifiedAt: status === 'verified' ? now : row.verifiedAt,
   }).where(eq(domainBindings.id, row.id)).returning();
+  if (status === 'revoked') await disableMailDomain(tx, row.zoneOwner, row.domain);
   return binding(updated);
 }
 
