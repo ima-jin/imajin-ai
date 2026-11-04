@@ -1,6 +1,6 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import { generateKeyPairSync, sign } from 'node:crypto';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { createServer, type Server, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
@@ -60,6 +60,7 @@ describe.skipIf(process.platform !== 'linux').sequential('standalone node --impo
       env: {
         PATH: process.env.PATH,
         TSX_TSCONFIG_PATH: tsconfig,
+        TSX_DISABLE_CACHE: '1',
         KERNEL_BASE_URL: `http://127.0.0.1:${upstreamPort}`,
         INFER_PROXY_AUTH_MODE: 'agent', INFER_PROXY_PORT: String(port),
         INFER_PROXY_SHUTDOWN_GRACE_MS: String(graceMs),
@@ -77,6 +78,7 @@ describe.skipIf(process.platform !== 'linux').sequential('standalone node --impo
       expect(child.exitCode, output).toBeNull();
       expect(output).toContain('openclaw-infer-passthrough listening');
     }, { timeout: 10_000 });
+    expect(await liveProcessGroupMembers()).toContainEqual(expect.objectContaining({ pid: child.pid }));
   }, 15_000);
 
   afterEach(async () => {
@@ -102,6 +104,23 @@ describe.skipIf(process.platform !== 'linux').sequential('standalone node --impo
     })), { timeout: exitBoundMs });
   }
 
+  async function liveProcessGroupMembers() {
+    const members = await Promise.all((await readdir('/proc')).filter(pid => /^\d+$/.test(pid)).map(async pid => {
+      let stat: string;
+      try {
+        stat = await readFile(`/proc/${pid}/stat`, 'utf8');
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined;
+        throw error;
+      }
+      const [state, , group] = stat.slice(stat.lastIndexOf(')') + 2).split(' ');
+      // Exited zombies/dead helpers can only be reaped by the container's init.
+      return Number(group) === child.pid && !['Z', 'X'].includes(state)
+        ? { pid: Number(pid), state } : undefined;
+    }));
+    return members.filter(member => member !== undefined);
+  }
+
   async function assertExited(inFlightAtSignal: number, cutAtGrace: boolean) {
     const deadline = new AbortController();
     try {
@@ -117,9 +136,9 @@ describe.skipIf(process.platform !== 'linux').sequential('standalone node --impo
         msg: 'openclaw-infer-passthrough shutdown complete', inFlightAtSignal, cutAtGrace,
       }),
     ]);
-    await vi.waitFor(() => {
+    await vi.waitFor(async () => {
       expect(() => process.kill(child.pid!, 0)).toThrow();
-      expect(() => process.kill(-child.pid!, 0)).toThrow();
+      expect(await liveProcessGroupMembers(), output).toEqual([]);
     }, { timeout: exitBoundMs });
   }
 
@@ -141,7 +160,7 @@ describe.skipIf(process.platform !== 'linux').sequential('standalone node --impo
     });
   }
 
-  it.each(['SIGTERM', 'SIGINT'] as const)('idle %s reports drain and exits 0 with the process group gone', async name => {
+  it.each(['SIGTERM', 'SIGINT'] as const)('idle %s reports drain and exits 0 with no live process-group members', async name => {
     await (await fetch(`${baseUrl}/healthz`)).text();
     signal(name);
     await assertExited(0, false);
@@ -159,7 +178,7 @@ describe.skipIf(process.platform !== 'linux').sequential('standalone node --impo
     await assertExited(1, false);
   }, testTimeoutMs);
 
-  it('SIGTERM cuts a hung upstream at grace and exits 0 with the process group gone', async () => {
+  it('SIGTERM cuts a hung upstream at grace and exits 0 with no live process-group members', async () => {
     const response = await stream();
     const text = response.text().catch(() => 'cut');
     signal();
