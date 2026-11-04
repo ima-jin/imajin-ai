@@ -44,9 +44,6 @@ export async function ingestLoopEvent(request: LoopIngestRequest): Promise<Inges
     log.warn({ type, loopId: redactLoopText(payload.loopId), publisherDid: redactLoopText(publisherDid) }, 'loop event signature rejected');
     return { ok: false, error: verification.error, status: 400 };
   }
-  const validation = validateLoopFacts(request);
-  if (!validation.ok) return validation;
-  const sanitized = validation.payload;
 
   // #2358: a valid signature only proves publisherDid controls its own key —
   // it says nothing about whether publisherDid may write history for
@@ -62,6 +59,9 @@ export async function ingestLoopEvent(request: LoopIngestRequest): Promise<Inges
       code: 'loop_publisher_unauthorized',
     };
   }
+  const validation = validateLoopFacts(request);
+  if (!validation.ok) return validation;
+  const sanitized = validation.payload;
 
   try {
     if (isLoopLifecycleType(type) && !await reserveLoopOwnership(type, sanitized)) {
@@ -131,7 +131,7 @@ function validateLoopFacts(request: LoopIngestRequest):
   }
   const sanitized = redactLoopEnvelope(payload);
   if (canonicalize(payload) !== canonicalize(sanitized)) {
-    return { ok: false, error: 'Signed receipts must contain only credential-free facts', status: 400 };
+    return { ok: false, error: 'Signed receipts must contain only credential-free kernel facts', status: 400 };
   }
   if (!isWithinLoopMetadataBudget(sanitized)) {
     return { ok: false, error: 'Redacted loop metadata exceeds 16 KiB', status: 400 };

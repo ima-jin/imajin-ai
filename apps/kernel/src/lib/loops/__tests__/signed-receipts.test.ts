@@ -99,6 +99,18 @@ beforeEach(async () => {
 afterAll(() => pg.close());
 
 describe('signed receipt store', () => {
+  it.each(['loop.started', 'loop.progress', 'surface.acquired'] as const)(
+    'rejects a real signed legacy-ref %s before receipt, projection, or artifact writes', async type => {
+      const refs = { runId: 'run', sessionKey: 'harness-only', futureRef: 'ignored' };
+      const request = signed({
+        refs, ...(type === 'surface.acquired' ? { surface: 'issue:#3268' } : {}),
+      }, type);
+      expect((await post(request)).status).toBe(400);
+      expect((await pg.query('SELECT id FROM kernel.loop_events')).rows).toEqual([]);
+      expect((await pg.query('SELECT loop_id FROM kernel.loops')).rows).toEqual([]);
+      expect((await pg.query('SELECT id FROM kernel.loop_output_artifacts')).rows).toEqual([]);
+    },
+  );
   it.each(['publisherProof', 'evidence', 'observedConflictingLoopId', 'observedConflictingHolderDid'])(
     'rejects oversized surface output with reserved %s before writes', async field => {
       const request = signed({

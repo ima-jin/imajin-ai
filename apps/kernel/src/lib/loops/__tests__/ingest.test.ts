@@ -65,24 +65,20 @@ afterEach(() => vi.useRealTimers());
 
 describe('ingestLoopEvent', () => {
   it.each(['loop.started', 'loop.progress', 'surface.acquired'] as const)(
-    'verifies legacy refs but never stores or republishes them for %s',
+    'rejects legacy refs rather than storing unverifiable signed facts for %s',
     async type => {
       mockVerify.mockResolvedValueOnce({ ok: true });
       const payload = {
         ...REQUEST.payload, refs: { runId: 'run', sessionKey: 'harness-only', futureRef: 'ignored' },
         ...(type === 'surface.acquired' ? { surface: 'issue:#3259' } : {}),
       };
-      expect(await ingestLoopEvent({ ...REQUEST, type, payload })).toEqual({ ok: true });
+      expect(await ingestLoopEvent({ ...REQUEST, type, payload })).toMatchObject({ status: 400 });
       expect(mockVerify.mock.calls[0][1].payload).toBe(payload);
-      const published = mockPublish.mock.calls[0][1].payload;
-      expect(published.refs).toEqual({ runId: 'run' });
-      expect(published).not.toHaveProperty('publisherProof');
-      expect(JSON.stringify(mockSql.mock.calls)).not.toContain('harness-only');
-      expect(JSON.stringify(published)).not.toContain('sessionKey');
+      expect(mockAuthorize).toHaveBeenCalledWith(REQUEST.publisherDid, payload.principal);
+      expect(mockPublish).not.toHaveBeenCalled();
+      expect(mockSql).not.toHaveBeenCalled();
       expect(payload.refs.sessionKey).toBe('harness-only');
-      expect(projectSurfaceLease).toHaveBeenCalledWith(
-        expect.objectContaining({ payload }), published, false,
-      );
+      expect(projectSurfaceLease).not.toHaveBeenCalled();
     },
   );
 
