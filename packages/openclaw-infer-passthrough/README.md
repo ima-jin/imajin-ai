@@ -566,6 +566,7 @@ Use `node --import tsx`: the tsx CLI relays process-group signals twice under co
   name: 'infer-passthrough', // 'dev-infer-passthrough' in dev
   cwd: '/path/to/imajin-ai',
   script: 'packages/openclaw-infer-passthrough/src/server.ts',
+  interpreter: 'node',
   node_args: '--import tsx',
   env_file: '/etc/imajin/infer-passthrough.env', // secrets live here, not inline — see step 2
   env: {

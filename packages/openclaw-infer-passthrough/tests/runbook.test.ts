@@ -94,6 +94,7 @@ describe('principal migration runbook (#3041)', () => {
   it('documents in-process tsx loading for both pm2 and systemd', () => {
     const readme = readFileSync(new URL('README.md', packageUrl), 'utf8');
     expect(readme).toContain("script: 'packages/openclaw-infer-passthrough/src/server.ts'");
+    expect(readme).toContain("interpreter: 'node'");
     expect(readme).toContain("node_args: '--import tsx'");
     expect(readme).toContain('ExecStart=/usr/bin/env node --import tsx packages/openclaw-infer-passthrough/src/server.ts');
     expect(readme).not.toContain(['node_modules', '.bin', 'tsx'].join('/'));
