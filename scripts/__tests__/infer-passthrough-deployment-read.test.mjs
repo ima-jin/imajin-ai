@@ -5,8 +5,9 @@ import {
 } from '../../deploy/infer-passthrough/deployment-read-protocol.mjs';
 
 const h = vi.hoisted(() => ({
-  files: new Map(), handles: new Map(), trace: [], nextFd: 10, fail: '', unsafe: '',
+  files: new Map(), handles: new Map(), trace: [], nextFd: 10, fail: '', unsafe: '', exec: vi.fn(),
 }));
+vi.mock('node:child_process', () => ({ execFileSync: h.exec }));
 vi.mock('node:path', async original => {
   const actual = await original();
   return { ...actual, dirname: actual.posix.dirname, join: actual.posix.join };
@@ -93,7 +94,9 @@ beforeEach(() => {
   vi.stubGlobal('process', { ...process, geteuid: () => 0 });
   vi.spyOn(console, 'error').mockImplementation(() => {});
   h.files.set('/etc/imajin/infer-passthrough-deployment-read.json', file(JSON.stringify(config)));
-  h.files.set('/etc/imajin/infer-passthrough-identity', file(host.export({ format: 'der', type: 'pkcs8' }).subarray(-32).toString('hex')));
+  h.files.set('/etc/imajin/infer-passthrough.env', file('INFER_PROXY_AUTH_MODE=agent\n'));
+  const seed = host.export({ format: 'der', type: 'pkcs8' }).subarray(-32).toString('hex');
+  h.exec.mockReturnValue(`OPENCLAW_APP_PRIVATE_KEY=${seed}`);
 });
 afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
@@ -113,6 +116,39 @@ function transport(change = value => value) {
 }
 
 describe('root gateway deployment-read consumer', () => {
+  it('uses existing environment-file precedence over inline service identity without adding another secret file', async () => {
+    const seed = host.export({ format: 'der', type: 'pkcs8' }).subarray(-32).toString('hex');
+    const otherSeed = generateKeyPairSync('ed25519').privateKey.export({ format: 'der', type: 'pkcs8' }).subarray(-32).toString('hex');
+    for (const value of [seed, `"${seed}"`]) {
+      h.files.set('/etc/imajin/infer-passthrough.env', file(`OPENCLAW_APP_PRIVATE_KEY=${value}\n`));
+      h.exec.mockReturnValue(`OPENCLAW_APP_PRIVATE_KEY=${otherSeed}`);
+      vi.stubGlobal('fetch', transport());
+      expect(await deliverDeploymentRead()).toBe(fixture);
+    }
+    expect(h.files.has('/etc/imajin/infer-passthrough-identity')).toBe(false);
+  });
+
+  it('accepts resolved quoted inline identity and never evaluates environment syntax', async () => {
+    const seed = host.export({ format: 'der', type: 'pkcs8' }).subarray(-32).toString('hex');
+    h.exec.mockReturnValue(`OTHER=value "OPENCLAW_APP_PRIVATE_KEY=${seed}"`);
+    vi.stubGlobal('fetch', transport());
+    expect(await deliverDeploymentRead()).toBe(fixture);
+    h.files.set('/etc/imajin/infer-passthrough.env', file('OPENCLAW_APP_PRIVATE_KEY=$(test-do-not-execute)\n'));
+    await expect(deliverDeploymentRead()).rejects.toThrow('identity unavailable');
+    expect(h.exec.mock.calls.every(([command]) => command === '/usr/bin/systemctl')).toBe(true);
+  });
+
+  it('refuses absent, malformed or unreadable existing gateway identity with no GitHub credential fallback', async () => {
+    const fetch = vi.fn();
+    vi.stubGlobal('fetch', fetch);
+    h.exec.mockReturnValue('');
+    await expect(deliverDeploymentRead()).rejects.toThrow('identity unavailable');
+    h.files.set('/etc/imajin/infer-passthrough.env', file('OPENCLAW_APP_PRIVATE_KEY=not-a-key\n'));
+    await expect(deliverDeploymentRead()).rejects.toThrow('identity unavailable');
+    h.files.get('/etc/imajin/infer-passthrough.env').mode = 0o644;
+    await expect(deliverDeploymentRead()).rejects.toThrow('Untrusted credential storage');
+    expect(fetch).not.toHaveBeenCalled();
+  });
   it('discovers its grant, atomically installs root:root 0600, acknowledges, and retries/rotates', async () => {
     const fetch = transport();
     vi.stubGlobal('fetch', fetch);
@@ -132,6 +168,10 @@ describe('root gateway deployment-read consumer', () => {
     expect(process.argv.some(value => value.includes(fixture))).toBe(false);
     expect(Object.values(process.env).some(value => value?.includes(fixture))).toBe(false);
     expect(JSON.stringify(console.error.mock.calls)).not.toContain(fixture);
+    expect(h.exec).toHaveBeenCalledWith('/usr/bin/systemctl',
+      ['show', 'infer-passthrough.service', '--property=Environment', '--value'],
+      expect.objectContaining({ stdio: ['ignore', 'pipe', 'pipe'], timeout: 10_000 }));
+    expect(JSON.stringify(h.exec.mock.calls)).not.toContain(fixture);
   });
 
   it.each(['write', 'fsync', 'rename'])('preserves the previous file when %s fails', async operation => {

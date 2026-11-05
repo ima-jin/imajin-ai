@@ -20,8 +20,8 @@ export const dynamic = 'force-dynamic';
 function buildImportDetail(raw: VaultImportBody): ImportDetail {
   return {
     ownerDid: raw.ownerDid,
-    consumerDid: raw.cloudflare ? getNodeSigningIdentity().senderDid : raw.consumerDid!,
-    purpose: raw.cloudflare ? cloudflarePurpose(raw.cloudflare.zoneId) : raw.purpose!.trim(),
+    consumerDid: raw.cloudflare ? getNodeSigningIdentity().senderDid : raw.consumerDid,
+    purpose: raw.cloudflare ? cloudflarePurpose(raw.cloudflare.zoneId) : raw.purpose.trim(),
     fingerprint: importFingerprint(raw.secret), label: raw.label ?? null,
     expiresAt: raw.expiresAt ? new Date(raw.expiresAt).toISOString() : null,
     replacesField: raw.replacesField ?? null,
@@ -86,7 +86,8 @@ export async function POST(request: NextRequest) {
   if (!validateImportBody(raw)) return auth.fail('Invalid vault import request', 400);
   if (!auth.owners.some(owner => owner.did === raw.ownerDid)) return auth.fail('Owner not authorized', 403);
   if (isVaultTier1()) return auth.fail('Vault import requires synchronous node custody', 409);
-  const proposalId = generateId(raw.cloudflare ? 'cfimport' : raw.deploymentRead ? 'deployimport' : 'vimport');
+  const importPrefix = raw.deploymentRead ? 'deployimport' : 'vimport';
+  const proposalId = generateId(raw.cloudflare ? 'cfimport' : importPrefix);
   const detail = buildImportDetail(raw);
   let stagingRef: string | undefined;
   try {

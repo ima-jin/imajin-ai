@@ -270,7 +270,7 @@ same SHA again before migration. Do not use these commands on unreviewed code.
 ```bash
 install -d -o root -g root -m 0755 /usr/local/libexec/infer-passthrough
 install -o root -g root -m 0755 deploy/infer-passthrough/bootstrap.sh deploy/infer-passthrough/update.sh /usr/local/libexec/infer-passthrough/
-install -o root -g root -m 0644 deploy/infer-passthrough/bootstrap.py deploy/infer-passthrough/*.mjs deploy/infer-passthrough/*.service deploy/infer-passthrough/*.timer /usr/local/libexec/infer-passthrough/
+install -o root -g root -m 0644 deploy/infer-passthrough/bootstrap.py deploy/infer-passthrough/check-health.mjs deploy/infer-passthrough/production-deployment.mjs deploy/infer-passthrough/deployment-read.mjs deploy/infer-passthrough/deployment-read-protocol.mjs deploy/infer-passthrough/*.service deploy/infer-passthrough/*.timer /usr/local/libexec/infer-passthrough/
 git rev-parse HEAD > /usr/local/libexec/infer-passthrough/release.sha
 chmod 0644 /usr/local/libexec/infer-passthrough/release.sha
 install -o root -g root -m 0644 deploy/infer-passthrough/infer-passthrough-bootstrap.service /etc/systemd/system/
@@ -332,14 +332,22 @@ only), `kernelPublicKey` (pinned Ed25519 hex public key), `repository`
 registered public key using the existing `did:imajin:<first-16-hex>` convention.
 Missing policy fails closed; no owner or recipient defaults exist.
 
-The gateway must already have its own vault-provisioned Ed25519 signing seed in
-root:root 0600 `/etc/imajin/infer-passthrough-identity`. This is a narrow recipient
-identity, not a GitHub credential or an operator/broad agent token. Provision
-identity material only through the kernel's vault/provision/seal tools; never
-generate a seed in a shell, print it, or transfer it over SSH. This consumer
-does not create a replacement identity or widen SSH CA/service-at-boot custody.
-Host identity custody and public trust configuration are infrastructure
-prerequisites; they are not manual deployment-token provisioning.
+The consumer reuses the gateway's **existing** `OPENCLAW_APP_PRIVATE_KEY`
+signing identity. It captures the fixed service's `systemctl show Environment`
+in memory, then applies the existing root:root 0600
+`/etc/imajin/infer-passthrough.env` overrides, matching bootstrap migration
+precedence. Neither value is printed, passed in argv, or exported to the
+consumer's environment. Only the existing hex signing-seed assignment is parsed;
+configuration is never shell-sourced. The derived public DID must match the
+pinned recipient policy. Missing/malformed identity fails closed, not by minting
+a new identity or requesting a manually populated secret file.
+
+This reuses an existing narrow gateway identity, not a GitHub credential or an
+operator/broad agent token. There is **no GitHub credential env fallback**:
+deployment-read bytes come only from the approved vault import and restricted
+delivery channel. Identity custody stays on the existing vault/provision/seal
+rail; never generate a seed in a shell, print it, or transfer it over SSH.
+No new identity store or SSH CA/service-at-boot custody is introduced.
 
 After the existing `production` environment approval and exact-main workflow
 guard, the dedicated gateway runner starts the fixed

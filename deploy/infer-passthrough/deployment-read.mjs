@@ -4,6 +4,7 @@ import {
 } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { randomUUID } from 'node:crypto';
+import { execFileSync } from 'node:child_process';
 import {
   createDeliveryRequest, HEADER, openDeliveryResponse, PURPOSE, REPOSITORY,
   signingKey, signingPublicKey,
@@ -12,7 +13,38 @@ import {
 const DIRECTORY = '/etc/imajin';
 const TARGET = join(DIRECTORY, 'infer-passthrough-github-token');
 const CONFIG = join(DIRECTORY, 'infer-passthrough-deployment-read.json');
-const IDENTITY = join(DIRECTORY, 'infer-passthrough-identity');
+const ENVIRONMENT = join(DIRECTORY, 'infer-passthrough.env');
+const SIGNING_ASSIGNMENT = 'OPENCLAW_APP_PRIVATE_KEY=';
+
+function existingSigningKey(inline, environment) {
+  let seed;
+  // systemctl show emits the resolved Environment list. The registered seed is
+  // a single hex word; arbitrary env syntax is never evaluated or shell-sourced.
+  const pattern = /(?:^| )"?OPENCLAW_APP_PRIVATE_KEY=([a-f0-9]{64})"?(?= |$)/g;
+  for (const match of inline.matchAll(pattern)) seed = match[1];
+  for (const raw of environment.split('\n')) {
+    const line = raw.trim();
+    if (!line.startsWith(SIGNING_ASSIGNMENT)) continue;
+    const match = /^(?:"([a-f0-9]{64})"|([a-f0-9]{64}))$/.exec(line.slice(SIGNING_ASSIGNMENT.length));
+    if (!match) throw new Error('Existing gateway identity unavailable');
+    seed = match[1] ?? match[2];
+  }
+  if (!seed) throw new Error('Existing gateway identity unavailable');
+  return signingKey(seed);
+}
+
+function loadExistingSigningKey() {
+  trustedPath(ENVIRONMENT);
+  const environment = restrictedRead(ENVIRONMENT);
+  try {
+    const inline = execFileSync('/usr/bin/systemctl', [
+      'show', 'infer-passthrough.service', '--property=Environment', '--value',
+    ], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 10_000, maxBuffer: 65536 });
+    return existingSigningKey(inline, environment.toString('utf8'));
+  } finally {
+    environment.fill(0);
+  }
+}
 
 export function trustedPath(path) {
   for (let current = path; ; current = dirname(current)) {
@@ -60,7 +92,7 @@ function replace(target, value) {
   }
 }
 
-/** On write/ack failure restore the previous bytes; neither backup nor diagnostics hold plaintext. */
+/** Restore previous bytes from memory on write/ack failure; no plaintext backup is persisted. */
 export async function installDeploymentRead(value, acknowledge, target = TARGET) {
   trustedPath(dirname(target));
   let previous;
@@ -115,11 +147,8 @@ export async function requestDeploymentRead(config, key, method, path, body = ''
 export async function deliverDeploymentRead() {
   if (process.geteuid?.() !== 0) throw new Error('Root delivery service required');
   trustedPath(CONFIG);
-  trustedPath(IDENTITY);
   const config = JSON.parse(readFileSync(CONFIG, 'utf8'));
-  const seed = restrictedRead(IDENTITY);
-  let key;
-  try { key = signingKey(seed.toString('utf8').trim()); } finally { seed.fill(0); }
+  const key = loadExistingSigningKey();
   const publicKey = signingPublicKey(key);
   if (config.repository !== REPOSITORY || config.recipientDid !== `did:imajin:${publicKey.slice(0, 16)}`
     || typeof config.ownerDid !== 'string' || !config.ownerDid.startsWith('did:')) throw new Error('Invalid recipient policy');
