@@ -15,10 +15,11 @@ import { IMPORTED_KEY_NAMESPACE, isImportedKeyField, parseVaultFieldName } from 
 import { cloudflarePurpose, cloudflareZoneDid, isCloudflareImport, isCloudflarePurpose, type CloudflareImport } from '@/src/lib/cloudflare/contract';
 import { requireCloudflareImportBinding, verifyCloudflareImportToken } from './cloudflare-import';
 import { issueGrant } from '@/src/lib/auth/grants';
+import { requireDeploymentReadBinding, validDeploymentReadMetadata, type DeploymentReadImport } from './deployment-read-binding';
 
 const log = createLogger('kernel:vault:import');
 const DID = /^did:[a-z0-9]+:[A-Za-z0-9._:%-]+$/;
-const METADATA_KEYS = ['ownerDid', 'consumerDid', 'purpose', 'fingerprint', 'label', 'expiresAt', 'replacesField', 'cloudflare'];
+const METADATA_KEYS = ['ownerDid', 'consumerDid', 'purpose', 'fingerprint', 'label', 'expiresAt', 'replacesField', 'cloudflare', 'deploymentRead'];
 
 export function importedKeyField(proposalId: string): string {
   if (!/^[A-Za-z0-9_-]+$/.test(proposalId)) throw new Error('Invalid import proposal');
@@ -37,7 +38,8 @@ function rotationProposalId(field: string): string {
 }
 
 export function validImportMetadata(raw: Record<string, unknown>): boolean {
-  return (raw.cloudflare === undefined || isCloudflareImport(raw.cloudflare))
+  return validDeploymentReadMetadata(raw)
+    && (raw.cloudflare === undefined || isCloudflareImport(raw.cloudflare))
     && (raw.cloudflare !== undefined || !isCloudflarePurpose(typeof raw.purpose === 'string' ? raw.purpose.trim() : raw.purpose))
     && typeof raw.ownerDid === 'string' && DID.test(raw.ownerDid)
     && typeof raw.consumerDid === 'string' && DID.test(raw.consumerDid)
@@ -47,17 +49,19 @@ export function validImportMetadata(raw: Record<string, unknown>): boolean {
     && (raw.replacesField === null || (typeof raw.replacesField === 'string' && isImportedKeyField(raw.replacesField)));
 }
 
-/** Failures never interpolate input, parser exceptions, or provider diagnostics. */
-export function validateImportBody(raw: unknown): raw is {
+export type VaultImportBody = {
   ownerDid: string; secret: string;
-  label?: string; expiresAt?: string | null; replacesField?: string;
+  label?: string; expiresAt?: string | null; replacesField?: string; deploymentRead?: DeploymentReadImport;
 } & (
   { cloudflare: CloudflareImport; consumerDid?: string; purpose?: string }
   | { cloudflare?: undefined; consumerDid: string; purpose: string }
-) {
+);
+
+/** Failures never interpolate input, parser exceptions, or provider diagnostics. */
+export function validateImportBody(raw: unknown): raw is VaultImportBody {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return false;
   const body = raw as Record<string, unknown>;
-  if (Object.keys(body).some(key => !['ownerDid', 'consumerDid', 'purpose', 'secret', 'label', 'expiresAt', 'replacesField', 'cloudflare'].includes(key))) return false;
+  if (Object.keys(body).some(key => ![...METADATA_KEYS, 'secret'].includes(key) || key === 'fingerprint')) return false;
   if (!isAppSecretValue(body.secret)) return false;
   if (body.cloudflare !== undefined && (
     (body.consumerDid !== undefined && typeof body.consumerDid !== 'string')
@@ -84,12 +88,12 @@ function readDetail(raw: Record<string, unknown> | null): ImportDetail | null {
 
 /** Rotation is restricted to a successfully imported field with the exact same owner, consumer and purpose. */
 export async function requireImportRotationTarget(detail: ImportDetail, executor: DbExecutor = db): Promise<void> {
-  if (detail.cloudflare) {
+  if (detail.cloudflare || detail.deploymentRead) {
     const current = await executor.select({ field: vaultDelegationGrants.field }).from(vaultDelegationGrants).where(and(
       eq(vaultDelegationGrants.subject, detail.ownerDid), eq(vaultDelegationGrants.grantedTo, detail.consumerDid),
       eq(vaultDelegationGrants.purpose, detail.purpose), eq(vaultDelegationGrants.status, 'active'),
     ));
-    if (current.some(grant => grant.field !== detail.replacesField)) throw new Error('Explicit zone credential rotation required');
+    if (current.some(grant => grant.field !== detail.replacesField)) throw new Error('Explicit credential rotation required');
   }
   if (!detail.replacesField) return;
   const [target] = await executor.select({ proposalId: operatorApprovals.proposalId })
@@ -161,6 +165,7 @@ export async function executeImportApproval(card: OperatorApprovalCard): Promise
       summary: card.summary, keysTouched: card.keysTouched, detail: card.detail,
     });
     if (expectedHash !== card.contentHash || !(await canExecuteImport(card.operatorDid, detail.ownerDid))) throw new Error('Unavailable');
+    requireDeploymentReadBinding(detail);
     await requireCloudflareImportBinding(detail);
     if (detail.cloudflare) {
       const [current] = await db.select({ status: operatorApprovals.status, contentHash: operatorApprovals.contentHash })
@@ -180,6 +185,7 @@ export async function executeImportApproval(card: OperatorApprovalCard): Promise
         .from(operatorApprovals).where(eq(operatorApprovals.proposalId, card.proposalId)).for('update');
       if (stored?.status !== 'approved' || stored.contentHash !== expectedHash) throw new Error('Unavailable');
       if (!(await canExecuteImport(card.operatorDid, detail.ownerDid, tx))) throw new Error('Unavailable');
+      requireDeploymentReadBinding(detail);
       phase = 'binding-check';
       await requireCloudflareImportBinding(detail, tx);
       phase = 'rotation-target';

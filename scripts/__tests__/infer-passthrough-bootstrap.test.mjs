@@ -28,7 +28,7 @@ describe('gateway bootstrap contract (#3185)', () => {
   });
 
   it('passes context through env and guards before the privileged step without interpolating shell code', () => {
-    const [guard, bootstrap] = workflow.jobs.bootstrap.steps;
+    const [guard, delivery, bootstrap] = workflow.jobs.bootstrap.steps;
     expect(guard.name).toBe('Verify selected main workflow');
     expect(guard.shell).toBe('bash');
     expect(guard.env).toEqual({
@@ -36,6 +36,7 @@ describe('gateway bootstrap contract (#3185)', () => {
       BOOTSTRAP_WORKFLOW_REF: '${{ github.workflow_ref }}',
     });
     expect(guard.run).not.toContain('${{');
+    expect(delivery.run).toBe('sudo -n /usr/bin/systemctl start infer-passthrough-deployment-read.service');
     expect(bootstrap.run).toBe('sudo -n /usr/bin/systemctl start infer-passthrough-bootstrap.service');
   });
 

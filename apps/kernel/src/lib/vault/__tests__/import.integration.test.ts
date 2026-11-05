@@ -73,6 +73,9 @@ import { getNodeSigningIdentity, _resetSealingCache } from '../sealing';
 import { fetchGrantSecret, listGrantsForGrantee, vaultService } from '../index';
 import { introspectGrant, issueGrant, revokeGrant, revokeGrantCapability } from '@/src/lib/auth/grants';
 import { cloudflarePurpose, cloudflareZoneDid } from '@/src/lib/cloudflare/contract';
+import {
+  createDeliveryRequest, HEADER, openDeliveryResponse, PURPOSE, REPOSITORY, signingKey,
+} from '../../../../../../deploy/infer-passthrough/deployment-read-protocol.mjs';
 
 const HUMAN = 'did:imajin:human';
 const ORG = 'did:imajin:organization';
@@ -167,6 +170,92 @@ async function imported(secret: string, extra: Record<string, unknown> = {}) {
 }
 
 describe('vault import acceptance — real SQL, signatures, encryption and grants', () => {
+  async function gatewayImport(ownerDid: string, extra: Record<string, unknown> = {}) {
+    const recipientDid = `did:imajin:${agentKeys.publicKey.slice(0, 16)}`;
+    vi.stubEnv('INFER_DEPLOY_READ_OWNER_DID', ownerDid);
+    vi.stubEnv('INFER_DEPLOY_READ_RECIPIENT_DID', recipientDid);
+    vi.stubEnv('INFER_DEPLOY_READ_RECIPIENT_PUBLIC_KEY', agentKeys.publicKey);
+    h.emit.mockResolvedValue({ attestationId: 'attestation_fixture' });
+    const proposal = await propose('test-credential-not-a-token', {
+      ownerDid, consumerDid: recipientDid, purpose: PURPOSE,
+      expiresAt: new Date(Date.now() + 120_000).toISOString(), ...extra,
+    });
+    const card = await approve(proposal.proposalId);
+    expect(await executeImportApproval(card)).toEqual({ ok: true });
+    const [grant] = await listGrantsForGrantee({ granteeDid: recipientDid, purpose: PURPOSE });
+    return { proposal, card, grant, recipientDid };
+  }
+
+  async function gatewayFetch(grantId: string, ownerDid: string, recipientDid: string, action: 'fetch' | 'ack' = 'fetch') {
+    const path = `/api/vault/delegation/grants/${grantId}/${action}`;
+    const [stored] = await db.select().from(vaultDelegationGrants).where(eq(vaultDelegationGrants.id, grantId));
+    const body = action === 'ack' ? JSON.stringify({ outcome: 'used', fetchedAt: stored.lastFetchedAt?.toISOString() }) : '';
+    const signed = createDeliveryRequest('POST', path, body, { repository: REPOSITORY, ownerDid, recipientDid }, signingKey(agentKeys.privateKey));
+    const request = new NextRequest(`https://kernel.test${path}`, {
+      method: 'POST', body: body || undefined, headers: { [HEADER]: signed.header },
+    });
+    const response = await (action === 'ack' ? ackRoute : fetchRoute)(request, { params: Promise.resolve({ grantId }) });
+    const wire = await response.json();
+    return { response, wire, value: response.ok ? openDeliveryResponse(wire, signed, nodeKeys.publicKey) : wire };
+  }
+
+  it.each([HUMAN, ORG])('delivers personal/org import for %s through the existing signed fetch/ack rail', async ownerDid => {
+    h.identity = { id: HUMAN, scope: 'actor', subtype: 'human', ...(ownerDid === ORG ? { actingAs: ORG } : {}) };
+    const { grant, recipientDid } = await gatewayImport(ownerDid);
+    expect((await GET(new NextRequest('https://kernel.test/api/vault/import'))).status).toBe(200);
+    const delivered = await gatewayFetch(grant.grantId, ownerDid, recipientDid);
+    expect(delivered.response.status).toBe(200);
+    expect(delivered.value).toMatchObject({ value: 'test-credential-not-a-token', purpose: PURPOSE });
+    expect(JSON.stringify(delivered.wire)).not.toContain('test-credential-not-a-token');
+    expect((await gatewayFetch(grant.grantId, ownerDid, recipientDid, 'ack')).response.status).toBe(200);
+    expect((await listImportedKeyCards([ownerDid]))[0].timeline.some(item => item.type === 'fetched' && item.alert)).toBe(false);
+    // Retry fetch needs its own newer acknowledgement, not the original timestamp.
+    expect((await gatewayFetch(grant.grantId, ownerDid, recipientDid)).response.status).toBe(200);
+    expect((await gatewayFetch(grant.grantId, ownerDid, recipientDid, 'ack')).response.status).toBe(200);
+    expect((await listImportedKeyCards([ownerDid]))[0].timeline.some(item => item.type === 'fetched' && item.alert)).toBe(false);
+    expect(await fetchGrantSecret({ grantId: grant.grantId, granteeDid: recipientDid })).toEqual({ status: 'not_grantee' });
+    expect(JSON.stringify([h.vault, h.emit.mock.calls, h.publish.mock.calls, h.log.mock.calls])).not.toContain('test-credential-not-a-token');
+  });
+
+  it('rotates explicitly, keeps sealed history and denies the prior authority after rotation', async () => {
+    const initial = await gatewayImport(ORG);
+    const response = await POST(request({
+      ownerDid: ORG, consumerDid: initial.recipientDid, purpose: PURPOSE,
+      secret: 'test-credential-not-a-token', expiresAt: new Date(Date.now() + 120_000).toISOString(),
+    }));
+    expect(response.status).toBe(409);
+    const rotated = await gatewayImport(ORG, { replacesField: initial.grant.field });
+    expect((await gatewayFetch(initial.grant.grantId, ORG, initial.recipientDid)).response.status).toBe(403);
+    expect((await gatewayFetch(rotated.grant.grantId, ORG, rotated.recipientDid)).response.status).toBe(200);
+    const history = await db.select().from(vaultDelegationGrants);
+    expect(history).toHaveLength(2);
+    expect(history.find(row => row.id === initial.grant.grantId)?.status).toBe('revoked');
+  });
+
+  it('revalidates deployment policy at approval execution and never stages mismatched authority', async () => {
+    const recipientDid = `did:imajin:${agentKeys.publicKey.slice(0, 16)}`;
+    vi.stubEnv('INFER_DEPLOY_READ_OWNER_DID', ORG);
+    vi.stubEnv('INFER_DEPLOY_READ_RECIPIENT_DID', recipientDid);
+    vi.stubEnv('INFER_DEPLOY_READ_RECIPIENT_PUBLIC_KEY', agentKeys.publicKey);
+    const expiresAt = new Date(Date.now() + 120_000).toISOString();
+    for (const extra of [
+      { ownerDid: STRANGER }, { consumerDid: STRANGER },
+      { deploymentRead: { repository: 'ima-jin/other', recipientDid } },
+      { expiresAt: null }, { purpose: 'other-purpose', deploymentRead: { repository: REPOSITORY, recipientDid } },
+    ]) {
+      const response = await POST(request({ ownerDid: ORG, consumerDid: recipientDid, purpose: PURPOSE,
+        expiresAt, secret: 'test-credential-not-a-token', ...extra }));
+      expect([400, 403]).toContain(response.status);
+    }
+    expect(await db.select().from(operatorApprovals)).toEqual([]);
+    const proposal = await propose('test-credential-not-a-token', {
+      ownerDid: ORG, consumerDid: recipientDid, purpose: PURPOSE, expiresAt,
+    });
+    const card = await approve(proposal.proposalId);
+    vi.stubEnv('INFER_DEPLOY_READ_OWNER_DID', HUMAN);
+    expect(await executeImportApproval(card)).toMatchObject({ ok: false });
+    expect(await db.select().from(vaultDelegationGrants)).toEqual([]);
+  });
   it('Cloudflare import forces node custody and issues only zone-scoped revocable operations', async () => {
     const secret = randomBytes(32).toString('hex');
     const upstream = vi.fn().mockResolvedValue(Response.json({ success: true, result: { id: ZONE, name: 'example.com' } }));

@@ -195,10 +195,10 @@ def migrate():
 def prerequisites():
     trusted(BUNDLE)
     for name in (*UNIT_NAMES, "bootstrap.sh", "bootstrap.py", "update.sh",
-                 "check-health.mjs", "production-deployment.mjs", "release.sha"):
+                 "check-health.mjs", "production-deployment.mjs", "deployment-read.mjs",
+                 "deployment-read-protocol.mjs", "release.sha"):
         trusted(BUNDLE / name)
-    # Blocked by #3190 (parent #3039); see the runbook's delivery prerequisite. No manual
-    # token input, environment fallback, or copy-from-Actions workaround.
+    # Delivery must precede systemd LoadCredential; there is no manual fallback.
     credential = ETC / "infer-passthrough-github-token"
     trusted(credential)
     if stat.S_IMODE(credential.stat().st_mode) != 0o600 or credential.stat().st_size == 0:
@@ -211,7 +211,8 @@ def prerequisites():
     sha = (BUNDLE / "release.sha").read_text().strip()
     if not re.fullmatch(r"[a-f0-9]{40}", sha):
         raise ValueError("Invalid trusted bundle SHA")
-    run("node", str(BUNDLE / "production-deployment.mjs"), sha)
+    run("flock", "--exclusive", "/run/lock/infer-passthrough-deployment-read.lock",
+        "node", str(BUNDLE / "production-deployment.mjs"), sha)
 
 
 def prepare_repository():

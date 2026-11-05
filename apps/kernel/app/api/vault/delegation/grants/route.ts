@@ -3,6 +3,7 @@ import { requireAuth, authErrorResponse } from '@imajin/auth';
 import { createLogger } from '@imajin/logger';
 import { listGrantsForGrantee } from '@/src/lib/vault';
 import { toVaultErrorResponse } from '@/src/lib/vault/errors';
+import { deploymentReadRoute, isDeploymentReadRequest } from '@/src/lib/vault/deployment-read-route';
 
 const log = createLogger('kernel');
 
@@ -28,6 +29,7 @@ const log = createLogger('kernel');
  * show fetched -> acked/failed without a separate round trip.
  */
 export async function GET(request: Request) {
+  if (isDeploymentReadRequest(request)) return deploymentReadRoute(request, 'list');
   const authResult = await requireAuth(request);
   if ('error' in authResult) {
     return authErrorResponse(authResult);

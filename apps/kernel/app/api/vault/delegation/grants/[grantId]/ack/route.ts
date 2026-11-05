@@ -4,6 +4,7 @@ import { createLogger } from '@imajin/logger';
 import { ackGrant, type AckOutcome, type AckEvidence, type GrantAckOutcome } from '@/src/lib/vault';
 import { toVaultErrorResponse } from '@/src/lib/vault/errors';
 import { GRANT_NOT_FOUND_STATUS, GRANT_NOT_FOUND_ERROR, publishVaultDelegationAudit } from '@/src/lib/vault/route-helpers';
+import { deploymentReadRoute, isDeploymentReadRequest } from '@/src/lib/vault/deployment-read-route';
 
 const log = createLogger('kernel');
 
@@ -169,6 +170,7 @@ function auditAck(params: {
  */
 export async function POST(request: Request, props: { params: Promise<{ grantId: string }> }) {
   const { grantId } = await props.params;
+  if (isDeploymentReadRequest(request)) return deploymentReadRoute(request, 'ack', grantId);
 
   const authResult = await requireAuth(request);
   if ('error' in authResult) {

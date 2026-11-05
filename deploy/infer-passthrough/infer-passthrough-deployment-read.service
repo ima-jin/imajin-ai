@@ -1,0 +1,19 @@
+[Unit]
+Description=Kernel-authorized inference gateway deployment credential delivery
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+ExecStart=/usr/bin/flock --exclusive /run/lock/infer-passthrough-deployment-read.lock /usr/bin/node /usr/local/libexec/infer-passthrough/deployment-read.mjs
+UMask=0077
+TimeoutStartSec=90s
+LimitCORE=0
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/etc/imajin
+ReadWritePaths=/run/lock
+ProtectHome=true
+PrivateTmp=true

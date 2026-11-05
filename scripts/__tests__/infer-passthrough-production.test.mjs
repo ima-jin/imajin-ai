@@ -1,20 +1,16 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { deliverDeploymentRead } from '../../deploy/infer-passthrough/deployment-read.mjs';
 import { productionApproved, verifyProduction } from '../../deploy/infer-passthrough/production-deployment.mjs';
+vi.mock('../../deploy/infer-passthrough/deployment-read.mjs', () => ({ deliverDeploymentRead: vi.fn() }));
 
 const SHA = 'a'.repeat(40);
 const deployment = (id = 1, overrides = {}) => ({ id, sha: SHA, environment: 'production', ...overrides });
 // Not a real credential; never contacts GitHub in tests.
 const fixtureCredential = 'non-secret-test-fixture';
-let dir;
 let request;
 
 beforeEach(() => {
-  dir = mkdtempSync(join(tmpdir(), 'infer-production-'));
-  writeFileSync(join(dir, 'github-token'), fixtureCredential);
-  vi.stubEnv('CREDENTIALS_DIRECTORY', dir);
+  deliverDeploymentRead.mockResolvedValue(fixtureCredential);
   request = vi.fn();
   vi.stubGlobal('fetch', request);
   vi.spyOn(console, 'error').mockImplementation(() => {});
@@ -24,7 +20,6 @@ afterEach(() => {
   vi.unstubAllGlobals();
   vi.unstubAllEnvs();
   vi.restoreAllMocks();
-  rmSync(dir, { recursive: true, force: true });
 });
 
 function replies(deployments, statuses = [{ state: 'success' }]) {
@@ -138,11 +133,20 @@ describe('read-only exact-SHA production deployment gate (#3082)', () => {
     expect(request).not.toHaveBeenCalled();
   });
 
-  it('fails closed when the read-only credential is missing or empty', async () => {
-    vi.stubEnv('CREDENTIALS_DIRECTORY', join(dir, 'missing'));
+  it('refreshes vault authority for every production check, never falling back to a stale file', async () => {
+    request.mockResolvedValue(Response.json([]));
+    expect(await verifyProduction(SHA)).toBe(1);
+    deliverDeploymentRead.mockRejectedValueOnce(new Error(fixtureCredential));
     expect(await verifyProduction(SHA)).toBe(2);
-    vi.stubEnv('CREDENTIALS_DIRECTORY', dir);
-    writeFileSync(join(dir, 'github-token'), '');
+    expect(deliverDeploymentRead).toHaveBeenCalled();
+    expect(request).toHaveBeenCalledTimes(1);
+    expect(JSON.stringify(console.error.mock.calls)).not.toContain(fixtureCredential);
+  });
+
+  it('fails closed when the read-only credential is missing or empty', async () => {
+    deliverDeploymentRead.mockRejectedValueOnce(new Error('Unavailable'));
+    expect(await verifyProduction(SHA)).toBe(2);
+    deliverDeploymentRead.mockResolvedValueOnce('');
     expect(await verifyProduction(SHA)).toBe(2);
     expect(request).not.toHaveBeenCalled();
   });

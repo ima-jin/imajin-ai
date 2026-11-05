@@ -1,21 +1,17 @@
-#!/usr/bin/env node
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { deliverDeploymentRead } from './deployment-read.mjs';
 
 const API_ROOT = 'https://api.github.com/repos/ima-jin/imajin-ai';
 const PAGE_SIZE = 100;
 const MAX_PAGES = 100;
 
-function loadToken() {
-  const directory = process.env.CREDENTIALS_DIRECTORY ??
-    '/run/credentials/infer-passthrough-update.service';
-  return readFileSync(join(directory, 'github-token'), 'utf8').trim();
-}
+// Refresh authority on EVERY check. A stale LoadCredential snapshot or old file
+// cannot keep authorizing deployment after expiry/revocation in the vault.
+const loadToken = () => deliverDeploymentRead();
 
 /** Only read operations; the credential never enters argv, logs or candidate env. */
 export async function productionApproved(sha, readToken = loadToken) {
   if (!/^[a-f0-9]{40}$/.test(sha ?? '')) throw new Error('Invalid release SHA');
-  const token = readToken();
+  const token = await readToken();
   if (!token) throw new Error('Missing deployment read credential');
   async function readApi(url) {
     const response = await fetch(url, {

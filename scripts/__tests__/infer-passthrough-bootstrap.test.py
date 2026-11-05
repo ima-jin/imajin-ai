@@ -221,6 +221,37 @@ class BootstrapTests(unittest.TestCase):
                     bootstrap.sys, "argv", argv), self.assertRaises(ValueError):
                 bootstrap.main()
 
+    def test_delivered_file_passes_prerequisites_and_bootstrap_without_manual_env_edits(self):
+        # Models the root consumer's output; host unit tests prove the write/
+        # fsync/rename/chown protocol. No host access or real credential exists.
+        bundle = self.root / "trusted-bundle"
+        bundle.mkdir()
+        (bundle / "release.sha").write_text("a" * 40)
+        credential = self.etc / "infer-passthrough-github-token"
+        credential.write_text("test-credential-not-a-token")
+        credential.chmod(0o600)
+
+        def gate(*args):
+            self.trace.append(args)
+            if args == ("node", "--version"):
+                return "v24.0.0"
+            if args == ("pnpm", "--version"):
+                return "9.15.0"
+            return ""
+
+        before = self.env.read_bytes()
+        with patch.object(bootstrap, "trusted"), patch.object(
+                bootstrap, "BUNDLE", bundle), patch.object(
+                bootstrap, "run", gate), patch.object(
+                bootstrap.shutil, "which", return_value="/bin/fixture"):
+            bootstrap.prerequisites()
+        self.assertEqual(self.env.read_bytes(), before)
+        self.migrate()
+        self.assertTrue((self.state / "bootstrap-complete").exists())
+        self.assertEqual(credential.stat().st_mode & 0o777, 0o600)
+        self.assertNotIn("test-credential-not-a-token", repr(self.trace))
+        self.assertNotIn("test-credential-not-a-token", self.env.read_text())
+
     def test_rejects_writable_and_symlinked_trusted_paths(self):
         target = self.root / "writable"
         target.touch(mode=0o666)
@@ -292,7 +323,9 @@ class BootstrapTests(unittest.TestCase):
             # Unapproved or unavailable production evidence refuses before mutation.
             with self.assertRaises(subprocess.CalledProcessError):
                 bootstrap.main()
-            self.assertEqual(self.trace[-1], ("node", str(bundle / "production-deployment.mjs"), "a" * 40))
+            self.assertEqual(self.trace[-1], ("flock", "--exclusive",
+                                            "/run/lock/infer-passthrough-deployment-read.lock",
+                                            "node", str(bundle / "production-deployment.mjs"), "a" * 40))
             for node, pnpm in (("v20.0.0", "9.15.0"), ("v24.0.0", "10.0.0")):
                 self.node_version, self.pnpm_version = node, pnpm
                 with self.assertRaises(ValueError):

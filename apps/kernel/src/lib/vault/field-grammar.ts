@@ -53,6 +53,12 @@ export function isExternalMcpField(field: string): boolean {
   return vaultFieldNamespace(field) === EXTERNAL_MCP_NAMESPACE;
 }
 
+/** The immutable proposal prefix keeps deployment credentials off generic fetch. */
+export function isDeploymentReadImportedKeyField(field: string): boolean {
+  const parsed = parseVaultFieldName(field);
+  return parsed.ok && parsed.value.namespace === IMPORTED_KEY_NAMESPACE && parsed.value.name.startsWith('deployimport_');
+}
+
 export function isBankDetailsField(field: string): boolean {
   return vaultFieldNamespace(field) === BANK_DETAILS_NAMESPACE;
 }
