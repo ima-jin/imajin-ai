@@ -10,8 +10,8 @@ export type ConnectionTransaction = Parameters<Parameters<typeof db.transaction>
 export interface ExternalMcpCaller { memberDid: string; appDid?: string; serviceToken?: boolean; caller?: ConnectionCaller }
 export interface MemberConnectionTarget { provider: string; scope: string; binding?: string; service?: string }
 export const POSTMAN_CONNECTION = { provider: POSTMAN_PROVIDER, scope: EXTERNAL_MCP_SCOPE };
-export const connectionUnavailable = (code: ConnectionErrorCode = 'connection_not_loaded') =>
-  new ExternalMcpError(403, 'No active personal external MCP connection or grant', code);
+export const connectionUnavailable = (code: ConnectionErrorCode = 'connection_not_loaded', fixActingDid?: string) =>
+  new ExternalMcpError(403, 'No active personal external MCP connection or grant', code, fixActingDid);
 export const isLiveConnection = (row: { status: string; expiresAt: Date | null; revokedAt: Date | null }) =>
   row.status === 'active' && !row.revokedAt && (!row.expiresAt || row.expiresAt.getTime() > Date.now());
 
@@ -30,7 +30,7 @@ export async function checkMemberStanding(tx: Pick<ConnectionTransaction, 'selec
   await activeIdentity(tx, memberDid);
   if (!orgDid || orgDid === memberDid) return;
   await activeIdentity(tx, orgDid);
-  if (!await isActiveGroupMember(orgDid, memberDid, tx)) throw connectionUnavailable('org_membership_required');
+  if (!await isActiveGroupMember(orgDid, memberDid, tx)) throw connectionUnavailable('org_membership_required', orgDid);
 }
 export async function requireConnectionApp(tx: Pick<ConnectionTransaction, 'select'>, appDid: string, scope: string, serviceToken: boolean) {
   const [app] = await tx.select().from(registryApps)
@@ -39,7 +39,7 @@ export async function requireConnectionApp(tx: Pick<ConnectionTransaction, 'sele
   if (serviceToken && !app.approvedServiceScopes.includes(scope)) throw connectionUnavailable();
   return app;
 }
-async function authorizeCaller(tx: ConnectionTransaction, caller: ExternalMcpCaller, scope: string) {
+async function authorizeCaller(tx: Pick<ConnectionTransaction, 'select'>, caller: ExternalMcpCaller, scope: string) {
   if (!caller.appDid) return;
   await requireConnectionApp(tx, caller.appDid, scope, caller.serviceToken === true);
   const [grant] = await tx.select({ scopes: channelLinks.scopes }).from(channelLinks).where(and(
@@ -55,7 +55,7 @@ async function authorizeCaller(tx: ConnectionTransaction, caller: ExternalMcpCal
  * Call under the member custody snapshot lock, before any credential unseal.
  */
 export async function authorizeMemberConnection(
-  tx: ConnectionTransaction, caller: ExternalMcpCaller, target: MemberConnectionTarget = POSTMAN_CONNECTION,
+  tx: Pick<ConnectionTransaction, 'select'>, caller: ExternalMcpCaller, target: MemberConnectionTarget = POSTMAN_CONNECTION,
 ): Promise<ConnectorRow> {
   await authorizeCaller(tx, caller, target.scope);
   const principal = caller.caller
@@ -86,7 +86,7 @@ export async function authorizeMemberConnection(
             or(eq(orgConnectionSuspensions.slot, ''), eq(orgConnectionSuspensions.slot, row.slot))),
         ),
       )).limit(1);
-    if (suspension) throw connectionUnavailable('connection_suspended');
+    if (suspension) throw connectionUnavailable('connection_suspended', orgDid);
   }
   return row;
 }

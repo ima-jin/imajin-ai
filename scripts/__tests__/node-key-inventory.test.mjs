@@ -57,7 +57,7 @@ function readManifest() {
   const start = doc.indexOf('\n## 8. Inventory manifest');
   if (start === -1) throw new Error('docs/security/node-key-roles-and-rotation.md has no "## 8. Inventory manifest" section');
   const entries = [];
-  for (const line of doc.slice(start).split('\n')) {
+  for (const line of doc.slice(start).split(/\r?\n/)) {
     const match = /^- `([^`]+)` — (.+)$/.exec(line);
     if (match) entries.push({ path: match[1], role: match[2] });
   }

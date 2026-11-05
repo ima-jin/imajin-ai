@@ -47,7 +47,7 @@ vi.mock('@imajin/config', async original => ({
   ...await original<typeof import('@imajin/config')>(), rateLimit: () => ({ limited: false }), getClientIP: () => '127.0.0.1',
 }));
 
-import { delegationGrants, identities, identityMembers } from '@/src/db/schemas/auth';
+import { channelLinks, delegationGrants, identities, identityMembers } from '@/src/db/schemas/auth';
 import { connectors, orgConnectionMemberGrants, orgConnectionSuspensions } from '@/src/db/schemas/connectors';
 import { vaultDelegationGrants } from '@/src/db/schemas/vault';
 import { provideInternalApiKey, provideSessionResolver } from '@imajin/auth';
@@ -79,7 +79,7 @@ const ORG = 'did:imajin:artifact';
 const APP = 'did:imajin:app';
 const AGENT = 'did:imajin:agent';
 const FIELD = `${EXTERNAL_MCP_NAMESPACE}:org-fixture:${ORG}`;
-const tables = [identities, identityMembers, delegationGrants, connectors, orgConnectionMemberGrants, orgConnectionSuspensions, vaultDelegationGrants];
+const tables = [identities, identityMembers, delegationGrants, channelLinks, connectors, orgConnectionMemberGrants, orgConnectionSuspensions, vaultDelegationGrants];
 let client: PGlite;
 let database: ReturnType<typeof drizzle>;
 let upstreamCalls = 0;
@@ -308,6 +308,11 @@ describe('self-discovery with real app auth, assignment and grant SQL (#3250)', 
     expect(body.identity).toMatchObject({ did: AGENT, kind: 'agent', actAs: null });
     expect(body.connectors.find((row: { kind?: string; provider: string }) => row.kind === 'B' && row.provider === 'anthropic'))
       .toMatchObject({ authority: 'delegated', billedPrincipal: { did: MEMBER }, usable: true });
+    // The token includes warp:dispatch, but no actual tool manifest grants it.
+    expect(body.connectors.find((row: { provider: string }) => row.provider === 'warp')).toMatchObject({
+      ownerDid: MEMBER, usable: false, grantStatus: 'denied', configurationStatus: 'not-disclosed',
+      fix: { href: '/auth/connectors/warp', actingDid: MEMBER },
+    });
   });
   it('rechecks the member grant after revocation and names the exact existing control', async () => {
     await database.insert(identityMembers).values({ identityDid: MEMBER, memberDid: AGENT, role: 'agent' });
@@ -720,7 +725,7 @@ afterEach(() => {
   vi.unstubAllEnvs();
 });
 beforeEach(async () => {
-  await client.exec('TRUNCATE auth.identities, auth.identity_members, auth.delegation_grants, kernel.connectors, kernel.org_connection_member_grants, kernel.org_connection_suspensions, kernel.vault_delegation_grants');
+  await client.exec('TRUNCATE auth.identities, auth.identity_members, auth.delegation_grants, auth.channel_links, kernel.connectors, kernel.org_connection_member_grants, kernel.org_connection_suspensions, kernel.vault_delegation_grants');
   vi.clearAllMocks();
   h.key = randomUUID();
   upstreamCalls = 0;
