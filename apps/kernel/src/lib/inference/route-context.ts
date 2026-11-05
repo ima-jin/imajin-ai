@@ -1,5 +1,5 @@
 import type { AppAuthContext, Identity } from '@imajin/auth';
-import { connectionCaller, sessionConnectionCaller, type ConnectionCaller } from '@/src/lib/kernel/connection-principal-policy';
+import { connectionCaller, isAgentCapableSubtype, sessionConnectionCaller, type ConnectionCaller } from '@/src/lib/kernel/connection-principal-policy';
 import type { InferenceAuthContext, InferenceAuthResult } from './auth';
 
 type RouteInput = { app: AppAuthContext } | { identity: Identity } | { caller: ConnectionCaller; appDid?: string };
@@ -17,7 +17,7 @@ export function resolveInferenceRouteContext(input: RouteInput): InferenceAuthRe
   if ('caller' in input) return callerContext(input.caller, input.appDid);
   const { identity } = input;
   const orgDid = identity.actingAs;
-  if (orgDid && identity.actingFor && identity.actingFor !== orgDid && identity.subtype !== 'agent') {
+  if (orgDid && identity.actingFor && identity.actingFor !== orgDid && !isAgentCapableSubtype(identity.subtype)) {
     return { ok: false, error: 'Conflicting acting identity context', status: 403 };
   }
   return callerContext(connectionCaller(identity.id, identity), undefined, Boolean(sessionConnectionCaller(identity).caller));
