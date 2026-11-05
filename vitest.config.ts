@@ -1,6 +1,7 @@
 import { defineConfig } from 'vitest/config';
 import { resolve } from 'node:path';
 
+// CI test sharding and DB project isolation are tracked in #3298.
 export default defineConfig({
   test: {
     include: [
