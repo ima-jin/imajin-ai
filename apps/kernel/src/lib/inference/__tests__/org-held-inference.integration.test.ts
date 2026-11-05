@@ -78,7 +78,7 @@ const MEMBER = 'did:imajin:member';
 const ORG = 'did:imajin:artifact';
 const APP = 'did:imajin:app';
 const AGENT = 'did:imajin:agent';
-const FIELD = `${EXTERNAL_MCP_NAMESPACE}:org-fixture:${ORG}`;
+const FIELD = `anthropic-api-key:${ORG}`;
 const tables = [identities, identityMembers, delegationGrants, channelLinks, connectors, orgConnectionMemberGrants, orgConnectionSuspensions, vaultDelegationGrants];
 let client: PGlite;
 let database: ReturnType<typeof drizzle>;
@@ -455,7 +455,7 @@ describe.each(['agent', 'presence'])('route discovery ≡ chat/completions for %
     ]);
     await database.insert(identityMembers).values({ identityDid: orgDid, memberDid: agentDid, role: 'agent', allowedServices: ['infer'] });
     await database.insert(connectors).values({
-      id: 'artifact-anthropic', ownerDid: orgDid, provider: 'org-held-anthropic', slot: 'primary',
+      id: 'artifact-anthropic', ownerDid: orgDid, provider: 'anthropic', slot: 'primary',
       status: 'active', sealedKeyField: field, loadedByDid: MEMBER, loadedAt: new Date(),
     });
     await database.insert(vaultDelegationGrants).values({
@@ -658,7 +658,10 @@ describe('assigned agents use only the assigned DID keys, without member-grant r
     expect(h.get).not.toHaveBeenCalled();
   });
   it('requires an active human member grant through the actual Warp tool route', async () => {
-    await database.update(connectors).set({ provider: 'org-held-warp' });
+    await database.update(connectors).set({
+      provider: 'org-held-warp', sealedKeyField: `${EXTERNAL_MCP_NAMESPACE}:org-fixture:${ORG}`,
+      loadedByDid: MEMBER, loadedAt: new Date(),
+    });
     const req = () => new NextRequest('https://kernel.test/warp/api/runs', {
       headers: { authorization: 'Bearer fixture-app-token', 'x-acting-as': ORG },
     });
@@ -734,7 +737,10 @@ describe('assigned agents use only the assigned DID keys, without member-grant r
     expect((await usableModels(req())).status).toBe(403);
   });
   it('resolves org-held Warp MCP custody for an assigned agent and refuses an unassigned agent or ungranted member', async () => {
-    await database.update(connectors).set({ provider: 'org-held-warp' });
+    await database.update(connectors).set({
+      provider: 'org-held-warp', sealedKeyField: `${EXTERNAL_MCP_NAMESPACE}:org-fixture:${ORG}`,
+      loadedByDid: MEMBER, loadedAt: new Date(),
+    });
     const target = { provider: 'warp', scope: 'warp:dispatch' };
     const agent = { memberDid: AGENT, caller: { actorDid: AGENT, actingAs: ORG } };
     await expect(authorizeExternalMcp(agent, target)).rejects.toMatchObject({ status: 403 });
@@ -795,8 +801,8 @@ beforeEach(async () => {
   ]);
   await database.insert(identityMembers).values({ identityDid: ORG, memberDid: MEMBER, role: 'member' });
   await database.insert(connectors).values({
-    id: 'org-connection', ownerDid: ORG, provider: 'org-held-anthropic', slot: 'primary',
-    status: 'active', sealedKeyField: FIELD, loadedByDid: MEMBER, loadedAt: new Date(),
+    id: 'org-connection', ownerDid: ORG, provider: 'anthropic', slot: 'primary',
+    status: 'active', sealedKeyField: FIELD,
   });
   await database.insert(vaultDelegationGrants).values({
     id: 'custody', field: FIELD, subject: ORG, grantedTo: 'did:imajin:node', status: 'active', oneTime: false,
@@ -844,6 +850,71 @@ beforeEach(async () => {
     }), { headers: { 'content-type': 'text/event-stream' } });
     return Response.json({ id: 'msg_test', content: [{ type: 'text', text: 'hello' }], usage: { input_tokens: 3, output_tokens: 2 } });
   }));
+});
+
+describe('prod-shaped sealed Anthropic org resolution (#3313)', () => {
+  async function context(assigned: boolean) {
+    if (assigned) {
+      await database.insert(identityMembers).values({
+        identityDid: ORG, memberDid: AGENT, role: 'agent', allowedServices: ['infer'],
+      });
+      return { memberDid: AGENT, orgDid: ORG, assignedAgentDid: AGENT };
+    }
+    await database.insert(orgConnectionMemberGrants).values({
+      id: 'sealed-member-grant', orgDid: ORG, memberDid: MEMBER, connectionId: 'org-connection',
+      provider: 'anthropic', grantedAt: new Date(), grantedByDid: MEMBER,
+    });
+    return { memberDid: MEMBER, orgDid: ORG };
+  }
+
+  it.each([true, false])('resolves the org-owned primary sealed connector with assignedAgent=%s', async assigned => {
+    const brain = await resolveOrgHeldBrain(await context(assigned), 'claude-test');
+    expect(brain).toMatchObject({
+      provider: 'anthropic', credentialDid: ORG, modelId: 'claude-test',
+      orgUsage: { orgDid: ORG, connectionId: 'org-connection', memberDid: assigned ? ORG : MEMBER },
+    });
+    expect(brain.apiKey === h.key).toBe(true);
+    expect(h.get).toHaveBeenCalledWith(FIELD);
+    expect(h.unseal).toHaveBeenCalledTimes(1);
+    expect(h.personal).not.toHaveBeenCalled();
+    expect(h.fallback).not.toHaveBeenCalled();
+  });
+
+  it.each([true, false])('never borrows a personal or other-org row with assignedAgent=%s', async assigned => {
+    const selected = await context(assigned);
+    await database.update(connectors).set({ ownerDid: MEMBER });
+    await database.insert(connectors).values({
+      id: 'other-org-connection', ownerDid: 'did:imajin:other-org', provider: 'anthropic',
+      slot: 'primary', status: 'active', sealedKeyField: 'anthropic-api-key:did:imajin:other-org',
+    });
+    await expect(resolveOrgHeldBrain(selected, 'claude-test')).rejects.toMatchObject({
+      status: 403, code: 'connection_not_loaded', message: expect.stringContaining(ORG),
+    });
+    expect(h.get).not.toHaveBeenCalled();
+    expect(h.unseal).not.toHaveBeenCalled();
+    expect(h.personal).not.toHaveBeenCalled();
+    expect(h.fallback).not.toHaveBeenCalled();
+  });
+
+  it.each(['secondary-slot', 'registry-provider', 'personal-field', 'unrelated-field'] as const)(
+    'refuses %s without credential access', async boundary => {
+      const selected = await context(true);
+      const changes = {
+        'secondary-slot': { slot: 'secondary' },
+        'registry-provider': { provider: 'org-held-anthropic' },
+        'personal-field': { sealedKeyField: `anthropic-api-key:${MEMBER}` },
+        'unrelated-field': { sealedKeyField: `anthropic-billing-api-key:${ORG}` },
+      };
+      await database.update(connectors).set(changes[boundary]);
+      await expect(resolveOrgHeldBrain(selected, 'claude-test')).rejects.toMatchObject({
+        status: 403, code: 'connection_not_loaded', message: expect.stringContaining(ORG),
+      });
+      expect(h.get).not.toHaveBeenCalled();
+      expect(h.unseal).not.toHaveBeenCalled();
+      expect(h.personal).not.toHaveBeenCalled();
+      expect(h.fallback).not.toHaveBeenCalled();
+    },
+  );
 });
 
 describe('org-held Anthropic inference through real auth, grant SQL and route', () => {
