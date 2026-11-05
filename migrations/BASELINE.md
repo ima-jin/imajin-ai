@@ -43,6 +43,28 @@ historical checksums and existing ledger rows are unchanged. PR #3201's signed
 lease read and PR #3205/PR #3207's CI changes add no migrations. This inventory
 does not assert production migration, restore or runtime org-key injection.
 
+### Root migrations 0231–0233
+
+Three more root migrations follow `0230`, all owned by `kernel` in
+`ownership.json`, additive and idempotent:
+
+- `0231_usage_projection_chain.sql` (PR #3266) upserts the `usage.incurred`
+  row in `kernel.bus_chain_configs` (NULL scope) so the chain runs
+  attestation, emit and the usage-projection reactor. The reactor writes the
+  existing `usage.incurred` table keyed by the usage id; it adds no table.
+- `0232_loop_event_signed_receipts.sql` (PR #3269) adds nullable
+  `signature`, `publisher_did` and `cause_event_id` columns to
+  `kernel.loop_events`, a self-referencing `cause_event_id` foreign key and its
+  index. Historical unsigned rows stay unsigned.
+- `0233_mail_domains.sql` (PR #3273) adds `kernel.mail_domains` (Postal
+  domain id, exact DNS records, verification state, operation claim and the
+  ownership-binding attestation id) with a pending-check index on
+  `next_check_at`. It holds no credentials.
+
+Apply them in filename order when absent from the ledger, after any pending
+`0228`–`0230`. The fixed cut through `0215`, baseline inventory, historical
+checksums and existing ledger rows are unchanged.
+
 ### v0.8.28 post-cut additions (2026-10-29 source check)
 
 The cut is unchanged. These are ordinary root migrations, applied in filename

@@ -16,8 +16,9 @@ spawn a child, or change a model: it records what the publisher observed.
 The envelope still requires `loopId`, `kind` (open loop vocabulary, not
 the output discriminator), `principal`, `state`, `summary`, and `at`.
 Optional fields include `parentLoopId`, `refs`, and now `output`.
-`refs` accepts `issue`, `pr`, `runId`, `sessionKey`, and `sessionId`, all
-nonempty strings. Keep the original session/run identifiers here. The
+`refs` accepts `issue`, `pr`, `runId`, and `sessionId`, all nonempty
+strings; other keys, including a harness `sessionKey`, are dropped at ingest.
+Keep the original session/run identifiers here. The
 publisher chooses a stable deterministic loop ID from its source IDs;
 the kernel neither derives IDs nor interprets those source systems.
 

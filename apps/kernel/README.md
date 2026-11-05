@@ -58,7 +58,12 @@ These changes are source availability, not a production deployment claim.
   connector credentials under the org DID at `/connections/api/org-held`. Values
   are vault-sealed and never returned; the `org-held-{provider}` registry namespace
   is separate from member-held connectors
-  ([#3189](https://github.com/ima-jin/imajin-ai/pull/3189)).
+  ([#3189](https://github.com/ima-jin/imajin-ai/pull/3189)). A human org
+  owner/admin extends an org-held key's expiry from `/jin/vault/renew`
+  (`POST /api/vault/org-held/renew`): it files a `vault:renew-org-held-key`
+  proposal on the countersigned operator-approval rail. Approval extends expiry
+  and re-signs the same grant in place, with a signed `vault.key.renewed`
+  attestation; the credential is never unsealed, regenerated or copied.
 - **Gateway-host bootstrap:** the inference-passthrough gateway host is bootstrapped
   by a push workflow with no interactive console sudo step. It requires a restricted,
   organization-registered runner group and verifies `ref`/`workflow_ref` before any
@@ -235,7 +240,15 @@ models and safe denial reasons. Unusable rows name an existing control under
 `fix: {control, href, actingDid}`; an operator must select that acting identity
 on `/jin` before opening the linked control. For example, member-grant denial
 links to **Org service keys → Member grants → Grant** on `/auth/connectors`.
-Autonomous assigned org agents do not require member grants.
+Autonomous assigned org agents do not require member grants. An org-held route
+whose key is not loaded (`key_not_loaded`) links to **Renew org-held key**
+(`/jin/vault/renew`).
+
+`GET /infer/v1/self?agents=1` is the operator view behind the agent identity
+cards on `/jin`. It needs a direct principal session (org owner/admin when
+acting as an org), refuses agent delegation, and lists bound serving agents
+through the same projection and live inference resolver. It does not expose an
+agent's private connectors or other clients.
 
 The route reuses `resolveInferenceAuth`, `listUsableModels` and
 `listInferenceRoutes`; it adds no gate or scope. The first usable catalog model
@@ -247,13 +260,20 @@ An authorized request with a downstream model/grant denial returns diagnostic
 rows and an empty catalog; an invalid token/scope/act-as returns the existing
 401/403 error shape without a partial identity body.
 
-MCP/HTTP connectors are configuration metadata only (`authority: null`,
-`grantStatus: not-evaluated`, `usable: null`), not a promise that a tool call is
-authorized. Their `configured` flag means an active registry installation,
-not live custody or scope verification. Only the signer's own non-inference
-registrations are read; an inference grant does not expose an assigned
-principal's unrelated tool configuration. Known unconfigured connectors remain
-listed; unknown registered providers use `family: http`. Gateway-host/channel
+MCP/HTTP connector rows reuse the tool-call authorization predicates; the
+token's inference scope is never a tool grant. Tool scopes, assignment, allowed
+services, member grants, suspension and custody-grant lifecycle are evaluated
+without fetching, peeking, decrypting or unsealing a tool credential. Authorized
+rows name the credential owner and authority lane and list `authorizedScopes`;
+`credentialStatus: not-probed` means `usable: true` describes authorization
+metadata, not provider availability, credential integrity or the external
+account identity. Denied rows name an existing fixing control and acting DID.
+`configurationStatus: not-disclosed` keeps a denial from revealing a selected
+principal's private installations, so `configured: false` in that state does not
+mean no connection exists. App HTTP upstream rows are limited to the
+authenticated service app's declared catalogue and exact current binding.
+Known unconfigured connectors remain listed; unknown signer-owned providers use
+`family: http` with `usable: null` and `grantStatus: not-evaluated`. Gateway-host/channel
 fallbacks are outside this kernel projection. Responses are private/no-store
 and never include credentials, vault references or raw exception details.
 Live curl/revoke acceptance remains Ryan's operator step after merge.

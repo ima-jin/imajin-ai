@@ -544,7 +544,7 @@ contract; summary:
   vocabulary's `"<source>:<subkind>"` convention (above) requires a
   colon-separated, hyphenated subkind, not a dot.
 - `detail` has a fixed, validated shape (`command`, `host`, `cwd`,
-  `agentId`, `sessionKey`, `requestedBy`, `approvalId`, `expiresAt`) — the
+  `agentId`, `requestedBy`, `approvalId`, `expiresAt`) — the
   only kind whose `detail` fields are individually required/typed rather
   than left to the source's own discretion, since the operator is
   deciding whether to let a real command run on a real host.
