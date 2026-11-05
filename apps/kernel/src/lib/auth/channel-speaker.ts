@@ -7,17 +7,19 @@ import { ExternalMcpError } from '@/src/lib/kernel/external-mcp-policy';
 
 export const CHANNEL_LINK_HEADERS = { 'Cache-Control': 'private, no-store' };
 const CHANNELS = new Set(['telegram', 'whatsapp', 'signal']);
-const forbidden = () => new ExternalMcpError(403, 'Assigned org bot acting as its org required', 'org_bot_required');
+const forbidden = () => new ExternalMcpError(403, 'Assigned org bot acting as its org required');
+function agentCredential(request: Request) {
+  const authorization = request.headers.get('authorization');
+  if (authorization !== null) return authorization.startsWith('Bearer ') ? authorization.slice(7) : null;
+  return request.headers.get('x-api-key');
+}
 
 /** Same per-agent app+jwt as /infer/v1/self; no session or service-token fallback. */
 export async function requireChannelBot(request: Request) {
-  const authorization = request.headers.get('authorization');
-  const token = authorization
-    ? (authorization.startsWith('Bearer ') ? authorization.slice(7) : null)
-    : request.headers.get('x-api-key');
-  if (!token) throw new ExternalMcpError(401, 'Agent app token required', 'unauthenticated');
+  const token = agentCredential(request);
+  if (!token) throw new ExternalMcpError(401, 'Agent app token required');
   const claims = await verifyAppToken(token);
-  if (!claims) throw new ExternalMcpError(401, 'Invalid or expired app token', 'unauthenticated');
+  if (!claims) throw new ExternalMcpError(401, 'Invalid or expired app token');
   if (claims.isServiceToken || !claims.sub || claims.sub !== claims.azp
     || claims.aud !== APP_TOKEN_DEFAULT_AUDIENCE
     || !claims.scope.split(' ').includes('infer:completions')
@@ -37,17 +39,17 @@ export async function requireChannelBot(request: Request) {
 export async function readChannelSender(request: Request) {
   const body: unknown = await request.json().catch(() => null);
   if (!body || typeof body !== 'object' || Array.isArray(body)) {
-    throw new ExternalMcpError(400, 'JSON object required', 'invalid_request');
+    throw new ExternalMcpError(400, 'JSON object required');
   }
   const input = body as Record<string, unknown>;
   if (Object.keys(input).some(key => !['channel', 'channelUid'].includes(key))) {
-    throw new ExternalMcpError(400, 'Only channel and channelUid are accepted', 'invalid_request');
+    throw new ExternalMcpError(400, 'Only channel and channelUid are accepted');
   }
   if (typeof input.channel !== 'string' || !CHANNELS.has(input.channel)) {
-    throw new ExternalMcpError(400, 'channel must be telegram, whatsapp or signal', 'invalid_request');
+    throw new ExternalMcpError(400, 'channel must be telegram, whatsapp or signal');
   }
   if (typeof input.channelUid !== 'string' || !input.channelUid.trim()) {
-    throw new ExternalMcpError(400, 'channelUid is required', 'invalid_request');
+    throw new ExternalMcpError(400, 'channelUid is required');
   }
   return { channel: input.channel, channelUid: input.channelUid.trim() };
 }

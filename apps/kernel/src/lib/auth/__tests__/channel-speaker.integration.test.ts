@@ -76,7 +76,7 @@ beforeAll(async () => {
   });
 });
 afterAll(async () => { await client.close(); });
-afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
+afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
 beforeEach(async () => {
   await client.exec('TRUNCATE auth.identities, auth.identity_members, auth.delegation_grants, auth.channel_links, auth.channel_link_tokens, registry.apps');
   vi.clearAllMocks();
@@ -245,6 +245,22 @@ describe.each([['speaker', speaker], ['mint', mint]] as const)('%s caller bounda
     expect((await route(req)).status).toBe(401);
     expect(h.session).not.toHaveBeenCalled();
   });
+  it('refuses an unknown bot identity even with a matching assignment row', async () => {
+    credential = await token({ sub: 'did:imajin:missing', azp: 'did:imajin:missing' });
+    await database.insert(identityMembers).values({ identityDid: ORG, memberDid: 'did:imajin:missing', role: 'agent' });
+    expect((await route(request())).status).toBe(403);
+  });
+  it('rejects expired JWTs at the real verifier', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(Date.now() + 11 * 60_000);
+    expect((await route(request())).status).toBe(401);
+  });
+  it('never falls back from an invalid bearer to x-api-key', async () => {
+    const req = request();
+    req.headers.set('authorization', 'Bearer invalid');
+    req.headers.set('x-api-key', credential);
+    expect((await route(req)).status).toBe(401);
+  });
   it('supports x-api-key only when Authorization is absent', async () => {
     const req = request();
     req.headers.delete('authorization');
@@ -327,6 +343,21 @@ describe('mint, existing human consent, then resolve/admit', () => {
     expect(binding.did).toBe(OTHER_ORG);
     expect(h.publish).toHaveBeenCalledWith('channel.link.created', expect.objectContaining({ issuer: OTHER_ORG }));
     await result({ did: OTHER_ORG, admitted: false, reason: 'not_member' });
+  });
+  it('redacts token insert failures without logging the token or uid', async () => {
+    const insert = vi.spyOn(database, 'insert').mockImplementationOnce(() => { throw new Error('private-store-diagnostic'); });
+    const response = await mint(request());
+    expect(response.status).toBe(503);
+    expect(await response.json()).toEqual({ error: 'Channel link unavailable' });
+    expect(h.log).not.toHaveBeenCalled();
+    insert.mockRestore();
+  });
+  it('falls back to the bot DID rather than a personal session label', async () => {
+    const { linkToken } = await (await mint(request())).json();
+    await database.update(identities).set({ name: null, handle: null }).where(eq(identities.id, BOT));
+    const html = renderToStaticMarkup(await Page({ params: Promise.resolve({ token: linkToken }), searchParams: Promise.resolve({}) }));
+    expect(html).toContain(BOT);
+    expect(html).not.toContain(HUMAN);
   });
   it('keeps the registry app label first and falls back to bot handle when unnamed', async () => {
     const { linkToken } = await (await mint(request())).json();
