@@ -53,6 +53,7 @@ import {
   buildAuthorizeUrl,
   exchangeCodeAndStore,
   resolveActiveGrant,
+  readGoogleScopeAuthority,
   requireGrantAndToken,
   revokeAtGoogle,
   listActiveGrantOwners,
@@ -125,6 +126,30 @@ beforeEach(() => {
 afterEach(() => {
   vi.unstubAllGlobals();
   vi.unstubAllEnvs();
+});
+
+describe('read-only Google authority (#3256)', () => {
+  it.each([false, true])('shares the Business Profile operator switch (enabled: %s) without custody', async enabled => {
+    vi.stubEnv('GOOGLE_BUSINESS_PROFILE_ENABLED', enabled ? 'true' : '');
+    grant(['google:business-profile:read']);
+    expect(await readGoogleScopeAuthority(OWNER, 'google:business-profile:read')).toEqual({
+      operatorEnabled: enabled, granted: enabled,
+    });
+    expect(loadMock).not.toHaveBeenCalled();
+    expect(fetch).not.toHaveBeenCalled();
+    if (!enabled) {
+      await expect(requireGrantAndToken(OWNER, 'google:business-profile:read')).rejects.toThrow('google_business_profile_disabled');
+      expect(loadMock).not.toHaveBeenCalled();
+    }
+  });
+  it('rechecks a scope exclusion without loading or refreshing any OAuth token', async () => {
+    grant(['google:gmail:read']);
+    expect(await readGoogleScopeAuthority(OWNER, 'google:gmail:read')).toEqual({ operatorEnabled: true, granted: true });
+    expect(await readGoogleScopeAuthority(OWNER, 'google:gmail:send')).toEqual({ operatorEnabled: true, granted: false });
+    await expect(requireGrantAndToken(OWNER, 'google:gmail:send')).rejects.toThrow('google_no_grant');
+    expect(loadMock).not.toHaveBeenCalled();
+    expect(fetch).not.toHaveBeenCalled();
+  });
 });
 
 describe('googleApiFetch / googleApiRequest (#2144 review — shared REST fetch helper)', () => {

@@ -16,7 +16,10 @@ export async function httpConnectorAuthority(provider: string): Promise<HttpAuth
     }
     case 'google': {
       const c = await import('@/src/lib/google/connector');
-      return { grant: c.resolveActiveGrant, fields: did => [c.oauthVaultField(did)] };
+      return {
+        grant: async (did, scope) => (await c.readGoogleScopeAuthority(did, scope)).granted,
+        fields: did => [c.oauthVaultField(did)],
+      };
     }
     case 'quickbooks': {
       const c = await import('@/src/lib/quickbooks/connector');

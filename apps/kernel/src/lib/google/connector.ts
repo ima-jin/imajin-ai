@@ -368,24 +368,28 @@ async function tombstoneOnDetectedRevoke(ownerDid: string, slot: string): Promis
   }
 }
 
+/** Read-only call admission; provider token validity is checked only by the credential path. */
+export async function readGoogleScopeAuthority(ownerDid: string, scope: string, slot = currentConnectionSlot('google', ownerDid)) {
+  slot = connectionSlot(slot);
+  const operatorEnabled = scope !== BUSINESS_PROFILE_SCOPE || isBusinessProfileEnabled();
+  return {
+    operatorEnabled,
+    granted: operatorEnabled && await google.resolveActiveGrant(ownerDid, scope, slot),
+  };
+}
+
 /**
  * Resolve the connector grant and a usable, fresh access token. Fail-closed.
- *
- * Throws:
- *   - `google_no_grant`         — no active channel_links row for ownerDid + scope.
- *   - `google_no_credential`    — no sealed OAuth bundle at all.
- *   - `google_credential_pending` — sealed but awaiting owner grant approval.
- *   - `google_credential_revoked` — Google rejected the refresh with
- *     `invalid_grant` (the owner or a Workspace admin revoked access on
- *     Google's side). The grant is tombstoned as part of raising this.
+ * Throws google_no_grant, google_no_credential, google_credential_pending or
+ * google_credential_revoked. Detected provider revocation tombstones the grant.
  */
 export async function requireGrantAndToken(ownerDid: string, scope: string, slot = currentConnectionSlot('google', ownerDid)): Promise<string> {
   slot = connectionSlot(slot);
-  if (scope === BUSINESS_PROFILE_SCOPE && !isBusinessProfileEnabled()) {
+  const authority = await readGoogleScopeAuthority(ownerDid, scope, slot);
+  if (!authority.operatorEnabled) {
     throw new Error('google_business_profile_disabled: Business Profile access is not enabled by the operator');
   }
-  const hasGrant = await google.resolveActiveGrant(ownerDid, scope, slot);
-  if (!hasGrant) {
+  if (!authority.granted) {
     throw new Error(
       `google_no_grant: DID ${ownerDid} has no active '${scope}' grant — ` +
       `edit the scope-manifest to enable this connector scope`,

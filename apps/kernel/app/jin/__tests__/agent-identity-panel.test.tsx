@@ -96,11 +96,35 @@ describe('/jin agent identity cards', () => {
     render(<AgentIdentityCard card={{ ...card, name: null, identity: { ...card.identity, handle: null, actAs: null }, connectors: [{
       provider: 'github', family: 'http', authority: null, configured: true, ownerDid: card.identity.did,
       grantStatus: 'not-evaluated', usable: null, usableModels: [],
+      configurationStatus: 'configured', authorizedScopes: [], credentialStatus: 'not-probed',
       fix: { control: 'Configure GitHub', href: '/auth/connectors/github', actingDid: card.identity.did },
     }] }} />);
     expect(screen.getByRole('article', { name: `Identity card for ${card.identity.did}` })).toBeDefined();
     expect(screen.getByText('Not evaluated')).toBeDefined();
     expect(screen.queryByText(/Uses another principal/)).toBeNull();
+  });
+  it.each([false, true])('renders MCP/HTTP authorization without claiming a credential probe (authorized: %s)', authorized => {
+    render(<AgentIdentityCard card={{ ...card, connectors: [{
+      provider: 'warp', family: 'http', authority: authorized ? 'org-held' : null,
+      ownerDid: org, configured: authorized, configurationStatus: authorized ? 'configured' : 'not-disclosed',
+      grantStatus: authorized ? 'granted' : 'denied', usable: authorized, usableModels: [],
+      authorizedScopes: authorized ? ['warp:dispatch'] : [], credentialStatus: 'not-probed',
+      ...(!authorized ? {
+        reason: { code: 'service_not_allowed', message: 'Service access unavailable' },
+        fix: { control: 'Agents → assignment and allowed services', href: '/auth/agents', actingDid: org },
+      } : {}),
+    }] }} />);
+    expect(screen.getByText('Tool authorization:')).toBeDefined();
+    expect(screen.getByText('Not probed — authorization metadata only')).toBeDefined();
+    expect(screen.queryByText('Live check:')).toBeNull();
+    if (authorized) {
+      expect(screen.getByText('Usable')).toBeDefined();
+      expect(screen.getByText('From config')).toBeDefined();
+    } else {
+      expect(screen.getByText('Not disclosed')).toBeDefined();
+      expect(screen.getByRole('link', { name: /assignment and allowed services/ }).getAttribute('href')).toBe('/auth/agents');
+      expect(screen.getByText(`Use acting identity: ${org}`)).toBeDefined();
+    }
   });
   it('uses the returned personal principal and does not select an org implicitly', async () => {
     const mock = install({ principalDid: 'did:imajin:personal', cards: [{ ...card, name: null, identity: { ...card.identity, actAs: null } }] });

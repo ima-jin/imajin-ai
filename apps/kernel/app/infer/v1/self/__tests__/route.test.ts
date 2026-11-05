@@ -165,6 +165,27 @@ describe('GET /infer/v1/self', () => {
     expect(h.metadata).toHaveBeenCalled();
     expect(h.auth).not.toHaveBeenCalled();
   });
+  it.each([false, true])('operator tool rows reveal only the selected principal (org: %s)', async actingAsOrg => {
+    const principalDid = actingAsOrg ? org : 'did:imajin:ryan';
+    h.principal.mockResolvedValue({
+      identity: { id: 'did:imajin:ryan', ...(actingAsOrg ? { actingAs: org } : {}) },
+    });
+    h.metadata.mockResolvedValue([{
+      provider: 'warp', family: 'http', ownerDid: principalDid, authority: actingAsOrg ? 'org-held' : 'delegated',
+      configured: true, usable: true, grantStatus: 'granted', usableModels: [],
+    }, {
+      provider: 'github', family: 'http', ownerDid: actor, configured: true,
+    }, {
+      provider: 'private-other-provider', family: 'http', ownerDid: 'did:imajin:other-client', configured: true,
+    }]);
+    const response = await GET(new NextRequest('https://kernel.test/infer/v1/self?agents=1'));
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.cards[0].connectors).toHaveLength(1);
+    expect(body.cards[0].connectors[0]).toMatchObject({ provider: 'warp', ownerDid: principalDid, usable: true });
+    expect(JSON.stringify(body)).not.toContain('private-other-provider');
+    expect(JSON.stringify(body)).not.toContain('github');
+  });
   it('retains red operator rows on a known unavailable credential without changing self failure semantics', async () => {
     h.models.mockRejectedValue(new ExternalMcpError(503, 'Private custody detail', 'credential_unavailable'));
     h.routes.mockResolvedValue([{

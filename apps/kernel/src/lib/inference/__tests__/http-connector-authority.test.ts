@@ -9,7 +9,10 @@ vi.mock('@/src/lib/vault/active-grant-policy', () => ({ hasActiveVaultGrant: h.c
 vi.mock('@/src/lib/github/connector', () => ({
   resolveActiveGrant: h.grant, oauthVaultField: h.oauthField, vaultField: h.field,
 }));
-vi.mock('@/src/lib/google/connector', () => ({ resolveActiveGrant: h.grant, oauthVaultField: h.oauthField }));
+vi.mock('@/src/lib/google/connector', () => ({
+  readGoogleScopeAuthority: async (did: string, scope: string) => ({ granted: await h.grant(did, scope) }),
+  oauthVaultField: h.oauthField,
+}));
 vi.mock('@/src/lib/quickbooks/connector', () => ({ resolveActiveGrant: h.grant, vaultField: h.field }));
 vi.mock('@/src/lib/discord/connector', () => ({ resolveActiveGrant: h.grant, vaultField: h.field }));
 vi.mock('@/src/lib/typesafe/connector', () => ({ resolveActiveGrant: h.grant, vaultField: h.field }));
@@ -25,9 +28,9 @@ describe('HTTP adapters share the connector call predicates', () => {
   it.each(['github', 'google', 'quickbooks', 'discord', 'typesafe', 'gcp', 'stripe', 'warp'])(
     'reuses %s authorization and never invokes credential loading', async provider => {
       const adapter = await httpConnectorAuthority(provider);
-      expect(adapter?.grant).toBe(h.grant);
       h.grant.mockResolvedValue(true);
       expect(await adapter!.grant('did:imajin:owner', `${provider}:scope`)).toBe(true);
+      expect(h.grant).toHaveBeenCalledWith('did:imajin:owner', `${provider}:scope`);
       h.custody.mockResolvedValue(true);
       expect(await httpCredentialAuthorized(adapter!, 'did:imajin:owner')).toBe(true);
       expect(h.custody).toHaveBeenCalledWith(expect.any(String),

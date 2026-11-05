@@ -59,7 +59,8 @@ vi.mock('@imajin/logger', () => ({ createLogger: () => ({ debug: h.log, info: h.
 vi.mock('@imajin/bus', () => ({ publish: h.publish }));
 vi.mock('../egress-fetch', () => ({ egressSafeFetch: h.upstream }));
 vi.mock('@/src/lib/kernel/node-identity', () => ({ getNodeDid: async () => h.nodeDid }));
-vi.mock('@/src/lib/kernel/connector-registry-store', () => ({
+vi.mock('@/src/lib/kernel/connector-registry-store', async original => ({
+  ...await original<typeof import('@/src/lib/kernel/connector-registry-store')>(),
   connectorRegistryId: (memberDid: string, provider: string) => `conn_${memberDid}_${provider}`,
 }));
 vi.mock('@/src/lib/vault/vault-repository', () => ({
@@ -77,9 +78,9 @@ import { connectors, orgConnectionSuspensions, orgConnectionEvents, orgConnectio
 import { vaultDelegationGrants, vaultOwnerEnvelopes, vaultGrantRequests } from '@/src/db/schemas/vault';
 import { canonicalize, crypto, generateKeypair, requireAuth, requireAppAuth } from '@imajin/auth';
 import { _resetSealingCache, getNodeSigningIdentity } from '@/src/lib/vault/sealing';
-import { fetchGrantSecret, loadAndUnseal, loadAndUnsealByGrantee, listRenewableGrants, vaultService } from '@/src/lib/vault';
+import { fetchGrantSecret, loadAndUnseal, loadAndUnsealByGrantee, listRenewableGrants, sealAndStoreV2, vaultService } from '@/src/lib/vault';
 import { authorizeExternalMcp, connectExternalMcp, disconnectExternalMcp, invokeExternalMcp } from '../external-mcp';
-import { discoveryExternalConnection } from '@/src/lib/inference/self-discovery-connectors';
+import { discoveryExternalConnection, listDiscoveryConnectorMetadata } from '@/src/lib/inference/self-discovery-connectors';
 import { requireAgentKey } from '@/src/lib/warp/connector';
 import type { InferenceAuthContext } from '@/src/lib/inference/auth';
 import { parseExternalMcpCall, POSTMAN_MCP_URL, EXTERNAL_MCP_SCOPE } from '../external-mcp-policy';
@@ -879,6 +880,50 @@ describe('read-only connector discovery matches actual call authorization (#3256
     });
   }
 
+  it.each(['scope-revoked', 'scope-excluded', 'custody-revoked', 'custody-expired'])(
+    'own HTTP projection and the real TypeSafe gate agree on %s without discovery unsealing', async boundary => {
+      const { requireGrantAndKey, vaultField } = await import('@/src/lib/typesafe/connector');
+      const value = orgKey().secret;
+      await sealAndStoreV2(vaultField(member), value);
+      await database.insert(channelLinks).values({
+        id: `typesafe-${sequence}`, channel: 'typesafe', channelUid: member, did: member,
+        appDid: 'did:imajin:typesafe-connector', status: 'active', scopes: ['typesafe:decide'],
+      });
+      const context: InferenceAuthContext = {
+        ownerDid: member, appDid, caller: { actorDid: member },
+        toolAuth: { scopes: ['infer:completions', 'typesafe:decide'], serviceToken: false },
+      };
+      const read = async () => {
+        const before = await permanentState();
+        const blocked = () => { throw new Error('HTTP discovery must never access custody bytes'); };
+        const get = vi.spyOn(vaultService, 'get').mockImplementation(blocked);
+        const peek = vi.spyOn(vaultService, 'peek').mockImplementation(blocked);
+        try {
+          const rows = await listDiscoveryConnectorMetadata(context);
+          expect(get).not.toHaveBeenCalled();
+          expect(peek).not.toHaveBeenCalled();
+          expect(await permanentState()).toBe(before);
+          expect(JSON.stringify(rows)).not.toContain(value);
+          expect(JSON.stringify(rows)).not.toContain(vaultField(member));
+          return rows.find(row => row.provider === 'typesafe');
+        } finally { get.mockRestore(); peek.mockRestore(); }
+      };
+      expect(await read()).toMatchObject({
+        ownerDid: member, configured: true, usable: true, authority: 'own-key',
+      });
+      expect(await requireGrantAndKey(member, 'typesafe:decide')).toBe(value);
+      if (boundary === 'scope-revoked') await database.update(channelLinks).set({ status: 'revoked' })
+        .where(eq(channelLinks.did, member));
+      if (boundary === 'scope-excluded') await database.update(channelLinks).set({ scopes: [] })
+        .where(eq(channelLinks.did, member));
+      if (boundary === 'custody-revoked') await database.update(vaultDelegationGrants).set({ status: 'revoked' })
+        .where(eq(vaultDelegationGrants.field, vaultField(member)));
+      if (boundary === 'custody-expired') await database.update(vaultDelegationGrants).set({ expiresAt: new Date(0) })
+        .where(eq(vaultDelegationGrants.field, vaultField(member)));
+      expect(await read()).toMatchObject({ usable: false, fix: { href: '/auth/connectors/typesafe' } });
+      await expect(requireGrantAndKey(member, 'typesafe:decide')).rejects.toThrow();
+    },
+  );
   it('distinguishes a configured personal MCP connection from revoked custody and agrees with the real gate', async () => {
     await connect(false);
     const context = { ownerDid: member, caller: { actorDid: member } };

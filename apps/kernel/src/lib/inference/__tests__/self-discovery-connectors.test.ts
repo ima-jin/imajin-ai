@@ -25,6 +25,7 @@ vi.mock('../brain', () => ({
 import { ExternalMcpError } from '@/src/lib/kernel/external-mcp-policy';
 import { listDiscoveryConnectorMetadata, discoveryExternalConnection } from '../self-discovery-connectors';
 import type { InferenceAuthContext } from '../auth';
+import { upstreamBinding, upstreamProvider, UPSTREAM_READ_SCOPE, UPSTREAM_WRITE_SCOPE } from '@/src/lib/kernel/app-upstream-policy';
 
 const actor = 'did:imajin:agent';
 const org = 'did:imajin:org';
@@ -175,6 +176,75 @@ describe('read-only connector authority projection', () => {
     const rows = await listDiscoveryConnectorMetadata({ ownerDid: org, caller: { actorDid: actor, actingAs: org } });
     expect(rows.find(row => row.provider === 'warp')).toMatchObject({ ownerDid: org, authority: 'org-held', usable: true });
     expect(h.grant).not.toHaveBeenCalledWith(org, 'warp:dispatch');
+  });
+
+  it('keeps denied assignment metadata hidden and supplies an existing fixing control', async () => {
+    h.principal.mockRejectedValue(new ExternalMcpError(403, randomUUID(), 'service_not_allowed'));
+    const rows = await listDiscoveryConnectorMetadata({
+      ownerDid: org, caller: { actorDid: actor, actingAs: org },
+    });
+    expect(rows.find(row => row.provider === 'warp')).toMatchObject({
+      ownerDid: org, usable: false, configurationStatus: 'not-disclosed', fix: { href: '/auth/agents', actingDid: org },
+    });
+    expect(h.access).toHaveBeenCalledTimes(1);
+  });
+
+  it('retains unknown HTTP adapters as unverified, not a fictional authorization', async () => {
+    h.http.mockResolvedValue(undefined);
+    const rows = await listDiscoveryConnectorMetadata(context);
+    expect(rows.find(row => row.provider === 'typesafe')).toMatchObject({
+      usable: null, authority: null, grantStatus: 'not-evaluated', fix: { href: '/auth/connectors' },
+    });
+  });
+
+  it.each(['read', 'write', 'both', 'revoked', 'changed-binding', 'no-declared-method'])(
+    'app-upstream projection uses the declared binding and %s scope gate', async mode => {
+      const appDid = 'did:imajin:service-app';
+      const upstream = {
+        id: 'catalog', origin: 'https://api.example.test', credentialHeader: 'Authorization' as const,
+        credentialPrefix: 'Bearer ' as const, paths: [{ path: '/items', methods: ['GET', 'POST'] as ('GET' | 'POST')[] }],
+      };
+      if (mode === 'no-declared-method') upstream.paths[0].methods = ['POST'];
+      const scopes = mode === 'write' ? [UPSTREAM_WRITE_SCOPE]
+        : mode === 'both' ? [UPSTREAM_READ_SCOPE, UPSTREAM_WRITE_SCOPE] : [UPSTREAM_READ_SCOPE];
+      h.app.mockResolvedValue({ upstreams: [upstream] });
+      const binding = upstreamBinding(appDid, upstream);
+      h.access.mockImplementation(async (_db, _caller, target) => {
+        if (target.binding !== binding || mode === 'changed-binding' || mode === 'revoked') {
+          throw new ExternalMcpError(403, randomUUID(), 'connection_not_loaded');
+        }
+        return { row: { ownerDid: actor, sealedKeyField: randomUUID() }, custodyId: randomUUID() };
+      });
+      const rows = await listDiscoveryConnectorMetadata({
+        ...context, appDid, toolAuth: { scopes, serviceToken: true },
+      });
+      const upstreamRow = rows.find(row => row.provider === upstreamProvider(appDid, upstream.id));
+      expect(upstreamRow?.usable).toBe(!['revoked', 'changed-binding', 'no-declared-method'].includes(mode));
+      expect(upstreamRow?.authorizedScopes).toEqual(upstreamRow?.usable ? scopes : []);
+      expect(h.app).toHaveBeenCalledWith(expect.anything(), appDid, UPSTREAM_READ_SCOPE, true);
+      expect(JSON.stringify(rows)).not.toContain(binding);
+      expect(JSON.stringify(rows)).not.toContain(upstream.origin);
+    },
+  );
+
+  it('does not expose an unapproved app catalogue or turn a live denial into endpoint failure', async () => {
+    h.app.mockRejectedValue(new ExternalMcpError(403, randomUUID()));
+    const rows = await listDiscoveryConnectorMetadata({
+      ...context, appDid: 'did:imajin:app', toolAuth: { scopes: [UPSTREAM_READ_SCOPE], serviceToken: true },
+    });
+    expect(rows.find(row => row.provider === 'app-upstream')).toMatchObject({
+      usable: false, grantStatus: 'denied', fix: { href: '/auth/connectors' },
+    });
+    expect(rows.some(row => row.provider.startsWith('app-upstream:'))).toBe(false);
+  });
+
+  it('propagates unexpected HTTP and app catalogue storage failures', async () => {
+    h.http.mockRejectedValueOnce(new Error('HTTP store unavailable'));
+    await expect(listDiscoveryConnectorMetadata(context)).rejects.toThrow('HTTP store unavailable');
+    h.app.mockRejectedValue(new Error('App store unavailable'));
+    await expect(listDiscoveryConnectorMetadata({
+      ...context, appDid: 'did:imajin:app', toolAuth: { scopes: [UPSTREAM_READ_SCOPE], serviceToken: true },
+    })).rejects.toThrow('App store unavailable');
   });
 
   it('fails closed on storage errors, not an invented empty state', async () => {

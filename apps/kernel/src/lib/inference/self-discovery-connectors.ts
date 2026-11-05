@@ -8,7 +8,8 @@ import {
   POSTMAN_CONNECTION, requireConnectionApp, type MemberConnectionTarget,
 } from '@/src/lib/kernel/member-connection-gate';
 import {
-  parseUpstream, upstreamDeclarations, upstreamBinding, upstreamProvider, UPSTREAM_READ_SCOPE,
+  parseUpstream, upstreamDeclarations, upstreamBinding, upstreamProvider, UPSTREAM_READ_SCOPE, UPSTREAM_WRITE_SCOPE,
+  type AppUpstream,
 } from '@/src/lib/kernel/app-upstream-policy';
 import { resolveActiveMcpGrant } from '@/src/lib/mcp/mcp-grant';
 import { listBrainConnectors } from './brain';
@@ -82,10 +83,14 @@ export async function discoveryExternalConnection(
   row.configurationStatus = 'not-disclosed';
   if (!tokenAllows(context, target.scope)) return deny(row, 'tool_scope_required');
   try {
-    const access = await authorizeExternalMcpAccess(db, {
-      memberDid: actorDid, appDid: context.appDid, serviceToken: context.toolAuth?.serviceToken,
-      caller: context.caller,
-    }, target);
+    // requireAgentKey passes a verified ConnectionCaller, not an external-app consent envelope.
+    const caller = {
+      memberDid: actorDid, caller: context.caller,
+      ...(target.service === 'warp' ? {} : {
+        appDid: context.appDid, serviceToken: context.toolAuth?.serviceToken,
+      }),
+    };
+    const access = await authorizeExternalMcpAccess(db, caller, target);
     const principal = context.caller
       ? await resolveConnectionPrincipal(context.caller, target.service ?? 'connections') : undefined;
     const orgContext = principal?.orgContext;
@@ -105,11 +110,8 @@ export async function discoveryExternalConnection(
 }
 
 function connectionAuthority(context: InferenceAuthContext, ownerDid: string): ConnectorAuthority {
-  if (ownerDid === actor(context)) return 'own-key';
-  if (!context.caller?.actingAs && context.caller?.actingFor === ownerDid) return 'delegated';
-  if (context.caller?.actingFor && context.caller.actingFor !== ownerDid) return 'member-grant';
-  // resolveConnectionPrincipal, not subtype or selectors, establishes this lane.
-  return 'org-held';
+  // Org-held/member-grant lanes return through discoveryExternalConnection.
+  return ownerDid === actor(context) ? 'own-key' : 'delegated';
 }
 
 async function httpRow(context: InferenceAuthContext, entry: ConnectorEntry, configured: boolean) {
@@ -162,19 +164,39 @@ async function safeHttpRow(context: InferenceAuthContext, entry: ConnectorEntry,
   }
 }
 
-async function upstreamRows(context: InferenceAuthContext) {
-  if (!context.appDid || !context.toolAuth?.serviceToken || !tokenAllows(context, UPSTREAM_READ_SCOPE)) return [];
-  // Only the authenticated app's declared catalogue, never a principal's private upstream enumeration.
-  const app = await requireConnectionApp(db, context.appDid, UPSTREAM_READ_SCOPE, true);
-  const { upstreams } = parseUpstream(upstreamDeclarations, { upstreams: app.upstreams });
-  const rows: ConnectorDiagnostic[] = [];
-  for (const upstream of upstreams) {
-    rows.push(await discoveryExternalConnection(context, {
+async function upstreamRow(context: InferenceAuthContext & { appDid: string }, upstream: AppUpstream) {
+  const scopes = new Set(upstream.paths.flatMap(path => path.methods.map(method =>
+    ['GET', 'HEAD'].includes(method) ? UPSTREAM_READ_SCOPE : UPSTREAM_WRITE_SCOPE)));
+  const results: ConnectorDiagnostic[] = [];
+  for (const scope of scopes) {
+    if (!tokenAllows(context, scope)) continue;
+    results.push(await discoveryExternalConnection(context, {
       provider: upstreamProvider(context.appDid, upstream.id),
-      binding: upstreamBinding(context.appDid, upstream), scope: UPSTREAM_READ_SCOPE,
+      binding: upstreamBinding(context.appDid, upstream), scope,
     }, 'http'));
   }
-  return rows;
+  const usable = results.filter(row => row.usable);
+  const selected = usable.at(0) ?? results.at(0);
+  if (!selected) return deny(diagnostic(upstreamProvider(context.appDid, upstream.id), 'http', actor(context), false), 'tool_scope_required');
+  return { ...selected, authorizedScopes: usable.flatMap(row => row.authorizedScopes) };
+}
+
+async function upstreamRows(context: InferenceAuthContext) {
+  if (!context.appDid || !context.toolAuth?.serviceToken) return [];
+  if (![UPSTREAM_READ_SCOPE, UPSTREAM_WRITE_SCOPE].some(scope => tokenAllows(context, scope))) return [];
+  // Only the authenticated app's declared catalogue, never a principal's private upstream enumeration.
+  try {
+    const app = await requireConnectionApp(db, context.appDid, UPSTREAM_READ_SCOPE, true);
+    const { upstreams } = parseUpstream(upstreamDeclarations, { upstreams: app.upstreams });
+    const rows: ConnectorDiagnostic[] = [];
+    for (const upstream of upstreams) {
+      rows.push(await upstreamRow({ ...context, appDid: context.appDid }, upstream));
+    }
+    return rows;
+  } catch (error) {
+    if (!(error instanceof ExternalMcpError) || error.status !== 403) throw error;
+    return [deny(diagnostic('app-upstream', 'http', actor(context), false), 'tool_scope_required')];
+  }
 }
 
 /** Never invokes a credential loader, vault get/peek, unseal, or provider request. */

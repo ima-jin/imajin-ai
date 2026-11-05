@@ -23,7 +23,7 @@ import {
 } from '@imajin/vault-core';
 import { verifySync, crypto as authCrypto } from '@imajin/auth';
 import { publish } from '@imajin/bus';
-import { and, eq, isNull, gt, or, like, desc, type SQL } from 'drizzle-orm';
+import { and, eq, isNull, like, desc, type SQL } from 'drizzle-orm';
 import { createLogger } from '@imajin/logger';
 import {
   db,
