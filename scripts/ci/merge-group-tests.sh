@@ -35,7 +35,7 @@ JS
 mapfile -t FILTERS < "$DIRECTORIES"
 # Repo-level regression tests matter when their implementation/config changes.
 # Workspace tests are already selected by Turbo, including shared dependents.
-git diff --name-only "$BASE_SHA" HEAD -- scripts vitest.config.ts package.json pnpm-lock.yaml > "$PLAN"
+git diff --name-only "$BASE_SHA" HEAD -- scripts vitest.config.ts vitest.workspace.ts package.json pnpm-lock.yaml > "$PLAN"
 if [[ -s "$PLAN" ]]; then
   FILTERS+=("scripts/__tests__/")
 fi
@@ -45,5 +45,5 @@ if [[ ${#FILTERS[@]} -eq 0 ]]; then
 fi
 
 printf 'Affected unit-test directory: %s\n' "${FILTERS[@]}"
-pnpm --silent test:agent "${FILTERS[@]}" --passWithNoTests \
+pnpm --silent test:agent "${FILTERS[@]}" "$@" --passWithNoTests \
   --exclude '**/e2e/**' --exclude '**/*.e2e.*' --exclude '**/*-e2e.*'

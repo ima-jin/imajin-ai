@@ -1,18 +1,22 @@
 import { defineConfig } from 'vitest/config';
 import { resolve } from 'node:path';
 
+export const testInclude = [
+  'packages/*/tests/**/*.test.ts',
+  'apps/**/__tests__/**/*.test.ts',
+  // Component tests (#1604). Each one opts into jsdom with a
+  // `// @vitest-environment jsdom` docblock rather than switching the whole
+  // suite: jsdom costs real setup time per file and ~1800 of these tests are
+  // pure Node logic that has no use for a DOM.
+  'apps/**/__tests__/**/*.test.tsx',
+  'scripts/__tests__/**/*.test.mjs',
+];
+
 export default defineConfig({
   test: {
-    include: [
-      'packages/*/tests/**/*.test.ts',
-      'apps/**/__tests__/**/*.test.ts',
-      // Component tests (#1604). Each one opts into jsdom with a
-      // `// @vitest-environment jsdom` docblock rather than switching the whole
-      // suite: jsdom costs real setup time per file and ~1800 of these tests are
-      // pure Node logic that has no use for a DOM.
-      'apps/**/__tests__/**/*.test.tsx',
-      'scripts/__tests__/**/*.test.mjs',
-    ],
+    // Four CI shards share the host with other jobs and merge groups.
+    minWorkers: 1,
+    maxWorkers: 4,
     coverage: {
       // v8 rather than istanbul: no instrumentation step, so the suite runs at
       // close to its normal speed. Must stay major-aligned with the root vitest
@@ -27,6 +31,7 @@ export default defineConfig({
       // from the report is measured as 0% covered rather than skipped. Leaving
       // .tsx out therefore capped new-code coverage on any UI change.
       include: [
+        'vitest.workspace.ts',
         'apps/*/src/**/*.ts',
         'apps/*/src/**/*.tsx',
         // CJS helpers that `node server.js` loads outside the Next build (#1653).
