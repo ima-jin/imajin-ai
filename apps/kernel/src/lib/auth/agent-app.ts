@@ -6,6 +6,7 @@ import { db, registryApps, identities, identityMembers, agentProvisions, attesta
 import { didFromPublicKey } from './crypto';
 import { upsertAppAuthorization } from './upsert-app-authorization';
 import { isLiveAppAuthorization } from './live-app-authorization';
+import { forEachSequential } from '@/src/lib/async/sequential';
 
 type Transaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
@@ -113,9 +114,9 @@ export async function backfillAgentApps(privateKey: string) {
   const agents = await db.select().from(identities)
     .where(and(eq(identities.scope, 'actor'), eq(identities.subtype, 'agent')));
   const results: Array<{ agentDid: string; status: 'registered' | 'skipped'; reason?: string }> = [];
-  for (const agent of agents) {
+  await forEachSequential(agents, async agent => {
     const result = await db.transaction(tx => backfillAgent(agent, privateKey, tx));
     results.push({ agentDid: agent.id, status: result ? 'skipped' : 'registered', ...(result ? { reason: result } : {}) });
-  }
+  });
   return results;
 }
