@@ -48,7 +48,7 @@ function diagnostic(provider: string, family: ConnectorFamily, ownerDid: string,
     credentialStatus: 'not-probed',
   };
 }
-function deny(row: ConnectorDiagnostic, code: string) {
+function deny(row: ConnectorDiagnostic, code: string, actingDid = row.ownerDid) {
   const controls: Record<string, { control: string; href: string }> = {
     agent_not_assigned: { control: 'Agents → assignment and allowed services', href: '/auth/agents' },
     service_not_allowed: { control: 'Agents → assignment and allowed services', href: '/auth/agents' },
@@ -69,7 +69,7 @@ function deny(row: ConnectorDiagnostic, code: string) {
         href: CONNECTOR_REGISTRY.some(entry => entry.id === row.provider)
           ? `/auth/connectors/${encodeURIComponent(row.provider)}` : '/auth/connectors',
       }),
-      actingDid: row.ownerDid,
+      actingDid,
     },
   };
 }
@@ -100,7 +100,7 @@ export async function discoveryExternalConnection(
     return access.custodyId ? authorized : deny(authorized, 'credential_unavailable');
   } catch (error) {
     if (!(error instanceof ExternalMcpError) || error.status !== 403) throw error;
-    return deny(row, error.code ?? 'tool_scope_required');
+    return deny(row, error.code ?? 'tool_scope_required', error.fixActingDid);
   }
 }
 function externalConnectionCaller(context: InferenceAuthContext, target: MemberConnectionTarget): ExternalMcpCaller {

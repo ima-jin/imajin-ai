@@ -669,6 +669,12 @@ describe('org-admin suspension (#3167)', () => {
     const get = vi.spyOn(vaultService, 'get');
     asMember();
     expect(await call(RPC, 'POST', rpcCall())).toMatchObject({ status: 403, body: unavailable });
+    expect(await discoveryExternalConnection({
+      ownerDid: member, caller: { actorDid: member },
+    }, { provider: 'external-mcp-postman', scope: EXTERNAL_MCP_SCOPE }, 'mcp')).toMatchObject({
+      ownerDid: member, usable: false, reason: { code: 'connection_suspended' },
+      fix: { href: '/auth/members', actingDid: org },
+    });
     expect(get).not.toHaveBeenCalled();
     get.mockRestore();
     expect(h.fetch).not.toHaveBeenCalled();
