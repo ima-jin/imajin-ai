@@ -7,7 +7,8 @@ import { prepareMechanicalAttestation } from '@/src/lib/auth/emit-mechanical-att
 import { ExternalMcpError, type ConnectionErrorCode } from './external-mcp-policy';
 import { isAgentCapableSubtype } from './connection-principal-policy';
 import { generateId } from './id';
-import { isLiveConnection, type ConnectionTransaction } from './member-connection-gate';
+import { hasOrgConnectionProvenance, isLiveConnection, type ConnectionTransaction } from './member-connection-gate';
+import { missingConnection } from './connection-principal';
 import { authorizeOrgConnectionAdmin, orgHeldProvider, type OrgConnectionActor } from './org-held-connection-policy';
 
 export interface MemberGrantInput { memberDid: string; reason: string }
@@ -42,7 +43,7 @@ async function findConnection(tx: GrantReader, orgDid: string, provider: string)
 }
 
 function liveOrgConnection(row: ConnectorRow) {
-  return isLiveConnection(row) && row.sealedKeyField && row.loadedByDid && row.loadedAt;
+  return isLiveConnection(row) && row.sealedKeyField && hasOrgConnectionProvenance(row);
 }
 
 /** Prepare signed evidence without querying the transaction client. */
@@ -149,7 +150,10 @@ export async function requireOrgConnectionMemberGrant(context: OrgMemberGrantCon
   if (!org || !['business', 'community', 'family'].includes(org.scope) || org.suspendedAt) throw denied(provider);
   await requireMember(tx, orgDid, memberDid, provider);
   const connection = await findConnection(tx, orgDid, provider);
-  if (!connection || !liveOrgConnection(connection)) throw denied(provider, 'connection_not_loaded');
+  if (!connection || !liveOrgConnection(connection)) {
+    if (provider === 'anthropic') throw missingConnection(orgDid);
+    throw denied(provider, 'connection_not_loaded');
+  }
   const [grant] = await tx.select().from(orgConnectionMemberGrants).where(and(
     eq(orgConnectionMemberGrants.orgDid, orgDid), eq(orgConnectionMemberGrants.memberDid, memberDid),
     eq(orgConnectionMemberGrants.connectionId, connection.id), eq(orgConnectionMemberGrants.provider, provider),

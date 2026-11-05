@@ -119,7 +119,7 @@ beforeEach(async () => {
     principalDid: org, granteeDid: node.senderDid, purpose: 'connectors:org-held:anthropic', expiresAt: oldExpiry,
   });
   await database.insert(connectors).values({
-    id: `conn_${sequence}`, ownerDid: org, provider: 'org-held-anthropic', channel: 'anthropic',
+    id: `conn_${sequence}`, ownerDid: org, provider: 'anthropic', channel: 'anthropic',
     connectorDid: node.senderDid, sealedKeyField: field, loadedByDid: human, loadedAt: new Date(),
   });
   await database.insert(orgConnectionMemberGrants).values({

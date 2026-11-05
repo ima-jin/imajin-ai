@@ -1,4 +1,4 @@
-import { and, eq, isNotNull, isNull, like } from 'drizzle-orm';
+import { and, eq, isNotNull, isNull, like, or } from 'drizzle-orm';
 import { db, connectors, identities, identityMembers } from '@/src/db';
 import { ExternalMcpError } from './external-mcp-policy';
 import { isAgentCapableSubtype } from './connection-principal-policy';
@@ -22,12 +22,14 @@ export function readOrgHeldStatus(actor: OrgConnectionActor) {
     }
     const rows = await tx.select({ provider: connectors.provider, loadedAt: connectors.loadedAt })
       .from(connectors).where(and(
-        eq(connectors.ownerDid, actor.orgDid), like(connectors.provider, `${ORG_HELD_PREFIX}%`),
+        eq(connectors.ownerDid, actor.orgDid),
+        or(eq(connectors.provider, 'anthropic'), like(connectors.provider, `${ORG_HELD_PREFIX}%`)),
         eq(connectors.slot, 'primary'), eq(connectors.status, 'active'),
         isNotNull(connectors.sealedKeyField), isNotNull(connectors.loadedAt), isNotNull(connectors.loadedByDid),
       )).orderBy(connectors.provider);
     return { connections: rows.map(row => ({
-      provider: row.provider.slice(ORG_HELD_PREFIX.length), status: 'loaded' as const, loadedAt: row.loadedAt,
+      provider: row.provider === 'anthropic' ? row.provider : row.provider.slice(ORG_HELD_PREFIX.length),
+      status: 'loaded' as const, loadedAt: row.loadedAt,
     })) };
   });
 }

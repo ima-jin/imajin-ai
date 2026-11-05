@@ -103,10 +103,10 @@ describe('canonical held-route enumeration', () => {
 });
 
 describe('public card metadata', () => {
-  it('allowlists metadata and selects the org-held provider row', async () => {
+  it('allowlists metadata from the stored Anthropic provider row owned by the org', async () => {
     h.registration.mockResolvedValue({ id: 'card-org', label: 'Artifact Anthropic', sealedKeyField: 'private-reference' });
     expect(await readInferenceCard(ORG, 'anthropic', true)).toEqual({ id: 'card-org', label: 'Artifact Anthropic', provider: 'anthropic' });
-    expect(h.registration).toHaveBeenCalledWith(ORG, 'org-held-anthropic', 'primary');
+    expect(h.registration).toHaveBeenCalledWith(ORG, 'anthropic', 'primary');
   });
   it('gives an unconfigured card a stable identity', async () => {
     expect(await readInferenceCard(MEMBER, 'anthropic', false)).toEqual({

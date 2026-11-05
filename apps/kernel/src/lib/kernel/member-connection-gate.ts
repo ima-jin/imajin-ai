@@ -4,7 +4,7 @@ import { isActiveGroupMember } from '@/src/lib/auth/group-membership';
 import { APP_AUTHORIZATION_CHANNEL } from '@/src/lib/auth/app-authorization-grant';
 import { ExternalMcpError, EXTERNAL_MCP_SCOPE, POSTMAN_PROVIDER, type ConnectionErrorCode } from './external-mcp-policy';
 import { missingConnection, resolveConnectionPrincipal, type ConnectionCaller } from './connection-principal';
-import { orgHeldProvider } from './org-held-connection-policy';
+import { isOrgSealedAnthropicField, orgHeldProvider } from './org-held-connection-policy';
 
 export type ConnectionTransaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
 export interface ExternalMcpCaller { memberDid: string; appDid?: string; serviceToken?: boolean; caller?: ConnectionCaller }
@@ -14,6 +14,9 @@ export const connectionUnavailable = (code: ConnectionErrorCode = 'connection_no
   new ExternalMcpError(403, 'No active personal external MCP connection or grant', code, fixActingDid);
 export const isLiveConnection = (row: { status: string; expiresAt: Date | null; revokedAt: Date | null }) =>
   row.status === 'active' && !row.revokedAt && (!row.expiresAt || row.expiresAt.getTime() > Date.now());
+export const hasOrgConnectionProvenance = (row: ConnectorRow) =>
+  (row.provider === 'anthropic' && isOrgSealedAnthropicField(row.ownerDid, row.sealedKeyField))
+  || !!(row.loadedByDid && row.loadedAt);
 
 export async function findMemberConnection(tx: Pick<ConnectionTransaction, 'select'>, memberDid: string, provider: string, orgHeld = false) {
   const [row] = await tx.select().from(connectors).where(and(
@@ -70,7 +73,7 @@ export async function authorizeMemberConnection(
   const row = await findMemberConnection(tx, principal.ownerDid, target.provider, !!orgContext);
   if (caller.caller && (!row || !isLiveConnection(row) || !row.sealedKeyField)) throw missingConnection(principal.ownerDid);
   if (!row || !isLiveConnection(row) || !row.sealedKeyField) throw connectionUnavailable();
-  if (orgContext && (!row.loadedByDid || !row.loadedAt)) throw missingConnection(principal.ownerDid);
+  if (orgContext && !hasOrgConnectionProvenance(row)) throw missingConnection(principal.ownerDid);
   if (target.binding !== undefined && row.upstreamBinding !== target.binding) throw connectionUnavailable();
   await checkMemberStanding(tx, principal.ownerDid, row.orgContextDid);
   const orgDid = orgContext?.orgDid ?? row.orgContextDid;

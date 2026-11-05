@@ -85,6 +85,14 @@ let database: ReturnType<typeof drizzle>;
 let upstreamCalls = 0;
 const httpFetch = globalThis.fetch;
 
+async function useWarpConnection() {
+  const field = `${EXTERNAL_MCP_NAMESPACE}:org-fixture:${ORG}`;
+  await database.update(connectors).set({
+    provider: 'org-held-warp', sealedKeyField: field, loadedByDid: MEMBER, loadedAt: new Date(),
+  });
+  await database.update(vaultDelegationGrants).set({ field });
+}
+
 describe('Artifact org bot through agent-mode passthrough and kernel (#3184)', () => {
   let server: ReturnType<typeof createProxyServer>;
   let baseUrl: string;
@@ -353,6 +361,7 @@ describe('self-discovery with real app auth, assignment and grant SQL (#3250)', 
       expect(h.unseal).not.toHaveBeenCalled();
     },
   );
+
 });
 
 describe.each(['agent', 'presence'])('route discovery ≡ chat/completions for %s (real auth, assignment and grant SQL)', subtype => {
@@ -448,7 +457,7 @@ describe.each(['agent', 'presence'])('route discovery ≡ chat/completions for %
   it('proves the Artifact-Jin → @artifact Sonnet 5.5 route using the real resolver and public DID fixtures', async () => {
     const agentDid = 'did:imajin:8gqnAWGGms2cyrZ4krfNQjknYWMfJcoHgnxha8AfKwUY';
     const orgDid = 'did:imajin:Fp5QtWo9vsmS7G5AcbuEUrPT6oGbKxj5gke6T4voH7xE';
-    const field = `${EXTERNAL_MCP_NAMESPACE}:artifact-route:${orgDid}`;
+    const field = `anthropic-api-key:${orgDid}`;
     await database.insert(identities).values([
       { id: agentDid, publicKey: 'artifact-agent-public', scope: 'actor', subtype: 'agent' },
       { id: orgDid, publicKey: 'artifact-org-public', scope: 'business', handle: 'artifact' },
@@ -456,7 +465,7 @@ describe.each(['agent', 'presence'])('route discovery ≡ chat/completions for %
     await database.insert(identityMembers).values({ identityDid: orgDid, memberDid: agentDid, role: 'agent', allowedServices: ['infer'] });
     await database.insert(connectors).values({
       id: 'artifact-anthropic', ownerDid: orgDid, provider: 'anthropic', slot: 'primary',
-      status: 'active', sealedKeyField: field, loadedByDid: MEMBER, loadedAt: new Date(),
+      status: 'active', sealedKeyField: field,
     });
     await database.insert(vaultDelegationGrants).values({
       id: 'artifact-custody', field, subject: orgDid, grantedTo: 'did:imajin:node', status: 'active', oneTime: false,
@@ -658,10 +667,7 @@ describe('assigned agents use only the assigned DID keys, without member-grant r
     expect(h.get).not.toHaveBeenCalled();
   });
   it('requires an active human member grant through the actual Warp tool route', async () => {
-    await database.update(connectors).set({
-      provider: 'org-held-warp', sealedKeyField: `${EXTERNAL_MCP_NAMESPACE}:org-fixture:${ORG}`,
-      loadedByDid: MEMBER, loadedAt: new Date(),
-    });
+    await useWarpConnection();
     const req = () => new NextRequest('https://kernel.test/warp/api/runs', {
       headers: { authorization: 'Bearer fixture-app-token', 'x-acting-as': ORG },
     });
@@ -737,10 +743,7 @@ describe('assigned agents use only the assigned DID keys, without member-grant r
     expect((await usableModels(req())).status).toBe(403);
   });
   it('resolves org-held Warp MCP custody for an assigned agent and refuses an unassigned agent or ungranted member', async () => {
-    await database.update(connectors).set({
-      provider: 'org-held-warp', sealedKeyField: `${EXTERNAL_MCP_NAMESPACE}:org-fixture:${ORG}`,
-      loadedByDid: MEMBER, loadedAt: new Date(),
-    });
+    await useWarpConnection();
     const target = { provider: 'warp', scope: 'warp:dispatch' };
     const agent = { memberDid: AGENT, caller: { actorDid: AGENT, actingAs: ORG } };
     await expect(authorizeExternalMcp(agent, target)).rejects.toMatchObject({ status: 403 });
@@ -756,7 +759,7 @@ describe('assigned agents use only the assigned DID keys, without member-grant r
   it.each(['agent', 'presence'])('sends the org Warp key for %s through the actual tool route and rechecks assignment', async subtype => {
     await database.update(identities).set({ subtype }).where(eq(identities.id, AGENT));
     await assign();
-    await database.update(connectors).set({ provider: 'org-held-warp' });
+    await useWarpConnection();
     h.tokenDid = AGENT;
     const req = () => new NextRequest('https://kernel.test/warp/api/runs', {
       headers: { authorization: 'Bearer fixture-app-token', 'x-acting-for': ORG },
@@ -868,6 +871,10 @@ describe('prod-shaped sealed Anthropic org resolution (#3313)', () => {
   }
 
   it.each([true, false])('resolves the org-owned primary sealed connector with assignedAgent=%s', async assigned => {
+    await database.insert(connectors).values({
+      id: 'personal-connection', ownerDid: MEMBER, provider: 'anthropic', slot: 'primary',
+      status: 'active', sealedKeyField: `anthropic-api-key:${MEMBER}`,
+    });
     const brain = await resolveOrgHeldBrain(await context(assigned), 'claude-test');
     expect(brain).toMatchObject({
       provider: 'anthropic', credentialDid: ORG, modelId: 'claude-test',
@@ -924,6 +931,21 @@ describe('org-held Anthropic inference through real auth, grant SQL and route', 
       provider: 'anthropic', grantedAt: new Date(), grantedByDid: MEMBER,
     });
   });
+  it.each(['personal-field', 'unrelated-field'] as const)(
+    'refuses a granted org row referencing %s even with loader metadata', async boundary => {
+      await database.update(connectors).set({
+        sealedKeyField: boundary === 'personal-field' ? `anthropic-api-key:${MEMBER}` : `anthropic-billing-api-key:${ORG}`,
+        loadedByDid: MEMBER, loadedAt: new Date(),
+      });
+      await expect(resolveOrgHeldBrain({ memberDid: MEMBER, orgDid: ORG }, 'claude-test')).rejects.toMatchObject({
+        status: 403, code: 'connection_not_loaded', message: expect.stringContaining(ORG),
+      });
+      expect(h.get).not.toHaveBeenCalled();
+      expect(h.unseal).not.toHaveBeenCalled();
+      expect(h.personal).not.toHaveBeenCalled();
+      expect(h.fallback).not.toHaveBeenCalled();
+    },
+  );
   it('lists org models through real in-process session auth and live grant SQL, without self-HTTP or personal fallback', async () => {
     const resolver = vi.fn(async () => ({ did: MEMBER, scope: 'actor', subtype: 'human' }));
     provideSessionResolver(resolver);
