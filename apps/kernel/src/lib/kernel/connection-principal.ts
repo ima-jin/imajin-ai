@@ -48,8 +48,9 @@ export async function resolveConnectionPrincipal(caller: ConnectionCaller, servi
   } else if (caller.actingFor && delegated) {
     throw forbidden();
   }
-  const orgDid = caller.actingAs ?? (isOrgScope(principal.scope) ? principalDid : undefined);
-  if (orgDid && orgDid !== principalDid) await activeIdentity(tx, orgDid);
+  const actingIdentity = caller.actingAs && caller.actingAs !== principalDid
+    ? await activeIdentity(tx, caller.actingAs) : principal;
+  const orgDid = isOrgScope(actingIdentity.scope) ? (caller.actingAs ?? principalDid) : undefined;
   return principalContext(caller, actor.subtype, principalDid, orgDid);
 }
 

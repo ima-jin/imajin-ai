@@ -502,6 +502,53 @@ describe.each(['agent', 'presence'])('route discovery ≡ chat/completions for %
   });
 });
 
+describe.each(['agent', 'presence'])('personal actingAs catalog for %s with real auth and principal SQL', subtype => {
+  beforeEach(async () => {
+    await database.update(identities).set({ subtype }).where(eq(identities.id, AGENT));
+    h.tokenDid = AGENT;
+    h.personal.mockImplementation(async did => did === MEMBER ? { apiKey: h.key, modelId: 'personal-model' } : undefined);
+  });
+  function catalogRequest() {
+    return new NextRequest('https://kernel.test/infer/v1/models/usable', {
+      headers: { authorization: 'Bearer fixture-app-token', 'x-acting-as': MEMBER },
+    });
+  }
+
+  it('returns 200 with only the human catalog and resolves imajin models using personal keys', async () => {
+    await database.insert(identityMembers).values({
+      identityDid: MEMBER, memberDid: AGENT, role: 'agent', allowedServices: ['infer'],
+    });
+    const response = await usableModels(catalogRequest());
+    expect(response.status).toBe(200);
+    const { data } = await response.clone().json();
+    expect(data).toEqual(expect.arrayContaining([expect.objectContaining({
+      id: 'personal-model', imajin: expect.objectContaining({ credentialDid: MEMBER, servable: true }),
+    })]));
+    expect(data.every((model: { imajin: { credentialDid: string } }) => model.imajin.credentialDid === MEMBER)).toBe(true);
+    expect(h.personal.mock.calls.every(([did]) => did === MEMBER)).toBe(true);
+    const brain = await resolveBrain({ caller: { actorDid: AGENT, actingAs: MEMBER } }, {
+      connectors: ['anthropic'], model: 'imajin/personal-model',
+    });
+    expect(brain).toMatchObject({ credentialDid: MEMBER, actorDid: AGENT, modelId: 'personal-model' });
+    expect(h.get).not.toHaveBeenCalled();
+    expect(h.fallback).not.toHaveBeenCalled();
+    await assertPrivate(response);
+  });
+
+  it.each(['unassigned', 'removed', 'service-excluded'])('refuses a personal selector when %s without key access', async boundary => {
+    if (boundary !== 'unassigned') await database.insert(identityMembers).values({
+      identityDid: MEMBER, memberDid: AGENT, role: 'agent',
+      allowedServices: boundary === 'service-excluded' ? ['warp'] : ['infer'],
+      ...(boundary === 'removed' ? { removedAt: new Date() } : {}),
+    });
+    const response = await usableModels(catalogRequest());
+    expect(response.status).toBe(403);
+    expect(h.personal).not.toHaveBeenCalled();
+    expect(h.get).not.toHaveBeenCalled();
+    expect(h.fallback).not.toHaveBeenCalled();
+  });
+});
+
 describe('presence sessions through completions with real assignment and member-grant SQL', () => {
   beforeEach(async () => {
     await database.update(identities).set({ subtype: 'presence' }).where(eq(identities.id, AGENT));
