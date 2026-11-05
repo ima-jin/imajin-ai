@@ -1,6 +1,13 @@
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { readFileSync } from 'node:fs';
 import { expect, it } from 'vitest';
+
+it('uses the same sequential sweep for recovery and cooldown without awaiting inside a loop', () => {
+  const source = readFileSync(new URL('../repro-db-pool-stall.ts', import.meta.url), 'utf8');
+  expect(source.match(/\bawait sweep\(\);/g)).toHaveLength(2);
+  expect(source).not.toMatch(/for\s*\([^)]*\)\s*await/);
+});
 
 it.each([
   '',

@@ -107,7 +107,7 @@ async function main() {
     await delay(50);
     assert.equal(lateCallback, false, 'Timed-out transaction executed late');
     held = await Promise.all(Array.from({ length: 10 }, () => client.reserve()));
-    for (let i = 0; i < 3; i++) await probe.tick([target], { execute: true, kernelPort: port });
+    await sweep();
     assert.deepEqual(restarts, ['prod-jin'], 'Cooldown must prevent a restart storm');
     release();
     assert.equal(await checkHealth(target), true);
