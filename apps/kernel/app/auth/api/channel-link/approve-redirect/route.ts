@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAuth } from '@imajin/auth';
+import { requireAuth, resolveActingDid } from '@imajin/auth';
 import { publish } from '@imajin/bus';
 import { db, channelLinkTokens, channelLinks } from '@/src/db';
 import { and, eq, isNull, gt } from 'drizzle-orm';
@@ -24,7 +24,7 @@ export async function POST(request: NextRequest) {
     // of returning them to the approval flow (#1797).
     return NextResponse.redirect(new URL('/auth/login?next=/auth/settings', request.url));
   }
-  const did = authResult.identity.id;
+  const did = resolveActingDid(authResult.identity);
 
   let tokenValue: string | null = null;
   let returnTo = '/auth/settings';

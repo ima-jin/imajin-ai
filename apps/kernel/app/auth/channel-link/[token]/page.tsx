@@ -27,9 +27,10 @@ async function getTokenDetails(token: string): Promise<TokenDetails | null> {
   }[]>`
     SELECT
       t.id, t.channel, t.channel_uid, t.app_did, t.requested_scopes, t.expires_at,
-      r.name AS app_name
+      COALESCE(r.name, bot.name, bot.handle, t.app_did) AS app_name
     FROM auth.channel_link_tokens t
-    LEFT JOIN auth.registry_apps r ON r.app_did = t.app_did
+    LEFT JOIN registry.apps r ON r.app_did = t.app_did
+    LEFT JOIN auth.identities bot ON bot.id = t.app_did
     WHERE t.token = ${token}
       AND t.consumed_at IS NULL
       AND t.expires_at > now()
@@ -119,7 +120,9 @@ export default async function ChannelLinkApprovalPage(
       <p style={{ color: '#555', marginTop: 8 }}>
         <strong>{appName}</strong> wants to link your{' '}
         {channelLabel(tokenDetails.channel)} account (<code>{maskUid(tokenDetails.channelUid)}</code>) to your
-        Imajin identity so it can act on your behalf.
+        Imajin identity{tokenDetails.requestedScopes.includes('channel:speaker')
+          ? ' so the org bot can identify you and check your org membership.'
+          : ' so it can act on your behalf.'}
       </p>
 
       {tokenDetails.requestedScopes.length > 0 && (

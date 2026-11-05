@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { requireAuth } from '@imajin/auth';
+import { requireAuth, resolveActingDid } from '@imajin/auth';
 import { publish } from '@imajin/bus';
 import { db, channelLinkTokens, channelLinks } from '@/src/db';
 import { and, eq, isNull, gt } from 'drizzle-orm';
@@ -25,7 +25,7 @@ export async function POST(request: Request) {
   if ('error' in authResult) {
     return NextResponse.json({ error: authResult.error }, { status: authResult.status });
   }
-  const did = authResult.identity.id; // always the actual user's DID — not delegated
+  const did = resolveActingDid(authResult.identity);
 
   let body: Record<string, unknown>;
   try {

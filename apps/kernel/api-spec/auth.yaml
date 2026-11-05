@@ -48,6 +48,16 @@ components:
       scheme: bearer
       bearerFormat: JWT
       description: "Existing app-service+jwt from POST /auth/api/apps/token/service; the operation's token scope and live operator approval are required."
+    orgBotAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: app+jwt
+      description: |
+        Existing per-agent credential used by /infer/v1/self: sub = azp = bot DID,
+        audience imajin:apps, scope infer:completions. x-api-key is an alternative
+        only when Authorization is absent. No service tokens, session fallback,
+        borrowed subject or acting-for selector. Live infer-service assignment
+        to the x-acting-as org is checked on every call.
     internalKeyAuth:
       type: apiKey
       in: header
@@ -627,6 +637,157 @@ components:
         error_description: { type: string, example: "This app is not registered with the kernel, or its registration has been revoked." }
 
 paths:
+  /api/channel-link/speaker:
+    post:
+      tags: [auth]
+      summary: Resolve one channel sender and check org membership as the org bot
+      security: [{ orgBotAuth: [] }]
+      parameters:
+        - { name: x-acting-as, in: header, required: true, schema: { type: string } }
+      description: |
+        Read-only, private/no-store. The bot acts as a business/community/family
+        org, never as the sender. Reuses requireAgentAssignment (membership
+        role=agent or live audience-matching delegation; infer restrictions apply).
+        Only active channel_links with appDid equal to the credential's own bot
+        DID count; another bot's or registry app's links never count.
+        No link returns unknown_sender with did null. Linked presence and agent
+        senders return presence_refused or agent_refused regardless of membership.
+        Otherwise an active identity_members row on this org alone admits the
+        sender (reason null); a removed row alone returns removed; no row returns
+        not_member. No role, scope or per-channel grant is required for senders.
+        No membership cache outlives the request: removal/unlink flips the next
+        call. No member list, roles or other member's data is returned.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: &channelSenderInput
+              type: object
+              additionalProperties: false
+              required: [channel, channelUid]
+              properties:
+                channel: { type: string, enum: [telegram, whatsapp, signal] }
+                channelUid: { type: string, minLength: 1, pattern: '\S', description: Trimmed; never placed in query parameters. }
+      responses:
+        "200":
+          description: Only this sender's DID and admission result
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [did, admitted, reason]
+                properties:
+                  did: { type: [string, "null"] }
+                  admitted: { type: boolean }
+                  reason:
+                    type: [string, "null"]
+                    enum: [null, not_member, removed, unknown_sender, presence_refused, agent_refused]
+        "400": { description: Invalid JSON object, channel, blank/non-string channelUid or extra fields }
+        "401": { description: Missing, malformed, invalid or expired agent app token }
+        "403": { description: Not an assigned active agent-capable caller acting as an active org; wrong token subject/type/audience/scope, acting-for selector or excluded service }
+        "503": { description: Channel link unavailable; no partial admission result }
+  /api/channel-link/agent:
+    post:
+      tags: [auth]
+      summary: Mint a bot-scoped channel-link challenge using the org bot credential
+      security: [{ orgBotAuth: [] }]
+      parameters:
+        - { name: x-acting-as, in: header, required: true, schema: { type: string } }
+      description: |
+        Same live caller gate as speaker. Inserts a 15-minute single-use token
+        under appDid = bot DID, not the acting org or a registry app. Fixed
+        requestedScopes [channel:speaker] describes sender identification only,
+        never acting-for permission. Approve via /auth/channel-link/{token};
+        the existing approval handlers bind the authenticated acting identity
+        and emit channel.link.created. With no registry app, the page displays
+        the bot identity name, handle, then DID. The next speaker call sees the
+        approved binding. Existing app-auth mint and resolve are unchanged.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: *channelSenderInput
+      responses:
+        "201":
+          description: Private no-store single-use approval URL
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [linkToken, url, expiresAt]
+                properties:
+                  linkToken: { type: string }
+                  url: { type: string, format: uri }
+                  expiresAt: { type: string, format: date-time }
+        "400": { description: Invalid JSON object, channel, blank/non-string channelUid or extra fields }
+        "401": { description: Missing, invalid or expired agent app token }
+        "403": { description: Same assigned-org-bot caller and token boundaries as speaker }
+        "503": { description: Link token creation unavailable }
+  /api/channel-link:
+    post:
+      tags: [auth]
+      summary: Existing app-auth channel-link token mint (unchanged)
+      security: [{ appServiceAuth: [] }]
+      description: |
+        Existing requireAppAuth contract (app+jwt and app-service+jwt, or
+        X-App-DID + X-App-Authorization). appDid comes from app authentication.
+        Defaults requestedScopes to availability:read and availability:write;
+        a supplied array retains string entries. Token expires in 15 minutes.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [channel, channelUid]
+              properties:
+                channel: { type: string, enum: [telegram, whatsapp, signal] }
+                channelUid: { type: string, minLength: 1 }
+                requestedScopes: { type: array, items: { type: string } }
+      responses:
+        "201":
+          description: Link token created
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [linkToken, url, expiresAt]
+                properties:
+                  linkToken: { type: string }
+                  url: { type: string, format: uri }
+                  expiresAt: { type: string, format: date-time }
+        "400": { description: Invalid JSON or missing/invalid channel or channelUid }
+        "401": { description: App authentication required }
+        "403": { description: App authentication refused }
+        "500": { description: Failed to create link token }
+  /api/channel-link/resolve:
+    get:
+      tags: [auth]
+      summary: Existing app-auth active channel-link lookup (unchanged)
+      security: [{ appServiceAuth: [] }]
+      description: |
+        Existing requireAppAuth contract, including app+jwt and app-service+jwt
+        or X-App-DID + X-App-Authorization. Only active links matching channel,
+        channelUid and authenticated appDid. No org admission check.
+      parameters:
+        - { name: channel, in: query, required: true, schema: { type: string } }
+        - { name: channelUid, in: query, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: Existing sender DID and approved scopes
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [did, scopes]
+                properties:
+                  did: { type: string }
+                  scopes: { type: array, items: { type: string } }
+        "400": { description: channel and channelUid query params are required }
+        "401": { description: App authentication required }
+        "403": { description: App authentication refused }
+        "404": { description: No active channel link found }
   /api/org-connections:
     get:
       summary: List org-tagged member connection state and suspension history
