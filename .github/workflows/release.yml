@@ -1,4 +1,5 @@
 name: Release
+# Release PR authentication is tracked in #3303.
 
 # Tag is truth (#2285): package.json "version" fields are bumped ONLY here,
 # in lockstep, ONLY via a normal reviewed PR into main — this workflow never
