@@ -14,6 +14,7 @@ import { db, identities, identityMembers, agentProvisions } from '@/src/db';
 import { eq, and, isNull } from 'drizzle-orm';
 import { generateKeypair } from '@imajin/auth';
 import { didFromPublicKey } from '@/src/lib/auth/crypto';
+import { authorizeAgentApp } from './agent-app';
 
 const HANDLE_REGEX = /^[a-z0-9_-]+$/;
 
@@ -119,6 +120,11 @@ export async function mintAgentIdentity(input: MintAgentIdentityInput): Promise<
       tier: 'preliminary',
       metadata: Object.keys(metadata).length > 0 ? metadata : {},
     });
+
+    await authorizeAgentApp({
+      agentDid, publicKey, ownerDid: input.actingDid,
+      name: trimmedDisplayName ?? handle, privateKey,
+    }, tx);
 
     if (isOrganization) return;
 

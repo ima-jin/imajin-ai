@@ -1,5 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
+vi.mock('@/src/lib/auth/agent-app', () => ({ authorizeAgentApp: vi.fn() }));
+
 // ─── Mocks ──────────────────────────────────────────────────────────────────
 // vi.mock factories are hoisted; all referenced variables must come from vi.hoisted.
 

@@ -726,6 +726,7 @@ file: ``- `path` — role``.
 - `apps/kernel/app/profile/api/contact/verify-email/route.ts` — D4
 - `apps/kernel/app/profile/api/contact/verify-email/confirm/route.ts` — D4
 - `scripts/provision-service-bootstrap.mjs` — ops
+- `scripts/backfill-agent-apps.ts` — ops/S3/S4 (operator-only agent app registration and server-witnessed self-context consent; reads the current node key in-process, never loads agent keys or re-signs existing grants; historical proofs need the same node-key rotation history as other registry/consent records)
 - `scripts/grant-attestation-internal-api-key.ts` — ops
 - `scripts/lib/attestation-internal-api-key-grant.ts` — ops
 - `scripts/lib/cron-secret-grant.ts` — ops

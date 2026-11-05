@@ -47,6 +47,22 @@ beforeEach(() => {
 });
 
 describe('shared app consent behavioral seam (#3008)', () => {
+  it('uses the caller transaction and signs the acting delegator into self-consent', async () => {
+    await upsertAppAuthorization({ ...consent, delegatorDid: 'org', onlyIfMissing: true }, tx as never);
+    expect(h.transaction).not.toHaveBeenCalled();
+    expect(h.values).toHaveBeenCalledWith(expect.objectContaining({
+      delegatorDid: 'org', payload: expect.objectContaining({ delegatorDid: 'org' }),
+    }));
+  });
+
+  it('backfill preserves every live grant and projection even when scopes or bindings differ', async () => {
+    h.rows = [grant('plugin-grant', ['profile:read']), grant('historical-surplus')];
+    expect(await upsertAppAuthorization({ ...consent, onlyIfMissing: true })).toBe('plugin-grant');
+    expect(h.revoke).not.toHaveBeenCalled();
+    expect(h.project).not.toHaveBeenCalled();
+    expect(h.sign).not.toHaveBeenCalled();
+  });
+
   it('takes a pair-scoped transaction advisory lock before reading live grants', async () => {
     await upsertAppAuthorization(consent);
     const query = new PgDialect().sqlToQuery(h.execute.mock.calls[0][0]);
