@@ -30,12 +30,14 @@ deferred.
   is not modified by this change).
 - **Proof verification**
   (`apps/kernel/src/lib/registry/relay/dfos-write-auth.ts`): `<proof>` is a
-  DFOS auth-token JWT — the same self-certifying primitive
-  `@metalabel/dfos-web-relay` verifies for its own (Bearer-scheme) relay
-  AuthN. The JWS `kid` header (`did:dfos:xxx#key_yyy`) names the signer; the
+  DFOS auth-token JWT (`iss`/`sub`/`aud`/`exp`/`iat`). DFOS protocol 0.55
+  dropped the upstream auth-token wrapper, so
+  `apps/kernel/src/lib/registry/relay/legacy-auth-token.ts` keeps these
+  claim semantics over `@metalabel/dfos-protocol/crypto`'s `verifyJwt`;
+  reconciling admission with the relay's API-AUTH identity proofs is
+  #3307. The JWS `kid` header (`did:dfos:xxx#key_yyy`) names the signer; the
   signer's current auth key is resolved from this relay's own `RelayStore`
-  (`getIdentityChain`) and passed to `@metalabel/dfos-protocol`'s
-  `verifyAuthToken` along with this relay's own DFOS DID as the expected
+  (`getIdentityChain`) and passed to that local `verifyAuthToken` along with this relay's own DFOS DID as the expected
   audience. Any failure — malformed token, unknown signer, bad signature,
   wrong audience, expired — is a 401 `invalid_proof`, independent of
   attestation status.

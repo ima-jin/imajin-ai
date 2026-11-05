@@ -363,14 +363,18 @@ See [MIGRATIONS.md](MIGRATIONS.md) and the [baseline runbook](../migrations/BASE
    and add the idempotent guards. A local journal is not the runner's authority.
 3. Run `bash scripts/check-schema-migration-sync.sh origin/main`,
    `bash scripts/check-migrations.sh` and
-   `node scripts/check-migration-ownership.mjs`.
+   `node scripts/check-migration-ownership.mjs`. After every push to main, the
+   `Migration collision recheck` workflow re-runs main's `check-migrations.sh`
+   with each open PR's migration changes overlaid and posts the result as the
+   `Check Migrations (vs main)` check on the PR head, so a number another merge
+   took shows up on the PR without a rebase.
 4. Test the real runner twice against an isolated scratch database; the second
    run must preserve every ledger row. Production is re-baselined, never reset.
    Never delete rows to repair history. App-owned schema/migrations belong in
    each independently owned app repo.
 
-v0.8.27 adds `0221_vault_ssh_scope.sql` above the unchanged baseline; it is not
-permission to move the cut or hand-normalize the migration ledger.
+Post-cut files (`0216` onward) sit above the unchanged baseline; adding one is never permission to move the cut or
+hand-normalize the migration ledger.
 
 ## Adding a New Service
 
