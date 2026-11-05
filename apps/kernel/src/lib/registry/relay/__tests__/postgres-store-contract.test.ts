@@ -11,6 +11,7 @@ import { createNewEd25519Keypair, dagCborCanonicalEncode } from '@metalabel/dfos
 import { signContentOperation, verifyContentChain, verifyContentDag } from '@metalabel/dfos-protocol/chain';
 import { createDFOSCredential, decodeDFOSCredentialUnsafe } from '@metalabel/dfos-protocol/credentials';
 import { createAsOfKeyResolver, createIdentityResolver, createHttpPeerClient, createRelay } from '@metalabel/dfos-web-relay';
+import { createCustomRelay } from '../create-relay';
 
 vi.setConfig({ hookTimeout: 30_000 });
 let database: PGlite;
@@ -49,6 +50,27 @@ beforeEach(async () => {
 });
 
 describe('relay 0.55 SQL store contract', () => {
+  it('boots the kernel factory with durable writes and serves proof-plane reads', async () => {
+    const relay = await createCustomRelay({ store, content: true });
+    expect(await store.getIdentityChain(relay.did)).toBeDefined();
+    const wellKnown = await relay.app.request('/.well-known/dfos-relay');
+    expect(wellKnown.status).toBe(200);
+    expect((await store.getStats()).countsByKind.identity).toBe(1);
+    const log = await relay.app.request('/proof/v1/log?limit=1');
+    expect(log.status).toBe(200);
+    expect(await log.json()).toMatchObject({ next: expect.any(String) });
+    expect((await relay.app.request('/proof/v1/log?after=unknown')).status).toBe(400);
+  });
+
+  it('commits and reads a content-addressed blob without duplicating it', async () => {
+    const key = { creatorDID: 'creator', documentCID: 'document' };
+    expect(await store.getBlob(key)).toBeUndefined();
+    const bytes = new TextEncoder().encode('document bytes');
+    expect(await store.commit({ kind: 'blob', key, bytes })).toBe('new');
+    expect(await store.commit({ kind: 'blob', key, bytes })).toBe('new');
+    expect(Array.from((await store.getBlob(key))!)).toEqual(Array.from(bytes));
+  });
+
   it.runIf(process.env.RELAY_LIVE_PEER_CHECK === '1')(
     'syncs two real relay.dfos.com pages and resumes its opaque next cursor', async () => {
       const transport = createHttpPeerClient();
@@ -128,8 +150,9 @@ describe('relay 0.55 SQL store contract', () => {
       isRevoked: store.isCredentialRevoked.bind(store) };
     const before = await verifyContentDag({ log, ...options });
     expect(before.rejected).toEqual([]);
-    await store.putContentChain({ contentId: genesis.contentId, genesisCID: create.operationCID,
-      log, state: before.head, lastCreatedAt: before.headCreatedAt });
+    await store.commit({ ...operation(child.operationCID),
+      contentChain: { contentId: genesis.contentId, genesisCID: create.operationCID,
+        log, state: before.head, lastCreatedAt: before.headCreatedAt } });
     const credentialCID = decodeDFOSCredentialUnsafe(credential)!.header.cid!;
     await store.commit({ ...operation('dag-revocation'), revocation: revocation(
       'dag-revocation', creator.did, credentialCID, new Date(at).toISOString(),
@@ -207,6 +230,21 @@ describe('relay 0.55 SQL store contract', () => {
     await database.exec(`INSERT INTO relay.relay_revocations
       (cid, issuer_did, credential_cid, jws_token) VALUES ('legacy', 'issuer', 'credential', 'signed')`);
     expect(await store.isCredentialRevoked('issuer', 'credential', 1)).toBe(true);
+  });
+
+  it('breaks equal whole-second boundaries by CID and treats malformed boundaries timelessly', async () => {
+    await store.addRevocation(revocation('z', 'issuer', 'credential', '2026-01-01T00:00:00.100Z'));
+    await store.addRevocation(revocation('a', 'issuer', 'credential', '2026-01-01T00:00:00.900Z'));
+    expect((await store.getRevocation('issuer', 'credential'))?.cid).toBe('a');
+    await store.addRevocation(revocation('malformed', 'issuer', 'credential', 'not-a-timestamp'));
+    expect(await store.isCredentialRevoked('issuer', 'credential', 1)).toBe(true);
+    await store.addRevocation(revocation('valid-later'));
+    expect((await store.getRevocation('issuer', 'credential'))?.cid).toBe('malformed');
+  });
+
+  it('fails closed on incomplete held credentials instead of pretending they are absent', async () => {
+    await database.exec("INSERT INTO relay.relay_public_credentials (cid) VALUES ('incomplete')");
+    await expect(store.getPublicCredentialByCID('incomplete')).rejects.toThrow('Incomplete');
   });
 
   it('hides credentials only for their issuer and retains the revocation attestation and history', async () => {

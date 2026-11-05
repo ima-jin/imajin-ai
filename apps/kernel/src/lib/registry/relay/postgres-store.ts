@@ -539,6 +539,8 @@ export class PostgresRelayStore implements RelayStore, RelayWriteStore, RelayWri
   }
 
   async addRevocation(revocation: StoredRevocation): Promise<void> {
+    const boundary = parseProtocolTimestampUnix(revocation.createdAt);
+    const signedCreatedAt = boundary === null ? null : revocation.createdAt;
     await this.db
       .insert(relayRevocations)
       .values({
@@ -546,15 +548,18 @@ export class PostgresRelayStore implements RelayStore, RelayWriteStore, RelayWri
         issuerDid: revocation.issuerDID,
         credentialCid: revocation.credentialCID,
         jwsToken: revocation.jwsToken,
-        signedCreatedAt: revocation.createdAt,
+        signedCreatedAt,
       })
       .onConflictDoUpdate({
         target: [relayRevocations.issuerDid, relayRevocations.credentialCid],
-        set: { cid: revocation.cid, jwsToken: revocation.jwsToken, signedCreatedAt: revocation.createdAt },
-        setWhere: sql`${relayRevocations.signedCreatedAt} IS NOT NULL AND
-          (${revocation.createdAt}::timestamptz < ${relayRevocations.signedCreatedAt}::timestamptz OR
-          (${revocation.createdAt}::timestamptz = ${relayRevocations.signedCreatedAt}::timestamptz
-            AND ${revocation.cid} < ${relayRevocations.cid}))`,
+        set: { cid: revocation.cid, jwsToken: revocation.jwsToken, signedCreatedAt },
+        setWhere: sql`(
+          COALESCE(${boundary}::double precision, '-Infinity'::double precision),
+          ${revocation.cid} COLLATE "C"
+        ) < (
+          COALESCE(floor(extract(epoch FROM ${relayRevocations.signedCreatedAt}::timestamptz)), '-Infinity'::double precision),
+          ${relayRevocations.cid} COLLATE "C"
+        )`,
       });
   }
 
