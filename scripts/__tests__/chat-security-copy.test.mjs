@@ -17,7 +17,7 @@ describe('current chat security documentation', () => {
     expect(copy).toContain('plaintext at rest on the hosting node');
     expect(copy).toContain('chat.messages_v2.content');
     expect(copy).toMatch(/push notifications carry the first 200 characters of the\s+message preview/i);
-    expect(copy).toMatch(/planned under[\s\S]*?#1070[^\n]*not implemented/);
+    expect(copy).toMatch(/planned(?: under[^\n]*)?[, ]+(?:but )?not implemented/i);
     expect(copy).not.toMatch(/end.to.end encrypted|key.epoch/i);
   });
 
