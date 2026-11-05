@@ -72,11 +72,40 @@ async function agentOwner(agentDid: string, tx: Transaction): Promise<string | n
   // Provision is canonical for organization agents, which have no memberships.
   const provisions = await tx.select({ did: agentProvisions.servingDid }).from(agentProvisions)
     .where(eq(agentProvisions.agentDid, agentDid));
-  const owners = provisions.length > 0 ? provisions : await tx.select({ did: identityMembers.memberDid })
+  const adoptions = await tx.select({ payload: attestations.payload }).from(attestations).where(and(
+    eq(attestations.subjectDid, agentDid), eq(attestations.type, 'agent.adopted'), isNull(attestations.revokedAt),
+  ));
+  const adoptedOwners = adoptions.flatMap(row => {
+    const orgDid = (row.payload as { orgDid?: unknown } | null)?.orgDid;
+    return typeof orgDid === 'string' && orgDid ? [{ did: orgDid }] : [];
+  });
+  const recorded = provisions.length > 0 ? provisions : adoptedOwners;
+  const owners = recorded.length > 0 ? recorded : await tx.select({ did: identityMembers.memberDid })
     .from(identityMembers).where(and(eq(identityMembers.identityDid, agentDid),
       eq(identityMembers.role, 'owner'), isNull(identityMembers.removedAt)));
   const dids = new Set(owners.map(owner => owner.did));
   return dids.size === 1 ? [...dids][0] : null;
+}
+
+async function backfillAgent(agent: typeof identities.$inferSelect, privateKey: string, tx: Transaction) {
+  if (agent.suspendedAt) return 'suspended-agent';
+  const [existing] = await tx.select().from(registryApps)
+    .where(eq(registryApps.appDid, agent.id)).limit(1);
+  const grants = await tx.select().from(attestations).where(and(
+    eq(attestations.issuerDid, agent.id), eq(attestations.subjectDid, agent.id),
+    eq(attestations.type, 'app.authorized'),
+  ));
+  if (existing && grants.some(grant => isLiveAppAuthorization(grant))) return 'already-registered';
+  if (existing && existing.status !== 'active') return 'inactive-app';
+  if (!/^[a-f0-9]{64}$/i.test(agent.publicKey) || didFromPublicKey(agent.publicKey) !== agent.id) return 'invalid-agent-key';
+  if (existing && existing.publicKey !== agent.publicKey) return 'registry-key-mismatch';
+  const ownerDid = existing?.ownerDid ?? await agentOwner(agent.id, tx);
+  if (!ownerDid) return 'ambiguous-or-missing-owner';
+  await authorizeAgentApp({
+    agentDid: agent.id, publicKey: agent.publicKey, ownerDid,
+    name: agent.name ?? agent.handle ?? agent.id, privateKey,
+  }, tx);
+  return null;
 }
 
 /** Server-attested consent, like /api/auth/authorize; no agent private keys are loaded. */
@@ -85,24 +114,7 @@ export async function backfillAgentApps(privateKey: string) {
     .where(and(eq(identities.scope, 'actor'), eq(identities.subtype, 'agent')));
   const results: Array<{ agentDid: string; status: 'registered' | 'skipped'; reason?: string }> = [];
   for (const agent of agents) {
-    const result = await db.transaction(async tx => {
-      const [existing] = await tx.select().from(registryApps)
-        .where(eq(registryApps.appDid, agent.id)).limit(1);
-      const grants = await tx.select().from(attestations).where(and(
-        eq(attestations.issuerDid, agent.id), eq(attestations.subjectDid, agent.id),
-        eq(attestations.type, 'app.authorized'),
-      ));
-      if (existing && grants.some(grant => isLiveAppAuthorization(grant))) return 'already-registered';
-      if (existing && existing.status !== 'active') return 'inactive-app';
-      if (!/^[a-f0-9]{64}$/i.test(agent.publicKey) || didFromPublicKey(agent.publicKey) !== agent.id) return 'invalid-agent-key';
-      const ownerDid = existing?.ownerDid ?? await agentOwner(agent.id, tx);
-      if (!ownerDid) return 'ambiguous-or-missing-owner';
-      await authorizeAgentApp({
-        agentDid: agent.id, publicKey: agent.publicKey, ownerDid,
-        name: agent.name ?? agent.handle ?? agent.id, privateKey,
-      }, tx);
-      return null;
-    });
+    const result = await db.transaction(tx => backfillAgent(agent, privateKey, tx));
     results.push({ agentDid: agent.id, status: result ? 'skipped' : 'registered', ...(result ? { reason: result } : {}) });
   }
   return results;

@@ -1,10 +1,10 @@
 /**
- * From apps/kernel, with the normal database/signing environment loaded:
- * pnpm exec tsx --tsconfig tsconfig.json scripts/backfill-agent-apps.ts
+ * From the repository root, with the normal kernel database/signing environment loaded:
+ * pnpm exec tsx --tsconfig apps/kernel/tsconfig.json scripts/backfill-agent-apps.ts
  * Uses server-attested consent, as /api/auth/authorize does. Never loads agent
  * keys, rewrites registrations, or normalizes an existing live self-grant.
  */
-import { backfillAgentApps } from '../src/lib/auth/agent-app';
+import { backfillAgentApps } from '../apps/kernel/src/lib/auth/agent-app';
 
 async function main() {
   const privateKey = process.env.AUTH_PRIVATE_KEY;

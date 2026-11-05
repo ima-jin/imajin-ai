@@ -287,6 +287,28 @@ describe.skipIf(!adminUrl)('shared app consent — disposable real PostgreSQL (#
     }
   });
 
+  it('a backfill waiting behind plugin consent preserves the plugin grant and projection unchanged', async () => {
+    const blocker = await client.reserve();
+    await blocker`BEGIN`;
+    await blocker`SELECT pg_advisory_xact_lock(hashtextextended(${JSON.stringify(['app.authorized', consent.ownerDid, consent.appDid])}, 0))`;
+    const pluginScopes = ['profile:read'];
+    await blocker`
+      INSERT INTO auth.attestations (id, issuer_did, subject_did, type, signature, payload)
+      VALUES ('plugin-self-grant', ${consent.ownerDid}, ${consent.appDid}, 'app.authorized', 'historical-proof', ${JSON.stringify({ scopes: pluginScopes })}::jsonb)
+    `;
+    const waiting = upsertAppAuthorization({ ...consent, onlyIfMissing: true, delegatorDid: 'org' });
+    try {
+      await waitForBlocked(1);
+    } finally {
+      await blocker`COMMIT`;
+      blocker.release();
+    }
+    expect(await waiting).toBe('plugin-self-grant');
+    expect((await live()).map(row => row.id)).toEqual(['plugin-self-grant']);
+    expect(await projection()).toBeUndefined();
+    await verifyProofs([]);
+  }, 15000);
+
   it.each([false, true])('two contending requests on an EMPTY pair leave exactly one live grant (changed scopes=%s)', async changed => {
     // Hold the exact pair lock from a third connection. Both helper requests
     // must visibly block in pg_stat_activity before release: this cannot pass

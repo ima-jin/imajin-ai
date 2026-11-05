@@ -14,7 +14,7 @@ import * as registrySchema from '@/src/db/schemas/registry';
 import * as oauthSchema from '@/src/db/schemas/oauth';
 import { didFromPublicKey } from '../crypto';
 
-const fixture = vi.hoisted(() => ({ db: null as unknown, nodeDid: vi.fn() }));
+const fixture = vi.hoisted(() => ({ db: null as unknown, nodeDid: vi.fn(), models: vi.fn() }));
 vi.mock('@/src/db', async () => ({
   ...await import('@/src/db/schemas/auth'),
   ...await import('@/src/db/schemas/vault'),
@@ -27,6 +27,9 @@ vi.mock('@/src/lib/kernel/node-identity', () => ({ getNodeDid: fixture.nodeDid }
 vi.mock('@imajin/bus', () => ({
   publish: vi.fn().mockResolvedValue(undefined), registerReactor: vi.fn(),
 }));
+// Catalog loading is external. JWT verification, scope checking, principal
+// resolution and the discovery route remain real.
+vi.mock('@/src/lib/inference/brain', () => ({ listUsableModels: fixture.models }));
 
 // Only auth-service transport, node identity and bus transport are substituted.
 // Provisioning, minting, controller membership queries, grant signing, authority
@@ -44,6 +47,8 @@ import { getInternalSecret } from '@/src/lib/vault/internal-secret';
 import { mintAgentIdentity } from '../agent-identity';
 import { backfillAgentApps, AGENT_APP_SCOPES, AGENT_CALLBACK_URL } from '../agent-app';
 import { POST as mintToken } from '@/app/auth/api/apps/token/route';
+import { POST as verifyToken } from '@/app/auth/api/apps/token/verify/route';
+import { GET as usableModels } from '@/app/infer/v1/models/usable/route';
 import { verifyAppToken } from '../jwt';
 import { listRegisteredApps } from '@/src/lib/apps/registered-apps';
 
@@ -101,6 +106,7 @@ function request(path: string, options: {
 
 async function upstream(input: string | URL | Request, init?: RequestInit): Promise<Response> {
   const url = new URL(input instanceof Request ? input.url : input.toString());
+  if (url.pathname === '/api/apps/token/verify') return verifyToken(new NextRequest(url, init));
   if (url.pathname === '/api/validate') {
     const { token: actor } = JSON.parse(String(init?.body));
     const [identity] = await database.select().from(schema.identities).where(eq(schema.identities.id, actor));
@@ -162,6 +168,7 @@ beforeEach(async () => {
   vi.stubEnv('AUTH_INTERNAL_API_KEY', internalKey);
   vi.stubEnv('AUTH_SERVICE_URL', 'https://auth.fixture.test');
   vi.stubEnv('AGENT_AUTHORITY_MODE', 'grants-first');
+  fixture.models.mockReset().mockResolvedValue([]);
   vi.stubGlobal('fetch', vi.fn(upstream));
 });
 afterAll(async () => {
@@ -387,6 +394,17 @@ describe('agent app registration and token mint (#3294)', () => {
       sub: agent.did, azp: agent.did, scope: AGENT_APP_SCOPES.join(' '), attestationId: grant.id,
     });
     expect(body.scopes).toEqual(['infer:completions', 'infer:usage-read']);
+    fixture.models.mockResolvedValue([{
+      modelId: 'agent-fixture-model', connector: 'local', credentialDid: agent.did, picked: true,
+    }]);
+    const discovered = await usableModels(new NextRequest('https://kernel.test/infer/v1/models/usable', {
+      headers: { authorization: `Bearer ${body.token}` },
+    }));
+    expect(discovered.status).toBe(200);
+    expect((await discovered.json()).data).toEqual([
+      expect.objectContaining({ id: 'agent-fixture-model', imajin: expect.objectContaining({ credentialDid: agent.did }) }),
+    ]);
+    expect(fixture.models).toHaveBeenCalledWith(expect.objectContaining({ ownerDid: agent.did, appDid: agent.did }));
     const card = (await listRegisteredApps()).find(row => row.appDid === agent.did);
     expect(card).toMatchObject({ status: 'active', liveConsents: 1, consentingPrincipals: 1 });
   });
@@ -464,6 +482,78 @@ describe('agent app registration and token mint (#3294)', () => {
     expect(await database.select().from(schema.attestations)).toEqual(before.grants);
     expect(await database.select().from(schema.channelLinks)).toEqual(before.links);
     expect(before.apps[0].appDid).toBe(agent.did);
+  });
+
+  it('fills a missing self-grant without rewriting any field of a hand-made registration', async () => {
+    const agent = await mintRegisteredAgent(true);
+    await database.update(registrySchema.registryApps).set({
+      name: 'Hand registration', callbackUrl: 'https://manual.invalid/callback',
+      requestedScopes: ['infer:completions'], visibility: 'internal',
+    });
+    await database.update(schema.attestations).set({ revokedAt: new Date() })
+      .where(eq(schema.attestations.type, 'app.authorized'));
+    const before = await database.select().from(registrySchema.registryApps);
+    await backfillAgentApps(nodeKeys.privateKey);
+    expect(await database.select().from(registrySchema.registryApps)).toEqual(before);
+    const grants = await database.select().from(schema.attestations).where(eq(schema.attestations.type, 'app.authorized'));
+    expect(grants).toHaveLength(2);
+    expect(grants.find(grant => !grant.revokedAt)).toMatchObject({
+      issuerDid: agent.did, subjectDid: agent.did, delegatorDid: ORG,
+      payload: { scopes: ['infer:completions'] },
+    });
+    const response = await appToken(agent);
+    expect(response.status).toBe(200);
+    expect((await response.json()).scopes).toEqual(['infer:completions']);
+  });
+
+  it('uses the recorded org adoption instead of inventing personal ownership', async () => {
+    const keys = crypto.generateKeypair();
+    const agentDid = didFromPublicKey(keys.publicKey);
+    await database.insert(schema.identities).values({ id: agentDid, publicKey: keys.publicKey, scope: 'actor', subtype: 'agent' });
+    await database.insert(schema.attestations).values({
+      id: 'adopted-agent', issuerDid: NODE, subjectDid: agentDid, type: 'agent.adopted',
+      payload: { orgDid: ORG }, signature: 'historical-proof',
+    });
+    await backfillAgentApps(nodeKeys.privateKey);
+    const [app] = await database.select().from(registrySchema.registryApps);
+    expect(app.ownerDid).toBe(ORG);
+    const [grant] = await database.select().from(schema.attestations).where(eq(schema.attestations.type, 'app.authorized'));
+    expect(grant).toMatchObject({ issuerDid: agentDid, subjectDid: agentDid, delegatorDid: ORG });
+    expect(crypto.verifySync(grant.signature, canonicalize({
+      subject_did: grant.subjectDid, type: grant.type, context_id: grant.contextId,
+      context_type: grant.contextType, payload: grant.payload, issued_at: grant.issuedAt.getTime(),
+    }), nodeKeys.publicKey)).toBe(true);
+  });
+
+  it.each(['suspended-agent', 'invalid-agent-key', 'registry-key-mismatch', 'inactive-app'])(
+    'skips %s without granting new authority', async reason => {
+      const agent = await mintRegisteredAgent();
+      await database.update(schema.attestations).set({ revokedAt: new Date() })
+        .where(eq(schema.attestations.type, 'app.authorized'));
+      if (reason === 'suspended-agent') await database.update(schema.identities).set({ suspendedAt: new Date() })
+        .where(eq(schema.identities.id, agent.did));
+      if (reason === 'invalid-agent-key') await database.update(schema.identities).set({ publicKey: 'legacy-agent-key' })
+        .where(eq(schema.identities.id, agent.did));
+      if (reason === 'registry-key-mismatch') await database.update(registrySchema.registryApps)
+        .set({ publicKey: crypto.generateKeypair().publicKey });
+      if (reason === 'inactive-app') await database.update(registrySchema.registryApps).set({ status: 'revoked' });
+      const before = await database.select().from(schema.attestations);
+      expect(await backfillAgentApps(nodeKeys.privateKey)).toEqual([{ agentDid: agent.did, status: 'skipped', reason }]);
+      expect(await database.select().from(schema.attestations)).toEqual(before);
+    });
+
+  it('does not register humans or ambiguous agent owners', async () => {
+    const keys = crypto.generateKeypair();
+    const agentDid = didFromPublicKey(keys.publicKey);
+    await database.insert(schema.identities).values({ id: agentDid, publicKey: keys.publicKey, scope: 'actor', subtype: 'agent' });
+    await database.insert(schema.identityMembers).values([
+      { identityDid: agentDid, memberDid: HUMAN, role: 'owner' },
+      { identityDid: agentDid, memberDid: ORG, role: 'owner' },
+    ]);
+    expect(await backfillAgentApps(nodeKeys.privateKey)).toEqual([
+      { agentDid, status: 'skipped', reason: 'ambiguous-or-missing-owner' },
+    ]);
+    expect(await database.select().from(registrySchema.registryApps)).toEqual([]);
   });
 
   it('skips an ownerless historical agent instead of attributing it to the operator', async () => {
