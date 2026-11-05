@@ -10,7 +10,7 @@ import { bytesToHex } from '@imajin/auth';
 import { createNewEd25519Keypair, dagCborCanonicalEncode } from '@metalabel/dfos-protocol/crypto';
 import { signContentOperation, verifyContentChain, verifyContentDag } from '@metalabel/dfos-protocol/chain';
 import { createDFOSCredential, decodeDFOSCredentialUnsafe } from '@metalabel/dfos-protocol/credentials';
-import { createAsOfKeyResolver, createIdentityResolver } from '@metalabel/dfos-web-relay';
+import { createAsOfKeyResolver, createIdentityResolver, createHttpPeerClient, createRelay } from '@metalabel/dfos-web-relay';
 
 vi.setConfig({ hookTimeout: 30_000 });
 let database: PGlite;
@@ -49,6 +49,42 @@ beforeEach(async () => {
 });
 
 describe('relay 0.55 SQL store contract', () => {
+  it.runIf(process.env.RELAY_LIVE_PEER_CHECK === '1')(
+    'syncs two real relay.dfos.com pages and resumes its opaque next cursor', async () => {
+      const transport = createHttpPeerClient();
+      let fetched = false;
+      let received: { cid: string }[] = [];
+      let expectedCursor: string | null = null;
+      let resumed = false;
+      const relay = await createRelay({
+        store, content: true,
+        peers: [{ url: 'https://relay.dfos.com', sync: true, fetch: false, push: false }],
+        peerClient: {
+          ...transport,
+          async getOperationLog(url, params) {
+            if (fetched) return null;
+            fetched = true;
+            resumed = Boolean(params?.after);
+            const page = await transport.getOperationLog(url, { ...params, limit: 3 });
+            if (!page || page === 'invalid-cursor') throw new Error('live peer page unavailable');
+            received = page.entries;
+            expectedCursor = page.next;
+            return page;
+          },
+        },
+      });
+      for (let cycle = 0; cycle < 2; cycle++) {
+        fetched = false;
+        await relay.syncFromPeers();
+        expect(received).toHaveLength(3);
+        for (const entry of received) expect(await store.getOperation(entry.cid)).toBeDefined();
+        expect(expectedCursor).toBeTruthy();
+        expect(await store.getPeerCursor('https://relay.dfos.com')).toBe(expectedCursor);
+        expect(resumed).toBe(cycle > 0);
+      }
+    }, 30_000,
+  );
+
   it('reads a DAG with a revoked delegation by dropping its operation and subtree, without throwing', async () => {
     async function identity() {
       const pair = createNewEd25519Keypair();
