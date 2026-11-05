@@ -32,6 +32,18 @@ vi.mock('@/src/lib/notify/operator-approvals', async (importOriginal) => {
 describe('org grant view (#2997)', () => {
   const orgDid = 'did:imajin:business';
 
+  it.each(['agent', 'presence'])('refuses a %s acting as an org admin before reading grants', async (subtype) => {
+    mockRequireAuth.mockResolvedValue({
+      identity: { id: OPERATOR_DID, subtype, actingAs: orgDid, actingAsRole: 'admin' },
+    });
+    const res = await GET(makeReq() as Parameters<typeof GET>[0]);
+    expect(res.status).toBe(403);
+    expect(await res.json()).toEqual({ error: 'Only an org owner or admin may manage org grants' });
+    expect(mockListAuthGrantsForDelegator).not.toHaveBeenCalled();
+    expect(mockListGrantsForOperator).not.toHaveBeenCalled();
+    expect(mockGetOperatorDid).not.toHaveBeenCalled();
+  });
+
   it.each(['owner', 'admin'])('allows an org %s to read auth grants only, including when the human is the operator', async (actingAsRole) => {
     mockRequireAuth.mockResolvedValue({ identity: { id: OPERATOR_DID, actingAs: orgDid, actingAsRole, subtype: 'human' } });
     const req = makeReq();
