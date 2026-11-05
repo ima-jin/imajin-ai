@@ -42,6 +42,8 @@ DATABASE_URL="postgresql://USER:PASSWORD@localhost:5432/DATABASE"
 
 Postgres is open to LAN (192.168.1.0/24). `pg_stat_statements` enabled for query performance tracking.
 
+Every shared `@imajin/db` client bounds its pool, connection acquisition, statement time and idle-in-transaction time, and `GET /api/health?liveness=1` probes that same pool (`database: true`, or 503). Defaults and `DB_*` overrides: [deploy/README.md](../deploy/README.md#database-deadlines-and-pool-stall-reproduction).
+
 ## Services
 
 All services run via **pm2** on the server. **Caddy** handles reverse proxy with auto-SSL.
