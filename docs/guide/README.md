@@ -27,7 +27,7 @@
 - **[Canonical Patterns](./canonical-patterns.md)** — the one correct primitive for each seam (auth, settlement, .fair, checkout identity). Read before writing code at a primitive boundary; do not re-implement these inline.
 - **[Legal entity and sealed bank details](../DEVELOPER.md#sealed-bank-details-api-3075)** — distinct private-record and per-field disclosure contracts; no generic media/vault shortcut.
 - **[Corpus ownership and credentials](../../apps/corpus/README.md)** — owner-DID partitions, live grants, OAuth connector selection and signed migration.
-- **[v0.8.28 integration delta](../../apps/kernel/README.md#pre-cut-delta-for-v0828)** — recipient-organization payer control, additive app-secret slots with separate Generate/Set approval, current chat plaintext limits and automatic release close-out.
+- **[Kernel integration](../../apps/kernel/README.md#attribution-payments-and-private-records)** — recipient-organization payer control, private-record disclosure and current settlement boundaries.
 
 ## Security & Boundaries
 
@@ -42,17 +42,14 @@
 
 ## Quick Links
 
-- **HTTP API reference:** [Developer Guide](../developer-guide.md) (curl-based walkthrough)
+- **Integration guidance:** [Developer Guide](../developer-guide.md) (concepts, authority and app sign-in)
 - **Protocol RFCs:** [docs/canon/rfcs/](../canon/rfcs/) (the "why" behind decisions)
 - **Source code:** [github.com/ima-jin/imajin-ai](https://github.com/ima-jin/imajin-ai)
 - **.fair spec:** [github.com/ima-jin/.fair](https://github.com/ima-jin/.fair)
-- **OpenAPI specs:** `/registry/api/specs` lists configured service candidates,
-  not a complete on-disk or live deployment inventory. The generated references
-  below enumerate actual spec handlers, including `/vault/api/spec`; fetch a
-  served spec for its full schemas. Not every route group has a spec.
-- **Complete source-derived route references:** [llms.txt](../../apps/kernel/public/llms.txt)
-  and [llms-full.txt](../../apps/kernel/public/llms-full.txt), including internal
-  and dev-only handlers (presence does not grant access).
+- **OpenAPI specs:** [llms.txt](../../apps/kernel/public/llms.txt) links the defined
+  service specifications. Fetch the owning service's live spec for schemas,
+  authentication and errors; a contract is not a deployment inventory or permission grant.
+- **Platform concepts and integration flows:** [llms-full.txt](../../apps/kernel/public/llms-full.txt).
 
 ---
 

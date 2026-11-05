@@ -4,7 +4,7 @@ the agent's own `app+jwt` and its configured `x-acting-as` selector. Missing,
 invalid or shared-marker credentials return 401; there is no gateway-principal
 mint, re-mint, catalog cache or direct-key fallback for agent calls.
 The kernel alone verifies authority and resolves connector policy.
-See the canonical [headers, JWT and error contract](../../deploy/infer-passthrough/README.md#calling-agent-contract-3224).
+See the canonical [headers, JWT and error contract](../../deploy/infer-passthrough/README.md#calling-agent-contract).
 ## Org bots: Artifact proof (#3184)
 
 An **org bot = agent assigned to the org DID using the org's keys**. Artifact-Jin

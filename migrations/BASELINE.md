@@ -1,105 +1,38 @@
-# Kernel baseline squash (#2525, #1991 phase 3)
+# Kernel baseline
 
 ## Scope and current cut
+
 Kernel schemas: `auth`, `chat`, `connections`, `consent_requests`, `github`,
 `inference`, `kernel`, `media`, `money`, `notify`, `operator`, `pay`, `profile`,
-`registry`, `relay`, `usage`, `www`. App schemas/ledgers belong in app repos.
+`registry`, `relay`, `usage`, `www`. App schemas and ledgers belong in app repos.
 Fresh kernel init does not initialize coffee, dykil, events, learn, links or
-market; existing app schemas/data are never dropped.
+market; existing app schemas and data are never dropped.
 
-DECISION ruled a (Ryan, 2026-10-16 19:25): kernel migrations may merge before
-squash; the final cut absorbs everything on main. The old no-in-flight gate
-is superseded. #1991 and #2517 are closed. `kernel-baseline.json` records the
-exact cut and checksums. Future migrations use numbers above its highest
-historical number, not `0002`.
+`kernel-baseline.json` is the authority for the fixed cut, absorbed filenames,
+canonical checksums and exact accepted historical variants. The cut is through
+`0215_registry_apps_sign_in_audience.sql`. Every later root migration remains
+outside that inventory and runs in filename order only if absent from the ledger.
+Missing pre-cut history is never tolerated.
 
-Cycle **v0.8.26**, revised after Jin's real-restore review: the cut absorbs
-**212** historical files through **`0215_registry_apps_sign_in_audience.sql`**.
-**`0216_restore_conversation_members_unique.sql` remains unchanged at root**,
-outside the baseline inventory. After adoption the runner applies it if absent
-from the ledger (prod-shaped), or skips its existing row (dev-shaped).
-The same rule applies to **every** later root migration, including 0217, 0218
-and `0221_vault_ssh_scope.sql` (v0.8.27's signed SSH operation-grant scope):
-replay pending files in filename order and skip recorded ones. The SSH CA
-lifecycle/certificate records reuse the existing vault rails; 0221 adds
-`ssh_scope` to `kernel.vault_delegation_grants` and a unique signed-issuance
-serial index to `auth.attestations`, not another baseline cut.
-Missing history through 0215 is never tolerated. Choose the next free number
-above the last root migration on main; do not move the cut for this check fix.
+Choose a migration number above the latest root file on current main, not
+immediately after the baseline filename. Ordinary schema work does not move
+the cut, rewrite the archive, regenerate seeds or normalize ledger rows.
+The ownership map controls the kernel boundary; source presence is not evidence
+that any production migration or restore has run.
 
-### v0.8.30 post-cut addition (2026-11-02 source check)
+## Pending root migration contracts
 
-The only SQL migration added since v0.8.29 is
-`0230_org_connection_member_grants.sql` (PR #3200, #3180 part 1), owned by
-`kernel` in `ownership.json`. It adds `kernel.org_connection_member_grants`
-with org/member/connection/provider identity, grant actor/time and retained
-revocation actor/time/reason. A partial unique index permits one active grant
-per org/member/connection; an org/member index supports membership-removal
-cascade. It contains authority metadata, never credentials or vault material.
+The root migrations below are kernel-owned in `ownership.json`, additive and idempotent:
 
-Apply it in ordinary filename order when absent from the ledger, after pending
-`0228`–`0229` from v0.8.29. The fixed cut through `0215`, baseline inventory,
-historical checksums and existing ledger rows are unchanged. PR #3201's signed
-lease read and PR #3205/PR #3207's CI changes add no migrations. This inventory
-does not assert production migration, restore or runtime org-key injection.
+- `0231_usage_projection_chain.sql` upserts the `usage.incurred` row in `kernel.bus_chain_configs` with NULL scope so the chain runs attestation, emit and the usage-projection reactor. The reactor writes the existing `usage.incurred` table keyed by the usage id; it adds no table.
+- `0232_loop_event_signed_receipts.sql` adds nullable `signature`, `publisher_did` and `cause_event_id` columns to `kernel.loop_events`, a self-referencing `cause_event_id` foreign key and its index. Historical unsigned rows stay unsigned.
+- `0233_mail_domains.sql` adds `kernel.mail_domains` with the Postal domain id, exact DNS records, verification state, operation claim and ownership-binding attestation id, plus a pending-check index on `next_check_at`. It holds no credentials.
 
-### Root migrations 0231–0233
-
-Three more root migrations follow `0230`, all owned by `kernel` in
-`ownership.json`, additive and idempotent:
-
-- `0231_usage_projection_chain.sql` (PR #3266) upserts the `usage.incurred`
-  row in `kernel.bus_chain_configs` (NULL scope) so the chain runs
-  attestation, emit and the usage-projection reactor. The reactor writes the
-  existing `usage.incurred` table keyed by the usage id; it adds no table.
-- `0232_loop_event_signed_receipts.sql` (PR #3269) adds nullable
-  `signature`, `publisher_did` and `cause_event_id` columns to
-  `kernel.loop_events`, a self-referencing `cause_event_id` foreign key and its
-  index. Historical unsigned rows stay unsigned.
-- `0233_mail_domains.sql` (PR #3273) adds `kernel.mail_domains` (Postal
-  domain id, exact DNS records, verification state, operation claim and the
-  ownership-binding attestation id) with a pending-check index on
-  `next_check_at`. It holds no credentials.
-
-Apply them in filename order when absent from the ledger, after any pending
-`0228`–`0230`. The fixed cut through `0215`, baseline inventory, historical
-checksums and existing ledger rows are unchanged.
-
-### v0.8.28 post-cut additions (2026-10-29 source check)
-
-The cut is unchanged. These are ordinary root migrations, applied in filename
-order only when absent from the ledger:
-
-- `0222_app_authorization_codes.sql`: hashed single-use app sign-in codes.
-- `0223_vault_ssh_oidc_replay.sql`: SSH issuance replay lookup and unique
-  issuer-separated refusal-hash index on retained attestations.
-- `0224_product_copy_issue_refs.sql`: UPDATE-only product-copy repair, retaining
-  row identities/history; no baseline seed/checksum rewrite.
-- `0225_external_mcp_org_context.sql`: optional member connection org attribution.
-- `0226_app_upstreams.sql`: registry upstream declarations and member-bound
-  destination/path-method policy.
-- `0227_app_authorization_code_retention.sql`: expression index for the internal
-  code-retention predicate. The runtime sweep deletes only consumed/expired
-  `auth.app_authorization_codes` strictly beyond a one-hour grace; this is not
-  deletion of consent, attestation or migration-ledger history.
-
-Source evidence: [#3154](https://github.com/ima-jin/imajin-ai/pull/3154),
-[#3158](https://github.com/ima-jin/imajin-ai/pull/3158),
-[#3164](https://github.com/ima-jin/imajin-ai/pull/3164),
-[#3170](https://github.com/ima-jin/imajin-ai/pull/3170),
-[#3175](https://github.com/ima-jin/imajin-ai/pull/3175),
-[#3176](https://github.com/ima-jin/imajin-ai/pull/3176).
-This inventory is not evidence any production migration or restore ran.
-
-#2865 closed via PR #2990 (0216), but Jin's actual dev-restore run on the
-previous head failed closed on recorded checksum drift. **Jin must rerun that
-real-data proof on the revised head before enqueueing.** This agent has no
-server access. Synthetic fixtures are not a claim of real-restore success.
-No constraint renames or package version changes are part of this correction.
+Apply these files in filename order only when absent from the ledger, after any pending `0228`–`0230` files. The fixed cut through `0215`, baseline inventory, historical checksums and existing ledger rows remain unchanged.
 
 ## Known name-only drift
-The operator's [#2865 evidence](https://github.com/ima-jin/imajin-ai/issues/2865#issuecomment-6293833427)
-records identical definitions but six different names (prod → fresh baseline):
+The recorded deployed and fresh-baseline catalogs have identical definitions
+but six different names (deployed → fresh baseline):
 - `auth.identity_chains`: `identity_chains_did_fkey` → `identity_chains_did_identities_id_fk`.
 - `chat.conversation_members`: `conversation_members_conversation_did_fkey` → `conversation_members_conversation_did_conversations_v2_did_fk`.
 - `chat.conversation_reads_v2`: `conversation_reads_v2_conversation_did_fkey` → `conversation_reads_v2_conversation_did_conversations_v2_did_fk`.
@@ -109,8 +42,7 @@ records identical definitions but six different names (prod → fresh baseline):
 These names are not changed here and are separate from ledger checksums.
 
 ## Recorded historical checksum drift
-Authority: Jin's [CHANGES_REQUESTED review](https://github.com/ima-jin/imajin-ai/pull/2886#pullrequestreview-5591517061),
-2026-10-20. `kernel-baseline.json.acceptedHistoricalChecksums` records **only**
+`kernel-baseline.json.acceptedHistoricalChecksums` records **only**
 these exact extra SHA-256 values, per filename, with `observedIn`, `reason`
 and `evidence`. Four were observed on both dev/prod; four only on dev:
 - `0001_seed.sql` — dev/prod: `9d75ca47c372992e02a178b5d6001ee3689e77b8fa94ad14fa1cdf75843d8aea`
@@ -129,9 +61,9 @@ The runner accepts the canonical archive checksum **or that file's recorded
 variant**; an unrecorded value, including a variant borrowed from another
 filename, still throws. Every pre-cut row remains required.
 **Never UPDATE, DELETE, normalize or reseed historical ledger rows.**
-The only additions are the new baseline row and genuinely pending post-cut
+The only additions are the baseline row and genuinely pending post-cut
 migration rows. Regeneration preserves/validates the variant map; unit tests
-pin all eight values independently to this review. Scratch ledger fixtures
+pin all eight values independently to the compatibility contract. Scratch ledger fixtures
 insert these synthetic rows at construction, then assert their full IDs,
 checksums and timestamps are unchanged by adoption.
 
@@ -188,7 +120,7 @@ undeclared nonempty seed targets stop generation. Copied rows:
 - `usage.emitters`: platform internal inference-passthrough configuration.
 
 Rows are JSON-key sorted, then table/content sorted. Bookkeeping
-`created_at`/`updated_at` are fixed to `2000-01-01T00:00:00+00:00`. Chain/template
+`created_at`/`updated_at` use the generator's fixed seed-bookkeeping instant. Chain/template
 UUIDs use UUIDv5 URL namespace with `imajin:baseline:chain:{event_type}:{scope}`
 and `imajin:baseline:template:{scope}` (`None` spells NULL scope).
 Only fresh seed bookkeeping changes; definitions/defaults/business config do
@@ -210,8 +142,8 @@ a transaction:
   untracked kernel: stop; no force-adoption or reconstruction.
 
 Afterward, only post-cut root SQL runs. The blind `seed-migrations.mjs` path
-is disabled for this layout. Finish missing historical migrations using the
-pre-cut release in a separately reviewed recovery operation; never delete
+is disabled for this layout. Finish missing historical migrations using reviewed
+pre-baseline code in a separately reviewed recovery operation; never delete
 ledger rows to force a fresh init. Explicit environment `DATABASE_URL` takes
 precedence over the legacy env-file fallback. Scratch copies no env files.
 App `--owner` flags are legacy filtering, not app init; each app repository's
@@ -220,17 +152,17 @@ runner/APP_DB_SCHEMA owns that.
 **Prod is re-baselined, never re-initialized.** Normal release deployment
 adopts a complete ledger without DDL. This does not repair schema drift.
 
-## Jin's actual dev-restore dry run (server hands only)
-Jin supplies an already verified **custom-format** dev backup, including
+## Actual dev-restore dry run (operator only)
+The operator supplies an already verified **custom-format** dev backup, including
 `public._migrations` and app schemas, via the established backup procedure.
 Backup acquisition is outside this runbook. Do not source/print env files,
 put live URLs in commands, or run migration commands against dev/prod.
 Use a server with Docker access and enough memory for the restore's tmpfs.
 
 ```bash
-git fetch origin chore/2525-kernel-baseline
-RESTORE_WORKTREE=$(mktemp -d /tmp/imajin-2525-worktree-XXXXXX)
-git worktree add --detach "$RESTORE_WORKTREE" origin/chore/2525-kernel-baseline
+git fetch origin main
+RESTORE_WORKTREE=$(mktemp -d /tmp/imajin-baseline-restore-XXXXXX)
+git worktree add --detach "$RESTORE_WORKTREE" origin/main
 cd "$RESTORE_WORKTREE"
 git rev-parse HEAD
 pnpm install --frozen-lockfile --ignore-scripts --filter imajin-ai
@@ -240,7 +172,7 @@ test -f "$DEV_RESTORE_DUMP"
 python3 scripts/kernel-baseline.py restore --dump "$DEV_RESTORE_DUMP"
 ```
 
-The command restores the supplied file into a new network-isolated container
+The command restores the supplied file into an isolated scratch container
 using `pg_restore --no-owner --no-privileges --exit-on-error`, then runs the
 actual migration runner twice, with a localhost URL only inside that container.
 Before running the runner, it clones the restored scratch database and independently
@@ -253,14 +185,14 @@ and `now()`; non-seed data is not normalized. With no pending files, data is
 compared raw. Existing relation OIDs/relfilenodes untouched by pending SQL must
 survive. Every existing ledger row (including IDs/checksums/timestamps and
 already-recorded post-cut rows) must remain byte-for-byte unchanged.
-Exactly one baseline row must exist; the only new ledger rows are that baseline
+Exactly one baseline row must exist; additional ledger rows are only that baseline
 (if absent) and **all** genuinely pending files with canonical checksums.
 Existing post-cut files are skipped. After the first run, the second run must
 preserve raw schema/data, relation OIDs/relfilenodes, representative row xmin and
 the entire ledger without normalization. It does not deploy or modify the source
 DB/backup.
 
-If the server has no Docker (as in Jin's reviewed run), use the established
+If the server has no Docker, use the established
 operator `pg_dump -Fc` / `pg_restore --no-owner --no-privileges --exit-on-error`
 procedure into an already-isolated **scratch** database, from a throwaway
 checkout with **no env files**. With operator-provided credentials exported
@@ -275,19 +207,18 @@ Compare scratch-only schema/data against an independent copy with every pending
 post-cut migration replayed, and verify all existing ledger rows are unchanged.
 Allow only a baseline row plus canonical rows for the pending post-cut files,
 not just 0216. Check the second run is a strict no-op. Never point these commands
-at live dev/prod or rewrite a historical checksum. Jin owns and records the
-real-data rerun.
+at live dev/prod or rewrite a historical checksum. The operator owns and records the
+real-data proof.
 
 Expected final line:
 `PASS: supplied restore plus all pending post-cut migrations matches replay; historical ledger preserved; repeat is mutation-free`
 
-Failure means stop and leave the PR unmerged. Attach only a sanitized error
-and exact SHA to #2525, never backup contents/rows/credentials. Investigate
+Failure means stop and leave the PR unmerged. Record only a sanitized error
+and exact SHA in the review, never backup contents, rows or credentials. Investigate
 missing history/checksum errors; do not edit the ledger to bypass them.
 Record successful command, exact SHA, backup provenance/time (not contents),
-PostgreSQL version and PASS result in #2525. The real dev-restore rerun after
-the changes-requested review remains pending Jin. Synthetic evidence alone
-does not establish the real dev-restore acceptance.
+PostgreSQL build and PASS result in the review. Synthetic evidence alone
+does not establish real dev-restore acceptance.
 
 ## CI and rollback
 The baseline job checks reproducibility, baseline-only init, catalog/seeds,
@@ -302,8 +233,8 @@ Seed-drift regressions replay the archive. Ownership tests reject
 app DDL/DML/search-path leaks and archive tampering against original main bytes,
 not merely a mutable manifest.
 
-Before any post-cut DDL lands, rolling code back to the pre-cut release still
+Before any post-cut DDL lands, rolling code back to reviewed pre-baseline code still
 recognizes all historical ledger rows; the extra baseline row is harmless.
 Never remove rows or drop/recreate schemas to roll back. After post-cut DDL,
-use the normal reviewed migration/backup recovery procedure; this squash adds
+use the normal reviewed migration/backup recovery procedure; baseline adoption adds
 no automatic down-migration.

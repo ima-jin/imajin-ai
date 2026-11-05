@@ -21,11 +21,11 @@ describe('signed kernel callback configuration (#2798)', () => {
       .not.toMatch(/(COFFEE|LEARN|MARKET|EVENTS|NOTIFY)_WEBHOOK_SECRET/);
   });
   it.each([
-    ['deploy/README.md', '## market is no longer', 'MARKET', 'market#15'],
-    ['docs/ops/DEPLOY-POSTURE.md', '## 6. learn is external', 'LEARN', 'learn#15'],
-    ['docs/ops/DEPLOY-POSTURE.md', '## 7. coffee is external', 'COFFEE', 'coffee#13'],
-    ['docs/ops/DEPLOY-POSTURE.md', '## 8. market is external', 'MARKET', 'market#15'],
-  ])('retains the temporary legacy Bearer for %s (%s) until its migration deploys', (file, heading, app, migration) => {
+    ['deploy/README.md', '## Independently owned apps and corpus', 'MARKET'],
+    ['docs/ops/DEPLOY-POSTURE.md', '## Independently owned apps', 'LEARN'],
+    ['docs/ops/DEPLOY-POSTURE.md', '## Independently owned apps', 'COFFEE'],
+    ['docs/ops/DEPLOY-POSTURE.md', '## Independently owned apps', 'MARKET'],
+  ])('retains the temporary legacy Bearer for %s (%s) until its receiver deploys', (file, heading, app) => {
     const document = readFileSync(join(REPO_ROOT, file), 'utf8');
     const section = document.slice(document.indexOf(heading)).split('\n## ')[0].replace(/\s+/g, ' ');
     expect(document).toContain(heading);
@@ -33,12 +33,9 @@ describe('signed kernel callback configuration (#2798)', () => {
     expect(section).toContain(`${app}_WEBHOOK_SECRET`);
     expect(section).toContain('`WEBHOOK_SECRET`');
     expect(section).toMatch(/legacy Bearer|Bearer-only/);
-    const retention = app === 'COFFEE'
-      ? `Keep \`${app}_SERVICE_URL\` and \`${app}_WEBHOOK_SECRET\` set`
-      : 'leave both env vars in place';
+    const retention = `Keep \`${app}_SERVICE_URL\` and \`${app}_WEBHOOK_SECRET\` set`;
     expect(section.toLowerCase()).toContain(retention.toLowerCase());
-    expect(section).toContain(migration);
-    expect(section).toMatch(/merges and deploys/);
+    expect(section).toContain("after that receiver's signed verification is deployed and verified");
     expect(section).toContain('kernel-webhook-legacy.ts');
     expect(section).toContain('is set');
     expect(section).toMatch(/signature is additive|also sends a detached signature/);
