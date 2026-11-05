@@ -5,7 +5,7 @@ import { dirname, join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import {
-  CONSUMER_FILES, HISTORY_RECORDS, ROUTE_BLOCK_THRESHOLD, scanDocument, scanRepo,
+  CONSUMER_FILES, HISTORY_DIRECTORIES, HISTORY_RECORDS, ROUTE_BLOCK_THRESHOLD, scanDocument, scanRepo,
 } from '../ci-guard-current-state-docs.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
@@ -33,11 +33,63 @@ const run = dir => spawnSync(process.execPath, [script], {
 
 describe('current-state consumer documentation guard', () => {
   it.each([
-    '## v0.9.9 addendum', '# v12.123.456', '### Source ADDENDUM',
-    '#### Contract delta', '###### Current v1.2.3 behavior',
-    'Release v0.9.9\n---', 'Contract delta\n===', 'Source addendum\n---',
+    '## v0.9.9 addendum', '# v12.123.456', '### Release ADDENDUM',
+    '#### Version delta', '###### Current v1.2.3 behavior',
+    'Release v0.9.9\n---', 'Release delta\n===', 'Version addendum\n---',
+    '## Addendum release', '## Delta version', '## Release: delta',
   ])('rejects history headings: %s', heading => {
     expect(scanDocument(heading)).toContainEqual(expect.objectContaining({ rule: 'history heading' }));
+  });
+
+  it.each([
+    'docs/REGISTRATION.md', 'migrations/OWNERSHIP.md',
+    'packages/openclaw-infer-passthrough/README.md', 'docs/ENVIRONMENTS.md',
+    'docs/notify-operator-approvals-contract.md', 'docs/warp-notification-chain.md',
+    'docs/npm-publishing.md', 'docs/mjn-whitepaper.md', 'docs/loops-rail-contract.md',
+    'docs/security/node-key-roles-and-rotation.md', 'docs/agents/nanoclaw-first-boot.md', 'docs/DEVELOPER.md',
+  ])('retains deferred consumer %s in guard coverage', file => {
+    expect(CONSUMER_FILES).toContain(file);
+  });
+
+  it('retains only the existing llms blockquote wording', () => {
+    const text = readFileSync(join(root, 'apps/kernel/public/llms.txt'), 'utf8');
+    expect(text.split(/\r?\n/)[2]).toBe(
+      '> You compose. Imajin orchestrates. Signed. Legible. Imajin is Agentic Relation Management.',
+    );
+  });
+
+  it.each([
+    ['deploy/README.md', 'PM2_ALERT_WEBHOOK', 'protected'],
+    ['deploy/README.md', 'RESTART_ALERT_WEBHOOK', 'crontab and logs'],
+    ['deploy/README.md', 'RESTART_ALERT_THRESHOLD', 'default 5'],
+    ['deploy/README.md', 'RESTART_ALERT_WINDOW', 'default 600'],
+    ['deploy/README.md', 'RESTART_ALERT_STATE', '~/.cache/imajin/pm2-restarts.<scope>.json'],
+    ['deploy/README.md', 'STATUS_ALERT_WEBHOOK', 'RESTART_ALERT_WEBHOOK'],
+    ['deploy/README.md', 'STATUS_ALERT_REPEAT', 'default 3600'],
+    ['deploy/README.md', 'CRON_STATE_PATH', 'apps/kernel/.cron-state.json'],
+    ['deploy/README.md', 'CRON_VAULT_FETCH_TIMEOUT_MS', 'default 120000'],
+    ['deploy/README.md', 'scripts/ci-guard-cron-manifest.mjs', 'route/schedule agreement'],
+    ['deploy/README.md', 'PORT_REAP_FAILED', 'scripts/lib/reap-port.sh'],
+    ['deploy/README.md', 'scripts/build-restart-failed.test.sh', 'exit code 2'],
+    ['deploy/README.md', 'UND_ERR_HEADERS_TIMEOUT', 'packages/auth/src/internal-fetch.cjs'],
+    ['deploy/README.md', 'REPRO_DEFAULT_HEADERS=1', 'not the bounded-pass criterion'],
+    ['deploy/README.md', 'NODE_CARD_RAIL_NOT_CONFIGURED', 'HTTP 503'],
+    ['apps/kernel/README.md', 'PROFILE_INTERNAL_API_KEY', 'never in browser code'],
+    ['apps/kernel/README.md', 'OPERATOR_APPROVAL_EXPIRY_DAYS', 'default seven days'],
+    ['docs/ops/DEPLOY-POSTURE.md', 'scripts/ci-guard-required-contexts.mjs', 'required CI jobs'],
+    ['docs/ops/DEPLOY-POSTURE.md', 'scripts/lib/git-version.mjs', 'no release tag exists'],
+  ])('preserves current operator fact %s: %s', (file, token, fact) => {
+    const lines = readFileSync(join(root, file), 'utf8').split(/\r?\n/);
+    const line = lines.find(value => value.includes(`\`${token}\``));
+    expect(line).toBeDefined();
+    expect(line).toContain(fact);
+    expect(line).not.toMatch(/\bv\d+\.\d+\.\d+\b|#\d+/);
+  });
+
+  it('links the existing OpenClaw MCP runbook from a consumer entry point', () => {
+    const readme = readFileSync(join(root, 'apps/kernel/README.md'), 'utf8');
+    expect(readme).toContain('](../../docs/ops/openclaw-mcp.md)');
+    expect(readFileSync(join(root, 'docs/ops/openclaw-mcp.md'), 'utf8')).not.toBe('');
   });
 
   it.each([
@@ -47,6 +99,7 @@ describe('current-state consumer documentation guard', () => {
     '```md\n## Example addendum heading in a literal\n```',
     '~~~md\n## Example delta heading in a literal\n~~~',
     '### Deltastream is a name', '### v1.2 wire format',
+    '## Delta sync', '## Addendum', 'Contract delta\n===', 'Source addendum\n---',
   ])('allows concepts, links, single routes and literals: %s', content => {
     expect(scanDocument(content)).toEqual([]);
   });
@@ -62,7 +115,7 @@ describe('current-state consumer documentation guard', () => {
   ])('rejects inventories in list, table and raw forms', shape => {
     const block = routes(ROUTE_BLOCK_THRESHOLD, shape);
     expect(scanDocument(block)).toEqual([{ file: 'README.md', line: 1, rule: 'route inventory' }]);
-    expect(scanDocument(`\`\`\`text\n${block}\n\`\`\``)[0].line).toBe(2);
+    expect(scanDocument(`\`\`\`text\n${block}\n\`\`\``)).toEqual([]);
     expect(scanDocument(routes(ROUTE_BLOCK_THRESHOLD - 1, shape))).toEqual([]);
   });
 
@@ -79,12 +132,40 @@ describe('current-state consumer documentation guard', () => {
     expect(scanRepo(dir)).toEqual([{ file, line: 1, rule: 'history heading' }]);
   });
 
-  it('covers nested docs, but exempts only the ten exact history records', () => {
+  it('retains exact records and exempts new documents in each records tier', () => {
     expect(HISTORY_RECORDS.size).toBe(10);
     const files = Object.fromEntries([...HISTORY_RECORDS].map(file => [file, '## v0.9.9 addendum']));
-    files['docs/canon/rfcs/consumer-guide.md'] = routes(6);
+    for (const dir of HISTORY_DIRECTORIES) files[`${dir}new-record.md`] = `## v0.9.9 addendum\n${routes(6)}`;
+    files['docs/guide/consumer-guide.md'] = routes(6);
     const dir = fixture(files);
-    expect(scanRepo(dir)).toEqual([{ file: 'docs/canon/rfcs/consumer-guide.md', line: 1, rule: 'route inventory' }]);
+    expect(scanRepo(dir)).toEqual([{ file: 'docs/guide/consumer-guide.md', line: 1, rule: 'route inventory' }]);
+  });
+
+  it.each([
+    ['docs/adr/0009.md', '## Context (v0.9.0 cut)'],
+    ['docs/canon/rfcs/RFC-41-x.md', '## Addendum'],
+    ['docs/guide/sync.md', '## Delta sync'],
+    ['docs/guide/example.md', '```http\nGET /a\nGET /b\nGET /c\nGET /d\nGET /e\nGET /f\n```'],
+  ])('passes the review probe through scanner and real CLI: %s', (file, content) => {
+    const dir = fixture({ [file]: content });
+    expect(scanRepo(dir)).toEqual([]);
+    const passed = run(dir);
+    expect(passed.status).toBe(0);
+    expect(passed.stdout).toContain('PASS:');
+  });
+
+  it.each(['docs/adrs/', 'docs/canonical/', 'docs/rfcs-guide/', 'docs/audits-guide/'])(
+    'does not exempt directory names merely prefixed like records: %s', dir => {
+      expect(scanRepo(fixture({ [`${dir}guide.md`]: '## v0.9.9 addendum' }))).toHaveLength(1);
+    },
+  );
+
+  it.each(['```', '~~~~'])('resets route runs at %s fences and resumes after the closing fence', fence => {
+    const literal = `${fence}text\n${routes(6)}\n## v0.9.9 addendum\n${fence}`;
+    expect(scanDocument(`${routes(5)}\n${literal}\n${routes(5)}`)).toEqual([]);
+    expect(scanDocument(`${literal}\n${routes(6)}`)).toEqual([
+      { file: 'README.md', line: 10, rule: 'route inventory' },
+    ]);
   });
 
   it('does not scan CHANGELOG, GitHub metadata, numbered SQL or unrelated app docs', () => {
@@ -120,7 +201,7 @@ describe('current-state consumer documentation guard', () => {
     const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'));
     expect(pkg.scripts['check:current-state-docs']).toBe('node scripts/ci-guard-current-state-docs.mjs');
   });
-  it('passes the actual repository without broad records-directory exemptions', () => {
+  it('passes the actual repository with records-tier exemptions', () => {
     expect(scanRepo(root)).toEqual([]);
   });
 

@@ -8,6 +8,8 @@ Development deployment follows successful CI on main through [deploy-dev.yml](..
 
 The release path is **dispatch Release → review and merge its PR → automatic tag and deployment dispatch → production approval**. The Release workflow chooses the bump from the latest release tag and changes workspace manifests in lockstep. Feature changes do not edit manifest versions. Do not create tags by hand or deploy with a manual production `git pull`.
 
+`scripts/lib/git-version.mjs` supplies the shared Git tag lookup for the release bump base, falling back to the manifest only when no release tag exists.
+
 The tag workflow also publishes eligible packages independently of the production approval and records release close-out. Publication does not prove production deployment. See [npm publishing](../npm-publishing.md).
 
 ## Workflow ordering
@@ -39,7 +41,7 @@ Migration failure, build failure, listener reaping failure and restart failure a
 
 PM2 `online` proves a process exists, not that HTTP responds. Kernel process-liveness checks avoid DB, vault and sibling fan-out. Aggregate readiness answers a different question and must not trigger kernel restart merely because a sibling is unhealthy. The [liveness watchdog](../../deploy/README.md#http-liveness-watchdog) documents bounded checks, persistent cooldown/outbox, node-operator attribution and explicit installation. Its source and stub tests do not establish installation on a host.
 
-The repository's declared required-context guard verifies that CI jobs exist. Live branch-protection checks require suitable ruleset-read authority; an advisory check without that authority is not proof of the live setting. Rebase a migration-bearing branch against current main before readiness and resolve numbering collisions without rewriting applied history.
+`scripts/ci-guard-required-contexts.mjs` verifies that declared required CI jobs exist. Live branch-protection checks require suitable ruleset-read authority; an advisory check without that authority is not proof of the live setting. Rebase a migration-bearing branch against current main before readiness and resolve numbering collisions without rewriting applied history.
 
 ## Configuration and credentials
 

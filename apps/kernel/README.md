@@ -52,6 +52,8 @@ Record reads personal or authorized organization history and distinguishes the a
 
 Inbox attention counts include actionable approvals. History retains resolved, expired, superseded and archived cards. Lease renewal, idle warnings and the agent's signer-scoped approvals-lease read are separate from granting authority. A transport delivery acknowledgement is not a signed command outcome.
 
+`OPERATOR_APPROVAL_EXPIRY_DAYS` sets the approval age limit (default seven days); source deadlines take precedence, and the ten-minute sweep records node-signed expiry without deleting history.
+
 Runs, decisions, briefs and loop events use principal-scoped recorded authority. Read the [Jin spec](https://jin.imajin.ai/jin/api/spec), [loop rail contract](../../docs/loops-rail-contract.md) and [notification contract](../../docs/notify-operator-approvals-contract.md) instead of interpreting harness-local references as public command capabilities.
 
 App-secret sync adds declaration slots only; it does not change identity, generate values or grant secrets. Generated slots require a separate signed Generate action; operator-supplied values require masked Set and countersignature. Prior grant history prevents regeneration. Runtime adoption loads typed server-only vault configuration before database/server imports. See the [author](../../docs/app-self-secrets-author.md) and [operator](../../docs/app-self-secrets-operator.md) guides.
@@ -74,9 +76,12 @@ Corpus GitHub partitions use registry-resolved source-owner groups and explicit 
 
 PM2 online state does not establish HTTP health. See the [liveness watchdog and deployment runbook](../../deploy/README.md) for bounded checks, operator installation and persistent restart receipts. The reviewed release pipeline and production approval gate remain mandatory.
 
+`PROFILE_INTERNAL_API_KEY` authenticates trusted backend profile-resolution requests that may read email; configure the matching protected key on the kernel and authorized service callers, never in browser code.
+
 ## Reference
 
 - [Concise agent guide](public/llms.txt) and [full integration guide](public/llms-full.txt): concepts and links to every defined service spec.
 - [Security disclosures](../../SECURITY.md): trust assumptions and implementation limitations.
 - [Root README](../../README.md): app/package entry points and contributor checks.
 - [Deploy posture](../../docs/ops/DEPLOY-POSTURE.md): workflow ordering, evidence and ownership.
+- [OpenClaw MCP runbook](../../docs/ops/openclaw-mcp.md): gateway setup and verification.

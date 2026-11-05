@@ -82,6 +82,9 @@ Kernel boot injects in-process JWT verification and current-identity lookup; inf
 
 Internal diagnostics include only safe cause code, target path and duration, never cookies, credential headers, query strings or raw upstream errors. The real-network reproduction is `packages/auth/tests/session-stall-repro.test.ts`; it uses ephemeral test material, not real sessions or databases. Server Action reference noise is a separate failure class.
 
+- `UND_ERR_HEADERS_TIMEOUT` identifies an outbound response-header stall in `packages/auth/src/internal-fetch.cjs`; the receiving server's request timeout does not bound that wait.
+- `REPRO_DEFAULT_HEADERS=1` enables the optional native-header-timeout diagnostic in the real-network repro; it can wait about five minutes and is not the bounded-pass criterion.
+
 ## Configuration and deployment
 
 | Tracked file | Environment path | Kernel port |
@@ -107,6 +110,8 @@ PM2 must supervise the listener, not an npm wrapper whose child can retain the p
 
 `scripts/pm2-reconcile.sh <ecosystem-file> <name>...` compares the stored executable and interpreter with the tracked definition. A stale or absent definition is recreated; a matching one uses the ordinary file-based restart. Before start, unowned listeners are reaped through the shared port helper. Failure to free a port, query PM2 or reconcile a process fails deployment rather than masking it with a cold start.
 
+`PORT_REAP_FAILED` means `scripts/lib/reap-port.sh` cannot free a required listener; the app is not started and the build exits with code 1.
+
 The workflows save process state and run `scripts/assert-pm2-listeners.sh` to establish listener ownership. An intentional stopped-process snapshot is preserved across build/restart selection, except for the explicitly deployed production kernel. Consult the workflow and shared selector for cron-worker handling.
 
 Each ecosystem app has an explicit shutdown timeout. Do not shorten it to PM2's default or use an npm wrapper to work around a stale invocation.
@@ -117,7 +122,15 @@ Each ecosystem app has an explicit shutdown timeout. Do not shorten it to PM2's 
 
 The deploy workflows run the idempotent `scripts/install-pm2-health-cron.sh` per environment and execute a post-deploy check. The schedule logs problems in the environment's PM2 health log. Optional webhook configuration is stored in a protected file rather than embedded in crontab. Without a webhook, failures remain in logs and deployment results.
 
-Restart threshold/window/state and status-repeat settings are documented in those scripts. A quiet restart counter is not proof that a parked process is healthy. Process status, HTTP liveness and aggregate readiness remain separate signals.
+- `PM2_ALERT_WEBHOOK` is the optional repository secret used by the installer, stored in the protected `~/.config/imajin/pm2-alert-webhook.<scope>` file for cron.
+- `RESTART_ALERT_WEBHOOK` overrides the restart-check webhook in the environment; keep its value out of crontab and logs.
+- `RESTART_ALERT_THRESHOLD` is the maximum tolerated restart increase in the window (default 5); a larger increase alerts.
+- `RESTART_ALERT_WINDOW` is the restart sampling window in seconds (default 600).
+- `RESTART_ALERT_STATE` selects the restart sample file (default `~/.cache/imajin/pm2-restarts.<scope>.json`).
+- `STATUS_ALERT_WEBHOOK` selects the stopped-service webhook, falling back to `RESTART_ALERT_WEBHOOK` and then the protected scope file.
+- `STATUS_ALERT_REPEAT` is the repeat interval in seconds for an unchanged app/status alert (default 3600); a newly observed pair alerts immediately.
+
+A quiet restart counter is not proof that a parked process is healthy. Process status, HTTP liveness and aggregate readiness remain separate signals.
 
 ## Kernel cron scheduler
 
@@ -129,6 +142,10 @@ A job does not overlap itself. Logs contain job, outcome, HTTP status and durati
 
 Rotation uses the existing vault approval rail. The kernel resolves the current secret, while the scheduler fetches its grant at boot. The cron manifest guard rejects route/schedule drift. Apps own their schedulers outside this workspace.
 
+- `CRON_STATE_PATH` overrides the scheduler state file, which defaults to `apps/kernel/.cron-state.json`.
+- `CRON_VAULT_FETCH_TIMEOUT_MS` bounds the boot-time vault-fetch retry window in milliseconds (default 120000); exhaustion fails closed.
+- `scripts/ci-guard-cron-manifest.mjs` checks cron route/schedule agreement through `scripts/__tests__/ci-guard-cron-manifest.test.mjs` in CI.
+
 ## Scoped pay callers and card rail
 
 Deploy the kernel contract before app callers. Approve required refund and pledge-charge service scopes through the operator-countersigned app-service scope flow; registration or a shared pay key does not replace scoped authority.
@@ -136,6 +153,8 @@ Deploy the kernel contract before app callers. Approve required refund and pledg
 Legacy pledges without app-bound setup transactions require fresh setup. Reconcile ambiguous/interrupted charges before retrying rather than assuming processor idempotency lasts indefinitely. Session-cookie topups create pending funding, not direct credits of caller-supplied cash.
 
 Node-owned Stripe topup sells receipt-backed MJN, not emitted MJNx. Its connector belongs to the node DID, not the human operator or buyer. Historical withdrawal reconciliation reads that account; supported withdrawal requests use the documented rail. Unconfigured node custody yields the explicit card-rail configuration error without preventing kernel startup.
+
+`NODE_CARD_RAIL_NOT_CONFIGURED` means the node's card rail is not configured: topup returns HTTP 503 and the Stripe withdrawal adapter reports the same error; kernel startup remains available.
 
 Operator setup, separately per environment:
 
@@ -191,3 +210,5 @@ The [inference updater](infer-passthrough/README.md) is separate systemd automat
 | `2` | Builds and ports are ready, but a required restart/cold-start fails. |
 
 Any nonzero result fails the workflow. Use [rollback guidance](../docs/ops/ROLLBACK.md) and the [baseline contract](../migrations/BASELINE.md) for recovery; migrations remain forward-only and recorded rows are not rewritten.
+
+`scripts/build-restart-failed.test.sh` covers `RESTART_FAILED`: builds and port clearing can succeed while required PM2 restart and cold-start both fail, producing exit code 2 rather than a green deployment.

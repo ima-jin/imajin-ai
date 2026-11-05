@@ -29,8 +29,8 @@ export const CONSUMER_FILES = [
   'CLAUDE.md',
 ];
 
-// Records are history by design. Exact paths only: a sibling consumer guide is
-// not exempt just because it lives beside an RFC or an audit.
+// Records are history by design. Keep exact records outside these tiers too.
+export const HISTORY_DIRECTORIES = ['docs/adr/', 'docs/canon/', 'docs/rfcs/', 'docs/audits/'];
 export const HISTORY_RECORDS = new Set([
   'apps/kernel/content/process-log.md',
   'apps/kernel/content/build-log.md',
@@ -45,7 +45,8 @@ export const HISTORY_RECORDS = new Set([
 ]);
 
 const DOC_EXTENSIONS = new Set(['.md', '.txt']);
-const HISTORY_HEADING = /\bv\d+\.\d+\.\d+\b|\b(?:addendum|delta)\b/i;
+const VERSION_HEADING = /\bv\d+\.\d+\.\d+\b/i;
+const HISTORY_HEADING = /\b(?:(?:addendum|delta)[\s:—–-]+(?:version|release)|(?:version|release)[\s:—–-]+(?:addendum|delta))\b/i;
 const METHODS = new Set(['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS']);
 const POLICY_CLASSES = ['**irreversible**', '**value-moving**', '**reversible**'];
 const PATH_ROUTE = /^\/\S+(?:\s+[—–-]|\s*\||\s*$)/;
@@ -56,7 +57,7 @@ function routeLine(line) {
   if (line.trim().startsWith('|') && line.split('|').filter(cell => cell.trim()).length > 3
     && POLICY_CLASSES.some(kind => line.includes(kind))) return false;
   const text = line.trim().replaceAll('`', '')
-    .replaceAll(/^(?:[-*+]|\d+\.)\s+|\|\s*/g, '');
+    .replaceAll(/^(?:[-*+]|\d+\.)\s+/g, '').replaceAll(/\|\s*/g, '');
   const tokens = text.replaceAll(/[,|]/g, ' ').split(/\s+/);
   let index = 0;
   while (METHODS.has(tokens[index])) index += 1;
@@ -80,7 +81,7 @@ function headingAt(lines, index) {
   return { text: '', line: index + 1 };
 }
 
-/** Six consecutive route-shaped lines are an inventory, even inside a fence.
+/** Six consecutive route-shaped lines outside fences are an inventory.
  * A single route in prose, an integration example, or a link to a spec passes.
  * Blank lines and prose break a run. Report its start once, not every suffix.
  */
@@ -90,18 +91,19 @@ export function scanDocument(source, file = 'README.md') {
   let routeCount = 0;
   let fence = null;
   for (const [index, line] of lines.entries()) {
+    const marker = /^ {0,3}(`{3,}|~{3,})/.exec(line)?.[1];
+    if (marker) {
+      fence = advanceFence(fence, marker, line);
+      routeCount = 0;
+      continue;
+    }
+    if (fence) continue;
     routeCount = routeLine(line) ? routeCount + 1 : 0;
     if (routeCount === ROUTE_BLOCK_THRESHOLD) {
       hits.push({ file, line: index + 2 - ROUTE_BLOCK_THRESHOLD, rule: 'route inventory' });
     }
-    const marker = /^ {0,3}(`{3,}|~{3,})/.exec(line)?.[1];
-    if (marker) {
-      fence = advanceFence(fence, marker, line);
-      continue;
-    }
-    if (fence) continue;
     const heading = headingAt(lines, index);
-    if (HISTORY_HEADING.test(heading.text)) {
+    if (VERSION_HEADING.test(heading.text) || HISTORY_HEADING.test(heading.text)) {
       hits.push({ file, line: heading.line, rule: 'history heading' });
     }
   }
@@ -122,7 +124,8 @@ function collectDocs(root, dir = 'docs') {
 export function scanRepo(root = ROOT) {
   const files = new Set([...CONSUMER_FILES, ...collectDocs(root)]);
   return [...files].sort((a, b) => a.localeCompare(b))
-    .filter(file => !HISTORY_RECORDS.has(file) && existsSync(join(root, file)))
+    .filter(file => !HISTORY_RECORDS.has(file)
+      && !HISTORY_DIRECTORIES.some(dir => file.startsWith(dir)) && existsSync(join(root, file)))
     .flatMap(file => scanDocument(readFileSync(join(root, file), 'utf8'), file));
 }
 
