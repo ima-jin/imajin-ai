@@ -8,10 +8,10 @@
  * verifies the proof and extracts the peer DID.
  *
  * `<proof>` is a DFOS auth-token JWT — the same self-certifying primitive
- * `@metalabel/dfos-web-relay` verifies for its own (Bearer-scheme) relay
+ * the pre-API-AUTH relay used for its own (Bearer-scheme) relay
  * AuthN: a JWS signed by one of the peer identity's current auth keys,
  * whose payload asserts `iss` (the peer DID) and `aud` (this relay's own
- * DFOS DID), verified via `@metalabel/dfos-protocol`'s `verifyAuthToken`.
+ * DFOS DID), verified via the local compatibility adapter over the protocol's JWT verifier.
  */
 import { decodeJwsUnsafe } from '@metalabel/dfos-protocol/crypto';
 import { decodeMultikey } from '@metalabel/dfos-protocol/chain';

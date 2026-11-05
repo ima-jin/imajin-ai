@@ -1,3 +1,4 @@
+-- owner: kernel
 -- Legacy revocation boundaries stay unknown (timeless/fail-closed).
 ALTER TABLE relay.relay_pending_operations
   ADD COLUMN IF NOT EXISTS origin text NOT NULL DEFAULT 'direct';

@@ -124,6 +124,26 @@ describe('key rotation via updateIdentityChain', () => {
 });
 
 describe('role separation', () => {
+  it('does not grant authority to a newly declared key without possession proof', async () => {
+    const k1 = generateKeypair();
+    const k2 = generateKeypair();
+    const genesis = await createIdentityChain(k1);
+    const state = await verifyChain(genesis.log);
+    const updated = await updateIdentityChain({
+      controllerPrivateKeyHex: k1.privateKeyHex, did: genesis.did,
+      signingKeyId: state.controllerKeys[0].id, existingLog: genesis.log, headCid: genesis.operationCID,
+      newKeys: {
+        authKeys: [{ id: 'key_unproved', publicKeyHex: k2.publicKeyHex }],
+        assertKeys: [{ id: 'key_unproved', publicKeyHex: k2.publicKeyHex }],
+        controllerKeys: [{ id: 'key_unproved', publicKeyHex: k2.publicKeyHex }],
+      },
+    });
+    const verified = await verifyChain(updated.log);
+    expect(verified.authKeys).toEqual([]);
+    expect(verified.controllerKeys).toEqual([]);
+    expect(verified.voidKeys).toHaveLength(3);
+  });
+
   it('adds a second auth key while keeping single controller', async () => {
     const k1 = generateKeypair();
     const genesis = await createIdentityChain(k1);
