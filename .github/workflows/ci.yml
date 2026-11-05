@@ -290,6 +290,9 @@ jobs:
 
   test:
     name: Test
+    permissions:
+      contents: read
+      packages: read
     needs: [test-shards]
     if: always()
     runs-on: imajin-self-hosted

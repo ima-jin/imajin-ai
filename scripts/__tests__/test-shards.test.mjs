@@ -15,6 +15,10 @@ const shards = ci.jobs['test-shards'];
 const aggregate = ci.jobs.test;
 
 describe('required Test check', () => {
+  it('limits the aggregate token to repository and container read access', () => {
+    expect(aggregate.permissions).toEqual({ contents: 'read', packages: 'read' });
+  });
+
   it('runs four shards without cancelling siblings on failure', () => {
     expect(shards.strategy).toEqual({ 'fail-fast': false, matrix: { shard: [1, 2, 3, 4] } });
     expect(aggregate.name).toBe('Test');
