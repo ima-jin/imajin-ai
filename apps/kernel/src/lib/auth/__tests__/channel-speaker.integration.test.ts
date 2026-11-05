@@ -321,6 +321,7 @@ describe('mint, existing human consent, then resolve/admit', () => {
     expect(html).toContain('Artifact Bot');
     expect(html).toContain('check your org membership');
     expect(html).not.toContain('act on your behalf');
+    expect(html).not.toContain('name="bindAs"');
     if (transport === 'json') {
       expect((await approve(request({ token: body.linkToken }))).status).toBe(201);
     } else {
@@ -331,19 +332,6 @@ describe('mint, existing human consent, then resolve/admit', () => {
     expect((await database.select().from(channelLinkTokens))[0].consumedBy).toBe(HUMAN);
     await result({ did: HUMAN, admitted: true, reason: null });
     expect((await approve(request({ token: body.linkToken }))).status).toBe(400);
-  });
-  it.each(['json', 'form'])('binds the acting org rather than the personal signer via %s approval', async transport => {
-    h.session.mockResolvedValue({ identity: { id: HUMAN, scope: 'actor', subtype: 'human', actingAs: OTHER_ORG } });
-    h.effective.mockResolvedValue({ sessionDid: HUMAN, effectiveDid: OTHER_ORG });
-    const { linkToken } = await (await mint(request())).json();
-    if (transport === 'json') await approve(request({ token: linkToken }));
-    else await approveForm(new NextRequest(request().url, {
-      method: 'POST', body: new URLSearchParams({ token: linkToken, returnTo: '/auth/settings' }),
-    }));
-    const [binding] = await database.select().from(channelLinks);
-    expect(binding.did).toBe(OTHER_ORG);
-    expect(h.publish).toHaveBeenCalledWith('channel.link.created', expect.objectContaining({ issuer: OTHER_ORG }));
-    await result({ did: OTHER_ORG, admitted: false, reason: 'not_member' });
   });
   it('redacts token insert failures without logging the token or uid', async () => {
     const insert = vi.spyOn(database, 'insert').mockImplementationOnce(() => { throw new Error('private-store-diagnostic'); });
@@ -374,6 +362,105 @@ describe('mint, existing human consent, then resolve/admit', () => {
     expect((await approve(request({ token: linkToken }))).status).toBe(400);
     expect(renderToStaticMarkup(await Page({ params: Promise.resolve({ token: linkToken }), searchParams: Promise.resolve({}) }))).toContain('Link unavailable');
     await result({ did: null, admitted: false, reason: 'unknown_sender' });
+  });
+});
+
+describe.each(['json', 'form', 'form-json'] as const)('%s approval binds as explicitly selected', transport => {
+  beforeEach(() => {
+    // These are verified requireAuth contexts; raw selectors never reach the policy directly.
+    h.session.mockImplementation(async (req: Request) => ({
+      identity: { id: HUMAN, scope: 'actor', subtype: 'human', actingAs: req.headers.get('x-acting-as') ?? undefined },
+    }));
+  });
+  async function submit(linkToken: string, bindAs?: unknown, actingAs?: string) {
+    const headers = new Headers(actingAs ? { 'x-acting-as': actingAs } : {});
+    const fields = { token: linkToken, returnTo: '/auth/settings?approved=1', ...(bindAs === undefined ? {} : { bindAs }) };
+    const route = transport === 'json' ? approve : approveForm;
+    let body: string | URLSearchParams;
+    if (transport === 'form') {
+      body = new URLSearchParams(Object.entries(fields).map(([key, value]) => [key, String(value)]));
+    } else {
+      headers.set('content-type', 'application/json');
+      body = JSON.stringify(fields);
+    }
+    return route(new NextRequest(`https://kernel.test/auth/api/channel-link/${transport === 'json' ? 'approve' : 'approve-redirect'}`, {
+      method: 'POST', headers, body,
+    }));
+  }
+  async function assertUnchanged(linkToken: string) {
+    expect(await database.select().from(channelLinks)).toEqual([]);
+    const [challenge] = await database.select().from(channelLinkTokens).where(eq(channelLinkTokens.token, linkToken));
+    expect(challenge.consumedAt).toBeNull();
+    expect(challenge.consumedBy).toBeNull();
+    expect(h.publish).not.toHaveBeenCalled();
+  }
+  it.each([undefined, 'self'])('binds the user for bindAs=%s under x-acting-as on app and agent tokens', async bindAs => {
+    for (const appDid of [APP, BOT]) {
+      const linkToken = randomUUID();
+      await database.insert(channelLinkTokens).values({
+        id: randomUUID(), token: linkToken, ...INPUT, channelUid: appDid, appDid,
+        requestedScopes: ['channel:speaker'], expiresAt: new Date(Date.now() + 60_000),
+      });
+      const response = await submit(linkToken, bindAs, ORG);
+      expect(response.status).toBe(transport === 'json' ? 201 : 307);
+      const [binding] = await database.select().from(channelLinks).where(eq(channelLinks.appDid, appDid));
+      expect(binding.did).toBe(HUMAN);
+      const [challenge] = await database.select().from(channelLinkTokens).where(eq(channelLinkTokens.token, linkToken));
+      expect(challenge.consumedBy).toBe(HUMAN);
+      expect(h.publish).toHaveBeenCalledWith('channel.link.created', expect.objectContaining({ issuer: HUMAN, subject: appDid }));
+    }
+  });
+  it('keeps the human speaker and follows human membership after default approval in org context', async () => {
+    const { linkToken } = await (await mint(request())).json();
+    expect((await submit(linkToken, undefined, ORG)).status).toBe(transport === 'json' ? 201 : 307);
+    await result({ did: HUMAN, admitted: false, reason: 'not_member' });
+    await member();
+    await result({ did: HUMAN, admitted: true, reason: null });
+    await database.update(identityMembers).set({ removedAt: new Date() }).where(eq(identityMembers.memberDid, HUMAN));
+    await result({ did: HUMAN, admitted: false, reason: 'removed' });
+  });
+  it('binds the org only with explicit bindAs=org under verified org context', async () => {
+    const { linkToken } = await (await mint(request())).json();
+    expect((await submit(linkToken, 'org', ORG)).status).toBe(transport === 'json' ? 201 : 307);
+    const [binding] = await database.select().from(channelLinks);
+    expect(binding.did).toBe(ORG);
+    const [challenge] = await database.select().from(channelLinkTokens);
+    expect(challenge.consumedBy).toBe(ORG);
+    expect(h.publish).toHaveBeenCalledWith('channel.link.created', expect.objectContaining({ issuer: ORG, subject: BOT }));
+  });
+  it('refuses org binding without acting-as and leaves the challenge unconsumed', async () => {
+    const { linkToken } = await (await mint(request())).json();
+    const response = await submit(linkToken, 'org');
+    if (transport === 'json') {
+      expect(response.status).toBe(403);
+      expect(await response.json()).toEqual({ error: 'bindAs=org requires acting as an org' });
+    } else {
+      expect(response.status).toBe(307);
+      const location = new URL(response.headers.get('location')!);
+      expect(location.searchParams.get('error')).toBe('bindAs=org requires acting as an org');
+      expect(location.searchParams.get('approved')).toBe('1');
+    }
+    await assertUnchanged(linkToken);
+  });
+  it.each(['', 'ORG', 'human'])('rejects invalid bindAs=%s without a write or consumption', async bindAs => {
+    const { linkToken } = await (await mint(request())).json();
+    const response = await submit(linkToken, bindAs, ORG);
+    if (transport === 'json') {
+      expect(response.status).toBe(400);
+      expect(await response.json()).toEqual({ error: 'invalid bindAs' });
+    } else {
+      expect(response.status).toBe(307);
+      expect(response.headers.get('location')).toContain('error=invalid+bindAs');
+    }
+    await assertUnchanged(linkToken);
+  });
+  it('does not bypass existing authentication or acting-as validation', async () => {
+    const { linkToken } = await (await mint(request())).json();
+    h.session.mockResolvedValue({ error: 'Not authorized to act as this group', status: 403 });
+    const response = await submit(linkToken, 'org', ORG);
+    expect(response.status).toBe(transport === 'json' ? 403 : 307);
+    if (transport !== 'json') expect(response.headers.get('location')).toContain('/auth/login?next=');
+    await assertUnchanged(linkToken);
   });
 });
 
@@ -425,5 +512,14 @@ describe('unchanged app-auth contract and service documentation', () => {
       .toEqual([null, 'not_member', 'removed', 'unknown_sender', 'presence_refused', 'agent_refused']);
     expect(paths['/api/channel-link/resolve'].get.responses['200'].content['application/json'].schema.required)
       .toEqual(['did', 'scopes']);
+    const approval = paths['/api/channel-link/approve'].post;
+    expect(approval.requestBody.content['application/json'].schema.properties.bindAs).toMatchObject({
+      enum: ['self', 'org'], default: 'self',
+    });
+    expect(approval.responses['400']).toBeDefined();
+    expect(approval.responses['403']).toBeDefined();
+    const redirect = paths['/api/channel-link/approve-redirect'].post;
+    expect(redirect.requestBody.content['application/x-www-form-urlencoded'].schema.properties.bindAs.default).toBe('self');
+    expect(redirect.responses['307'].description).toContain('400/403');
   });
 });

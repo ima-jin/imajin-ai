@@ -1,10 +1,11 @@
 import { NextResponse } from 'next/server';
-import { requireAuth, resolveActingDid } from '@imajin/auth';
+import { requireAuth } from '@imajin/auth';
 import { publish } from '@imajin/bus';
 import { db, channelLinkTokens, channelLinks } from '@/src/db';
 import { and, eq, isNull, gt } from 'drizzle-orm';
 import { generateId } from '@/src/lib/kernel/id';
 import { createLogger } from '@imajin/logger';
+import { resolveApprovalDid } from '@/src/lib/auth/channel-link-approval';
 
 const log = createLogger('kernel');
 
@@ -14,9 +15,10 @@ const log = createLogger('kernel');
  * User approves the linking request. Validates the challenge token,
  * writes the persistent channel ↔ DID binding, marks the token consumed.
  *
- * Body: { token, scopes? }
+ * Body: { token, scopes?, bindAs? }
  * - token: the linkToken from the start response
  * - scopes: approved subset of requestedScopes (defaults to all requestedScopes)
+ * - bindAs: defaults to self; org explicitly selects a verified acting-as org
  *
  * Response: { linkId, channel, channelUid, appDid, scopes }
  */
@@ -25,14 +27,18 @@ export async function POST(request: Request) {
   if ('error' in authResult) {
     return NextResponse.json({ error: authResult.error }, { status: authResult.status });
   }
-  const did = resolveActingDid(authResult.identity);
-
   let body: Record<string, unknown>;
   try {
     body = await request.json();
   } catch {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
   }
+
+  const binding = resolveApprovalDid(authResult.identity, body.bindAs);
+  if ('error' in binding) {
+    return NextResponse.json({ error: binding.error }, { status: binding.status });
+  }
+  const { did } = binding;
 
   const tokenValue = typeof body.token === 'string' ? body.token.trim() : null;
   if (!tokenValue) {
