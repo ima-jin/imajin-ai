@@ -27,7 +27,12 @@ async function main() {
   process.env.DB_IDLE_TRANSACTION_TIMEOUT_MS = '500';
   const client = getClient();
   let held: Awaited<ReturnType<typeof client.reserve>>[] = [];
-  const release = () => { for (const sql of held) sql.release(); held = []; };
+  const release = () => {
+    for (const sql of held) {
+      sql.release();
+    }
+    held = [];
+  };
   const server = createServer(async (_request, response) => {
     const database = await checkDatabaseLiveness();
     response.writeHead(database ? 200 : 503, { 'Content-Type': 'application/json' });
@@ -47,8 +52,9 @@ async function main() {
     let effectRan = false;
     await client.begin(async tx => {
       await tx`SELECT 1`;
-      await tx.savepoint(async () => {
-        deferAfterCommit(async () => { effectRan = true; });
+      await tx.savepoint(() => {
+        deferAfterCommit(() => { effectRan = true; return Promise.resolve(); });
+        return Promise.resolve();
       });
       assert.equal(effectRan, false, 'Savepoint must not deliver before outer commit');
     });
@@ -77,7 +83,7 @@ async function main() {
     const checkoutMs = Date.now() - start;
     assert(checkoutMs < 1500, 'Pool checkout exceeded its bound');
     let lateCallback = false;
-    await assert.rejects(client.begin(async () => { lateCallback = true; }), { code: 'DB_ACQUIRE_TIMEOUT' });
+    await assert.rejects(client.begin(() => { lateCallback = true; return Promise.resolve(); }), { code: 'DB_ACQUIRE_TIMEOUT' });
     server.listen(0, '127.0.0.1');
     await once(server, 'listening');
     const port = (server.address() as AddressInfo).port;
@@ -86,11 +92,15 @@ async function main() {
     const restarts: string[] = [];
     const delivered: unknown[] = [];
     const probe = createProbe({}, {
-      pid: async () => 12345,
-      restart: async (app: string) => { restarts.push(app); release(); },
-      deliver: async (event: unknown) => { delivered.push(event); return true; },
+      pid: () => Promise.resolve(12345),
+      restart: (app: string) => { restarts.push(app); release(); return Promise.resolve(); },
+      deliver: (event: unknown) => { delivered.push(event); return Promise.resolve(true); },
     }, { ...POLICY, startupGraceMs: 0 });
-    for (let i = 0; i < 3; i++) await probe.tick([target], { execute: true, kernelPort: port });
+    const sweep = () => Array.from({ length: 3 }).reduce<Promise<void>>(
+      pending => pending.then(() => probe.tick([target], { execute: true, kernelPort: port })),
+      Promise.resolve(),
+    );
+    await sweep();
     assert.deepEqual(restarts, ['prod-jin']);
     assert.equal(delivered.length, 1);
     assert.equal(await checkHealth(target), true);

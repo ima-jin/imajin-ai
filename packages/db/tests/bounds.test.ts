@@ -25,6 +25,12 @@ beforeEach(() => { vi.useFakeTimers(); });
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
 
 describe('shared DB bounds', () => {
+  it('preserves the native error constructor rather than wrapping it as a method', () => {
+    const f = fixture();
+    class DriverError extends Error {}
+    Object.assign(f.sql, { PostgresError: DriverError });
+    expect(boundSql(f.sql, bounds).PostgresError).toBe(DriverError);
+  });
   it('refuses new and pre-created SQL after a transaction expires', async () => {
     const f = fixture();
     let late!: typeof f.sql;

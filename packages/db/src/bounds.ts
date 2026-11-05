@@ -174,6 +174,7 @@ export function boundSql<T extends Sql>(sql: T, bounds: DatabaseBounds, assertAc
   return new Proxy(sql, {
     apply(target, thisArg, args) { assertActive(); return wrap(Reflect.apply(target, thisArg, args)); },
     get(target, property) {
+      if (property === 'PostgresError') return target.PostgresError;
       if (property === 'begin' || property === 'savepoint') {
         return (...args: unknown[]) => { assertActive(); return transaction(target, property, args, bounds); };
       }

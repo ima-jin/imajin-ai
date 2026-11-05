@@ -1,6 +1,24 @@
 import { expect, it, vi } from 'vitest';
 import { deferAfterCommit, transactionEffects } from '../src/transaction-effects';
 
+it('keeps deferred delivery sequential without overlapping tasks', async () => {
+  const effects = transactionEffects();
+  const order: string[] = [];
+  let release!: () => void;
+  const first = new Promise<void>(resolve => { release = resolve; });
+  effects.run(() => {
+    deferAfterCommit(() => first.then(() => { order.push('first'); }));
+    deferAfterCommit(() => { order.push('second'); return Promise.resolve(); });
+  });
+  effects.close();
+  const pending = effects.committed();
+  await Promise.resolve();
+  expect(order).toEqual([]);
+  release();
+  await pending;
+  expect(order).toEqual(['first', 'second']);
+});
+
 it('does not defer ordinary out-of-transaction work', () => {
   const work = vi.fn();
   expect(deferAfterCommit(work)).toBe(false);

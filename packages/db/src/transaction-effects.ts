@@ -31,7 +31,9 @@ export function transactionEffects() {
         parent.tasks.push(...context.tasks);
       } else {
         // No pool connection or transaction is retained here.
-        for (const task of context.tasks) await task();
+        await context.tasks.reduce<Promise<unknown>>(
+          (pending, task) => pending.then(task), Promise.resolve(),
+        );
       }
     },
   };
