@@ -9,7 +9,7 @@ import AgentReporter from '../agent-reporter.mjs';
 
 const root = fileURLToPath(new URL('../../', import.meta.url));
 const runner = join(root, 'scripts/test-agent.mjs');
-const vitest = fileURLToPath(new URL('../../node_modules/vitest/dist/index.js', import.meta.url));
+const vitest = new URL('../../node_modules/vitest/dist/index.js', import.meta.url).href;
 const summary = /^\d+ passed · \d+ skipped · \d+ files · \d+\.\d{2}s duration\n$/;
 
 function reporter() {
@@ -184,6 +184,33 @@ test('coverage', () => { expect(value()).toBe(42); });`, {
     expect(existsSync(lcov)).toBe(true);
     expect(readFileSync(lcov, 'utf8')).toContain('SF:value.mjs');
   }, 30000);
+
+  it('preserves coverage line counts when native shard blobs are merged', () => {
+    const dir = fixture(`import { value } from './value.mjs';
+test('coverage', () => { expect(value()).toBe(42); });`, {
+      coverage: { include: ['value.mjs'], reporter: ['lcov'] },
+    });
+    writeFileSync(join(dir, 'value.mjs'), 'export const value = () => 42;\n');
+    writeFileSync(join(dir, 'other.test.mjs'),
+      `import { test, expect } from ${JSON.stringify(vitest)};
+import { value } from './value.mjs';
+test('other coverage', () => { expect(value()).toBe(42); });\n`);
+    const baseline = run(dir, ['--agent', '--coverage']);
+    expect(baseline.status, baseline.output).toBe(0);
+    const lines = () => readFileSync(join(dir, 'coverage/lcov.info'), 'utf8')
+      .split('\n').filter((line) => /^(SF|LF|LH):/.test(line));
+    const expected = lines();
+    for (const shard of [1, 2]) {
+      const result = run(dir, ['--agent', '--coverage', '--reporter=blob', `--shard=${shard}/2`]);
+      expect(result.status, result.output).toBe(0);
+      expect(result.output).toContain('1 passed · 0 skipped · 1 files');
+      expect(existsSync(join(dir, `.vitest-reports/blob-${shard}-2.json`))).toBe(true);
+    }
+    const merged = run(dir, ['--agent', '--coverage', `--merge-reports=${join(dir, '.vitest-reports')}`]);
+    expect(merged.status, merged.output).toBe(0);
+    expect(merged.output).toContain('2 passed · 0 skipped · 2 files');
+    expect(lines()).toEqual(expected);
+  });
 });
 
 describe('agent script and workflow contracts', () => {
@@ -209,9 +236,9 @@ describe('agent script and workflow contracts', () => {
 
   it('keeps coverage and merge-group tests quiet without changing triggers', () => {
     expect(ci.on).toHaveProperty('merge_group');
-    expect(ci.jobs.test.steps.some((step) => step.run === 'pnpm --silent test:agent --coverage')).toBe(true);
+    expect(ci.jobs['test-shards'].steps.some((step) => step.run?.startsWith('pnpm --silent test:agent --coverage --reporter=blob --shard='))).toBe(true);
     expect(readFileSync(join(root, 'scripts/ci/merge-group-tests.sh'), 'utf8'))
-      .toContain('pnpm --silent test:agent "${FILTERS[@]}"');
+      .toContain('pnpm --silent test:agent "${FILTERS[@]}" "$@"');
     expect(ci.jobs.test.steps.some((step) => step.with?.path === 'coverage/lcov.info')).toBe(true);
   });
 
@@ -226,7 +253,7 @@ describe('agent script and workflow contracts', () => {
         }
       }
     }
-    expect(installs).toHaveLength(5);
+    expect(installs).toHaveLength(6);
     const guidance = readFileSync(join(root, 'AGENTS.md'), 'utf8');
     for (const text of ['only affected test files', 'full suite once via `pnpm test:agent`',
       '--loglevel=error', 'Redirect long output to a file and grep']) {
@@ -245,14 +272,18 @@ describe('agent script and workflow contracts', () => {
       settings: { autoInstallPeers: true, excludeLinksFromLockfile: false },
       importers: { '.': {} },
     }));
-    const command = ci.jobs.test.steps.find((step) => step.run?.startsWith('pnpm install ')).run;
+    const command = ci.jobs['test-shards'].steps.find((step) => step.run?.startsWith('pnpm install ')).run;
     // `pnpm --silent test:agent` exports its reporter/loglevel to children.
     // CI install steps run directly, not inside that quiet script invocation.
     const env = { ...process.env, CI: 'true', NO_UPDATE_NOTIFIER: '1' };
     for (const key of Object.keys(env)) {
       if (['npm_config_reporter', 'npm_config_loglevel'].includes(key.toLowerCase())) delete env[key];
     }
-    const result = spawnSync('pnpm', [...command.split(' ').slice(1), '--ignore-workspace', '--offline'], {
+    const nativePnpm = process.env.npm_execpath.endsWith('.exe');
+    const executable = nativePnpm ? process.env.npm_execpath : process.execPath;
+    const args = nativePnpm ? [] : [process.env.npm_execpath];
+    const result = spawnSync(executable, [...args, ...command.split(' ').slice(1),
+      '--ignore-workspace', '--offline'], {
       cwd: dir, encoding: 'utf8', timeout: 30000,
       env,
     });

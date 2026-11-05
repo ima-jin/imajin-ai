@@ -1,19 +1,19 @@
 import { defineConfig } from 'vitest/config';
 import { resolve } from 'node:path';
 
-// CI test sharding and DB project isolation are tracked in #3298.
+export const testInclude = [
+  'packages/*/tests/**/*.test.ts',
+  'apps/**/__tests__/**/*.test.ts',
+  // Component tests (#1604). Each one opts into jsdom with a
+  // `// @vitest-environment jsdom` docblock rather than switching the whole
+  // suite: jsdom costs real setup time per file and ~1800 of these tests are
+  // pure Node logic that has no use for a DOM.
+  'apps/**/__tests__/**/*.test.tsx',
+  'scripts/__tests__/**/*.test.mjs',
+];
+
 export default defineConfig({
   test: {
-    include: [
-      'packages/*/tests/**/*.test.ts',
-      'apps/**/__tests__/**/*.test.ts',
-      // Component tests (#1604). Each one opts into jsdom with a
-      // `// @vitest-environment jsdom` docblock rather than switching the whole
-      // suite: jsdom costs real setup time per file and ~1800 of these tests are
-      // pure Node logic that has no use for a DOM.
-      'apps/**/__tests__/**/*.test.tsx',
-      'scripts/__tests__/**/*.test.mjs',
-    ],
     coverage: {
       // v8 rather than istanbul: no instrumentation step, so the suite runs at
       // close to its normal speed. Must stay major-aligned with the root vitest
