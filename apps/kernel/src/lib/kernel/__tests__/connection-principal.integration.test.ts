@@ -107,6 +107,52 @@ it('does not inherit any assigned DID when the caller acts as itself', async () 
   expect(await resolveConnectionPrincipal({ actorDid: AGENT }, 'infer')).toEqual({ ownerDid: AGENT, actorDid: AGENT });
 });
 
+describe.each(['agent', 'presence'])('actingAs scope routing for %s', subtype => {
+  beforeEach(async () => {
+    await database.update(identities).set({ subtype }).where(eq(identities.id, AGENT));
+  });
+
+  async function assignHuman(allowedServices: string[] | null = null) {
+    await database.insert(identityMembers).values({
+      identityDid: HUMAN, memberDid: AGENT, role: 'agent', allowedServices,
+    });
+  }
+
+  it.each(['warp', 'infer'])('resolves personal actingAs to the personal owner on %s', async service => {
+    await assignHuman();
+    expect(await resolveConnectionPrincipal({ actorDid: AGENT, actingAs: HUMAN }, service)).toEqual({
+      ownerDid: HUMAN, actorDid: AGENT,
+    });
+  });
+
+  it.each(['business', 'community', 'family'])('preserves org context for scope %s and the human member-grant chain', async scope => {
+    await database.update(identities).set({ scope }).where(eq(identities.id, ORG));
+    await assign();
+    await assignHuman();
+    expect(await resolveConnectionPrincipal(caller, 'infer')).toEqual({
+      ownerDid: ORG, actorDid: AGENT, orgContext: { memberDid: AGENT, orgDid: ORG, assignedAgentDid: AGENT },
+    });
+    expect(await resolveConnectionPrincipal({ ...caller, actingFor: HUMAN }, 'infer')).toEqual({
+      ownerDid: ORG, actorDid: AGENT, orgContext: { memberDid: HUMAN, orgDid: ORG },
+    });
+  });
+
+  it.each(['unassigned', 'removed', 'non-agent-role', 'service-excluded', 'suspended-human', 'suspended-agent'])(
+    'refuses personal actingAs when %s before returning an owner', async boundary => {
+      if (boundary !== 'unassigned') await assignHuman();
+      if (boundary === 'removed') await database.update(identityMembers).set({ removedAt: new Date() });
+      if (boundary === 'non-agent-role') await database.update(identityMembers).set({ role: 'member' });
+      if (boundary === 'service-excluded') await database.update(identityMembers).set({ allowedServices: ['warp'] });
+      if (boundary === 'suspended-human' || boundary === 'suspended-agent') {
+        await database.update(identities).set({ suspendedAt: new Date() })
+          .where(eq(identities.id, boundary === 'suspended-human' ? HUMAN : AGENT));
+      }
+      await expect(resolveConnectionPrincipal({ actorDid: AGENT, actingAs: HUMAN }, 'infer'))
+        .rejects.toMatchObject({ status: 403 });
+    },
+  );
+});
+
 describe('presence actors use the same assignment boundary as agents', () => {
   beforeEach(async () => {
     await database.update(identities).set({ subtype: 'presence' }).where(eq(identities.id, AGENT));
