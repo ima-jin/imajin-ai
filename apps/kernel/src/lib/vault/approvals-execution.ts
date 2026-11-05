@@ -281,6 +281,10 @@ export async function executeVaultApproval(card: OperatorApprovalCard): Promise<
   }
 
   try {
+    if (card.kind === 'vault:renew-org-held-key') {
+      const { executeOrgHeldRenewal } = await import('./org-held-renewal');
+      return await executeOrgHeldRenewal(card);
+    }
     if (card.kind === 'vault:custody-group-key' || card.kind === 'vault:revoke-group-key') {
       const { executeGroupKeyApproval } = await import('./group-key');
       return await executeGroupKeyApproval(card);

@@ -27,7 +27,7 @@ export function discoveryFix(route: InferenceRoute) {
     not_a_member: { control: 'Members', href: '/auth/members' },
     not_authorized: { control: 'Agents → assignment and allowed services', href: '/auth/agents' },
     key_not_loaded: route.kind === 'A' || route.kind === 'C'
-      ? { control: 'Org service keys → Load key', href: '/auth/connectors' }
+      ? { control: 'Renew org-held key', href: `/jin/vault/renew?orgDid=${encodeURIComponent(route.billedPrincipal.did)}&provider=${provider}` }
       : { control: 'Connector → credential and scope grants', href: `/auth/connectors/${provider}` },
     no_model_selected: { control: 'Connector → model picker', href: `/auth/connectors/${provider}` },
     route_unavailable: { control: 'Connectors → Inference routes', href: '/auth/connectors' },

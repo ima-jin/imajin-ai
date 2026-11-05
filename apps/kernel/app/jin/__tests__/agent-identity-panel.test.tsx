@@ -68,7 +68,7 @@ describe('/jin agent identity cards', () => {
     expect(screen.getByText('model-one')).toBeDefined();
     expect(screen.getByText(/Uses another principal/)).toBeDefined();
   });
-  it.each(['A', 'C'] as const)('links private-custody org-held route %s to load/replace, never re-grant', async kind => {
+  it.each(['A', 'C'] as const)('links private-custody org-held route %s to renewal, never delegation-grant', async kind => {
     // Both org-held lanes use private custody. Use the real discovery projection,
     // not a hand-authored repair href; custody field references never reach the UI.
     const connectors = discoveryInferenceRoutes([{
@@ -81,12 +81,11 @@ describe('/jin agent identity cards', () => {
     acting.headers = { 'X-Acting-As': org };
     render(<AgentIdentityPanel />);
     const article = await screen.findByRole('article', { name: 'Identity card for Artifact-Jin' });
-    const repair = within(article).getByRole('link', { name: 'Org service keys → Load key' });
-    // This existing page offers Load key or Replace key according to current state.
-    expect(repair.getAttribute('href')).toBe('/auth/connectors');
+    const repair = within(article).getByRole('link', { name: 'Renew org-held key' });
+    expect(repair.getAttribute('href')).toBe(`/jin/vault/renew?orgDid=${encodeURIComponent(org)}&provider=anthropic`);
     expect(article.textContent).toContain(`Use acting identity: ${org}`);
     expect(within(article).queryByRole('button', { name: /re-?grant|renew/i })).toBeNull();
-    expect(within(article).queryByRole('link', { name: /re-?grant|renew/i })).toBeNull();
+    expect(within(article).queryByRole('link', { name: /load|replace|re-?grant/i })).toBeNull();
     expect(within(article).getAllByRole('link').every(link =>
       !link.getAttribute('href')?.includes('/api/vault/delegation'))).toBe(true);
     expect(mock.mock.calls.every(([url, init]) =>

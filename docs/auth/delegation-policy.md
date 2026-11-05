@@ -52,6 +52,7 @@ the historical state before the policy was applied.
 
 | Route | Irreversible? | Money / attribution? | Prior gate | Class | Key — why |
 | --- | --- | --- | --- | --- | --- |
+| `POST /api/vault/org-held/renew` (kernel) | yes | no | human org owner/admin session | **irreversible** | `kernel.vault.org-held.renew` — proposes extension of existing private custody; mutation requires the same human's countersigned approval |
 | `POST /jin/api/orgs/[ownerDid]/mail-domains` | yes | no | session-only current human owner/admin | **irreversible** | `kernel.mail.domain.provision` — external sending authority requires the human to re-issue |
 | `POST /jin/api/orgs/[ownerDid]/mail-domains/[domain]/check` | yes | no | session-only current human owner/admin | **irreversible** | `kernel.mail.domain.check` — verification can activate external sending authority |
 | `POST /api/vault/import` (kernel) | yes | no | human/direct-node only | **irreversible** | `kernel.vault.import` — credential custody/disclosure; coarse agent delegation is refused before metadata reads or input staging; the same boundary protects GET |
