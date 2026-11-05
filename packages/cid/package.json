@@ -1,6 +1,6 @@
 {
   "name": "@imajin/cid",
-  "version": "0.8.32",
+  "version": "0.8.33",
   "private": true,
   "description": "Deterministic CIDv1 (dag-cbor + SHA-256) helpers shared across Imajin services",
   "license": "MIT",
