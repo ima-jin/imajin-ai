@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import { spawnSync } from 'node:child_process';
 import YAML from 'yaml';
 import { databaseTestFiles, isDatabaseTest } from '../test-projects.mjs';
+import workspace from '../../vitest.workspace';
 
 const root = fileURLToPath(new URL('../../', import.meta.url));
 const read = (path) => readFileSync(join(root, path), 'utf8');
@@ -14,10 +15,6 @@ const shards = ci.jobs['test-shards'];
 const aggregate = ci.jobs.test;
 
 describe('required Test check', () => {
-  it('intentionally fails for the reversible required-check proof', () => {
-    expect(true).toBe(false);
-  });
-
   it('runs four shards without cancelling siblings on failure', () => {
     expect(shards.strategy).toEqual({ 'fail-fast': false, matrix: { shard: [1, 2, 3, 4] } });
     expect(aggregate.name).toBe('Test');
@@ -100,16 +97,27 @@ describe('database project selection', () => {
   });
 
   it('scopes timeouts and single-worker DB execution to the database project', () => {
+    const [unitProject, databaseProject] = workspace;
+    expect(unitProject.test.name).toBe('unit');
+    expect(unitProject.test.testTimeout).toBeUndefined();
+    expect(unitProject.test.hookTimeout).toBeUndefined();
+    expect(databaseProject.test).toMatchObject({
+      name: 'database', testTimeout: 15_000, hookTimeout: 30_000,
+      pool: 'forks', poolOptions: { forks: { singleFork: true } },
+    });
+    expect(databaseProject.test.include.length).toBeGreaterThan(0);
+    const excluded = new Set(unitProject.test.exclude);
+    expect(databaseProject.test.include.every((file) => excluded.has(file))).toBe(true);
     expect(read('vitest.config.ts')).not.toMatch(/testTimeout|hookTimeout|retry:/);
-    const workspace = read('vitest.workspace.ts');
-    const unit = workspace.slice(workspace.indexOf("name: 'unit'"), workspace.indexOf("name: 'database'"));
+    const workspaceSource = read('vitest.workspace.ts');
+    const unit = workspaceSource.slice(workspaceSource.indexOf("name: 'unit'"), workspaceSource.indexOf("name: 'database'"));
     expect(unit).toContain('exclude: [...configDefaults.exclude, ...databaseTests]');
     expect(unit).not.toMatch(/testTimeout|hookTimeout/);
-    expect(workspace).toContain('include: databaseTests');
-    expect(workspace).toContain('singleFork: true');
-    expect(read('vitest.config.ts')).toContain('maxWorkers: 2');
-    expect(workspace).toContain('testTimeout: 15_000');
-    expect(workspace).toContain('hookTimeout: 30_000');
-    expect(workspace).not.toMatch(/retry:|\.skip/);
+    expect(workspaceSource).toContain('include: databaseTests');
+    expect(workspaceSource).toContain('singleFork: true');
+    expect(read('vitest.config.ts')).toContain('maxWorkers: 4');
+    expect(workspaceSource).toContain('testTimeout: 15_000');
+    expect(workspaceSource).toContain('hookTimeout: 30_000');
+    expect(workspaceSource).not.toMatch(/retry:|\.skip/);
   });
 });

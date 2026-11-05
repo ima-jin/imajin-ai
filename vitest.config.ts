@@ -16,7 +16,7 @@ export default defineConfig({
   test: {
     // Four CI shards share the host with other jobs and merge groups.
     minWorkers: 1,
-    maxWorkers: 2,
+    maxWorkers: 4,
     coverage: {
       // v8 rather than istanbul: no instrumentation step, so the suite runs at
       // close to its normal speed. Must stay major-aligned with the root vitest
@@ -31,6 +31,7 @@ export default defineConfig({
       // from the report is measured as 0% covered rather than skipped. Leaving
       // .tsx out therefore capped new-code coverage on any UI change.
       include: [
+        'vitest.workspace.ts',
         'apps/*/src/**/*.ts',
         'apps/*/src/**/*.tsx',
         // CJS helpers that `node server.js` loads outside the Next build (#1653).
