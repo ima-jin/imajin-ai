@@ -6,6 +6,7 @@ import { isAgentCapableSubtype } from './connection-principal-policy';
 
 export const ORG_HELD_PREFIX = 'org-held-';
 /** Anthropic is sealed by /jin under its ordinary provider; ownership selects the org. */
+// Follow-up: ownership (owner_did scope), not a provider prefix, decides org-held-ness.
 export const orgHeldProvider = (provider: string) => provider === 'anthropic' ? provider : `${ORG_HELD_PREFIX}${provider}`;
 export const isOrgSealedAnthropicField = (ownerDid: string, field: string | null) =>
   field === `anthropic-api-key:${ownerDid}`;

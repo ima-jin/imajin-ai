@@ -60,6 +60,7 @@ import { VaultDelegationError } from '@/src/lib/vault/errors';
 import {
   recordConnectorRegistration,
   revokeConnectorRegistration,
+  type ConnectorRegistration,
 } from '@/src/lib/kernel/connector-registry-store';
 import {
   notifyConnectorCredentialSealed,
@@ -106,7 +107,8 @@ export interface ConnectorTokenPaste {
    * pasted key, so treating omission as "delete" would silently drop the
    * owner's model choice every time they rotated a key.
    */
-  sealApiKey(ownerDid: string, apiKey: string, baseUrl?: string, modelId?: string): Promise<void>;
+  sealApiKey(ownerDid: string, apiKey: string, baseUrl?: string, modelId?: string,
+    orgSealProvenance?: ConnectorRegistration['orgSealProvenance']): Promise<void>;
   /**
    * True only when an ACTIVE `channel_links` row for this connector + DID carries
    * the requested scope. Fail-closed: DB errors propagate.
@@ -246,6 +248,7 @@ export function createConnectorTokenPaste(
     apiKey: string,
     baseUrl?: string,
     modelId?: string,
+    orgSealProvenance?: ConnectorRegistration['orgSealProvenance'],
   ): Promise<void> {
     // The key is the only secret here, so it is the only field that earns
     // delegation-grant custody (#1637).
@@ -265,6 +268,7 @@ export function createConnectorTokenPaste(
       ownerDid,
       provider: opts.id,
       sealedKeyField: keyField(ownerDid),
+      ...(orgSealProvenance ? { orgSealProvenance } : {}),
     });
 
     // #2205 — best-effort; never fails a seal that already succeeded (see

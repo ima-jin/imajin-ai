@@ -4,7 +4,7 @@ import { isActiveGroupMember } from '@/src/lib/auth/group-membership';
 import { APP_AUTHORIZATION_CHANNEL } from '@/src/lib/auth/app-authorization-grant';
 import { ExternalMcpError, EXTERNAL_MCP_SCOPE, POSTMAN_PROVIDER, type ConnectionErrorCode } from './external-mcp-policy';
 import { missingConnection, resolveConnectionPrincipal, type ConnectionCaller } from './connection-principal';
-import { isOrgSealedAnthropicField, orgHeldProvider } from './org-held-connection-policy';
+import { orgHeldProvider } from './org-held-connection-policy';
 
 export type ConnectionTransaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
 export interface ExternalMcpCaller { memberDid: string; appDid?: string; serviceToken?: boolean; caller?: ConnectionCaller }
@@ -15,8 +15,7 @@ export const connectionUnavailable = (code: ConnectionErrorCode = 'connection_no
 export const isLiveConnection = (row: { status: string; expiresAt: Date | null; revokedAt: Date | null }) =>
   row.status === 'active' && !row.revokedAt && (!row.expiresAt || row.expiresAt.getTime() > Date.now());
 export const hasOrgConnectionProvenance = (row: ConnectorRow) =>
-  (row.provider === 'anthropic' && isOrgSealedAnthropicField(row.ownerDid, row.sealedKeyField))
-  || !!(row.loadedByDid && row.loadedAt);
+  !!(row.loadedByDid && row.loadedAt);
 
 export async function findMemberConnection(tx: Pick<ConnectionTransaction, 'select'>, memberDid: string, provider: string, orgHeld = false) {
   const [row] = await tx.select().from(connectors).where(and(

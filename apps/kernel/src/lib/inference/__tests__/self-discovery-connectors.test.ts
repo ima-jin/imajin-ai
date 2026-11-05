@@ -4,7 +4,9 @@ import { randomUUID } from 'node:crypto';
 const h = vi.hoisted(() => ({
   registrations: vi.fn(), registration: vi.fn(), access: vi.fn(), principal: vi.fn(),
   http: vi.fn(), grant: vi.fn(), credential: vi.fn(), mcp: vi.fn(), app: vi.fn(),
+  identity: vi.fn(),
 }));
+vi.mock('../route-discovery-store', () => ({ readInferencePrincipal: h.identity }));
 vi.mock('@/src/db', () => ({ db: {} }));
 vi.mock('@/src/lib/kernel/connector-registry-store', () => ({
   listConnectorRegistrations: h.registrations, readConnectorRegistration: h.registration,
@@ -41,15 +43,37 @@ beforeEach(() => {
   h.grant.mockResolvedValue(false);
   h.credential.mockResolvedValue(false);
   h.mcp.mockResolvedValue(false);
+  h.identity.mockImplementation(async did => ({ did, scope: did === org ? 'business' : 'actor' }));
 });
 
 describe('read-only connector authority projection', () => {
+  it.each(['business', 'community', 'family'])('never projects %s-owned registrations as personal connectors, with or without a prefix', async scope => {
+    h.identity.mockResolvedValue({ did: org, scope });
+    h.registrations.mockResolvedValue([
+      { ownerDid: org, provider: 'anthropic', status: 'active' },
+      { ownerDid: org, provider: 'future-family', status: 'active' },
+      { ownerDid: org, provider: 'org-held-future', status: 'active' },
+    ]);
+    const rows = await listDiscoveryConnectorMetadata(context);
+    expect(rows.some(row => ['anthropic', 'future-family', 'org-held-future'].includes(row.provider))).toBe(false);
+    expect(h.identity).toHaveBeenCalledWith(org);
+  });
+
+  it('does not infer org ownership from a provider prefix on a personal-owned registration', async () => {
+    h.registrations.mockResolvedValue([{ ownerDid: actor, provider: 'org-held-future', status: 'active' }]);
+    const rows = await listDiscoveryConnectorMetadata(context);
+    expect(rows.find(row => row.provider === 'org-held-future')).toMatchObject({
+      ownerDid: actor, usable: null, grantStatus: 'not-evaluated',
+    });
+    expect(h.identity).toHaveBeenCalledWith(actor);
+  });
+
   it('distinguishes configured from usable and never spreads registry fields', async () => {
     const privateValue = randomUUID();
     h.registrations.mockResolvedValue([
       { provider: 'warp', status: 'active', sealedKeyField: privateValue },
-      { provider: 'future-family', status: 'active', sealedKeyField: privateValue },
-      { provider: 'org-held-warp', status: 'active' }, { provider: 'anthropic-billing', status: 'active' },
+      { ownerDid: actor, provider: 'future-family', status: 'active', sealedKeyField: privateValue },
+      { ownerDid: org, provider: 'org-held-warp', status: 'active' }, { provider: 'anthropic-billing', status: 'active' },
     ]);
     const rows = await listDiscoveryConnectorMetadata(context);
     expect(h.registrations).toHaveBeenCalledWith(actor);

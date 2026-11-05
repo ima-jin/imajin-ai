@@ -5,6 +5,7 @@ import { listConnectorRegistrations } from '@/src/lib/kernel/connector-registry-
 import { ExternalMcpError } from '@/src/lib/kernel/external-mcp-policy';
 import { authorizeExternalMcpAccess } from '@/src/lib/kernel/external-mcp-authority';
 import { resolveConnectionPrincipal } from '@/src/lib/kernel/connection-principal';
+import { isOrgScope } from '@/src/lib/kernel/connection-principal-policy';
 import {
   POSTMAN_CONNECTION, requireConnectionApp, type MemberConnectionTarget,
   type ExternalMcpCaller,
@@ -18,6 +19,7 @@ import { listBrainConnectors } from './brain';
 import { httpConnectorAuthority, httpCredentialAuthorized } from './http-connector-authority';
 import type { InferenceAuthContext } from './auth';
 import type { ConnectorAuthority, ConnectorFamily } from './self-discovery';
+import { readInferencePrincipal } from './route-discovery-store';
 
 interface ConnectorDiagnostic {
   provider: string;
@@ -226,8 +228,11 @@ export async function listDiscoveryConnectorMetadata(context: InferenceAuthConte
   );
   const known = new Set([...brains, ...rows.map(row => row.provider)]);
   for (const registration of registrations) {
-    if (known.has(registration.provider) || registration.provider.startsWith('org-held-')
+    if (known.has(registration.provider)
       || registration.provider.startsWith('app-upstream:') || registration.provider.endsWith('-billing')) continue;
+    const owner = await readInferencePrincipal(registration.ownerDid);
+    // Org-owned credentials are projected through the authorized org lanes, never as personal fallbacks.
+    if (!owner || isOrgScope(owner.scope)) continue;
     known.add(registration.provider);
     rows.push({
       ...diagnostic(registration.provider, 'http', actorDid, registration.status === 'active' && !registration.revokedAt),

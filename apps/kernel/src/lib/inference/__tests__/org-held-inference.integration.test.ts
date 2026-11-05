@@ -299,7 +299,7 @@ describe('self-discovery with real app auth, assignment and grant SQL (#3250)', 
     expect(await response.text()).not.toContain(FIELD);
     return body;
   }
-  it('lists an autonomous org agent on org-held Anthropic with catalog-parity models and no member grant', async () => {
+  it('lists the org-owned plain anthropic row as org-held, never as a personal connector, with catalog parity', async () => {
     await database.insert(identityMembers).values({ identityDid: ORG, memberDid: AGENT, role: 'agent', allowedServices: ['infer'] });
     await database.update(identities).set({ handle: 'artifact' }).where(eq(identities.id, ORG));
     const body = await bodyAndParity(selfRequest(ORG));
@@ -308,6 +308,8 @@ describe('self-discovery with real app auth, assignment and grant SQL (#3250)', 
       authority: 'org-held', family: 'anthropic', billedPrincipal: { did: ORG, handle: 'artifact' },
       usable: true, usableModels: ['claude-org-model'],
     });
+    expect(body.connectors.some((row: { provider: string; authority: string; billedPrincipal?: { did: string } }) =>
+      row.provider === 'anthropic' && row.billedPrincipal?.did === ORG && row.authority === 'own-key')).toBe(false);
     expect(await database.select().from(orgConnectionMemberGrants)).toEqual([]);
   });
   it('keeps a personal agent on its own identity and its human principal model list', async () => {
@@ -465,7 +467,7 @@ describe.each(['agent', 'presence'])('route discovery ≡ chat/completions for %
     await database.insert(identityMembers).values({ identityDid: orgDid, memberDid: agentDid, role: 'agent', allowedServices: ['infer'] });
     await database.insert(connectors).values({
       id: 'artifact-anthropic', ownerDid: orgDid, provider: 'anthropic', slot: 'primary',
-      status: 'active', sealedKeyField: field,
+      status: 'active', sealedKeyField: field, loadedByDid: MEMBER, loadedAt: new Date(),
     });
     await database.insert(vaultDelegationGrants).values({
       id: 'artifact-custody', field, subject: orgDid, grantedTo: 'did:imajin:node', status: 'active', oneTime: false,
@@ -805,7 +807,7 @@ beforeEach(async () => {
   await database.insert(identityMembers).values({ identityDid: ORG, memberDid: MEMBER, role: 'member' });
   await database.insert(connectors).values({
     id: 'org-connection', ownerDid: ORG, provider: 'anthropic', slot: 'primary',
-    status: 'active', sealedKeyField: FIELD,
+    status: 'active', sealedKeyField: FIELD, loadedByDid: MEMBER, loadedAt: new Date(),
   });
   await database.insert(vaultDelegationGrants).values({
     id: 'custody', field: FIELD, subject: ORG, grantedTo: 'did:imajin:node', status: 'active', oneTime: false,
@@ -856,6 +858,24 @@ beforeEach(async () => {
 });
 
 describe('prod-shaped sealed Anthropic org resolution (#3313)', () => {
+  it.each([
+    { assigned: true, missing: 'loader' }, { assigned: true, missing: 'time' }, { assigned: true, missing: 'both' },
+    { assigned: false, missing: 'loader' }, { assigned: false, missing: 'time' }, { assigned: false, missing: 'both' },
+  ])('refuses missing $missing provenance with assignedAgent=$assigned even for the exact org field', async ({ assigned, missing }) => {
+    const selected = await context(assigned);
+    await database.update(connectors).set({
+      ...(missing !== 'time' ? { loadedByDid: null } : {}),
+      ...(missing !== 'loader' ? { loadedAt: null } : {}),
+    });
+    await expect(resolveOrgHeldBrain(selected, 'claude-test')).rejects.toMatchObject({
+      status: 403, code: 'connection_not_loaded', message: expect.stringContaining(ORG),
+    });
+    expect(h.get).not.toHaveBeenCalled();
+    expect(h.unseal).not.toHaveBeenCalled();
+    expect(h.personal).not.toHaveBeenCalled();
+    expect(h.fallback).not.toHaveBeenCalled();
+  });
+
   async function context(assigned: boolean) {
     if (assigned) {
       await database.insert(identityMembers).values({

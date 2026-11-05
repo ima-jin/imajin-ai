@@ -103,6 +103,7 @@ import { GET as READ_MEMBER_STATUS, OPTIONS as STATUS_OPTIONS } from '@/app/conn
 import { authorizeOrgConnectionAdmin } from '../org-held-connection-policy';
 import { readOrgHeldStatus } from '../org-held-status';
 import { SESSION_COOKIE_NAME } from '@imajin/config';
+import { POST as sealAnthropicToken } from '@/app/anthropic/api/token/route';
 
 const tables = [identities, identityMembers, delegationGrants, attestations, channelLinks, registryApps, connectors, orgConnectionSuspensions, orgConnectionEvents,
   vaultDelegationGrants, vaultOwnerEnvelopes, vaultGrantRequests, orgConnectionMemberGrants];
@@ -1729,6 +1730,71 @@ describe('org-held member grants: durable lifecycle and live metadata contract',
     expect((await grantRequest('GET')).body).toEqual({ grants: [] });
     await database.update(identityMembers).set({ role: 'member' }).where(eq(identityMembers.memberDid, member));
     await expect(listOrgConnectionMemberGrants({ orgDid: org, actorDid: member }, 'anthropic')).rejects.toMatchObject({ status: 403 });
+  });
+});
+
+describe('/jin Anthropic seal human provenance (#3313)', () => {
+  async function seal() {
+    const { secret } = orgKey();
+    return sealAnthropicToken(new NextRequest('https://kernel.test/anthropic/api/token', {
+      method: 'POST', headers: { 'x-acting-as': org },
+      body: JSON.stringify({ token: secret, loadedByDid: org, loadedAt: new Date(0) }),
+    }));
+  }
+  async function prepare() {
+    await asOrg();
+    await database.update(identities).set({ subtype: 'human' }).where(eq(identities.id, member));
+  }
+
+  it('seals under the org DID and records the authenticated human and time, then refreshes both on re-seal', async () => {
+    await prepare();
+    const before = new Date();
+    expect((await seal()).status).toBe(201);
+    const [row] = await orgRows();
+    expect(row).toMatchObject({
+      ownerDid: org, provider: 'anthropic', slot: 'primary', sealedKeyField: `anthropic-api-key:${org}`,
+      loadedByDid: member, loadedAt: expect.any(Date),
+    });
+    expect(row.loadedAt!.getTime()).toBeGreaterThanOrEqual(before.getTime());
+    await database.update(connectors).set({ loadedByDid: 'did:imajin:previous-human', loadedAt: new Date(0) })
+      .where(eq(connectors.id, row.id));
+    expect((await seal()).status).toBe(201);
+    expect(await orgRows()).toEqual([expect.objectContaining({
+      id: row.id, loadedByDid: member, loadedAt: expect.any(Date),
+    })]);
+    expect((await orgRows())[0].loadedAt!.getTime()).toBeGreaterThanOrEqual(before.getTime());
+  });
+
+  it.each([false, true])('does not invent org loader provenance for a personal seal with delegated=%s', async delegated => {
+    await prepare();
+    h.identity.actingAs = undefined;
+    if (delegated) h.identity.actingFor = member;
+    const response = await seal();
+    expect(response.status).toBe(201);
+    expect(await orgRows()).toEqual([]);
+    const [personal] = await database.select().from(connectors).where(eq(connectors.ownerDid, member));
+    expect(personal).toMatchObject({
+      provider: 'anthropic', sealedKeyField: `anthropic-api-key:${member}`, loadedByDid: null, loadedAt: null,
+    });
+  });
+
+  it.each(['member', 'removed', 'restricted', 'suspended-org', 'suspended-actor', 'agent-session', 'agent-in-db'])(
+    'refuses an org seal for %s before custody or provenance writes', async boundary => {
+      await prepare();
+      await changeOrgBoundary(boundary);
+      const before = await permanentState();
+      expect((await seal()).status).toBe(403);
+      expect(await permanentState()).toBe(before);
+    },
+  );
+
+  it('refuses a pure app credential without attributing the load to an org or service', async () => {
+    await prepare();
+    await installApp();
+    h.authError = true;
+    const before = await permanentState();
+    expect((await seal()).status).toBe(401);
+    expect(await permanentState()).toBe(before);
   });
 });
 
