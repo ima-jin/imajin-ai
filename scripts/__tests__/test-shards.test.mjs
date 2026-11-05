@@ -24,6 +24,14 @@ describe('required Test check', () => {
     expect(ci.jobs.sonarcloud.needs).toContain('test');
   });
 
+  it('does not let other jobs starve a shard or the aggregate of runner slots', () => {
+    expect(shards.needs).toBeUndefined();
+    for (const [name, job] of Object.entries(ci.jobs)) {
+      if (['test-shards', 'test'].includes(name)) continue;
+      expect(job.needs, name).toContain('test');
+    }
+  });
+
   it.each(['success', 'failure', 'cancelled', 'skipped', ''])(
     'only succeeds when the shard result is success (%s)', (result) => {
       const gate = aggregate.steps[0];
@@ -103,7 +111,7 @@ describe('database project selection', () => {
     expect(unitProject.test.hookTimeout).toBeUndefined();
     expect(databaseProject.test).toMatchObject({
       name: 'database', testTimeout: 15_000, hookTimeout: 30_000,
-      pool: 'forks', poolOptions: { forks: { singleFork: true } },
+      pool: 'threads', poolOptions: { threads: { singleThread: true } },
     });
     expect(databaseProject.test.include.length).toBeGreaterThan(0);
     const excluded = new Set(unitProject.test.exclude);
@@ -114,7 +122,7 @@ describe('database project selection', () => {
     expect(unit).toContain('exclude: [...configDefaults.exclude, ...databaseTests]');
     expect(unit).not.toMatch(/testTimeout|hookTimeout/);
     expect(workspaceSource).toContain('include: databaseTests');
-    expect(workspaceSource).toContain('singleFork: true');
+    expect(workspaceSource).toContain('singleThread: true');
     expect(read('vitest.config.ts')).toContain('maxWorkers: 4');
     expect(workspaceSource).toContain('testTimeout: 15_000');
     expect(workspaceSource).toContain('hookTimeout: 30_000');

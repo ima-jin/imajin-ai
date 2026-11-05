@@ -20,10 +20,10 @@ export default defineWorkspace([
     test: {
       name: 'database',
       include: databaseTests,
-      pool: 'forks',
-      // Vitest 2 schedules singleFork projects after ordinary fork work,
-      // recycles workers, then runs this project's files in one fork.
-      poolOptions: { forks: { singleFork: true } },
+      // A distinct pool lets DB work run alongside unit forks without
+      // sharing their worker queue. Keep database files serial within it.
+      pool: 'threads',
+      poolOptions: { threads: { singleThread: true } },
       testTimeout: 15_000,
       hookTimeout: 30_000,
     },

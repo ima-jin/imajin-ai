@@ -32,6 +32,9 @@ concurrency:
 jobs:
   check-migrations:
     name: Check Migrations
+    # Keep all four shards runnable together before other jobs compete for
+    # the same runner slots. No runner capacity or queue rules are changed.
+    needs: [test]
     runs-on: imajin-self-hosted
     container:
       # Pinned to the immutable digest `build-ci-image.yml` published on main
@@ -66,6 +69,7 @@ jobs:
 
   audit:
     name: Security Audit
+    needs: [test]
     if: github.event_name != 'merge_group'
     runs-on: imajin-self-hosted
     container:
@@ -120,6 +124,7 @@ jobs:
 
   lint-and-typecheck:
     name: Lint & Typecheck
+    needs: [test]
     runs-on: imajin-self-hosted
     container:
       image: ghcr.io/ima-jin/ci-runner@sha256:fcc0fb4320e709976a93ac9f940bb2f532a82d3e7f953798c48dc4b0d8435681
@@ -456,6 +461,7 @@ jobs:
   # scripts/__tests__/provision-service-bootstrap-entrypoint.test.mjs.
   provisioning-entrypoint:
     name: Provisioning entrypoint
+    needs: [test]
     # Its full workspace build and deploy dry-run were proved on the PR head.
     if: github.event_name != 'merge_group'
     runs-on: imajin-self-hosted
@@ -504,6 +510,7 @@ jobs:
 
   ci-guards:
     name: CI Guards
+    needs: [test]
     runs-on: imajin-self-hosted
     container:
       image: ghcr.io/ima-jin/ci-runner@sha256:fcc0fb4320e709976a93ac9f940bb2f532a82d3e7f953798c48dc4b0d8435681
