@@ -2,7 +2,7 @@
 import { getSession , resolveActingDid } from '@imajin/auth';
 import { buildPublicUrl } from '@imajin/config';
 import { db, transactions } from '@/src/db';
-import { eq, or, desc } from 'drizzle-orm';
+import { eq, ne, and, or, desc } from 'drizzle-orm';
 import Link from 'next/link';
 import { BalanceCard } from './components/BalanceCard';
 import { MJN, MJNX, amountOf, getBalances } from '@/src/lib/pay/ledger';
@@ -33,7 +33,7 @@ export default async function Home() {
     db
       .select()
       .from(transactions)
-      .where(or(eq(transactions.fromDid, did), eq(transactions.toDid, did)))
+      .where(and(ne(transactions.sourceKind, 'fee'), or(eq(transactions.fromDid, did), eq(transactions.toDid, did))))
       .orderBy(desc(transactions.createdAt))
       .limit(5),
   ]);
