@@ -1264,6 +1264,37 @@ describe('org-held member grants: durable lifecycle and live metadata contract',
     } finally { read.mockRestore(); }
   });
 
+  it.each(['human', 'device', 'agent', 'presence'])('member-grant route keeps %s session eligibility explicit', async subtype => {
+    await prepare();
+    h.identity.subtype = subtype;
+    const before = await permanentState();
+    const transactions = h.transactionsStarted;
+    const response = await grantRequest('GET');
+    if (subtype === 'human' || subtype === 'device') {
+      expect(response).toMatchObject({ status: 200, body: { grants: [] } });
+    } else {
+      expect(response).toMatchObject({ status: 403, body: { error: 'Organization admin act-as required' } });
+      expect(h.transactionsStarted).toBe(transactions);
+    }
+    expect(await permanentState()).toBe(before);
+  });
+
+  it.each(['human', 'device', 'agent', 'presence'])('member-grant policy keeps %s grantee eligibility explicit', async subtype => {
+    await prepare();
+    expect((await grantRequest()).status).toBe(200);
+    await database.update(identities).set({ subtype }).where(eq(identities.id, grantee()));
+    const before = await permanentState();
+    if (subtype === 'human' || subtype === 'device') {
+      expect((await grantRequest()).status).toBe(200);
+      expect(await requireOrgConnectionMemberGrant(context())).toMatchObject({ memberDid: grantee() });
+    } else {
+      expect((await grantRequest()).status).toBe(403);
+      await expect(requireOrgConnectionMemberGrant(context()))
+        .rejects.toMatchObject({ status: 403, code: 'org_membership_required' });
+    }
+    expect(await permanentState()).toBe(before);
+  });
+
   async function prepareTwoGrants() {
     await prepare();
     await orgRequest('POST', 'warp', orgKey());

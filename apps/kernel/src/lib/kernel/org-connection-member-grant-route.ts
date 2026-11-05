@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { requireAuth } from '@imajin/auth';
 import { corsHeaders } from './cors';
 import { ExternalMcpError } from './external-mcp-policy';
+import { isAgentCapableSubtype } from './connection-principal-policy';
 import { externalConnectionBody } from './external-mcp-route';
 import { changeOrgConnectionMemberGrant, listOrgConnectionMemberGrants, parseMemberGrantInput } from './org-connection-member-grants';
 
@@ -11,7 +12,7 @@ export async function orgConnectionMemberGrantRoute(request: NextRequest, provid
     const auth = await requireAuth(request, { sessionOnly: true, service: 'connections' });
     if ('error' in auth) throw new ExternalMcpError(auth.status, 'Organization admin session required');
     const identity = auth.identity;
-    if (!identity.actingAs || identity.actingFor || identity.subtype === 'agent'
+    if (!identity.actingAs || identity.actingFor || isAgentCapableSubtype(identity.subtype)
       || !['owner', 'admin'].includes(identity.actingAsRole ?? '')) {
       throw new ExternalMcpError(403, 'Organization admin act-as required');
     }

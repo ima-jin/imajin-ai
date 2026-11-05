@@ -5,6 +5,7 @@ import {
 } from '@/src/db';
 import { prepareMechanicalAttestation } from '@/src/lib/auth/emit-mechanical-attestation';
 import { ExternalMcpError, type ConnectionErrorCode } from './external-mcp-policy';
+import { isAgentCapableSubtype } from './connection-principal-policy';
 import { generateId } from './id';
 import { isLiveConnection, type ConnectionTransaction } from './member-connection-gate';
 import { authorizeOrgConnectionAdmin, orgHeldProvider, type OrgConnectionActor } from './org-held-connection-policy';
@@ -30,7 +31,7 @@ async function requireMember(tx: GrantReader, orgDid: string, memberDid: string,
   const [membership] = await tx.select().from(identityMembers).where(and(
     eq(identityMembers.identityDid, orgDid), eq(identityMembers.memberDid, memberDid), isNull(identityMembers.removedAt),
   )).limit(1);
-  if (person?.scope !== 'actor' || person.subtype === 'agent' || person.suspendedAt || !membership) throw denied(provider, 'org_membership_required');
+  if (person?.scope !== 'actor' || isAgentCapableSubtype(person.subtype) || person.suspendedAt || !membership) throw denied(provider, 'org_membership_required');
 }
 
 async function findConnection(tx: GrantReader, orgDid: string, provider: string) {
