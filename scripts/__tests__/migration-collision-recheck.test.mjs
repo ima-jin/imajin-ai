@@ -72,6 +72,15 @@ describe('unchanged checker against main plus PR migrations', () => {
     expect(checkPullMigrations({ ...fixture, head: fixture.unrelated })).toBeNull();
   });
 
+  it('does not resolve git, bash, or checker tools through the caller PATH', () => {
+    vi.stubEnv('PATH', join(fixture.cwd, 'untrusted-bin'));
+    try {
+      expect(checkPullMigrations({ ...fixture, head: fixture.clean }).conclusion).toBe('success');
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
   it('retains checker validation for an empty migration', () => {
     git(fixture.cwd, 'checkout', '-q', fixture.main);
     writeFileSync(join(fixture.cwd, 'migrations/0003_empty.sql'), '');
@@ -163,6 +172,18 @@ describe('live PR enumeration and advisory checks', () => {
     expect(h.github.rest.checks.create).toHaveBeenCalledTimes(2);
     expect(h.core.error).toHaveBeenCalledWith('PR #1: 403 permission denied');
     expect(h.core.setFailed).toHaveBeenCalledOnce();
+  });
+
+  it('waits for each API write before processing the next PR', async () => {
+    const h = harness();
+    let release;
+    h.github.rest.checks.create.mockImplementationOnce(() => new Promise((resolve) => { release = resolve; }));
+    const pending = recheckOpenPulls(h);
+    await vi.waitFor(() => expect(h.github.rest.checks.create).toHaveBeenCalledOnce());
+    expect(h.check).toHaveBeenCalledOnce();
+    release({});
+    await pending;
+    expect(h.check).toHaveBeenCalledTimes(3);
   });
 
   it('does not claim success when a PR fetch fails; continues with later PRs', async () => {
