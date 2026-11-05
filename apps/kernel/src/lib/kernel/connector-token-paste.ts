@@ -52,11 +52,14 @@ import { db, channelLinks } from '@/src/db';
 import {
   sealAndStore,
   sealAndStoreV2,
+  sealAndGrantStaticSecret,
+  supersedeActiveGrant,
   loadAndUnseal,
   vaultFieldStatus,
   revokeVaultDelegationGrantsForConnector,
 } from '@/src/lib/vault';
 import { VaultDelegationError } from '@/src/lib/vault/errors';
+import { getNodeSigningIdentity } from '@/src/lib/vault/sealing';
 import {
   recordConnectorRegistration,
   revokeConnectorRegistration,
@@ -252,7 +255,16 @@ export function createConnectorTokenPaste(
   ): Promise<void> {
     // The key is the only secret here, so it is the only field that earns
     // delegation-grant custody (#1637).
-    await sealAndStoreV2(keyField(ownerDid), apiKey);
+    if (orgSealProvenance) {
+      const node = getNodeSigningIdentity();
+      await sealAndGrantStaticSecret(keyField(ownerDid), apiKey, {
+        principalDid: ownerDid, granteeDid: node.senderDid, purpose: `connectors:org-held:${opts.id}`,
+      });
+      // A normal re-seal retires any pre-provenance node self-grant, retaining its history.
+      await supersedeActiveGrant({ subject: node.senderDid, grantedTo: node.senderDid, field: keyField(ownerDid) });
+    } else {
+      await sealAndStoreV2(keyField(ownerDid), apiKey);
+    }
     if (baseUrl) {
       await sealAndStore(baseUrlField(ownerDid), baseUrl);
     }

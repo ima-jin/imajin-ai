@@ -97,13 +97,14 @@ import { GET as ORG_GET, POST as ORG_LOAD, DELETE as ORG_REMOVE, OPTIONS as ORG_
 import { GET as ORG_STATUS, POST as ORG_CHANGE } from '@/app/auth/api/org-connections/route';
 import { removeGroupController } from '@/src/lib/auth/remove-group-controller';
 import { GET as MEMBER_GRANTS, POST as GRANT_MEMBER, DELETE as REVOKE_MEMBER, OPTIONS as GRANT_OPTIONS } from '@/app/connections/api/org-held/[provider]/grants/route';
-import { requireOrgConnectionMemberGrant, listOrgConnectionMemberGrants, revokeRemovedMemberOrgGrants } from '../org-connection-member-grants';
+import { changeOrgConnectionMemberGrant, requireOrgConnectionMemberGrant, listOrgConnectionMemberGrants, revokeRemovedMemberOrgGrants } from '../org-connection-member-grants';
 import { orgConnectionMemberGrantRoute } from '../org-connection-member-grant-route';
 import { GET as READ_MEMBER_STATUS, OPTIONS as STATUS_OPTIONS } from '@/app/connections/api/org-held/status/route';
 import { authorizeOrgConnectionAdmin } from '../org-held-connection-policy';
 import { readOrgHeldStatus } from '../org-held-status';
 import { SESSION_COOKIE_NAME } from '@imajin/config';
 import { POST as sealAnthropicToken } from '@/app/anthropic/api/token/route';
+import { resolveOrgHeldBrain } from '@/src/lib/inference/org-held-brain';
 
 const tables = [identities, identityMembers, delegationGrants, attestations, channelLinks, registryApps, connectors, orgConnectionSuspensions, orgConnectionEvents,
   vaultDelegationGrants, vaultOwnerEnvelopes, vaultGrantRequests, orgConnectionMemberGrants];
@@ -1734,6 +1735,48 @@ describe('org-held member grants: durable lifecycle and live metadata contract',
 });
 
 describe('/jin Anthropic seal human provenance (#3313)', () => {
+  it('re-seals an existing unprovenanced /jin row through normal writes, retaining the old custody history', async () => {
+    await prepare();
+    const field = `anthropic-api-key:${org}`;
+    await sealAndStoreV2(field, orgKey().secret);
+    const store = await vi.importActual<typeof import('../connector-registry-store')>('../connector-registry-store');
+    await store.recordConnectorRegistration({ ownerDid: org, provider: 'anthropic', sealedKeyField: field });
+    const [before] = await orgRows();
+    expect(before.loadedByDid).toBeNull();
+    expect((await seal()).status).toBe(201);
+    expect(await orgRows()).toEqual([expect.objectContaining({ id: before.id, loadedByDid: member, loadedAt: expect.any(Date) })]);
+    const custody = await database.select().from(vaultDelegationGrants).where(eq(vaultDelegationGrants.field, field));
+    expect(custody).toEqual(expect.arrayContaining([
+      expect.objectContaining({ subject: h.nodeDid, status: 'superseded' }),
+      expect.objectContaining({ subject: org, grantedTo: h.nodeDid, status: 'active' }),
+    ]));
+  });
+
+  it.each([true, false])('resolves the actual /jin org seal through real vault crypto with assignedAgent=%s', async assigned => {
+    await prepare();
+    expect((await seal()).status).toBe(201);
+    const agentDid = `${member}agent`;
+    if (assigned) {
+      await database.insert(identities).values({
+        id: agentDid, publicKey: keys.publicKey, scope: 'actor', subtype: 'agent',
+      });
+      await database.insert(identityMembers).values({
+        identityDid: org, memberDid: agentDid, role: 'agent', allowedServices: ['infer'],
+      });
+    } else {
+      await changeOrgConnectionMemberGrant({ orgDid: org, actorDid: member }, 'anthropic', {
+        memberDid: member, reason: 'Test org inference',
+      }, 'grant');
+    }
+    const brain = await resolveOrgHeldBrain({
+      memberDid: assigned ? agentDid : member, orgDid: org,
+      ...(assigned ? { assignedAgentDid: agentDid } : {}),
+    }, 'claude-test');
+    expect(brain.apiKey === h.secrets.at(-1)).toBe(true);
+    expect(brain.credentialDid).toBe(org);
+    expect(brain.orgUsage?.connectionId).toBe((await orgRows())[0].id);
+  });
+
   async function seal() {
     const { secret } = orgKey();
     return sealAnthropicToken(new NextRequest('https://kernel.test/anthropic/api/token', {
