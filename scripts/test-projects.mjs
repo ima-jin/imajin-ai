@@ -24,5 +24,5 @@ export function databaseTestFiles(root) {
   };
   visit('apps');
   visit('packages');
-  return files.sort();
+  return files.sort((left, right) => left.localeCompare(right, 'en'));
 }

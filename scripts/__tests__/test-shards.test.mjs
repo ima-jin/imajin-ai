@@ -97,15 +97,19 @@ describe('database project selection', () => {
     expect(isDatabaseTest(path, source)).toBe(expected);
   });
 
-  it('discovers database suites without admitting build output or ordinary units', () => {
+  it('sorts database suites without admitting build output or ordinary units', () => {
     const dir = mkdtempSync(join(tmpdir(), 'test-projects-'));
     for (const folder of ['apps/kernel/__tests__', 'apps/kernel/node_modules', 'packages/auth/tests']) {
       mkdirSync(join(dir, folder), { recursive: true });
     }
     writeFileSync(join(dir, 'apps/kernel/__tests__/db.test.ts'), 'PGlite');
+    writeFileSync(join(dir, 'apps/kernel/__tests__/a.test.ts'), 'PGlite');
     writeFileSync(join(dir, 'apps/kernel/node_modules/ignored.test.ts'), 'PGlite');
     writeFileSync(join(dir, 'packages/auth/tests/unit.test.ts'), 'unit');
-    expect(databaseTestFiles(dir)).toEqual(['apps/kernel/__tests__/db.test.ts']);
+    expect(databaseTestFiles(dir)).toEqual([
+      'apps/kernel/__tests__/a.test.ts',
+      'apps/kernel/__tests__/db.test.ts',
+    ]);
   });
 
   it('scopes timeouts and single-worker DB execution to the database project', () => {
