@@ -1,5 +1,4 @@
 name: Release
-# Release PR authentication is tracked in #3303.
 
 # Tag is truth (#2285): package.json "version" fields are bumped ONLY here,
 # in lockstep, ONLY via a normal reviewed PR into main — this workflow never
@@ -31,12 +30,8 @@ concurrency:
   cancel-in-progress: false
 
 permissions:
-  contents: write
-  pull-requests: write
-  # Only used to dispatch ci.yml against the release branch below (a
-  # workflow_dispatch call, not a push/tag) — see that step's comment for
-  # why. Nothing here dispatches deploy-prod.yml or touches production.
-  actions: write
+  # GITHUB_TOKEN is read-only; all release writes use the scoped App token.
+  contents: read
 
 jobs:
   release:
@@ -54,11 +49,41 @@ jobs:
           echo "::error::Release must be dispatched against main (got ${{ github.ref }})."
           exit 1
 
-      # Default GITHUB_TOKEN only — no bypass-actor token. Every push this
-      # workflow makes below goes to a NEW release/vX.Y.Z branch, never to
-      # main, so branch protection on main is never a question here.
-      - uses: actions/checkout@v4
+      - name: Require release App configuration
+        env:
+          RELEASE_APP_ID: ${{ vars.RELEASE_APP_ID }}
+          RELEASE_APP_PRIVATE_KEY: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+        run: |
+          missing=0
+          if [ -z "$RELEASE_APP_ID" ]; then
+            echo "::error::RELEASE_APP_ID (Actions variable) is missing."
+            missing=1
+          fi
+          if [ -z "$RELEASE_APP_PRIVATE_KEY" ]; then
+            echo "::error::RELEASE_APP_PRIVATE_KEY (Actions secret) is missing."
+            missing=1
+          fi
+          if [ "$missing" -ne 0 ]; then
+            exit 1
+          fi
+
+      - name: Mint release App installation token
+        id: release-app
+        uses: actions/create-github-app-token@v3
         with:
+          app-id: ${{ vars.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: imajin-ai
+          permission-contents: write
+          permission-pull-requests: write
+
+      # A scoped installation token, NOT a bypass actor: pushes go only to
+      # release/vX.Y.Z, never main. Ryan's PR approval and the production gate
+      # remain required. App-authored pushes/PRs trigger normal CI events.
+      - uses: actions/checkout@v7
+        with:
+          token: ${{ steps.release-app.outputs.token }}
           ref: main
           # Full history: `git describe --tags` (scripts/build.sh) and this
           # workflow's own duplicate-tag guard both need to see every
@@ -66,7 +91,7 @@ jobs:
           fetch-depth: 0
           fetch-tags: true
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
 
@@ -131,7 +156,7 @@ jobs:
       - name: Open the release pull request
         id: pr
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ steps.release-app.outputs.token }}
           VERSION: ${{ steps.bump.outputs.version }}
         run: |
           # Body written to a temp file rather than inlined into `--body`:
@@ -154,22 +179,3 @@ jobs:
             --body-file "$BODY_FILE")
           echo "url=$PR_URL" >> "$GITHUB_OUTPUT"
           echo "Opened $PR_URL"
-
-      - name: Dispatch CI against the release branch
-        env:
-          GH_TOKEN: ${{ github.token }}
-          VERSION: ${{ steps.bump.outputs.version }}
-        # A pull request opened with the default GITHUB_TOKEN does not
-        # trigger other workflows' `pull_request` events — GitHub
-        # deliberately suppresses further workflow runs from GITHUB_TOKEN-
-        # authored activity to prevent recursive workflow chains (the exact
-        # same rule tag-release.yml's dispatch of deploy-prod.yml works
-        # around). Left alone, this PR's required status checks (Build, CI
-        # Guards, Lint & Typecheck, SonarCloud, Test — see
-        # .github/required-checks.json) would sit at "Expected — waiting for
-        # status" forever and block merge. `workflow_dispatch` is exempt
-        # from that suppression, and GitHub matches required checks to a
-        # commit SHA regardless of which trigger produced them, so
-        # dispatching ci.yml against this exact branch/commit populates the
-        # PR's required checks for real.
-        run: gh workflow run ci.yml --ref "release/v$VERSION"

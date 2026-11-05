@@ -42,7 +42,13 @@ deliberately no second, competing bump path here.
 1. Cut a normal release: `gh workflow run release.yml -f bump=minor` (or
    `patch`). This bumps root **and every workspace package**, including the
    four SDK packages, to the same new `X.Y.Z` and opens a `release: vX.Y.Z`
-   PR into `main`.
+   PR into `main` using the repository-scoped GitHub App installation token
+   for both the branch push and PR creation. Ryan provisions the App on
+   `imajin-ai` only with Contents and Pull requests read/write permissions,
+   the Actions variable `RELEASE_APP_ID` and Actions secret
+   `RELEASE_APP_PRIVATE_KEY`. Keep the Actions PR-creation setting OFF.
+   The app bot opens the PR automatically and its `pull_request` event starts CI;
+   no manual PR, PAT or bypass actor. See the release setup linked above.
 2. Merge that PR like any other reviewed PR — see `docs/npm-publishing.md`
    for the full pipeline (it also tags the repo's own `vX.Y.Z` build-version
    tag and rolls through `deploy-prod.yml`; that tag is unrelated to the

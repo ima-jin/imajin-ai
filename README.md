@@ -134,6 +134,8 @@ Source inventories are available through the workspace manifests above. Signed p
 
 Read [AGENTS.md](AGENTS.md), [canonical patterns](docs/guide/canonical-patterns.md) and the [PR checklist](docs/PR-CHECKLIST.md). Work in an isolated worktree. Use the agent build/lint/typecheck commands, run affected tests while iterating, and run `pnpm --silent test:agent` for final validation. Only the reviewed release workflow changes manifest versions.
 
+The Release workflow pushes its branch and opens its PR with a repository-scoped GitHub App token; CI starts on `pull_request`. Ryan provisions the App with Contents and Pull requests read/write permissions, installed on `imajin-ai` only, plus the Actions variable `RELEASE_APP_ID` and Actions secret `RELEASE_APP_PRIVATE_KEY`. Keep the Actions PR-creation setting OFF; no manual PR, PAT or bypass actor. See [release setup](docs/npm-publishing.md#cutting-a-release-tag-is-truth--2285).
+
 ### SonarCloud on fork PRs
 
 The required SonarCloud CI job is a compatibility skip on forks and warns **NOT SCANNED**, because forks do not receive the scan token. The separate trusted follow-up runs from reviewed main after CI, with no checkout, install or execution of PR code. It authenticates the CI run and unique open PR by exact head and treats regular Git blobs and validated coverage as untrusted scan data.

@@ -96,6 +96,8 @@ Edit the tracked config through a reviewed PR. The deploy workflows copy it into
 
 Production deployment follows Release dispatch, reviewed release PR, automatic tag/deploy dispatch and the existing production approval. Redeploy an approved ref through that workflow. Do not create tags by hand, bypass approval or use a manual production pull.
 
+The release PR is opened automatically by a scoped GitHub App token, also used for the branch push; its `pull_request` event starts CI. Ryan provisions the App on `imajin-ai` only with Contents and Pull requests read/write permissions, the Actions variable `RELEASE_APP_ID` and Actions secret `RELEASE_APP_PRIVATE_KEY`. Keep the Actions PR-creation setting OFF. See [release setup](../docs/npm-publishing.md#cutting-a-release-tag-is-truth--2285); do not open the PR by hand or substitute a PAT.
+
 ## Kernel environment loading
 
 The standalone kernel runs through Node with `--env-file` pointing to its untracked kernel environment file. Plain Node does not load that file automatically, and PM2's unsupported `env_file` property is not a substitute. Only the path belongs in the ecosystem definition; secret values do not.
