@@ -246,17 +246,29 @@ describe('POST /auth/api/agents (#1717)', () => {
 });
 
 describe('GET /auth/api/agents (#1717 acting-for scoping)', () => {
+  it('returns personal owner metadata when no acting identity is selected', async () => {
+    mockRequireAuth.mockResolvedValue({ identity: { id: PERSONAL_DID, handle: 'ryan', name: 'Ryan' } });
+    const body = await (await GET(makeGetRequest())).json();
+    expect(body.delegator).toEqual({ did: PERSONAL_DID, handle: 'ryan', name: 'Ryan', isOrganization: false, actorDid: PERSONAL_DID });
+  });
+
+  it('does not substitute the personal handle or name for an org with missing metadata', async () => {
+    mockRequireAuth.mockResolvedValue({ identity: { id: PERSONAL_DID, handle: 'ryan', name: 'Ryan', actingAs: BUSINESS_DID } });
+    const body = await (await GET(makeGetRequest())).json();
+    expect(body.delegator).toMatchObject({ did: BUSINESS_DID, handle: null, name: null });
+  });
+
   it('requires auth service access and returns the authenticated org delegator context', async () => {
-    mockRequireAuth.mockResolvedValue({ identity: { id: PERSONAL_DID, actingAs: BUSINESS_DID, actingAsRole: 'owner' } });
+    mockRequireAuth.mockResolvedValue({ identity: { id: PERSONAL_DID, handle: 'ryan', actingAs: BUSINESS_DID, actingAsRole: 'owner' } });
     pushSelectResult([]); // owned agents
     pushSelectResult([]); // accepted knocks
-    pushSelectResult([{ name: 'Agrifortress' }]); // delegator label only
+    pushSelectResult([{ name: 'Agrifortress', handle: 'agrifortress' }]);
     const request = makeGetRequest();
     const res = await GET(request);
     expect(mockRequireAuth).toHaveBeenCalledWith(request, { service: 'auth' });
     expect(mockListGrantDetailsForDelegator).toHaveBeenCalledWith(BUSINESS_DID);
     expect((await res.json()).delegator).toEqual({
-      did: BUSINESS_DID, name: 'Agrifortress', isOrganization: true, actorDid: PERSONAL_DID,
+      did: BUSINESS_DID, name: 'Agrifortress', handle: 'agrifortress', isOrganization: true, actorDid: PERSONAL_DID,
     });
   });
 
@@ -284,7 +296,7 @@ describe('GET /auth/api/agents (#1717 acting-for scoping)', () => {
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({
       agents: [],
-      delegator: { did: PERSONAL_DID, name: null, isOrganization: false, actorDid: PERSONAL_DID },
+      delegator: { did: PERSONAL_DID, name: null, handle: null, isOrganization: false, actorDid: PERSONAL_DID },
     });
   });
 });
