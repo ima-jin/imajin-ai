@@ -652,6 +652,7 @@ file: ``- `path` — role``.
 - `apps/kernel/src/lib/inference/consent.ts` — S5
 - `apps/kernel/src/lib/inference/resolve.ts` — S5
 - `apps/kernel/src/lib/usage/billed/receipt.ts` — S5
+- `apps/kernel/src/lib/pay/fee-receipts.ts` — S3/S5 (signs fee facts as the configured platform DID with the node key; signed loop ingest and replay re-verification require that DID's current registered key, so historical replay after rotation fails closed under the existing current-key verifier gap in §7; never re-sign stored receipts)
 - `apps/kernel/src/lib/loops/cycle.ts` — S5
 - `apps/kernel/src/lib/loops/emit.ts` — S5 (signed native loop lifecycle observations)
 - `apps/kernel/src/lib/loops/surface-conflict.ts` — S5 (node-witness-signed advisory collision observations, #2405)
