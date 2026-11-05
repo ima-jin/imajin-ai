@@ -32,6 +32,9 @@ concurrency:
 jobs:
   check-migrations:
     name: Check Migrations
+    # Keep all four shards runnable together before other jobs compete for
+    # the same runner slots. No runner capacity or queue rules are changed.
+    needs: [test]
     runs-on: imajin-self-hosted
     container:
       # Pinned to the immutable digest `build-ci-image.yml` published on main
@@ -66,6 +69,7 @@ jobs:
 
   audit:
     name: Security Audit
+    needs: [test]
     if: github.event_name != 'merge_group'
     runs-on: imajin-self-hosted
     container:
@@ -120,6 +124,7 @@ jobs:
 
   lint-and-typecheck:
     name: Lint & Typecheck
+    needs: [test]
     runs-on: imajin-self-hosted
     container:
       image: ghcr.io/ima-jin/ci-runner@sha256:fcc0fb4320e709976a93ac9f940bb2f532a82d3e7f953798c48dc4b0d8435681
@@ -208,8 +213,12 @@ jobs:
           MIGRATION_OWNERSHIP_BASE_REF: ${{ github.event.merge_group.base_sha || 'origin/main' }}
         run: pnpm check:migration-ownership
 
-  test:
-    name: Test
+  test-shards:
+    name: Test shard ${{ matrix.shard }}/4
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
     runs-on: imajin-self-hosted
     container:
       image: ghcr.io/ima-jin/ci-runner@sha256:fcc0fb4320e709976a93ac9f940bb2f532a82d3e7f953798c48dc4b0d8435681
@@ -256,7 +265,7 @@ jobs:
 
       - name: Run tests with coverage
         if: github.event_name != 'merge_group'
-        run: pnpm --silent test:agent --coverage
+        run: pnpm --silent test:agent --coverage --reporter=blob --shard=${{ matrix.shard }}/4
       # Root Vitest owns the aliases/config for ALL workspace tests; invoking
       # package test scripts would miss packages without one and lose aliases.
       - name: Run affected unit tests (merge group)
@@ -265,11 +274,77 @@ jobs:
           MERGE_GROUP_BASE_SHA: ${{ github.event.merge_group.base_sha }}
         run: |
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
-          bash scripts/ci/merge-group-tests.sh
+          bash scripts/ci/merge-group-tests.sh --shard=${{ matrix.shard }}/4
 
-      # Handed to the SonarCloud job rather than re-running the suite there.
-      # Without a coverage report the scanner reports new_coverage=0.0 and fails
-      # the quality gate on every PR that adds code.
+      # Vitest's blob includes the coverage map. Merge maps before emitting
+      # LCOV, not by concatenating LCOV records or summing line counts.
+      - name: Upload shard report
+        if: github.event_name != 'merge_group'
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-blob-${{ matrix.shard }}
+          path: .vitest-reports/blob-${{ matrix.shard }}-4.json
+          include-hidden-files: true
+          retention-days: 1
+          if-no-files-found: error
+
+  test:
+    name: Test
+    permissions:
+      contents: read
+      packages: read
+    needs: [test-shards]
+    if: always()
+    runs-on: imajin-self-hosted
+    container:
+      image: ghcr.io/ima-jin/ci-runner@sha256:fcc0fb4320e709976a93ac9f940bb2f532a82d3e7f953798c48dc4b0d8435681
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+      volumes:
+        - /srv/ci/pnpm-store:/pnpm-store
+    env:
+      npm_config_store_dir: /pnpm-store
+    steps:
+      - name: Require every shard to succeed
+        env:
+          SHARD_RESULT: ${{ needs.test-shards.result }}
+        run: test "$SHARD_RESULT" = success
+
+      - uses: actions/checkout@v4
+        if: github.event_name != 'merge_group'
+
+      - uses: pnpm/action-setup@eae0cfeb286e66ffb5155f1a79b90583a127a68b # v2
+        if: github.event_name != 'merge_group'
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        if: github.event_name != 'merge_group'
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        if: github.event_name != 'merge_group'
+        run: pnpm install --frozen-lockfile --ignore-scripts --loglevel=error
+
+      - name: Download shard reports
+        if: github.event_name != 'merge_group'
+        uses: actions/download-artifact@v4
+        with:
+          pattern: test-blob-*
+          path: .vitest-reports
+          merge-multiple: true
+
+      - name: Require four reports and merge coverage
+        if: github.event_name != 'merge_group'
+        run: |
+          for shard in 1 2 3 4; do
+            test -s ".vitest-reports/blob-$shard-4.json"
+          done
+          pnpm --silent test:agent --merge-reports --coverage
+          test -s coverage/lcov.info
+
       - name: Upload coverage report
         if: github.event_name != 'merge_group'
         uses: actions/upload-artifact@v4
@@ -389,6 +464,7 @@ jobs:
   # scripts/__tests__/provision-service-bootstrap-entrypoint.test.mjs.
   provisioning-entrypoint:
     name: Provisioning entrypoint
+    needs: [test]
     # Its full workspace build and deploy dry-run were proved on the PR head.
     if: github.event_name != 'merge_group'
     runs-on: imajin-self-hosted
@@ -437,6 +513,7 @@ jobs:
 
   ci-guards:
     name: CI Guards
+    needs: [test]
     runs-on: imajin-self-hosted
     container:
       image: ghcr.io/ima-jin/ci-runner@sha256:fcc0fb4320e709976a93ac9f940bb2f532a82d3e7f953798c48dc4b0d8435681

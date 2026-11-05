@@ -170,9 +170,9 @@ describe('turbo local cache on the self-hosted container jobs (#2605)', () => {
   );
 
   it('does not run the coverage-producing Test job through turbo (Sonar coverage stays complete)', () => {
-    const test = loadWorkflow('ci.yml').jobs.test;
+    const test = loadWorkflow('ci.yml').jobs['test-shards'];
     expect(runsTurbo(test)).toBe(false);
-    expect(steps(test).some((s) => s.run === 'pnpm --silent test:agent --coverage')).toBe(true);
+    expect(steps(test).some((s) => s.run?.startsWith('pnpm --silent test:agent --coverage --reporter=blob --shard='))).toBe(true);
     expect(rootPackage.scripts['test:agent']).not.toMatch(/\bturbo\b/);
     expect(rootPackage.scripts['test:coverage']).not.toMatch(/\bturbo\b/);
     expect(rootPackage.scripts.test).not.toMatch(/\bturbo\b/);
