@@ -227,18 +227,18 @@ export async function listDiscoveryConnectorMetadata(context: InferenceAuthConte
     ...await upstreamRows(context),
   );
   const known = new Set([...brains, ...rows.map(row => row.provider)]);
-  for (const registration of registrations) {
+  await forEachSequential(registrations, async registration => {
     if (known.has(registration.provider)
-      || registration.provider.startsWith('app-upstream:') || registration.provider.endsWith('-billing')) continue;
+      || registration.provider.startsWith('app-upstream:') || registration.provider.endsWith('-billing')) return;
     const owner = await readInferencePrincipal(registration.ownerDid);
     // Org-owned credentials are projected through the authorized org lanes, never as personal fallbacks.
-    if (!owner || isOrgScope(owner.scope)) continue;
+    if (!owner || isOrgScope(owner.scope)) return;
     known.add(registration.provider);
     rows.push({
       ...diagnostic(registration.provider, 'http', actorDid, registration.status === 'active' && !registration.revokedAt),
       grantStatus: 'not-evaluated', usable: null,
       fix: { control: 'Connectors → configuration and grants', href: '/auth/connectors', actingDid: actorDid },
     });
-  }
+  });
   return rows;
 }

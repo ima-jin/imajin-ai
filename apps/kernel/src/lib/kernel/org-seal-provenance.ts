@@ -7,7 +7,7 @@ import { authorizeOrgConnectionAdmin } from './org-held-connection-policy';
 import { isOrgScope } from './connection-principal-policy';
 
 /** A field name cannot attest which human loaded an org credential. */
-export async function resolveOrgSealProvenance(request: NextRequest, ownerDid: string) {
+export function resolveOrgSealProvenance(request: NextRequest, ownerDid: string) {
   return db.transaction(async tx => {
     const [owner] = await tx.select({ scope: identities.scope }).from(identities)
       .where(eq(identities.id, ownerDid)).limit(1);

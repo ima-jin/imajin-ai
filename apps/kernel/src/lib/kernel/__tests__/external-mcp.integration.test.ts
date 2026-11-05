@@ -7,6 +7,7 @@ import { NextRequest } from 'next/server';
 import type { Identity } from '@imajin/auth';
 import type { VaultFile } from '@imajin/vault-core';
 import { readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 
 vi.setConfig({ testTimeout: 30_000, hookTimeout: 30_000 });
 const h = vi.hoisted(() => ({
@@ -109,6 +110,7 @@ import { resolveOrgHeldBrain } from '@/src/lib/inference/org-held-brain';
 const tables = [identities, identityMembers, delegationGrants, attestations, channelLinks, registryApps, connectors, orgConnectionSuspensions, orgConnectionEvents,
   vaultDelegationGrants, vaultOwnerEnvelopes, vaultGrantRequests, orgConnectionMemberGrants];
 const keys = generateKeypair();
+const credentialHash = (value: string) => createHash('sha256').update(value).digest('hex');
 let client: PGlite;
 let database: ReturnType<typeof drizzle>;
 let sequence = 0;
@@ -1772,7 +1774,7 @@ describe('/jin Anthropic seal human provenance (#3313)', () => {
       memberDid: assigned ? agentDid : member, orgDid: org,
       ...(assigned ? { assignedAgentDid: agentDid } : {}),
     }, 'claude-test');
-    expect(brain.apiKey === h.secrets.at(-1)).toBe(true);
+    expect(credentialHash(brain.apiKey)).toBe(credentialHash(h.secrets.at(-1)!));
     expect(brain.credentialDid).toBe(org);
     expect(brain.orgUsage?.connectionId).toBe((await orgRows())[0].id);
   });

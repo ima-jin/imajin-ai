@@ -1,5 +1,5 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import type { AddressInfo } from 'node:net';
 import { PGlite } from '@electric-sql/pglite';
 import { drizzle } from 'drizzle-orm/pglite';
@@ -79,6 +79,7 @@ const ORG = 'did:imajin:artifact';
 const APP = 'did:imajin:app';
 const AGENT = 'did:imajin:agent';
 const FIELD = `anthropic-api-key:${ORG}`;
+const credentialHash = (value: string) => createHash('sha256').update(value).digest('hex');
 const tables = [identities, identityMembers, delegationGrants, channelLinks, connectors, orgConnectionMemberGrants, orgConnectionSuspensions, vaultDelegationGrants];
 let client: PGlite;
 let database: ReturnType<typeof drizzle>;
@@ -900,7 +901,7 @@ describe('prod-shaped sealed Anthropic org resolution (#3313)', () => {
       provider: 'anthropic', credentialDid: ORG, modelId: 'claude-test',
       orgUsage: { orgDid: ORG, connectionId: 'org-connection', memberDid: assigned ? ORG : MEMBER },
     });
-    expect(brain.apiKey === h.key).toBe(true);
+    expect(credentialHash(brain.apiKey)).toBe(credentialHash(h.key));
     expect(h.get).toHaveBeenCalledWith(FIELD);
     expect(h.unseal).toHaveBeenCalledTimes(1);
     expect(h.personal).not.toHaveBeenCalled();
