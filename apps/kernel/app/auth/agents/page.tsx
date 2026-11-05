@@ -19,6 +19,7 @@ interface GrantCapability {
 interface Delegator {
   did: string;
   name: string | null;
+  handle: string | null;
   isOrganization: boolean;
   actorDid: string;
 }
@@ -66,11 +67,22 @@ interface Agent {
 interface CreatedAgent {
   did: string;
   handle: string;
+  owner: Delegator;
   displayName: string | null;
   keypair: {
     privateKey: string;
     publicKey: string;
   };
+}
+
+function AgentOwner({ owner }: Readonly<{ owner: Delegator }>) {
+  return (
+    <p className="text-sm text-gray-400 break-words">
+      Owned by {owner.handle ? `@${owner.handle}` : owner.name || owner.did}
+      {owner.handle && owner.name ? ` — ${owner.name}` : ''}
+      <span className="block font-mono text-xs break-all">{owner.did}</span>
+    </p>
+  );
 }
 
 interface Session {
@@ -726,7 +738,9 @@ export default function AgentsPage() {
   // finding. Stable across renders so it only fires when the input mounts.
   const autoFocusRef = useCallback((el: HTMLInputElement | null) => el?.focus(), []);
 
-  const handlePrefix = session?.handle ? `${session.handle}-jin` : '';
+  const handlePrefix = delegator?.handle ? `${delegator.handle}-jin-` : '';
+  const submittedHandle = `${handlePrefix}${handle}`;
+  const handleValid = handle.length >= 3 && submittedHandle.length <= 64;
 
   function showStatus(type: 'success' | 'error', text: string) {
     setStatusMessage({ type, text });
@@ -790,8 +804,12 @@ export default function AgentsPage() {
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
-    if (!handle || handle.length < 3) {
-      showStatus('error', 'Handle must be at least 3 characters');
+    if (!delegator) {
+      showStatus('error', 'Agent owner unavailable. Reload before creating an agent.');
+      return;
+    }
+    if (!handleValid) {
+      showStatus('error', 'Enter at least 3 characters; the full handle must be at most 64 characters.');
       return;
     }
 
@@ -801,7 +819,7 @@ export default function AgentsPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ handle, displayName, bio }),
+        body: JSON.stringify({ handle: submittedHandle, displayName, bio }),
       });
 
       if (res.ok) {
@@ -809,6 +827,7 @@ export default function AgentsPage() {
         setCreatedAgent({
           did: data.did,
           handle: data.handle,
+          owner: delegator,
           displayName: data.displayName,
           keypair: data.keypair,
         });
@@ -1224,26 +1243,31 @@ export default function AgentsPage() {
         {showCreateForm && !createdAgent && (
           <div className="bg-[#0a0a0a] border border-gray-800 rounded-2xl p-8">
             <h2 className="text-lg font-semibold text-white mb-4">Create new agent</h2>
+            {delegator ? <AgentOwner owner={delegator} /> : (
+              <p role="alert" className="text-sm text-red-400">Agent owner unavailable. Reload before creating an agent.</p>
+            )}
             <form onSubmit={handleCreate} className="space-y-4">
               <div>
                 <label htmlFor="create-agent-handle" className="block text-sm text-gray-400 mb-1">Handle</label>
                 <div className="flex items-center gap-2">
                   {handlePrefix && (
-                    <span className="text-sm text-gray-500 shrink-0">{handlePrefix}-</span>
+                    <span className="text-sm text-gray-500 shrink-0">{handlePrefix}</span>
                   )}
                   <input
                     id="create-agent-handle"
                     type="text"
                     value={handle}
-                    onChange={(e) => setHandle(e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, ''))}
-                    placeholder={handlePrefix ? 'travel' : 'veteze-jin-travel'}
+                    onChange={(e) => setHandle(e.target.value.toLowerCase().replaceAll(/[^a-z0-9_-]/g, ''))}
+                    placeholder={handlePrefix ? 'travel' : 'travel-agent'}
+                    aria-describedby="create-agent-handle-help"
                     ref={autoFocusRef}
                     className="flex-1 px-4 py-2 border border-gray-700 rounded-lg bg-black text-white focus:ring-2 focus:ring-amber-500 focus:border-transparent"
                   />
                 </div>
-                <p className="text-xs text-gray-600 mt-1">
-                  Lowercase letters, numbers, underscores, and hyphens only.
+                <p id="create-agent-handle-help" className="text-xs text-gray-600 mt-1">
+                  Lowercase letters, numbers, underscores, and hyphens only. Enter at least 3 characters; the full handle must be at most 64 characters.
                 </p>
+                {submittedHandle.length > 64 && <p role="alert" className="text-sm text-red-400">Full handle exceeds 64 characters.</p>}
               </div>
               <div>
                 <label htmlFor="create-agent-display-name" className="block text-sm text-gray-400 mb-1">Display name</label>
@@ -1270,7 +1294,7 @@ export default function AgentsPage() {
               <div className="flex gap-3 pt-2">
                 <button
                   type="submit"
-                  disabled={!handle || handle.length < 3 || actionLoading === 'create'}
+                  disabled={!delegator || !handleValid || actionLoading === 'create'}
                   className="px-6 py-2 bg-amber-500 hover:bg-amber-400 text-black font-medium rounded-lg transition disabled:opacity-50"
                 >
                   {actionLoading === 'create' ? 'Creating…' : 'Create Agent'}
@@ -1292,6 +1316,7 @@ export default function AgentsPage() {
           <div className="bg-amber-900/10 border border-amber-700/50 rounded-2xl p-8 space-y-6">
             <div>
               <h2 className="text-lg font-semibold text-white mb-1">Agent created!</h2>
+              <AgentOwner owner={createdAgent.owner} />
               <p className="text-sm text-gray-400">
                 <strong className="text-amber-400">Save this keypair now.</strong> It will never be shown again.
               </p>

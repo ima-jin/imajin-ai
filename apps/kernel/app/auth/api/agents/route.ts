@@ -198,9 +198,10 @@ export async function GET(request: NextRequest) {
     ];
 
     const { identity } = authResult;
-    const delegatorDid = identity.actingAs ?? identity.id;
-    const [organization] = identity.actingAs ? await db
-      .select({ name: identities.name })
+    const delegatorDid = actingDid;
+    const isActing = delegatorDid !== identity.id;
+    const [organization] = isActing ? await db
+      .select({ name: identities.name, handle: identities.handle })
       .from(identities)
       .where(eq(identities.id, delegatorDid))
       .limit(1) : [];
@@ -209,7 +210,8 @@ export async function GET(request: NextRequest) {
       agents,
       delegator: {
         did: delegatorDid,
-        name: organization?.name ?? (identity.actingAs ? null : identity.name ?? null),
+        name: organization?.name ?? (isActing ? null : identity.name ?? null),
+        handle: organization?.handle ?? (isActing ? null : identity.handle ?? null),
         isOrganization: Boolean(identity.actingAs),
         actorDid: identity.id,
       },

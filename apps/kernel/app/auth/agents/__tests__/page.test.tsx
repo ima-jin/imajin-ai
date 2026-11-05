@@ -88,8 +88,16 @@ function agent(overrides: Partial<AgentFixture> = {}): AgentFixture {
 
 type FetchImpl = (url: string, init?: RequestInit) => Promise<Response>;
 
-function installFetch(agents: AgentFixture[], overrides: Partial<Record<string, FetchImpl>> = {}, delegator = {
-  did: 'did:imajin:ryan', name: 'Ryan', isOrganization: false, actorDid: 'did:imajin:ryan',
+interface DelegatorFixture {
+  did: string;
+  name: string | null;
+  handle?: string | null;
+  isOrganization: boolean;
+  actorDid: string;
+}
+
+function installFetch(agents: AgentFixture[], overrides: Partial<Record<string, FetchImpl>> = {}, delegator: DelegatorFixture | null = {
+  did: 'did:imajin:ryan', name: 'Ryan', handle: 'ryan', isOrganization: false, actorDid: 'did:imajin:ryan',
 }) {
   const spy = vi.fn(async (rawUrl: string, init?: RequestInit) => {
     const url = String(rawUrl);
@@ -448,6 +456,106 @@ describe('create-agent form (S9379 focus-on-mount)', () => {
     const input = screen.getByLabelText('Handle');
     expect(input).toBeDefined();
     expect(document.activeElement).toBe(input);
+  });
+});
+
+describe('create-agent acting identity (#3192)', () => {
+  const personal = { did: 'did:imajin:ryan', name: 'Ryan', handle: 'ryan', isOrganization: false, actorDid: 'did:imajin:ryan' };
+  const org = { did: 'did:imajin:artifact', name: 'Artifact', handle: 'artifact', isOrganization: true, actorDid: personal.did };
+
+  async function openCreate() {
+    render(<AgentsPage />);
+    await waitFor(() => expect(screen.queryByText('Loading agents…')).toBeNull());
+    fireEvent.click(screen.getByRole('button', { name: '+ Create Agent' }));
+    return screen.getByLabelText('Handle');
+  }
+
+  it.each([personal, org])('shows and submits the same prefix for $handle, confirms the owner and refreshes its list', async owner => {
+    const agents: AgentFixture[] = [];
+    const fullHandle = `${owner.handle}-jin-travel`;
+    const spy = installFetch(agents, {
+      '/auth/api/agents': async (_url, init) => {
+        if (init?.method !== 'POST') return Response.json({});
+        const created = agent({ did: 'did:imajin:new-agent', handle: fullHandle, displayName: 'Travel Agent', grants: [] });
+        agents.push(created);
+        return Response.json({ ...created, keypair: {} }, { status: 201 });
+      },
+    }, owner);
+    const input = await openCreate();
+    expect(screen.getByText(`${owner.handle}-jin-`)).toBeDefined();
+    if (owner.isOrganization) expect(screen.queryByText('ryan-jin-')).toBeNull();
+    const ownerLabel = screen.getByText(`Owned by @${owner.handle} — ${owner.name}`);
+    expect(within(ownerLabel).getByText(owner.did)).toBeDefined();
+    fireEvent.change(input, { target: { value: 'Travel!' } });
+    expect((input as HTMLInputElement).value).toBe('travel');
+    fireEvent.change(screen.getByLabelText('Display name'), { target: { value: 'Travel Agent' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Create Agent', exact: true }));
+    await screen.findByText('Agent created!');
+    expect(spy).toHaveBeenCalledWith('/auth/api/agents', expect.objectContaining({
+      method: 'POST', credentials: 'include',
+      body: JSON.stringify({ handle: fullHandle, displayName: 'Travel Agent', bio: '' }),
+    }));
+    expect(screen.getByText(`Owned by @${owner.handle} — ${owner.name}`)).toBeDefined();
+    expect(screen.getByText('Travel Agent')).toBeDefined();
+    expect(screen.getByText(`@${fullHandle}`)).toBeDefined();
+    expect(spy.mock.calls.filter(([url, init]) => url === '/auth/api/agents' && !init?.method)).toHaveLength(2);
+  });
+
+  it.each([
+    { ...org, handle: null },
+    { ...org, handle: null, name: null },
+    { ...org, name: null },
+  ])('never falls back to the personal handle when org metadata is absent: %j', async owner => {
+    const spy = installFetch([], { '/auth/api/agents': async () => Response.json({ error: 'Not available' }, { status: 403 }) }, owner);
+    const input = await openCreate();
+    expect(screen.queryByText('ryan-jin-')).toBeNull();
+    expect(screen.getByText(`Owned by ${owner.handle ? `@${owner.handle}` : owner.name || owner.did}`)).toBeDefined();
+    fireEvent.change(input, { target: { value: 'travel' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Create Agent', exact: true }));
+    await screen.findByText('Not available');
+    expect(spy).toHaveBeenCalledWith('/auth/api/agents', expect.objectContaining({
+      method: 'POST', body: JSON.stringify({ handle: owner.handle ? 'artifact-jin-travel' : 'travel', displayName: '', bio: '' }),
+    }));
+    expect(screen.queryByText('Agent created!')).toBeNull();
+  });
+
+  it('blocks create without a validated owner, even if the personal session is available', async () => {
+    const spy = installFetch([], {}, null);
+    const input = await openCreate();
+    fireEvent.change(input, { target: { value: 'travel' } });
+    expect((screen.getByRole('button', { name: 'Create Agent', exact: true }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.submit(input.closest('form')!);
+    expect(screen.queryByText('ryan-jin-')).toBeNull();
+    expect(spy).not.toHaveBeenCalledWith('/auth/api/agents', expect.objectContaining({ method: 'POST' }));
+  });
+
+  it.each(['', 'ab', 'x'.repeat(52)])('rejects invalid suffix/full-handle length: %s', async value => {
+    const spy = installFetch([], {}, org);
+    const input = await openCreate();
+    fireEvent.change(input, { target: { value } });
+    expect((screen.getByRole('button', { name: 'Create Agent', exact: true }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.submit(input.closest('form')!);
+    expect(screen.getByText('Enter at least 3 characters; the full handle must be at most 64 characters.')).toBeDefined();
+    expect(spy).not.toHaveBeenCalledWith('/auth/api/agents', expect.objectContaining({ method: 'POST' }));
+  });
+
+  it('accepts a full handle of exactly 64 characters including the prefix', async () => {
+    installFetch([], {}, org);
+    const input = await openCreate();
+    fireEvent.change(input, { target: { value: 'x'.repeat(51) } });
+    expect((screen.getByRole('button', { name: 'Create Agent', exact: true }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it('surfaces the server org-creation boundary without claiming success or changing owner', async () => {
+    installFetch([], {
+      '/auth/api/agents': async () => Response.json({ error: 'Organizations must use Provision agent to select delegation capabilities' }, { status: 403 }),
+    }, org);
+    const input = await openCreate();
+    fireEvent.change(input, { target: { value: 'travel' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Create Agent', exact: true }));
+    await screen.findByText('Organizations must use Provision agent to select delegation capabilities');
+    expect(screen.queryByText('Agent created!')).toBeNull();
+    expect(screen.getByText('Owned by @artifact — Artifact')).toBeDefined();
   });
 });
 
