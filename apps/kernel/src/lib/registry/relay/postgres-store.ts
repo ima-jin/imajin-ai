@@ -10,6 +10,7 @@ import type {
   OperationKind,
   CommitBatch,
   CommitResult,
+  OperationCommit,
   RelayWriteStore,
   RelayWriterState,
   RelayStats,
@@ -98,6 +99,20 @@ function storedRevocation(row: typeof relayRevocations.$inferSelect): StoredRevo
   };
 }
 
+function validateOperationCommit(batch: OperationCommit): void {
+  if (batch.logEntry && batch.logEntry.cid !== batch.operation.cid) {
+    throw new Error('commit: log entry does not describe the committed operation');
+  }
+  if (batch.identityChain && batch.contentChain) {
+    throw new Error('commit: one operation extends one chain, not two');
+  }
+  const removal = batch.removePublicCredential;
+  if (removal && (!batch.revocation || batch.revocation.issuerDID !== removal.issuerDID
+    || batch.revocation.credentialCID !== removal.credentialCID)) {
+    throw new Error('commit: credential removal requires its issuer-signed revocation');
+  }
+}
+
 export class PostgresRelayStore implements RelayStore, RelayWriteStore, RelayWriterState {
   constructor(private readonly db: PostgresJsDatabase<Record<string, unknown>>) {}
 
@@ -108,12 +123,7 @@ export class PostgresRelayStore implements RelayStore, RelayWriteStore, RelayWri
         await store.putBlob(batch.key, batch.bytes);
         return 'new';
       }
-      if (batch.logEntry && batch.logEntry.cid !== batch.operation.cid) {
-        throw new Error('commit: log entry does not describe the committed operation');
-      }
-      if (batch.identityChain && batch.contentChain) {
-        throw new Error('commit: one operation extends one chain, not two');
-      }
+      validateOperationCommit(batch);
       const inserted = await tx.insert(relayOperations).values(batch.operation)
         .onConflictDoNothing().returning({ cid: relayOperations.cid });
       if (inserted.length === 0) return 'duplicate';
@@ -126,11 +136,7 @@ export class PostgresRelayStore implements RelayStore, RelayWriteStore, RelayWri
       if (batch.publicCredential) await store.addPublicCredential(batch.publicCredential);
       if (batch.removePublicCredential) {
         const { issuerDID, credentialCID } = batch.removePublicCredential;
-        if (!batch.revocation || batch.revocation.issuerDID !== issuerDID
-          || batch.revocation.credentialCID !== credentialCID) {
-          throw new Error('commit: credential removal requires its issuer-signed revocation');
-        }
-        await tx.update(relayPublicCredentials).set({ revokedBy: batch.revocation.cid })
+        await tx.update(relayPublicCredentials).set({ revokedBy: batch.revocation!.cid })
           .where(and(eq(relayPublicCredentials.cid, credentialCID), eq(relayPublicCredentials.issuerDid, issuerDID)));
       }
       if (batch.logEntry) await store.appendToLog(batch.logEntry);
@@ -160,7 +166,9 @@ export class PostgresRelayStore implements RelayStore, RelayWriteStore, RelayWri
       identity: 0, content: 0, artifact: 0, credential: 0, countersign: 0, revocation: 0,
     };
     for (const row of counts) {
-      const kind = row.kind === 'identity-op' ? 'identity' : row.kind === 'content-op' ? 'content' : row.kind;
+      let kind = row.kind;
+      if (kind === 'identity-op') kind = 'identity';
+      if (kind === 'content-op') kind = 'content';
       if (Object.hasOwn(countsByKind, kind)) countsByKind[kind as keyof typeof countsByKind] = Number(row.count);
     }
     const first = await this.db.select().from(relayOperationLog).orderBy(relayOperationLog.seq).limit(1);

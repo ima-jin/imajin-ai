@@ -269,10 +269,32 @@ describe('relay 0.55 SQL store contract', () => {
     expect(await store.getOperation('own-rev')).toBeDefined();
   });
 
+  it('reports all six operation kinds and empty-log stats', async () => {
+    expect(await store.getStats()).toMatchObject({ opCount: 0, headCid: null, oldestOpAt: null });
+    const kinds = ['identity-op', 'content-op', 'artifact', 'credential', 'countersign', 'revocation'] as const;
+    for (const kind of kinds) {
+      await store.appendToLog({ cid: kind, kind, chainId: 'chain', jwsToken: 'opaque', ingestedAt: timestamp });
+    }
+    expect(await store.getStats()).toMatchObject({
+      opCount: 6, headCid: 'revocation',
+      countsByKind: { identity: 1, content: 1, artifact: 1, credential: 1, countersign: 1, revocation: 1 },
+    });
+  });
+
   it('refuses credential removal without its signed revocation', async () => {
     await expect(store.commit({ ...operation('unsigned-removal'),
       removePublicCredential: { issuerDID: 'issuer', credentialCID: 'credential' } })).rejects.toThrow('issuer-signed');
     expect(await store.getOperation('unsigned-removal')).toBeUndefined();
+  });
+
+  it.each([
+    { issuerDID: 'stranger', credentialCID: 'credential' },
+    { issuerDID: 'issuer', credentialCID: 'other-credential' },
+  ])('refuses removal paired with a different revocation %j', async (removePublicCredential) => {
+    await expect(store.commit({
+      ...operation('mismatched-removal'), revocation: revocation('mismatched-removal'), removePublicCredential,
+    })).rejects.toThrow('issuer-signed');
+    expect(await store.getOperation('mismatched-removal')).toBeUndefined();
   });
 
   it('pages pending operations past stalled entries and retains peer provenance', async () => {
