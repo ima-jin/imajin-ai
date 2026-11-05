@@ -1,85 +1,54 @@
 # Imajin contributor guide
 
-Read these before doing anything:
+Read [canonical patterns](docs/guide/canonical-patterns.md) before changing a primitive boundary. Reuse the shared auth, identity, settlement, attribution and disclosure helpers rather than implementing route-local copies.
 
-- `docs/guide/canonical-patterns.md` — **the one correct primitive for each seam (auth, settlement, .fair, checkout identity). Do NOT re-implement these inline. Extend with an option instead of forking.** This is the single highest-leverage file for keeping the codebase coherent.
-- `docs/DEVELOPER.md` — quickstart, env setup, port map, conventions
-- `docs/ENVIRONMENTS.md` — service URLs, ports, domains
-- `docs/PR-CHECKLIST.md` — what every PR needs
-- `README.md` — monorepo structure, apps and packages
-
-## Key gotchas
-
-- **Kernel has no basePath.** Userspace apps have basePaths matching their name (`/events`, `/market`, etc.). Kernel serves at `/`.
-- **Env loading:** Scripts don't auto-load `.env` files. Kernel uses `--env-file=.env.local`. Next.js apps use built-in `.env` loading. Export `DATABASE_URL` in your shell for scripts.
-- **`NEXT_PUBLIC_` vars are build-time.** They get inlined by Next.js at build, not runtime.
-- **All migration DDL must be idempotent.** Use `IF NOT EXISTS` everywhere.
-- **Never set `NODE_ENV` in the shell.** Scripts set it internally.
-- **After pulling main, rebuild everything.** Stale `.next` builds cause phantom errors.
-- **Shared packages must not depend upward.** Infrastructure packages have zero app dependencies.
 ## What this is
 
-Reference implementation of the MJN Protocol: the six primitives and their rails.
-The current workspace contains the kernel, broker-agent and corpus. Events,
-coffee, dykil, learn, links and market are independently owned apps built on Imajin,
-not workspace targets. Inventory and owned README links are generated in README.md.
+Imajin's kernel serves **Attestation · Communication · Attribution · Settlement · Discovery · Revocation** and shared rails. Identity is their subject. The workspace contains the kernel, broker-agent and corpus. Apps built on Imajin own separate repositories, identities and deployment procedures.
 
-## Documentation — load as needed
+## Read as needed
 
-- [docs/DEVELOPER.md](docs/DEVELOPER.md) — read when setting up, debugging builds, or working with database/migrations/env vars
-- [docs/ENVIRONMENTS.md](docs/ENVIRONMENTS.md) — read when working with ports, domains, or database names
-- [docs/PR-CHECKLIST.md](docs/PR-CHECKLIST.md) — read before submitting a PR
-- [docs/DEBT.md](docs/DEBT.md) — read when considering refactors, to check if the debt is already tracked
-- [docs/MIGRATIONS.md](docs/MIGRATIONS.md) — read when changing database schemas
-- [DESIGN.md](DESIGN.md) — read when working on UI or frontend components
-- [docs/canon/](docs/canon/) — canon home: thesis, RFCs ([docs/canon/rfcs/](docs/canon/rfcs/INDEX.md)), carried canon issues. Read when working on protocol-level features
-- [docs/proposals/](docs/proposals/) — read when working on proposed or in-progress features
+- [Contributor setup](docs/DEVELOPER.md): local setup, builds, environment and database work.
+- [Environment configuration](docs/ENVIRONMENTS.md): ports, domains and configuration ownership.
+- [PR checklist](docs/PR-CHECKLIST.md): submission requirements.
+- [Migration discipline](docs/MIGRATIONS.md): root kernel SQL and app-owned migration boundaries.
+- [Known debt](docs/DEBT.md): existing refactor ownership.
+- [Design](DESIGN.md): frontend conventions.
+- [Canon and RFCs](docs/canon/rfcs/INDEX.md): protocol grammar and explicitly historical records.
+- [Root README](README.md): app and package entry points.
 
-## Architecture
+## Local setup
 
-```
-apps/
-  kernel/     — Core platform (auth, identity, pay, profile, chat, media, notify, registry, connections)
-  broker-agent/ — Internal Telegram agent surface
-  corpus/     — Internal owner-DID retrieval daemon
-
-packages/     — Workspace libraries (@imajin/*); published SDKs use @ima-jin/*
-```
-
-## Dev setup (quick version)
-
-Full instructions in [docs/DEVELOPER.md](docs/DEVELOPER.md). The short version:
+Use the documented setup script and a local development database. Start only the kernel when no other workspace service is needed:
 
 ```bash
-pnpm install
-cp apps/kernel/.env.example apps/kernel/.env.local  # edit DATABASE_URL
-pnpm --filter @imajin/kernel dev                      # starts only the kernel
+bash scripts/setup-local.sh
+pnpm --filter @imajin/kernel dev
 ```
 
-## Key conventions
+The kernel has no basePath and listens on port 3000 in local development. Independently owned apps configure their own routing prefixes; do not add removed app workspace filters.
 
-- **Database:** Single Postgres database, each service owns a named schema (auth, profile, chat, etc.). Tables are NOT in `public`.
-- **Env vars:** Kernel uses `node --env-file=.env.local`. Next.js apps use built-in `.env` loading. Root-level scripts (db:migrate, db:reset) do NOT load .env files — you must `export DATABASE_URL` in your shell.
-- **basePath:** Apps served behind a reverse proxy use Next.js `basePath`. Events uses `/events` (so locally: `localhost:3006/events`). Check each app's `next.config.js`.
-- **Ports:** Dev `3xxx`, prod `7xxx`. Core: `x000–x099`, imajin apps: `x100–x199`, client apps: `x400–x499`.
-- **Migrations:** Never use `drizzle-kit push`. Put idempotent, owner-declared
-  kernel SQL in root `migrations/` above the fixed baseline cut; move/adapt
-  generated Drizzle scaffolding there. App SQL belongs in its owned repo.
-  See [docs/MIGRATIONS.md](docs/MIGRATIONS.md).
-- **IDs:** Prefix + timestamp + random pattern (e.g. `crs_m1abc123`).
-- **Auth pattern:** Every service calls kernel's auth service. See `src/lib/auth.ts` in any app.
-- **Dependencies:** Dynamic imports must be declared in `package.json`. Don't rely on pnpm hoisting.
-## Release seams (v0.8.27 source)
+## Code and data boundaries
 
-- Legal entity: `getLegalEntity` enforces per-field release; bank details use
-  `/auth/api/bank-details`, individual vault seals and retained immutable history.
-  Generic media scopes and generic vault fetch do not disclose these records.
-- SSH CA/signing: use the canonical vault primitives and `/vault/api/spec`.
-  The reusable GitHub OIDC deploy action is documented in
-  `docs/deploy/vault-ssh-deploy.md`; it does not authorize a live host rollout.
-- Corpus sources resolve to the registry owner DID, not a source hash or caller.
-  Check live owner grants before minting claims or selecting that owner's OAuth
-  connector. No node-token or personal-connector fallback. Read `apps/corpus/README.md`.
-- `@imajin/llm` uses AI SDK 5/provider SDK 2 and Zod 4. Tool contracts use
-  `inputSchema`, and streamed tool arguments use `input`; do not copy SDK 4
-  `parameters`/`args` examples into current consumers.
+- Infrastructure packages do not import kernel code. Declare dynamic-import dependencies in the consuming manifest.
+- Authenticate through shared primitives. Use verified effective identity for personal and organization contexts, including ownership, names, handles, defaults and labels. Denied act-as never falls back to a personal action.
+- App and agent tokens, human sessions, operator approval and member consent are distinct contracts. Check the live service spec rather than inferring authority from a DID selector.
+- Services own named Postgres schemas. Never read another app's tables as an integration shortcut.
+- Kernel schema changes require idempotent, schema-qualified root SQL above the fixed baseline cut, with an owner declaration. Drizzle can scaffold SQL; its local journal is not runner authority. Never use `drizzle-kit push` or modify applied migrations.
+- Retain history. State changes and revocation carry attestations; do not delete rows or repair a ledger by normalizing its recorded checksums.
+- Legal-entity and bank-detail reads use dedicated disclosure/custody helpers, not generic media or vault access.
+- Corpus GitHub sources use registry-resolved source owners, explicit grants and the owner's OAuth connector, never a node token or personal-connector fallback.
+
+## Configuration and boot
+
+Scripts do not automatically load environment files. Follow each command's documented environment boundary; the kernel uses its Node env-file entrypoint. Do not set `NODE_ENV` manually to work around a failing command.
+
+Public-prefixed variables are inlined at build time. Runtime credential adoption uses typed server-only vault configuration before database/server imports, not credential assignment to `process.env`. Never put secret values in manifests, code, command arguments, tests, logs or PR text.
+
+After updating shared packages, rebuild their outputs and affected apps rather than assuming incremental caches are current. Use the dependency/import conventions in the contributor guide and package manifests.
+
+## Documentation and validation
+
+Consumer docs describe current state and are edited in place. Explain concepts and integration flows, link service specs for route contracts, and keep release/issue history in its dedicated records. Do not append dated capability summaries or generated route catalogues.
+
+While iterating, run affected tests only. The full agent suite is `pnpm --silent test:agent`; build, lint and typecheck have agent output variants. Follow [AGENTS.md](AGENTS.md) for worktree isolation, output discipline and the reviewed release/deploy path.

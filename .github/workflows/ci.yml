@@ -551,6 +551,9 @@ jobs:
       - name: No issue references in product copy
         run: node scripts/ci-guard-no-issue-refs-in-copy.mjs
 
+      - name: Current-state consumer documentation
+        run: node scripts/ci-guard-current-state-docs.mjs
+
   sonarcloud:
     name: SonarCloud
     # A skipped JOB resolves this exact required context successfully without

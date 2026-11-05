@@ -1,277 +1,82 @@
 # @imajin/kernel
 
-The kernel — the Next.js application implementing the six primitives (Attestation, Communication, Attribution, Settlement, Discovery, Revocation) and the rails that serve them (auth, pay, registry, connections, chat, media, bus). This is not a third-party app; it's what a node operator runs.
+The kernel is the Next.js application implementing **Attestation · Communication · Attribution · Settlement · Discovery · Revocation** and the shared rails that serve them. It is what a node operator runs, not a registered third-party app.
 
-As of 2026-10-21, all six extracted verticals live in their own repositories behind the [registered-app contract](https://github.com/ima-jin/imajin-ai/issues/1981): [coffee](https://github.com/ima-jin/coffee/blob/main/README.md), [dykil](https://github.com/ima-jin/dykil/blob/main/README.md), [events](https://github.com/ima-jin/events/blob/main/README.md), [learn](https://github.com/ima-jin/learn/blob/main/README.md), [links](https://github.com/ima-jin/links/blob/main/README.md) and [market](https://github.com/ima-jin/market/blob/main/README.md). Events' kernel copy was pruned in [#2517](https://github.com/ima-jin/imajin-ai/issues/2517); its cutover closed on 2026-10-20 with buy/QR smoke deferred to [#2989](https://github.com/ima-jin/imajin-ai/issues/2989). Dykil's node-witnessed legacy import remains incomplete in [#2522](https://github.com/ima-jin/imajin-ai/issues/2522). See the [root README](../../README.md) for the generated inventory and dated acceptance status; source extraction alone is not operational acceptance.
+Apps built on Imajin own their repositories, identities and deployment procedures: [coffee](https://github.com/ima-jin/coffee), [dykil](https://github.com/ima-jin/dykil), [events](https://github.com/ima-jin/events), [learn](https://github.com/ima-jin/learn), [links](https://github.com/ima-jin/links) and [market](https://github.com/ima-jin/market). They use the [registered-app contract](../../docs/REGISTRATION.md), published SDKs and public APIs, never kernel-internal imports or another service's tables. Broker-agent and corpus are internal services.
 
 ## Run it
 
 ```bash
-pnpm --filter @imajin/kernel dev   # http://localhost:3000
+pnpm --filter @imajin/kernel dev
 ```
 
-Full setup guide: [docs/DEVELOPER.md](../../docs/DEVELOPER.md).
+The local kernel listens on port 3000 and has no basePath. Follow [contributor setup](../../docs/DEVELOPER.md) for prerequisites, environment configuration and migrations. [Environment configuration](../../docs/ENVIRONMENTS.md) and [deployment](../../deploy/README.md) describe operator procedures; source support is not proof that a host is configured.
 
-## Pre-cut delta for v0.8.30
+## Identity and app integration
 
-Merged-source snapshot **2026-11-02**, limited to `v0.8.29..2342115f5`:
-PR #3205, PR #3207, PR #3200 and PR #3201. This patch cut follows Ryan's
-2026-11-01 ruling; source availability is not a production deployment claim.
+People, agents and groups have distinct DIDs. Human organization act-as requires live membership, role and allowed-service checks. Use the verified effective identity for ownership, names, handles and labels; a refused org action must not fall back to the personal DID.
 
-- **Org-held member grants:** `GET/POST/DELETE /connections/api/org-held/{provider}/grants`
-  lists active provenance, grants or
-  revokes one member. Requires a human session acting as the org, live owner/admin
-  membership and `connections` service access; agents/apps cannot administer grants.
-  Writes take `{memberDid, reason}`, retain signed history and never expose keys.
-  Membership removal revokes that member's grants atomically; rejoining does not
-  restore them. Migration `0230` adds authority metadata only. Runtime org-key
-  injection is **not** included: #3202 (inference) and #3203 (Warp HTTP/MCP) remain
-  v0.9.0 work; grant-members UI is separate (#3181).
-  See the [connections spec](api-spec/connections.yaml) (PR #3200, #3180 part 1).
-- **Agent-readable approvals lease:** read-only
-  `POST /auth/api/grants/received/operator-approvals` requires the registered agent's own
-  Ed25519-signed envelope, not a session, bearer or internal key. It returns only
-  `{lease: {grantId, capability, expiresAt}}` or `{lease: null}`, scoped to the signer;
-  act-as headers cannot widen it. Effective expiry is the latest eligible live
-  grant covering this node's operator. Re-read after renewal/revocation; warning
-  scheduling remains consumer-side. See the [auth spec](api-spec/auth.yaml)
-  (PR #3201, #3018).
-- **Trusted fork Sonar:** after CI, the privileged follow-up uses reviewed `main`,
-  never PR-controlled workflows/helpers. Check `sonarcloud/trusted` on the exact
-  head plus Sonar total 0; workflow edits need post-merge verification.
-  See [contributor guidance](../../README.md#sonarcloud-on-fork-prs)
-  (PR #3205 and PR #3207).
-- **Not fixed by this cut:** #3206's `prod-jin` hang can recur while pm2 reports
-  `online`; an operator may still need a manual restart after deployment.
+Registered apps use user-delegated tokens or operator-approved app-service credentials. App visibility and sign-in audience are independent: a private app can admit anyone to consent without making them an organization member. Registration, operator approval and user consent do not replace one another.
 
-## Pre-cut delta for v0.8.29
+App sign-in starts in the app's login handler, preserves callback state and exchanges a short-lived single-use code with proof of the app's signing key. The app session uses only the kernel-returned subject and attestation, with its own isolated cookie. See the [SDK](../../packages/auth-client/README.md).
 
-Merged-source snapshot **2026-10-30**, limited to `v0.8.28..4d4383bf`.
-These changes are source availability, not a production deployment claim.
+An agent has its own DID and credentials. Organization agents use provisioning rather than the personal create flow. Orphan adoption checks live human administrator authority and original-key proof without changing the agent DID or key. Assignment describes whom an agent serves; current grants and per-operation checks determine its authority.
 
-- **Org-tagged connection revocation:** org admins can suspend, resume and remove
-  members' org-tagged external connections through `authorizeMemberConnection`.
-  Membership removal cascades to suspend all tagged connections with signed,
-  actor-attributed events; personal (untagged) calls stay usable and non-admin
-  attempts return 403 ([#3177](https://github.com/ima-jin/imajin-ai/pull/3177)).
-- **Org-held connector custody:** orgs can load, replace, revoke and list sealed
-  connector credentials under the org DID at `/connections/api/org-held`. Values
-  are vault-sealed and never returned; the `org-held-{provider}` registry namespace
-  is separate from member-held connectors
-  ([#3189](https://github.com/ima-jin/imajin-ai/pull/3189)).
-- **Gateway-host bootstrap:** the inference-passthrough gateway host is bootstrapped
-  by a push workflow with no interactive console sudo step. It requires a restricted,
-  organization-registered runner group and verifies `ref`/`workflow_ref` before any
-  privileged action ([#3188](https://github.com/ima-jin/imajin-ai/pull/3188)).
-- **Org agent creation and adoption:** creating an agent while acting as an org is
-  refused; use the Provision agent flow, which now accepts an optional exact handle.
-  Orphaned agents can be adopted with the original key proof, preserving DID, public
-  key and handle ([#3194](https://github.com/ima-jin/imajin-ai/pull/3194)).
+## Connectors and inference
 
-## Pre-cut delta for v0.8.28
+People connect providers on their profiles. Apps inspect safe connected state and invoke scoped kernel operations; provider keys remain in kernel custody.
 
-Merged-source snapshot **2026-10-26**, limited to `v0.8.27..8f2ebbfd`.
-These changes are source availability, not a production deployment claim.
+Organization-held keys are sealed under the org DID in a separate registry namespace. Human owner/admin act-as with connections-service access controls lifecycle and member grants. Values are write-only, including for the loading admin. Reads expose metadata, not secrets or generic vault export. Tier 0 remains node-controlled; unsupported external-owner loads fail closed.
 
-- **Chat security disclosure:** current chat uses TLS in transit and plaintext at rest in
-  `chat.messages_v2.content`; push previews include the first 200 characters. Public key
-  bundles and unused encryption utilities do not protect current messages. MLS with
-  mandatory hybrid post-quantum encryption remains planned under #1070, not shipped;
-  there is no forward-secrecy or post-compromise guarantee
-  ([#3121](https://github.com/ima-jin/imajin-ai/pull/3121); [security](../../SECURITY.md)).
-- **Organization-addressed payments:** a personal human login controlling the recipient
-  organization through current owner/admin membership with `pay` service access can start
-  card checkout. Member/maintainer, agent, removed membership, excluded/empty service access
-  and unrelated callers do not gain that authority. The authenticated `payerPersonDid`
-  remains separate from the effective caller and selected `paidByDid`; the latter determines
-  the settlement payer, ledger, `.fair` buyer and attestation. HTTP 403 distinguishes
-  `not_party_to_request` from `payer_not_controlled`. EMT keeps its opaque-handle capability
-  model and existing payer-control validation; it does not acquire the card party gate
-  ([#3126](https://github.com/ima-jin/imajin-ai/pull/3126)).
-- **App-secret declaration refresh:** `/jin` → **App secrets** → **Sync manifest secrets**
-  proposes only new validated name/kind slots from the existing app's manifest. A signed
-  **declares new secrets** approval appends those slots atomically with the node-signed
-  `apps.secrets.declarations-refreshed` record. It preserves DID, keys, slug, claims, prior
-  declarations and grants; removals, kind changes and non-secret permissions are not applied.
-  One pending sync is reused; cancel an obsolete proposal before proposing a new snapshot.
-  Sync generates no values. A new random slot needs a separate signed **Generate** approval;
-  prior grant history, including revoked tombstones, refuses Generate. Operator-supplied
-  slots need separate masked **Set** and countersign. No re-provisioning or SQL is needed;
-  app adoption/restart and production dykil verification remain separate
-  ([#3124](https://github.com/ima-jin/imajin-ai/pull/3124);
-  [operator steps](../../docs/app-self-secrets-operator.md),
-  [author boot contract](../../docs/app-self-secrets-author.md)).
-- **Release close-out:** after successful tagging/deploy dispatch, an independent job creates
-  missing GitHub Releases with generated notes, moves open issues and PRs to the lowest open
-  next patch milestone in the same major/minor series, then closes the released milestone.
-  Missing next milestone warns and leaves the source open; existing Releases/closed milestones
-  are skipped. Failures are visible without blocking npm publish. The production approval gate
-  is unchanged; no release is dispatched by this sweep
-  ([#3120](https://github.com/ima-jin/imajin-ai/pull/3120);
-  [release mechanism](../../docs/npm-publishing.md)).
+Human members need active per-member grants. Assigned agents use their verified principal relationship, with live assignment, allowed-services and revocation checks per call. Membership removal revokes member grants atomically; rejoining does not restore them. Org-tagged personal connections have separate retained suspension policies; reconnecting or retagging does not clear them, and personal untagged use remains separate.
 
-## Pre-cut delta for v0.8.27
+Member-held Postman access exposes reviewed saved-data reads through a fixed target. App-hosted upstreams bind member consent to exact destinations and permissions, with separate read/write authority. Credentials are injected by the kernel, not returned to the app. Consult the [connections spec](https://jin.imajin.ai/connections/api/spec) for validation, limits, metadata and audit semantics.
 
-Merged-source snapshot **2026-10-25**, limited to the delta after [#3054](https://github.com/ima-jin/imajin-ai/pull/3054) (`d8047d11c`). These features are not a production deployment claim. The earlier dated snapshots below are retained.
+Inference discovery returns the caller's usable model catalogue and safe route diagnostics. The signer stays the agent even where the credential belongs to its verified principal. A configured connector is not proof of tool authority or usable custody. Alternative identity selectors require their own authorization; a selector never grants access.
 
-- **Registered apps:** revoked rows are hidden in a collapsed `revoked (N)` section, absent when empty, matching expired history. Expanding retains the same provenance and actions; no API or deletion behavior changed ([#3061](https://github.com/ima-jin/imajin-ai/pull/3061)).
-- **Organization Edit / Tax:** owner/admin Edit opens `/auth/settings` for the active group/business DID; only a stub maintainer goes to `/auth/stubs/<did>`. An unclaimed state alone grants no Edit authority ([#3070](https://github.com/ima-jin/imajin-ai/pull/3070)). Profile contact reads honor an authorized owner/admin act-as identity with profile-service access; other viewers still require broker consent. Repeated pending `no_consent` alerts deduplicate by requester, subject, purpose and field set ([#3084](https://github.com/ima-jin/imajin-ai/pull/3084)).
-- **Cloudflare grants:** `GET /cloudflare/api/grants` lists only the authenticated grantee's live exact-zone grants, canonical domains, delegators and capabilities. App credentials use the app DID; acting identities cannot widen the list. It returns metadata, never unsealed credentials, and makes no provider call ([#3094](https://github.com/ima-jin/imajin-ai/pull/3094); [spec](api-spec/cloudflare.yaml)).
-- **Legal entity:** `/auth/legal-entity` lets authorized human owners/admins maintain a signed `legal-entity:v1` media document for human/business DIDs. Consumers use `getLegalEntity(did, viewerDid)` with independent public/on-consent/never policies per field; raw disclosure needs current raw-mode consent. Revocation retains the asset row, signed tombstone and version history. Invoice snapshots/PDFs are separate work ([#3096](https://github.com/ima-jin/imajin-ai/pull/3096)).
-- **Bank details API:** human-session `GET/PUT/DELETE /auth/api/bank-details` stores a validated `bank-details:v1` record, pinned to the authenticated DID or an auth-scoped organization owner/admin. Each financial field is separately vault-sealed; documents/projections carry non-secret fields and references only. Replacement/revocation supersedes grants while retaining documents and signed history. This is **node-delegated Tier 0**, not zero custody; Tier 1 saves fail closed. Bank settings UI, payer disclosure, PDFs and payment rails are not included ([#3107](https://github.com/ima-jin/imajin-ai/pull/3107); [auth spec](api-spec/auth.yaml)).
-- **SSH CA and certificates:** purpose-scoped operator mint/rotate/revoke retains signed lifecycle history and never exports the CA private key. `GET /api/vault/ssh-ca/trusted-keys?purpose=deploy` is a public OpenSSH trust file. Rotation stops old signing immediately and overlaps public trust for 900 seconds ([#3066](https://github.com/ima-jin/imajin-ai/pull/3066)). `POST /api/vault/ssh-ca/sign` requires an active CA and live scoped grant: one server-granted principal, grant force-command, no forwarding/PTY/user-rc extensions, 600-second default and 900-second maximum TTL. Issuance is signed before returning. Allowed hosts gate issuance, not the certificate's destination; hosts must enforce CA/principal configuration. Grant withdrawal stops future issuance, not already-issued certificate lifetimes; emergency CA revocation removes public trust ([#3083](https://github.com/ima-jin/imajin-ai/pull/3083); [vault spec](api-spec/vault.yaml)). Consumer/host deployment remains separate.
-- **Corpus ownership and credentials:** GitHub sources use the registry-resolved owner's group DID; workspace sources stay principal-owned. Stub creation grants nobody authority. Live owner-issued corpus grants and that owner's vault-backed GitHub OAuth connector are required, with no personal-connector or node-token fallback. Read the [corpus-owned migration and credential runbook](../corpus/README.md) before deploying; production migration is not asserted ([#3102](https://github.com/ima-jin/imajin-ai/pull/3102), [#3103](https://github.com/ima-jin/imajin-ai/pull/3103)).
-- **Inference passthrough releases:** the tracked updater requires a release tag on main plus successful `production` deployment evidence for that exact SHA before staging. Mint-backed health gates promotion and failing post-restart health rolls back. One-time host install remains an operator action, not a live change performed by this replay ([#3060](https://github.com/ima-jin/imajin-ai/pull/3060); [passthrough runbook](../../packages/openclaw-infer-passthrough/README.md)).
+The [inference spec](https://jin.imajin.ai/infer/api/spec) defines discovery and routing. The [passthrough package](../../packages/openclaw-infer-passthrough/README.md) and [host deployment runbook](../../deploy/infer-passthrough/README.md) define the separate gateway transport, auth-mode declaration and production evidence gate.
 
-- **Reusable GitHub Actions SSH deploy:** `.github/actions/vault-ssh-deploy` generates a per-job Ed25519 key, obtains a certificate through the existing `POST /api/vault/ssh-ca/sign`, deploys over SSH and discards the credentials ([#3095](https://github.com/ima-jin/imajin-ai/pull/3095), merged at `f125a35ce`; [vault spec](api-spec/vault.yaml)). An operator grant binds the exact repository + environment; the job needs a named environment and `id-token: write`. The kernel verifies `x-github-oidc-token` against GitHub's fixed issuer/JWKS, RS256, audience `urn:imajin:vault:ssh-cert`, temporal claims, repository/environment subject, workflow ownership/ref and run identity. Invalid OIDC never falls back to DID/session auth. The signed issuance records verified repository, workflow, environment, run ID and attempt; callers cannot substitute that audit identity. Existing principal, forced-command, host, TTL and revocation checks still apply. The consumer-neutral action requires Linux/Python/OpenSSH, pinned public host keys and non-swappable tmpfs; credentials never enter persistent disk, secrets, env files, arguments or logs. Failure/cancellation cleanup has an `always()` fallback; abrupt whole-runner loss requires guaranteed ephemeral teardown. Follow the [consumer example and runner contract](../../docs/deploy/vault-ssh-deploy.md), pinning an immutable reviewed action SHA. Host trust provisioning and actual rollout remain separate; no live deployment is asserted.
+## Attribution, payments and private records
 
-The [v0.8.26 release](https://github.com/ima-jin/imajin-ai/pull/3055) and [Zod security remediation](https://github.com/ima-jin/imajin-ai/pull/3099) are also in this delta; neither is a new operator capability. No source manifests or dependencies are changed by this replay.
+Use the [canonical patterns](../../docs/guide/canonical-patterns.md) for `.fair` construction, signature handling, settlement and disclosure. Fee and verification behavior is path-dependent; do not infer a universal fee or unsigned-manifest refusal from the presence of a sidecar. MJN and MJNx are separate ledger units, with no silent conversion.
+
+Payment-request card checkout distinguishes party eligibility from control of the selected payer. A human owner/admin controlling the recipient org needs pay-service access. The authenticated human, effective caller and settlement payer remain separate. EMT retains its own capability and payer-control contract; it does not inherit the card party gate.
+
+Legal-entity reads apply per-field disclosure through `getLegalEntity`. Bank identifiers are individually sealed; private documents and projections contain references and non-secret metadata. Both require the documented human-session and service-scoped owner/admin authority. Generic media/vault permissions do not disclose these records. Replacement and revocation retain signed history.
 
 ## Operator lanes
 
-Merged-source snapshot **2026-10-22**, since the [#3037 replay](https://github.com/ima-jin/imajin-ai/pull/3037); these changes are pre-cut for v0.8.26, not evidence of deployment:
+Registered-app views retain expandable expired and revoked provenance. Clear uses the registry revocation rail and retains consent history; it does not delete rows. DCR expiry applies only to eligible unused registrations, not protected provisions or claims.
 
-- **Registered apps:** direct human operators can inspect kind, status, consent/activity and registration provenance, including explicit unknown history. Expired entries remain expandable; failed provisions without a live claim code do not offer Reissue ([#3047](https://github.com/ima-jin/imajin-ai/pull/3047)).
-- **Clear:** an active or dormant app opens a confirmation naming its live consent count. Confirmation uses the existing registry revoke route, retains the row and consent history, and exposes the signed `registry.app.revoked` receipt. Non-operators and acting-for identities cannot use it ([#3051](https://github.com/ima-jin/imajin-ai/pull/3051)).
-- **DCR expiry:** the ten-minute sweep expires active DCR registrations at least seven days old only when they have never had consent and have no provision, claim or first-party protection. Status and node-signed `registry.app.expired` evidence commit together; no rows are deleted ([#3053](https://github.com/ima-jin/imajin-ai/pull/3053)).
-- **Record:** inspect personal history, or act as an organization with the required owner/admin and `jin` service access. Filter people/agents; rows identify who acted and expose exact grant/approval links only when separately authorized. Missing legacy references are not guessed. Switching identity clears the view and in-flight reads ([#3046](https://github.com/ima-jin/imajin-ai/pull/3046), [#3049](https://github.com/ima-jin/imajin-ai/pull/3049), [#3052](https://github.com/ima-jin/imajin-ai/pull/3052)).
-- **Inbox / Operator approvals:** default lists and attention counts include only actionable cards, with relative age. **Show history** retrieves retained resolved, expired, superseded or archived cards. The ten-minute sweep records node-signed expiry; `OPERATOR_APPROVAL_EXPIRY_DAYS` defaults to seven days, with source deadlines taking precedence ([#3050](https://github.com/ima-jin/imajin-ai/pull/3050)).
-- **Grants:** app last-used evidence includes successful mint/validate activity and historical OAuth refreshes; unknown pre-recording history is labelled, not reported as never. Idle active grants get a 30-day warning, not automatic revocation ([#3044](https://github.com/ima-jin/imajin-ai/pull/3044)). `/auth/agents` Renew offers a lease choice and preview; the default preserves the previous lease, capped at 30 days. Critical approval grants warn within 24 hours of expiry ([#3038](https://github.com/ima-jin/imajin-ai/pull/3038)).
-- **Blocked on you:** current linked PR/issue state reconciles stale Warp blockers; merged/closed work stops appearing as an operator block, while ready PRs await review. Provider/authority failures retain the signed blocker ([#3043](https://github.com/ima-jin/imajin-ai/pull/3043)).
+Record reads personal or authorized organization history and distinguishes the actor from the subject. Grant and approval links require their own access. Switching identity clears loaded views and stale requests; absent provenance is displayed as unknown rather than inferred.
 
-Contracts and access limits: [Jin spec](api-spec/jin.yaml) · [auth spec](api-spec/auth.yaml) · [registry spec](api-spec/registry.yaml).
-## Static-header reach clients
-Share `/<handle>/reach` for per-platform setup. Agents resolve a DID, handle or
-`@handle` at `/.well-known/agent/<id>` to discover live MCP, OpenAPI and signed
-reach transports, credential tiers and the reach-only knock flow document.
-The additive card retains `schemaVersion: "0.1"` and `imajin-agent-reach/0.1`.
-Disabled reach exposes no card, setup page or `AgentReach` DID service.
+Inbox attention counts include actionable approvals. History retains resolved, expired, superseded and archived cards. Lease renewal, idle warnings and the agent's signer-scoped approvals-lease read are separate from granting authority. A transport delivery acknowledgement is not a signed command outcome.
 
-Both hosted `did:imajin` document endpoints advertise an `AgentReach` service
-whose endpoint is that unified card. This node does not host per-principal
-`did:web` documents: external domain owners must publish the same service in
-their own document, with its own DID as the service ID, for example:
+Runs, decisions, briefs and loop events use principal-scoped recorded authority. Read the [Jin spec](https://jin.imajin.ai/jin/api/spec), [loop rail contract](../../docs/loops-rail-contract.md) and [notification contract](../../docs/notify-operator-approvals-contract.md) instead of interpreting harness-local references as public command capabilities.
 
-```json
-{
-  "id": "did:web:example.org#agent-reach",
-  "type": "AgentReach",
-  "serviceEndpoint": "https://YOUR_NODE/.well-known/agent/YOUR_URL_ENCODED_IMAJIN_DID"
-}
-```
+App-secret sync adds declaration slots only; it does not change identity, generate values or grant secrets. Generated slots require a separate signed Generate action; operator-supplied values require masked Set and countersignature. Prior grant history prevents regeneration. Runtime adoption loads typed server-only vault configuration before database/server imports. See the [author](../../docs/app-self-secrets-author.md) and [operator](../../docs/app-self-secrets-operator.md) guides.
 
-`buildAgentReachServices(did, cardUrl)` in `src/lib/auth/did-document.ts` builds
-this method-neutral entry for document publishers. It is a transport hint, not
-a proof of domain ownership or reach authority. Only publish it while reach is
-enabled. A2A remains an unadvertised extension point until #2594 ships; OAuth
-stranger sign-in is separate (#2592).
+## Reach clients
 
-Clients that cannot sign requests or complete OAuth can obtain **their own agent's**
-reach credential with `POST /reach/ryan/knock` (replace `ryan` with the recipient's
-handle or DID). No login, owner approval, or manually issued token is required:
+The person-specific reach setup page and unified agent card describe available transports, credential tiers and the reach-only knock flow. Disabled reach exposes no card. An advertised DID service is a transport hint, not proof of domain ownership or authority.
 
-```json
-{
-  "agentLabel": "My Muse agent",
-  "onBehalfOf": {
-    "platform": "muse",
-    "externalRef": "opaque-platform-reference",
-    "selfDescription": "Who I claim to act for"
-  },
-  "slidingWindowDays": 30
-}
-```
+A static-header client can knock for its own foreign-agent stub and recipient-bound bearer. The `onBehalfOf` description remains unverified. Save the one-time bearer in the client's protected authorization setting; there is no retrieval endpoint. It authorizes only the documented recipient and reach surfaces, not general REST, session or MCP access.
 
-`onBehalfOf` is **UNVERIFIED**, never an authentication or delegation claim.
-The recipient must already have a front-door gate admitting the `soft` tier.
-The `201` response contains `bearer` **exactly once**, `requesterDid` (the
-foreign-agent stub), `audience` (the recipient DID), `requestId`, `bearerId`,
-`scopes`, `surfaces`, `claimVerified: false`, `expiresAt`, and `hardCapAt`.
-Save the bearer directly in the client's static `Authorization: Bearer` header
-setting; do not log it. There is no retrieval endpoint. A lost response requires
-a new knock, which creates a distinct agent credential.
+Replies and status remain scoped to that stub and audience. Revocation, expiry and sender blocking restrict use; a blocked sender receives no reply content. Sliding use never exceeds the unconditional hard cap. Fetch the recipient's reach-only spec from their published card rather than importing the whole auth contract.
 
-Use that header on `POST /reach/ryan` or
-`POST /auth/api/agents/<recipient-DID>/reach` with:
+## Security and operations
 
-```json
-{
-  "topic": "collaboration",
-  "message": "Would you like to discuss a collaboration?",
-  "replyHandle": "opaque-client-thread-reference"
-}
-```
+Chat uses TLS in transit and stores plaintext at rest on the hosting node in `chat.messages_v2.content`. Push notifications carry the first 200 characters of the message preview. Message encryption is planned but not implemented; public key bundles do not protect current stored messages. No forward-secrecy or post-compromise guarantee is made.
 
-For a boolean-only gate ask, send `{ "arg": "collaboration" }`. Topic publication,
-delivery mode, broker consent, sender blocks and delivery quotas are the same as
-for signed agents. The bearer cannot reach another recipient, authenticate a
-session, or access the general MCP/REST surfaces. MCP adapters remain separate
-follow-ups; this credential is not accepted on the MCP surface.
+SSH CA lifecycle and signing use scoped vault grants, bounded certificate lifetimes and retained signed history. Hosts must enforce CA trust and principals; allowed hosts are issuance policy, not an OpenSSH destination restriction. The [SSH deploy contract](../../docs/deploy/vault-ssh-deploy.md) documents GitHub OIDC, pinned host keys and runner requirements.
 
-After delivery, poll
-`POST /auth/api/agents/<recipient-DID>/reach/<reachId>/status` using the same
-static Authorization header. No body or requester signature is needed. The
-response contains `reachId`, `state` (`delivered`, `replied`, or `blocked`), and
-`reply` (the recipient's original signed reply event, or `null`). Only envelopes
-belonging to that bearer’s agent stub are visible; another stub's receipt returns
-404, and another recipient's audience or a revoked/expired bearer returns 401.
-An otherwise-valid bearer whose sender is blocked can learn `blocked`, but
-receives no reply content and cannot send. Polling retains sliding expiry and
-the hard cap. Signed status polling remains supported unchanged.
+Corpus GitHub partitions use registry-resolved source-owner groups and explicit owner-issued grants; workspace sources stay principal-owned. Credentials come from that owner's selected OAuth connector, not a node token or CLI login. Follow the [corpus runbook](../corpus/README.md) for deployment and separately authorized migration.
 
-Expiry slides on valid uses (30/90/180/365-day windows), but never beyond the
-unconditional 90-day hard cap. Only hashes are stored. The recipient sees an
-information-only Reach inbox card: **No action needed**, with the
-**UNVERIFIED onBehalfOf claim**. Blocking the card or a delivered sender
-revokes the stub and erases its bearer hashes immediately.
+PM2 online state does not establish HTTP health. See the [liveness watchdog and deployment runbook](../../deploy/README.md) for bounded checks, operator installation and persistent restart receipts. The reviewed release pipeline and production approval gate remain mandatory.
 
-## Inference connectors
-`GET /infer/v1/self` (#3250) accepts the agent's own app token with
-`infer:completions` and the existing `x-acting-as` / `x-acting-for` selectors.
-It returns the signer's DID/handle/kind/tier, the verified act-as DID, the same
-usable model IDs as `/infer/v1/models/usable`, and held inference routes with
-`authority` (`own-key`, `org-held`, `delegated`, `member-grant`), grant status,
-models and safe denial reasons. Unusable rows name an existing control under
-`fix: {control, href, actingDid}`; an operator must select that acting identity
-on `/jin` before opening the linked control. For example, member-grant denial
-links to **Org service keys → Member grants → Grant** on `/auth/connectors`.
-Autonomous assigned org agents do not require member grants.
+## Reference
 
-The route reuses `resolveInferenceAuth`, `listUsableModels` and
-`listInferenceRoutes`; it adds no gate or scope. The first usable catalog model
-is passed to route discovery because org-held keys select a model per call.
-`selectedModels` records that resolver probe; per-row `usableModels` expands
-only the matching current selectors and routing winner. Top-level `usableModels`
-is the catalog for the current request, not for every alternative selector.
-An authorized request with a downstream model/grant denial returns diagnostic
-rows and an empty catalog; an invalid token/scope/act-as returns the existing
-401/403 error shape without a partial identity body.
-
-MCP/HTTP connectors are configuration metadata only (`authority: null`,
-`grantStatus: not-evaluated`, `usable: null`), not a promise that a tool call is
-authorized. Their `configured` flag means an active registry installation,
-not live custody or scope verification. Only the signer's own non-inference
-registrations are read; an inference grant does not expose an assigned
-principal's unrelated tool configuration. Known unconfigured connectors remain
-listed; unknown registered providers use `family: http`. Gateway-host/channel
-fallbacks are outside this kernel projection. Responses are private/no-store
-and never include credentials, vault references or raw exception details.
-Live curl/revoke acceptance remains Ryan's operator step after merge.
-As of **2026-10-22**, `GET /infer/v1/models/usable` exposes each usable sealed connector's full picker list in OpenAI list shape; `imajin.picked` marks the current selection, not the only callable model. Non-picked listed models resolve through the same connector and metering path; unsealed/ungranted/modelless cards contribute no models ([#3045](https://github.com/ima-jin/imajin-ai/pull/3045)). See the [inference spec](api-spec/infer.yaml).
-
-Delegated app-token minting can resolve the live consent by `principalDid`, mutually exclusive with the legacy `attestationId` selector ([#3042](https://github.com/ima-jin/imajin-ai/pull/3042)). The [OpenClaw passthrough runbook](../../packages/openclaw-infer-passthrough/README.md) already documents principal-based configuration, catalog routing, consent-failure recovery and operator-only rollout cleanup from [#3048](https://github.com/ima-jin/imajin-ai/pull/3048). Re-granting needs no proxy restart after that rollout; auth/scope failures never trigger direct fallback.
-
-As of **v0.8.31 (2026-11-03)**: `GET /infer/v1/models/usable?explain=1` adds opt-in per-caller route diagnostics without changing the default catalog response, and `/auth/connectors` shows an acting-identity-aware **Inference routes** section ([#3223](https://github.com/ima-jin/imajin-ai/issues/3223)). The same page manages org-held keys and member grants for the acting org DID ([#3181](https://github.com/ima-jin/imajin-ai/issues/3181)); any active human org member can read loaded-key metadata, never keys, at `GET /connections/api/org-held/status?orgDid=`. Agent key resolution follows the agent's assigned DID through existing membership/delegation records ([#3182](https://github.com/ima-jin/imajin-ai/issues/3182)). OAuth consent lets the assigned human or a human org admin pick the agent/principal binding (`GET /oauth/agent-bindings?agent_did=`, no-store); the OpenClaw gateway runbook is [`docs/ops/openclaw-mcp.md`](../../docs/ops/openclaw-mcp.md) ([#2278](https://github.com/ima-jin/imajin-ai/issues/2278)).
-
-Brain connectors (`BRAIN_CONNECTORS` in `src/lib/inference/brain.ts`, `CONNECTOR_REGISTRY` in `src/lib/kernel/connector-registry.ts`) let a DID seal its own provider API key for the completions passthrough (`POST /infer/v1/chat/completions`) instead of a shared env var — see the [inference connectors epic](https://github.com/ima-jin/imajin-ai/issues/1922). In resolution order:
-
-| Connector | Provider adapter | Notes |
-|---|---|---|
-| Gemini | `openai` (compatible) | No hardcoded default model (#1769) |
-| Anthropic | `anthropic` | Main-session brain; migrates last (#1922) |
-| xAI | `openai` (compatible) | |
-| OpenAI | `openai` | |
-| Moonshot AI (Kimi) | `openai` (compatible) | |
-| Z.ai (GLM) | `openai` (compatible) | |
-| Local Inference | `openai` (compatible) | Owner-supplied `baseUrl`; no sealed key required (#1957) |
-| OpenRouter | `openai` (compatible) | Router, not a single provider — one sealed key reaches every model it fronts; `provider/model` ids (e.g. `typesafe/jev-1.13`) forward untouched (#2188) |
+- [Concise agent guide](public/llms.txt) and [full integration guide](public/llms-full.txt): concepts and links to every defined service spec.
+- [Security disclosures](../../SECURITY.md): trust assumptions and implementation limitations.
+- [Root README](../../README.md): app/package entry points and contributor checks.
+- [Deploy posture](../../docs/ops/DEPLOY-POSTURE.md): workflow ordering, evidence and ownership.
