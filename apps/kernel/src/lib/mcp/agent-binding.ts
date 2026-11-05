@@ -2,7 +2,7 @@ import { and, eq, isNull } from 'drizzle-orm';
 import { db, attestations, identities, identityMembers, registryApps } from '@/src/db';
 import { listServiceOf } from '@/src/lib/auth/agent-service';
 import { isLiveAppAuthorization } from '@/src/lib/auth/live-app-authorization';
-import { isOrgScope } from '@/src/lib/kernel/connection-principal-policy';
+import { isAgentCapableSubtype, isOrgScope } from '@/src/lib/kernel/connection-principal-policy';
 import { resolveConnectionPrincipal } from '@/src/lib/kernel/connection-principal';
 import type { AppTokenPayload } from '@/src/lib/auth/jwt';
 import type { McpToolContext } from './types';
@@ -168,7 +168,7 @@ export async function mcpOAuthContext(payload: AppTokenPayload): Promise<McpTool
   };
   if (!payload.actingFor) {
     const identity = await activeIdentity(payload.sub);
-    if (identity?.subtype === 'agent') throw authorizationRequired();
+    if (isAgentCapableSubtype(identity?.subtype)) throw authorizationRequired();
     return ctx;
   }
   ctx.actingFor = payload.actingFor;

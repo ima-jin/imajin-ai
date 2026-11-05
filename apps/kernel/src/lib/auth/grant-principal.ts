@@ -1,4 +1,5 @@
 import { requireAuth, type AuthResult, type AuthError } from '@imajin/auth';
+import { isAgentCapableSubtype } from '../kernel/connection-principal-policy';
 
 /**
  * Grant management is a principal action, never delegated agent authority.
@@ -9,7 +10,7 @@ export async function requireGrantPrincipal(request: Request): Promise<AuthResul
   const result = await requireAuth(request, { service: 'auth' });
   if ('error' in result) return result;
   const { identity } = result;
-  if (identity.actingFor || identity.subtype === 'agent' || identity.actingAsRole === 'agent') {
+  if (identity.actingFor || isAgentCapableSubtype(identity.subtype) || identity.actingAsRole === 'agent') {
     return { error: 'Grants must be managed by the delegator principal directly, not while acting under agent delegation', status: 403 };
   }
   if (identity.actingAs && !['owner', 'admin'].includes(identity.actingAsRole ?? '')) {

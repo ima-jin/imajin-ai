@@ -27,6 +27,14 @@ beforeEach(() => {
 });
 
 describe('persisted domain management authority', () => {
+  it.each(['agent', 'presence'])('refuses %s targets regardless of scope or ownership', async (subtype) => {
+    for (const scope of ['actor', 'business']) {
+      mocks.limit.mockReset().mockResolvedValue([{ scope, subtype }]);
+      expect(await canManageIdentityDomains(owner, owner)).toBe(false);
+      expect(mocks.limit).toHaveBeenCalledTimes(1);
+    }
+  });
+
   it('allows an individual to manage their own active identity', async () => {
     mocks.limit.mockResolvedValue([{ scope: 'actor', subtype: 'human' }]);
     expect(await canManageIdentityDomains(owner, owner)).toBe(true);
@@ -60,6 +68,20 @@ describe('persisted domain management authority', () => {
 });
 
 describe('domain API authentication and delegation', () => {
+  it.each([{}, { actingAs: group, actingAsRole: 'admin' }])(
+    'refuses persisted agent and presence callers in context %j',
+    async (context) => {
+      for (const subtype of ['agent', 'presence']) {
+        mocks.auth.mockResolvedValue({ identity: { id: owner, subtype: 'human', ...context } });
+        mocks.limit.mockReset().mockResolvedValue([{ subtype }]);
+        const result = await requireDomainManager(request, context.actingAs ?? owner) as Response;
+        expect(result.status).toBe(403);
+        expect(await result.json()).toEqual({ error: 'Active identity owner or admin required' });
+        expect(mocks.limit).toHaveBeenCalledTimes(1);
+      }
+    },
+  );
+
   it('returns canonical authentication failures without database reads', async () => {
     mocks.auth.mockResolvedValue({ error: 'Not authenticated', status: 401 });
     const response = await requireDomainManager(request, owner) as Response;
