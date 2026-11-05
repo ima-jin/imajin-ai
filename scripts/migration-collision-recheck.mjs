@@ -17,7 +17,7 @@ function pathsAt(ref, cwd) {
 
 function writeBlob(directory, ref, path, cwd) {
   // Git paths are data, never shell arguments, symlinks, or executable PR code.
-  if (!path.startsWith('migrations/') || path.split('/').some((part) => part === '..')) {
+  if (!path.startsWith('migrations/') || path.split('/').includes('..')) {
     throw new Error(`Unsafe migration path: ${path}`);
   }
   const destination = join(directory, path);
