@@ -18,6 +18,9 @@ Revocation withdraws authority while retaining its tombstone and provenance. Era
 - Connect an agent through the [OpenClaw plugin](https://github.com/ima-jin/openclaw-imajin-plugin), or build a registered app with the published SDK.
 - Act as a business or organization under live role and allowed-service checks, without confusing the human controller with the acting DID.
 - Connect provider accounts, discover usable inference models and authorize app operations without handing apps raw provider keys.
+- Manage org-held keys and member grants on `/auth/connectors`, where members read key status as metadata only; org owners/admins renew key expiry from `/jin/vault/renew` through countersigned approval.
+- Let an agent discover its own identity, usable models, inference routes and read-only MCP/HTTP connector authority through `GET /infer/v1/self`; operators see the same cards on `/jin`.
+- Send mail as an org's verified custom domain through the node's Postal server, set up under **Organization settings** on `/jin` ([guide](docs/guide/domain-ownership.md#mail-domains)).
 - Inspect signed records, consent, grants and actionable approvals while retaining revoked and expired history.
 - Attribute content and settle supported payment flows using the owning service's contract.
 

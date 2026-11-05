@@ -32,6 +32,8 @@ Imajin is source-available under the [Imajin Network License](https://github.com
 5. For agents, use the agent's own credentials and the principal's explicit grants. For inference, discover the caller's usable models; an identity selector never grants access to another identity's key.
 6. For connectors, keep lifecycle and custody in the kernel. Org-held keys are write-only, including for the loading admin; human members require their own active member grant, while assigned agents use their verified principal relationship.
 
+Agent self-discovery through `GET /infer/v1/self` returns identity, usable models, inference routes, authority, grant status and fixing controls. Read-only MCP/HTTP rows reuse tool-call authorization predicates, including the authority lane and `authorizedScopes`, without probing credentials; inference scope is not tool authority. The `?agents=1` operator view backs `/jin` cards for bound serving agents.
+
 Chat uses TLS in transit and stores plaintext at rest on the hosting node in `chat.messages_v2.content`. Push notifications carry the first 200 characters of the message preview. Message encryption is planned but not implemented; no forward-secrecy or post-compromise guarantee is made.
 
 ## Service specifications

@@ -96,6 +96,10 @@ Do not use internal keys, development previews or cron handlers as public integr
 
 Authenticate as the calling agent and obtain only the principal grants needed for the task. For inference, discover the caller's usable models and routing diagnostics rather than hard-coding a provider lane or assuming every loaded key is usable. The agent remains the signer even when a verified principal supplies the credential. Human member grants and assigned-agent relationships remain distinct.
 
+Agent self-discovery through `GET /infer/v1/self` returns the authenticated agent's identity, held inference routes, authority, grant status, usable models and fixing controls. Its read-only MCP/HTTP rows reuse the tool-call authorization predicates and report the authority lane and `authorizedScopes` without probing credentials. Inference scope does not grant tool authority.
+
+The `?agents=1` operator view supplies the bound-serving-agent cards on `/jin` through the same projection and live inference resolver. It requires a direct principal session, with org owner/admin authority for org act-as, refuses agent delegation and does not disclose agents' private connectors or other clients.
+
 Provider-billed reconciliation uses separately sealed billing credentials and explicit billing scope. It is not the same as incurred usage metering. A missing cost is not evidence that usage is free, and kernel-observed usage is not a complete provider invoice.
 
 ### Run a node or an internal service

@@ -10,6 +10,7 @@ import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
 import { render, screen, cleanup, waitFor, fireEvent, within } from '@testing-library/react';
 import { canonicalize, crypto as authCrypto } from '@imajin/auth';
 import type { DecisionCardInput } from '@/src/lib/decisions/schema';
+import { loadOperatorSigner } from './operator-signing-test-support';
 
 const searchParamsMock = vi.hoisted(() => ({ current: new URLSearchParams() }));
 vi.mock('next/navigation', () => ({
@@ -123,8 +124,9 @@ function decisionCall(spy: ReturnType<typeof installFetch>) {
   };
 }
 
-beforeEach(() => {
+beforeEach(async () => {
   searchParamsMock.current = new URLSearchParams();
+  await loadOperatorSigner();
 });
 
 afterEach(() => {

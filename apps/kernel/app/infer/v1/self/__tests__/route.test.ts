@@ -87,8 +87,8 @@ describe('GET /infer/v1/self', () => {
     expect(body.identity).toEqual({ did: actor, handle: 'artifact-jin', kind: 'agent', tier: 'established', actAs: actingAsOrg ? org : null });
     expect(body.connectors[0]).toMatchObject({ authority: actingAsOrg ? 'org-held' : 'own-key', usableModels: ['model-one'] });
     expect(h.identity).toHaveBeenCalledWith(actor);
-    expect(h.metadata).toHaveBeenCalledWith(actor);
-    expect(h.auth).toHaveBeenCalledWith(expect.anything(), 'infer:completions');
+    expect(h.metadata).toHaveBeenCalledWith(context);
+    expect(h.auth).toHaveBeenCalledWith(expect.anything(), 'infer:completions', true);
     expect(h.routes).toHaveBeenCalledWith(context, { model: 'model-one' });
     expect(h.models).toHaveBeenCalledWith(context);
   });
@@ -155,15 +155,38 @@ describe('GET /infer/v1/self', () => {
     expect(body.cards[0]).toMatchObject({
       name: 'Artifact-Jin', identity: { did: actor, actAs: actingAsOrg ? org : null },
       connectors: [{ authority: actingAsOrg ? 'org-held' : 'delegated', usable: false,
-        fix: { actingDid: principalDid, href: actingAsOrg ? '/auth/connectors' : '/auth/connectors/anthropic' } }],
+        fix: { actingDid: principalDid, href: actingAsOrg
+          ? `/jin/vault/renew?orgDid=${encodeURIComponent(org)}&provider=anthropic`
+          : '/auth/connectors/anthropic' } }],
     });
     expect(body.cards[0].connectors).toHaveLength(1);
     expect(JSON.stringify(body)).not.toContain('other-client');
     expect(JSON.stringify(body)).not.toContain('other-human');
     expect(h.serving).toHaveBeenCalledWith(principalDid);
     expect(h.grants).toHaveBeenCalledWith(principalDid);
-    expect(h.metadata).not.toHaveBeenCalled();
+    expect(h.metadata).toHaveBeenCalled();
     expect(h.auth).not.toHaveBeenCalled();
+  });
+  it.each([false, true])('operator tool rows reveal only the selected principal (org: %s)', async actingAsOrg => {
+    const principalDid = actingAsOrg ? org : 'did:imajin:ryan';
+    h.principal.mockResolvedValue({
+      identity: { id: 'did:imajin:ryan', ...(actingAsOrg ? { actingAs: org } : {}) },
+    });
+    h.metadata.mockResolvedValue([{
+      provider: 'warp', family: 'http', ownerDid: principalDid, authority: actingAsOrg ? 'org-held' : 'delegated',
+      configured: true, usable: true, grantStatus: 'granted', usableModels: [],
+    }, {
+      provider: 'github', family: 'http', ownerDid: actor, configured: true,
+    }, {
+      provider: 'private-other-provider', family: 'http', ownerDid: 'did:imajin:other-client', configured: true,
+    }]);
+    const response = await GET(new NextRequest('https://kernel.test/infer/v1/self?agents=1'));
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.cards[0].connectors).toHaveLength(1);
+    expect(body.cards[0].connectors[0]).toMatchObject({ provider: 'warp', ownerDid: principalDid, usable: true });
+    expect(JSON.stringify(body)).not.toContain('private-other-provider');
+    expect(JSON.stringify(body)).not.toContain('github');
   });
   it('retains red operator rows on a known unavailable credential without changing self failure semantics', async () => {
     h.models.mockRejectedValue(new ExternalMcpError(503, 'Private custody detail', 'credential_unavailable'));

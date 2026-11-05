@@ -28,7 +28,10 @@ export type ConnectionErrorCode =
   | 'org_grant_required' | 'connection_not_loaded' | 'connection_suspended' | 'credential_unavailable';
 
 export class ExternalMcpError extends Error {
-  constructor(public readonly status: number, message: string, public readonly code?: ConnectionErrorCode) { super(message); }
+  constructor(
+    public readonly status: number, message: string, public readonly code?: ConnectionErrorCode,
+    public readonly fixActingDid?: string,
+  ) { super(message); }
 }
 export function allowedPostmanTool(name: string): name is keyof typeof READ_TOOLS {
   return Object.hasOwn(READ_TOOLS, name);

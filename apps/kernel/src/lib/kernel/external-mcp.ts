@@ -1,8 +1,8 @@
-import { and, eq, sql } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { db, attestations, connectors, vaultDelegationGrants, type ConnectorRow } from '@/src/db';
 import { prepareMechanicalAttestation } from '@/src/lib/auth/emit-mechanical-attestation';
 import { _applyDelegationGrant, deleteFromVault, revokeStaticSecretGrant, sealAndGrantStaticSecret, vaultService } from '@/src/lib/vault';
-import { EXTERNAL_MCP_NAMESPACE, isExternalMcpField } from '@/src/lib/vault/field-grammar';
+import { EXTERNAL_MCP_NAMESPACE } from '@/src/lib/vault/field-grammar';
 import { getNodeSigningIdentity, getNodeXPrivateKey, isVaultTier1 } from '@/src/lib/vault/sealing';
 import { vaultFieldStatusForGrantee } from '@/src/lib/vault/field-status';
 import { connectorRegistryId } from './connector-registry-store';
@@ -11,10 +11,11 @@ import { connectInput, ExternalMcpError, parseExternalMcpCall, POSTMAN_PROVIDER,
 import { forwardPostmanCall } from './external-mcp-transport';
 import { reserveExternalMcpCall } from './external-mcp-limits';
 import {
-  authorizeMemberConnection, checkMemberStanding as checkStanding, findMemberConnection,
+  checkMemberStanding as checkStanding, findMemberConnection,
   connectionUnavailable as unavailable, isLiveConnection as live, POSTMAN_CONNECTION,
   type ExternalMcpCaller, type MemberConnectionTarget,
 } from './member-connection-gate';
+import { authorizeExternalMcpAccess } from './external-mcp-authority';
 export type { ExternalMcpCaller } from './member-connection-gate';
 
 type Transaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
@@ -110,17 +111,15 @@ export function authorizeExternalMcp(
       const lock = `org-held-connection:${selected}`;
       await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${lock}, 0))`);
     }
-    const row = await authorizeMemberConnection(tx, caller, target);
+    const { row, custodyId } = await authorizeExternalMcpAccess(tx, caller, target);
+    if (!custodyId) throw unavailable();
     // A changed member binding is refused generically before request policy or unseal.
     validateCall?.();
-    if (!row.sealedKeyField || !isExternalMcpField(row.sealedKeyField)) throw unavailable();
     const node = getNodeSigningIdentity();
-    const [custody] = await tx.select().from(vaultDelegationGrants).where(and(
-      eq(vaultDelegationGrants.field, row.sealedKeyField), eq(vaultDelegationGrants.subject, row.ownerDid),
-      eq(vaultDelegationGrants.grantedTo, node.senderDid), eq(vaultDelegationGrants.status, 'active'),
-    )).limit(1).for('update');
+    const [custody] = await tx.select().from(vaultDelegationGrants)
+      .where(eq(vaultDelegationGrants.id, custodyId)).limit(1).for('update');
     if (!custody || !live(custody) || custody.oneTime) throw unavailable();
-    const entry = await vaultService.get(row.sealedKeyField);
+    const entry = await vaultService.get(row.sealedKeyField!);
     if (!entry || entry.deleted || entry.senderPubkey !== node.senderPubkey || entry.custodyScheme !== 'delegation-grant') {
       throw unavailable();
     }

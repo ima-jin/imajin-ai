@@ -35,6 +35,8 @@ tags:
     description: vault.mint (#2242) — Ed25519 keypairs born inside the vault
   - name: vault-import
     description: Third-party credentials sealed once for an identity and purpose-bound consumer (#2260)
+  - name: vault-org-held
+    description: Org-held provider keys sealed under an org DID; lifecycle runs on the countersigned approval rail
 
 components:
   securitySchemes:
@@ -872,3 +874,53 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
+  /api/vault/org-held/renew:
+    post:
+      tags: [vault-org-held]
+      operationId: vaultOrgHeldRenew
+      summary: Propose renewing an org-held provider key's expiry
+      description: |
+        Kernel-root route behind the /jin/vault/renew form. Session cookie only
+        (no bearer, agent, presence or delegated callers); route policy
+        kernel.vault.org-held.renew, classed irreversible. The caller must be a
+        human owner or admin of orgDid, with no actingFor and actingAs either
+        absent or equal to orgDid. Files a vault:renew-org-held-key proposal on
+        the countersigned operator-approval rail and returns it as pending.
+        Approval re-checks owner/admin authority, membership, connector,
+        sealed-entry generation and the exact grant under the org custody lock,
+        then extends expiry and re-signs the same grant in place with a signed
+        vault.key.renewed attestation. The credential is never unsealed,
+        regenerated, copied or returned. Responses are Cache-Control no-store.
+      security: [{ cookieAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [orgDid, provider, expiresAt]
+              properties:
+                orgDid: { type: string, pattern: "^did:imajin:[A-Za-z0-9]+$" }
+                provider: { type: string, description: Org-held connector provider id }
+                expiresAt: { type: string, format: date-time, description: New expiry; must be in the future }
+      responses:
+        "201":
+          description: Renewal proposal filed and awaiting approval
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [proposalId, status]
+                properties:
+                  proposalId: { type: string }
+                  status: { type: string, enum: [pending] }
+        "400":
+          description: Invalid JSON or renewal request
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401": { description: Authentication required }
+        "403": { description: Route policy refusal, wrong acting context, or not a human org owner/admin }
+        "409": { description: "Renewal not possible: ownership/authority check failed or the grant material is already erased" }
+        "503": { description: Renewal unavailable; generic error without secret details }

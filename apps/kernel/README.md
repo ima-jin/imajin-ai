@@ -28,11 +28,21 @@ People connect providers on their profiles. Apps inspect safe connected state an
 
 Organization-held keys are sealed under the org DID in a separate registry namespace. Human owner/admin act-as with connections-service access controls lifecycle and member grants. Values are write-only, including for the loading admin. Reads expose metadata, not secrets or generic vault export. Tier 0 remains node-controlled; unsupported external-owner loads fail closed.
 
+A human org owner/admin extends an org-held key's expiry from `/jin/vault/renew` through `POST /api/vault/org-held/renew`. This files a `vault:renew-org-held-key` proposal on the countersigned operator-approval rail. Approval extends expiry and re-signs the same grant in place with a signed `vault.key.renewed` attestation; the credential is never unsealed, regenerated or copied.
+
 Human members need active per-member grants. Assigned agents use their verified principal relationship, with live assignment, allowed-services and revocation checks per call. Membership removal revokes member grants atomically; rejoining does not restore them. Org-tagged personal connections have separate retained suspension policies; reconnecting or retagging does not clear them, and personal untagged use remains separate.
 
 Member-held Postman access exposes reviewed saved-data reads through a fixed target. App-hosted upstreams bind member consent to exact destinations and permissions, with separate read/write authority. Credentials are injected by the kernel, not returned to the app. Consult the [connections spec](https://jin.imajin.ai/connections/api/spec) for validation, limits, metadata and audit semantics.
 
 Inference discovery returns the caller's usable model catalogue and safe route diagnostics. The signer stays the agent even where the credential belongs to its verified principal. A configured connector is not proof of tool authority or usable custody. Alternative identity selectors require their own authorization; a selector never grants access.
+
+`GET /infer/v1/self` returns the authenticated agent's identity, inference routes, authority, grant status, usable models and fixing controls. An org-held route with `key_not_loaded` links to **Renew org-held key** at `/jin/vault/renew`. Autonomous assigned org agents do not require human member grants.
+
+The operator view, `GET /infer/v1/self?agents=1`, backs the agent identity cards on `/jin`. It requires a direct principal session, with org owner/admin authority when acting as an org, refuses agent delegation and lists bound serving agents through the same projection and live inference resolver. It does not expose an agent's private connectors or other clients.
+
+MCP/HTTP connector rows reuse the tool-call authorization predicates; inference scope is never a tool grant. Tool scopes, assignment, allowed services, member grants, suspension and custody-grant lifecycle are evaluated without fetching, peeking, decrypting or unsealing a credential. Authorized rows name the credential owner, authority lane and `authorizedScopes`. `credentialStatus: not-probed` means `usable: true` describes authorization metadata, not provider availability, credential integrity or external account identity.
+
+Denied rows name an existing fixing control and acting DID. `configurationStatus: not-disclosed` prevents disclosure of a selected principal's private installations; `configured: false` in that state does not mean no connection exists. App HTTP upstream rows are restricted to the authenticated service app's declared catalogue and exact current binding. Known unconfigured connectors remain listed; unknown signer-owned providers use `family: http`, `usable: null` and `grantStatus: not-evaluated`. Gateway-host/channel fallbacks are outside this kernel projection. Responses are private/no-store and contain no credentials, vault references or raw exception details. Live curl/revoke acceptance remains an operator step after merge.
 
 The [inference spec](https://jin.imajin.ai/infer/api/spec) defines discovery and routing. The [passthrough package](../../packages/openclaw-infer-passthrough/README.md) and [host deployment runbook](../../deploy/infer-passthrough/README.md) define the separate gateway transport, auth-mode declaration and production evidence gate.
 

@@ -321,12 +321,11 @@ components:
         actingDid: { type: string }
     LoopRefs:
       type: object
-      description: "Bare ids/numbers in the referenced system's own vocabulary — the kernel never resolves or validates these."
+      description: "Bare ids/numbers in the referenced system's own vocabulary — the kernel never resolves or validates these. Ingest keeps only these keys; anything else, including a harness sessionKey, is dropped and never stored."
       properties:
         issue: { type: string, description: "GitHub issue number, e.g. '2295'." }
         pr: { type: string, description: "GitHub PR number." }
         runId: { type: string, description: "Warp run id." }
-        sessionKey: { type: string, description: "OpenClaw gateway session key." }
         sessionId: { type: string, description: "Original source session id." }
         conflictingLoopId: { type: string, description: "Holder loop named by a surface.conflicted warning; never an exclusive refusal." }
         conflictingHolderDid: { type: string, description: "Holder DID in same-principal surface conflict warnings only." }
@@ -379,8 +378,9 @@ components:
         runs:
           type: array
           description: >-
-            Deduplicated registered runs with runId or sessionKey refs whose
-            lifetime overlaps the window, or that have matched usage in it.
+            Deduplicated registered runs (keyed by the loop's runId ref, else
+            its loopId) whose lifetime overlaps the window, or that have
+            matched usage in it.
             Ordered by lastSeenAt descending, then runId.
           items: { $ref: "#/components/schemas/RegistryRunCost" }
         issues:
@@ -2693,7 +2693,8 @@ paths:
         delegation must be authorized. An optional principal must match that
         effective DID, never broaden the lookup. Both registry and usage
         reads are principal-scoped. Usage matches exact run ids before unique
-        sessionKey aliases; ambiguous aliases are not allocated, each usage
+        aliases from loop ids and signed runId refs on the run's own and
+        child loop events; ambiguous aliases are not allocated, each usage
         row counts at most once, and error-status usage is excluded. No
         external provider calls, pagination, row limit, or window-length cap.
       servers:

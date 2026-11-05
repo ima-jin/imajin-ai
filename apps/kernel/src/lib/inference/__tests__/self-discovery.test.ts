@@ -43,7 +43,7 @@ describe('self-discovery allowlisted projections', () => {
     ['no_grant', '/auth/connectors#org-connector-anthropic-grants', 'Member grants'],
     ['not_a_member', '/auth/members', 'Members'],
     ['not_authorized', '/auth/agents', 'assignment'],
-    ['key_not_loaded', '/auth/connectors', 'Load key'],
+    ['key_not_loaded', '/jin/vault/renew?orgDid=did%3Aimajin%3Aorg&provider=anthropic', 'Renew org-held key'],
     ['no_model_selected', '/auth/connectors/anthropic', 'model picker'],
     ['route_unavailable', '/auth/connectors', 'Inference routes'],
   ] as const)('names an existing fixing control for %s', (code, href, control) => {

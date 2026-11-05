@@ -446,9 +446,10 @@ The kernel continues to learn only from signed events, never gateway RPC.
 
 ## Registry refs and spend (#2290)
 
-`refs` are signed publisher data: `runId`, `sessionKey`, `issue`, `pr`.
-`GET /api/loops` and MCP `loops_list` accept exact-match filters with those
-names, including on ancestor reads. GitHub subject refs should be canonical
+`refs` are signed publisher data: `runId`, `sessionId`, `issue`, `pr`; ingest
+drops any other key, including a harness `sessionKey`. `GET /api/loops` and MCP
+`loops_list` accept exact-match `runId`, `issue` and `pr` filters, including on
+ancestor reads. GitHub subject refs should be canonical
 `https://github.com/owner/repo/issues/N` / `/pull/N` URLs or `owner/repo#N`;
 unknown strings remain visible as refs but are never guessed into an issue.
 
@@ -458,9 +459,10 @@ authenticated effective principal only. Each run includes signed refs, loop
 identity/state, and `metered: {usd, turns} | null`. Issue and PR totals include
 their explicit ref and distinct run count. Both sides of the join are principal
 scoped. USD is summed from non-error `usage.incurred` rows in the half-open
-window: exact `session_id = runId` wins, otherwise an unambiguous
-`session_id = sessionKey` joins. Duplicate loops cannot multiply a usage row;
-shared session aliases stay unattributed. Null cost is unknown, not zero.
+window: exact `session_id = runId` wins, otherwise an unambiguous alias joins.
+Aliases come only from signed run history: loop ids and the `runId` refs on the
+run's own and child (`parentLoopId`) loop events, never harness addressing.
+Duplicate loops cannot multiply a usage row; shared aliases stay unattributed. Null cost is unknown, not zero.
 Old loops with usage in the window are included. Session-only loops use their
 stable loopId as the correlation identity, not an invented Warp run id. A run
 with any unpriced usage and a subject with any unknown run cost remain unknown,

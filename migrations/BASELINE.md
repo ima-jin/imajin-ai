@@ -20,6 +20,16 @@ the cut, rewrite the archive, regenerate seeds or normalize ledger rows.
 The ownership map controls the kernel boundary; source presence is not evidence
 that any production migration or restore has run.
 
+## Pending root migration contracts
+
+The root migrations below are kernel-owned in `ownership.json`, additive and idempotent:
+
+- `0231_usage_projection_chain.sql` upserts the `usage.incurred` row in `kernel.bus_chain_configs` with NULL scope so the chain runs attestation, emit and the usage-projection reactor. The reactor writes the existing `usage.incurred` table keyed by the usage id; it adds no table.
+- `0232_loop_event_signed_receipts.sql` adds nullable `signature`, `publisher_did` and `cause_event_id` columns to `kernel.loop_events`, a self-referencing `cause_event_id` foreign key and its index. Historical unsigned rows stay unsigned.
+- `0233_mail_domains.sql` adds `kernel.mail_domains` with the Postal domain id, exact DNS records, verification state, operation claim and ownership-binding attestation id, plus a pending-check index on `next_check_at`. It holds no credentials.
+
+Apply these files in filename order only when absent from the ledger, after any pending `0228`–`0230` files. The fixed cut through `0215`, baseline inventory, historical checksums and existing ledger rows remain unchanged.
+
 ## Known name-only drift
 The recorded deployed and fresh-baseline catalogs have identical definitions
 but six different names (deployed → fresh baseline):

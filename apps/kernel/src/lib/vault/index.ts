@@ -23,7 +23,7 @@ import {
 } from '@imajin/vault-core';
 import { verifySync, crypto as authCrypto } from '@imajin/auth';
 import { publish } from '@imajin/bus';
-import { and, eq, isNull, gt, or, like, desc, type SQL } from 'drizzle-orm';
+import { and, eq, isNull, like, desc, type SQL } from 'drizzle-orm';
 import { createLogger } from '@imajin/logger';
 import {
   db,
@@ -1530,19 +1530,12 @@ async function fetchActiveGrant(
   field: string,
   nodeDid: string,
 ): Promise<VaultDelegationGrant | null> {
+  const { activeVaultGrantWhere } = await import('./active-grant-policy');
   const rows = await db
     .select()
     .from(vaultDelegationGrants)
     .where(
-      and(
-        eq(vaultDelegationGrants.grantedTo, nodeDid),
-        eq(vaultDelegationGrants.field, field),
-        eq(vaultDelegationGrants.status, 'active'),
-        or(
-          isNull(vaultDelegationGrants.expiresAt),
-          gt(vaultDelegationGrants.expiresAt, new Date()),
-        ),
-      ),
+      activeVaultGrantWhere(field, nodeDid),
     )
     .limit(1);
   return rows[0] ?? null;

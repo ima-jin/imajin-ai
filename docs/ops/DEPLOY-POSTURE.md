@@ -53,6 +53,16 @@ Service bootstrap must target the same vault file the kernel reads. App-secret d
 
 Billing/admin credentials and inference credentials are distinct grants. Loading one does not authorize the other. Loop publication also requires the exact principal's live grant; a reduction in warning volume is not proof of authority.
 
+### Postal domain administration
+
+Org mail-domain provisioning is optional and operator-owned; the [mail-domain guide](../guide/domain-ownership.md#mail-domains) describes setup. No deployment step provisions these node-level settings:
+
+- `POSTAL_ADMIN_URL` is the HTTPS origin of the Postal domain-admin API, configured in the kernel's `.env.local`.
+- `POSTAL_ORGANIZATION` is this node's one pre-existing Postal organization permalink, configured in the kernel's `.env.local`.
+- `POSTAL_ADMIN_TOKEN` is sealed as an exact node-scoped vault field through the existing node vault tooling and read with `loadAndUnseal` at request time; it has no environment fallback or auto-generation, and a missing or invalid value fails closed.
+
+Both environment variables are optional in `.env.example`, so `check-env` does not detect missing setup; the mail-domains panel reports it. Nothing contacts or deploys the Postal host at build time.
+
 ## Independently owned apps
 
 Coffee, dykil, events, learn, links and market own their source, registration, setup and deployment. Use their owned repository runbooks rather than removed workspace targets. Public routing prefixes and port assignments are in [environment configuration](../ENVIRONMENTS.md).

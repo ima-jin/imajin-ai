@@ -19,7 +19,7 @@ export async function readSelfDiscoveryCard(context: InferenceAuthContext, princ
   });
   const model = models.at(0)?.modelId;
   const routes = await listInferenceRoutes(context, model ? { model } : undefined);
-  const metadata = principalDid ? [] : await listDiscoveryConnectorMetadata(actorDid);
+  const metadata = await listDiscoveryConnectorMetadata(context);
   // An operator sees only their own relationship, not the agent's other clients.
   const visibleRoutes = principalDid ? routes.filter(route => route.billedPrincipal.did === principalDid
     && route.selectors.actingFor === context.caller?.actingFor) : routes;
@@ -33,7 +33,7 @@ export async function readSelfDiscoveryCard(context: InferenceAuthContext, princ
     connectors: [
       ...discoveryInferenceRoutes(visibleRoutes, visibleModels, context),
       // The principal does not own the agent's private connector installations.
-      ...(!principalDid ? metadata : []),
+      ...metadata.filter(row => !principalDid || row.ownerDid === principalDid),
     ],
   };
 }
