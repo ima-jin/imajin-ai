@@ -8,6 +8,7 @@ import { NextRequest } from 'next/server';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { readFileSync } from 'node:fs';
 import { parseDocument } from 'yaml';
+import SwaggerParser from '@apidevtools/swagger-parser';
 
 const h = vi.hoisted(() => ({
   db: null as unknown, session: vi.fn(), publish: vi.fn(), log: vi.fn(),
@@ -377,6 +378,14 @@ describe('mint, existing human consent, then resolve/admit', () => {
 });
 
 describe('unchanged app-auth contract and service documentation', () => {
+  it('validates all documented channel-link operations as OpenAPI 3.1', async () => {
+    const spec = parseDocument(readFileSync('apps/kernel/api-spec/auth.yaml', 'utf8')).toJS();
+    const paths = Object.fromEntries(Object.entries(spec.paths).filter(([path]) => path.startsWith('/api/channel-link')));
+    await expect(SwaggerParser.validate({
+      openapi: spec.openapi, info: spec.info, paths,
+      components: { securitySchemes: spec.components.securitySchemes },
+    })).resolves.toBeDefined();
+  });
   it('retains app-auth mint defaults and resolve response, validation, isolation and unlink behavior', async () => {
     credential = await createAppServiceToken({ azp: APP, scope: '' });
     const req = request();

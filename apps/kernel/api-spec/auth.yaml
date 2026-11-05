@@ -683,9 +683,9 @@ paths:
                   reason:
                     type: [string, "null"]
                     enum: [null, not_member, removed, unknown_sender, presence_refused, agent_refused]
-        "400": { description: Invalid JSON object, channel, blank/non-string channelUid or extra fields }
-        "401": { description: Missing, malformed, invalid or expired agent app token }
-        "403": { description: Not an assigned active agent-capable caller acting as an active org; wrong token subject/type/audience/scope, acting-for selector or excluded service }
+        "400": { description: "Invalid JSON object, channel, blank/non-string channelUid or extra fields" }
+        "401": { description: "Missing, malformed, invalid or expired agent app token" }
+        "403": { description: "Not an assigned active agent-capable caller acting as an active org; wrong token subject/type/audience/scope, acting-for selector or excluded service" }
         "503": { description: Channel link unavailable; no partial admission result }
   /api/channel-link/agent:
     post:
@@ -720,8 +720,8 @@ paths:
                   linkToken: { type: string }
                   url: { type: string, format: uri }
                   expiresAt: { type: string, format: date-time }
-        "400": { description: Invalid JSON object, channel, blank/non-string channelUid or extra fields }
-        "401": { description: Missing, invalid or expired agent app token }
+        "400": { description: "Invalid JSON object, channel, blank/non-string channelUid or extra fields" }
+        "401": { description: "Missing, invalid or expired agent app token" }
         "403": { description: Same assigned-org-bot caller and token boundaries as speaker }
         "503": { description: Link token creation unavailable }
   /api/channel-link:
