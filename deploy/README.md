@@ -1,15 +1,9 @@
-# deploy/ — pm2 ecosystem configs (version-controlled)
+# Kernel deployment
 
-Source-of-truth copies of the pm2 `ecosystem.config.js` files that run the
-Imajin services on **imajin-server** (`192.168.1.193`). Committing them here
-stops the silent config drift that comes from editing the live files in place
-and never recording the change (#1325).
+The tracked ecosystem files are the source of truth for in-repo PM2 definitions. Workflow source is not a claim that a live host matches it. [Deploy posture](../docs/ops/DEPLOY-POSTURE.md) explains the workflow order and evidence; [environment configuration](../docs/ENVIRONMENTS.md) owns ports, domains and variable placement.
 
-
-## HTTP liveness watchdog (#3206)
-
-**Shipped code, not installed by this PR. Ryan installs it after the auth fix
-is deployed.** PM2 `online` proves a process exists, not that HTTP answers.
+## HTTP liveness watchdog
+**Installation is an operator action after the reviewed kernel deployment.** PM2 `online` proves a process exists, not that HTTP answers.
 `deploy/liveness-probe.mjs` checks every HTTP listener in the selected tracked
 ecosystem config. Portless `*-kernel-cron` workers are explicitly excluded;
 this is not a heartbeat for background jobs. Reconcile any extra live PM2 app
@@ -17,7 +11,7 @@ into the tracked config before enabling it. No SSH, timer installation or
 live restart is part of this change.
 
 Policy: a **5s total HTTP deadline**, **3 consecutive failures**, **15s between
-completed sweeps**, **90s grace for a newly observed PID**, and a persistent
+completed sweeps**, **90s grace for an observed PID's startup**, and a persistent
 **5-minute restart cooldown per app**. Success resets that app's streak.
 Only 2xx is healthy. A zero/missing PM2 PID stays stopped; an unavailable PID
 query is logged without restarting anything. Slow checks never overlap.
@@ -82,597 +76,118 @@ Operator steps (repeat for dev/prod, do not execute from an agent run):
 6. To disable, stop the appropriate watchdog unit. PM2 apps remain untouched.
    Keep state/outbox so pending alerts and cooldowns survive re-enabling.
 
-### Auth stall diagnosis and reproduction
-
-With prod's `AUTH_SERVICE_URL=http://localhost:7000/auth`, the former
-`requireAuth → validateSessionCookie` fetched its own `/auth/api/session`
-without a signal. A stalled response held each outer handler and socket until
-Undici's native response-headers deadline. On **Node v22.22.0 / Undici 6.23.0**,
-the committed real-network repro saw six 503s at **300,742–300,743ms**, with
-`UND_ERR_HEADERS_TIMEOUT`, even when the receiving server's `requestTimeout`
-was **1,000ms**. Node's incoming-request timeout does not bound the time spent
-waiting for response headers after a complete request. This reproduces the
-production ~300s signature, not the unknown original trigger of the first stall;
-idle CPU and loopback buildup alone do not prove a pool or event-loop deadlock.
-
-Run `pnpm exec vitest run packages/auth/tests/session-stall-repro.test.ts --reporter=verbose`.
-Before the fix (repro commit `44dfe4fbc`, code based on main `2342115f5`):
-**0/6 settled, 6 stuck after 7,007ms**. After: **6/6 settle at about 5s**.
-The optional `REPRO_DEFAULT_HEADERS=1` mode on the baseline waits about 301s
-and records the native cause. It is a diagnostic mode, not the bounded-pass
-criterion. The script mints ephemeral test tokens and needs no real session,
-DB, or production credentials.
-
-Kernel boot now injects the same JWT verification/current-identity lookup the
-session route uses; no package imports kernel code. Standalone corpus/broker
-consumers retain HTTP. All remaining auth/WS HTTP calls use one shared **5s
-total headers+body deadline**, with no retry. Five seconds allows ordinary
-local DB-backed auth but is far below Cloudflare's 100s; even sequential
-auth/chain/acting-as/delegation fallbacks stay below it. Internal calls emit
-only cause code, target path and duration, never cookies, bearer/internal keys,
-headers, query strings or raw upstream errors.
-
-The Next.js stale Server Action reference noise is separate: the reproduction
-uses only the session HTTP path, with no Server Actions involved.
-
-## Files
-
-| File | Server location | Env |
-|------|-----------------|-----|
-| `ecosystem.dev.config.js`  | `~/dev/ecosystem.config.js`  | Dev  (kernel port 3000, apps 3xxx) |
-| `ecosystem.prod.config.js` | `~/prod/ecosystem.config.js` | Prod (kernel port 7000, apps 7xxx) |
-
-**Provenance:** captured verbatim from the reconciled live server copies as of
-**2026-07-16** (the reconciliation date named in #1325). The `cwd` paths are the
-server's absolute paths (`/home/jin/dev/...`, `/home/jin/prod/...`) and are kept
-as-is because they *are* the deployed values.
-
-
-## v0.8.27 deployment additions (source checked 2026-10-25)
-
-- **Reusable SSH step:** follow [the vault SSH action contract](../docs/deploy/vault-ssh-deploy.md)
-  for `.github/actions/vault-ssh-deploy` and `POST /api/vault/ssh-ca/sign`.
-  Provision a repository/environment-bound grant and host CA trust/principals
-  first. Jobs need GitHub OIDC `id-token: write`, pinned known-hosts and a
-  non-swappable tmpfs runner. No stored deploy private key or CA export.
-  `vault-ssh-dry-run.yml` and CI's OpenSSH/Python prerequisites validate the
-  credential-free contract, not live target deployment.
-- **Inference shim:** [the tracked systemd release updater](infer-passthrough/README.md)
-  requires successful exact-SHA production deployment evidence and mint-backed
-  candidate/live health before promotion. It is separate from pm2 kernel deploys;
-  the host install and optional GitHub credential file remain operator-managed.
-- **Corpus:** deploy the kernel owner resolver before the daemon. Its GitHub
-  sources require owner-issued corpus grants and that source owner's OAuth
-  connector selection. Remove obsolete `GITHUB_TOKEN`/`GH_TOKEN` settings, not
-  vault bootstrap credentials. The [signed owner migration](../apps/corpus/README.md#one-shot-owner-migration)
-  is a backed-up, stopped-writer operation, not an automatic deploy step.
-- **Database:** `0221_vault_ssh_scope.sql` is a normal post-baseline migration;
-  never regenerate the baseline or alter applied ledger rows for it.
-
-These are shipped source contracts, not evidence that hosts or corpus data have
-been changed. Dev/prod approvals, vault files and app deployments remain separate.
-
-## Pay caller rollout (#2735)
-
-Deploy the kernel's scoped refund/pledge contract before the migrated app callers.
-Using the existing provisioned app identity, approve `pay:refund` and
-`pay:charge-pledges` through the operator-countersigned `apps:service-scopes` card
-(retain `pay:settle`). No new required env vars or shared pay secret are needed.
-Remove the retired pay-key entry from host/CI secrets and kernel/app `.env.local`;
-the key-free examples are also check-env's manifests. Reload through the normal
-deploy pipeline so stale process env is not relied upon.
-
-Legacy pledges with no app-bound setup transaction fail closed: backers must complete
-a fresh setup; do not assign ownership from old customer/card ids. Operators must
-reconcile interrupted/ambiguous pledge charges before attempting another
-charge, rather than relying indefinitely on Stripe's idempotency retention. Topup routes
-are session-Cookie-only: the legacy balance alias starts the existing Stripe checkout and
-records a pending transaction, never directly credits caller-supplied cash.
-Standalone app deployments require their own caller migration, tracked in
-[events#28](https://github.com/ima-jin/events/issues/28);
-[market#13](https://github.com/ima-jin/market/issues/13) tracks a test-only reference.
-See [scoped pay configuration](../docs/ENVIRONMENTS.md#scoped-pay-callers-2735)
-and [events operator prerequisites](https://github.com/ima-jin/events/blob/main/README.md).
-
-## Node-owned Stripe card rail (#2790, #2793)
-
-Topup sells receipt-backed **MJN** (not emitted MJNx) on the **node DID's** Stripe
-account. Historical Stripe withdrawal reconciliation reads that same account;
-new Stripe withdrawals remain retired (#2757), so use the EMT withdrawal request.
-Neither path uses a Stripe credential from an env file, and an unconfigured
-connector does not prevent startup. Topup returns HTTP 503 with
-`NODE_CARD_RAIL_NOT_CONFIGURED` / “Card rail not configured for this node”;
-the Stripe withdraw adapter reports the same error.
-
-Operator provisioning (repeat independently for dev and prod):
-
-1. Confirm the node's public DID via `GET /registry/api/node/self`; it must be
-   the node identity bootstrapped in `relay.relay_config.imajin_did`, **not**
-   the human operator DID, buyer DID, or DFOS relay identity.
-2. In that node account's Stripe Dashboard, create a restricted key with
-   **Checkout Sessions = Write**, **Payment Intents = Read**, and
-   **Webhook Endpoints = Write**. Historical transfer reconciliation also
-   needs **Transfers = Read**. Do not use a full-access secret key.
-3. Use the existing authenticated Stripe BYO connector flow
-   (`POST /stripe/api/token`, the connector card's masked token input), with
-   connector ownership resolving to that exact **node DID**. The route resolves
-   ownership from authenticated context, not a caller-supplied owner field.
-   Do not paste the key while acting as your personal identity: that configures
-   your own card rail, not the node's.
-   The flow seals `stripe-api-key:<nodeDid>` under delegation-grant custody and
-   provisions a per-owner webhook on the node's Stripe account. Its generated
-   signing secret is sealed separately in `stripe-webhook-secret:<nodeDid>`;
-   never copy it to an env file. The shared resolver also reads the optional
-   sealed `stripe-publishable-key:<nodeDid>` field; hosted topup needs no
-   publishable key.
-4. Approve the vault delegation grant (including any pending Tier 1 approval)
-   and the node owner's Stripe connector **`stripe:events`** scope. Both a
-   readable sealed key and this active scope are mandatory: topup crediting
-   consumes the node's verified `payment_intent.succeeded` event. A bare vault
-   field with no active grant or webhook is not a configured card rail.
-5. Check connector status as the node (`GET /stripe/api/token` returns
-   `keySealed: true`, never plaintext). Verify the webhook is enabled and
-   reaches this node's public `/stripe/api/webhook/<routingId>`, then perform
-   a test-mode topup: the pending transaction must complete and credit MJN once.
-   Disconnecting/revoking the node connector must make the next attempt fail
-   with the configuration error; clients do not cache unsealed keys.
-
-If the node has no authenticated connector-owner context yet, leave the card
-rail disabled until the operator provisions that context; do not substitute a
-human-owned key or bypass grants. The generic external-secret import contract
-tracked by [#2260](https://github.com/ima-jin/imajin-ai/issues/2260) is not a
-replacement for the Stripe BYO flow's webhook provisioning and scope approval.
-The admin vault Set/Rotate controls can manage an existing field, but a standalone
-import/set alone does not finish connector setup.
-
-Never place a key value in source, docs, tickets, logs, env files, shell history,
-command-line arguments, or a diagnostic response. Enter it only through the
-authenticated masked connector input over TLS; do not capture request bodies.
-No dev/prod key is sealed by this change. Final removal of legacy Stripe env
-declarations and the old platform webhook is tracked separately by #2794.
-
-## Keeping them in sync
-
-These are the canonical copies. When a pm2 app is added/removed/re-ported:
-
-1. Edit the file here, commit, PR.
-2. On the server, copy it into place and reload pm2:
-   ```bash
-   # dev
-   cp ~/dev/imajin-ai/deploy/ecosystem.dev.config.js  ~/dev/ecosystem.config.js
-   pm2 reload ~/dev/ecosystem.config.js
-   # prod
-   cp ~/prod/imajin-ai/deploy/ecosystem.prod.config.js ~/prod/ecosystem.config.js
-   pm2 reload ~/prod/ecosystem.config.js
-   ```
-
-Do **not** hand-edit the live `~/dev/ecosystem.config.js` / `~/prod/ecosystem.config.js`
-without mirroring the change back here — that reintroduces the exact drift this
-directory exists to kill.
-
-## `prod-jin` env loading (#1520)
-
-`prod-jin` runs the Next **standalone** server (`node server.js`). Unlike
-`next dev` / `next start`, plain `node` does **not** load `.env.local`. Before
-this was fixed, the kernel env (including `AUTH_PRIVATE_KEY`) only reached the
-process when someone started it by hand with the env exported — so the next
-`pm2 restart` silently dropped it. The kernel then fell back to a deterministic
-dev signing key and **every sealed vault entry failed `SIGNATURE_INVALID`**
-platform-wide, with no error at boot.
-
-Two things now prevent a recurrence:
-
-1. `prod-jin` passes `--env-file` to the Node interpreter via `node_args`,
-   pointing at the server's untracked `apps/kernel/.env.local`, so the env is a
-   property of the config rather than of whoever ran the last restart.
-   **Secrets are never committed here** — only the path is.
-2. The kernel refuses to serve in production when `AUTH_PRIVATE_KEY` is absent
-   instead of deriving a dev key, and logs its derived vault `senderDid` on
-   first vault use.
-
-`--env-file` needs Node ≥ 20.6 — the same mechanism the kernel's own `dev`
-script already uses. Do **not** use pm2's `env_file` key: it is not in the pm2
-ecosystem reference, so it may be silently ignored, which would drop the key
-again without any error.
-
-### Applying it — the prod deploy does this for you
-
-`deploy-prod.yml` now syncs this file and restarts `prod-jin` **from the file**:
-
-- **Sync pm2 ecosystem config** — copies `deploy/ecosystem.prod.config.js` to
-  `~/prod/ecosystem.config.js`, before the build so a cold start uses it.
-- **Restart prod services** — `pm2 startOrRestart <file> --only prod-jin`, then
-  the other `prod-*` processes by name, then `pm2 save`.
-
-`pm2 restart <name>` reuses pm2's *saved* process definition, so a name-based
-restart silently ignores changes to this file — including `prod-jin`'s
-`--env-file`. That is why the deploy targets the file for `prod-jin`, and why
-`pm2 save` runs afterwards: without it a reboot resurrects the stale definition
-without `node_args`.
-
-Only needed if applying by hand (out-of-band config change, or verifying):
-
-```bash
-cp ~/prod/imajin-ai/deploy/ecosystem.prod.config.js ~/prod/ecosystem.config.js
-pm2 startOrRestart ~/prod/ecosystem.config.js --only prod-jin --update-env
-pm2 describe prod-jin | grep -i node_args   # confirm it applied
-pm2 save
-```
-
-Then confirm the identity. It is logged on first vault use, so hit a
-vault-backed page (e.g. `/auth/connectors`) first:
-
-```bash
-pm2 logs prod-jin --lines 200 | grep 'Vault signing identity derived'
-```
-
-Expect the node's real DID and `"devFallback":false`. A `devFallback:true` here
-means the key did not load and every sealed entry is unreadable.
-
-The identity is logged on first use rather than at startup on purpose: deriving
-it at module-import time would make `next build` (which imports the vault with
-`NODE_ENV=production`) fail on any build machine, since those legitimately have
-no `AUTH_PRIVATE_KEY`.
-
-### Expected failure modes (both are the guard working)
-
-- Node exits immediately with `node: /path/.env.local: not found` — the env file
-  is missing at the configured path. `--env-file` fails hard by design, so pm2
-  will crash-loop rather than serve with the wrong identity.
-- Requests fail with `AUTH_PRIVATE_KEY is required in production` — the file
-  loaded but does not define the key.
-
-In either case the rollback is the pre-#1520 manual start, which gets prod
-serving again while the config is fixed:
-
-```bash
-cd ~/prod/imajin-ai/apps/kernel && set -a && . .env.local && set +a
-pm2 restart prod-jin --update-env
-```
-
-## pm2 must exec the listener directly (#2447)
-
-Apps are **not** started via `script: "npm", args: "start"`. pm2 would track the
-npm wrapper (`pm2 -> npm -> sh -c next start -> next-server`); a restart kills
-npm but the `next-server` grandchild survives, is reparented to init and keeps
-the port, while the new pm2 copy crash-loops on `EADDRINUSE` (prod-events,
-2026-09-29: 5,314 restarts). Instead each entry execs the server itself:
-
-- Next apps: `script: "node_modules/next/dist/bin/next"`, `args: "start -p <port>"`
-- kernel: `script: "server.js"`; corpus (dev): `script: "src/index.ts"` with `node_args: "--import tsx"`
-
-so the pm2-managed pid *is* the listener. Both deploy workflows restart every
-service declared in the ecosystem file **from the file** (a name-based
-`pm2 restart` would keep the old saved `npm start` definition), then run
-`scripts/assert-pm2-listeners.sh <dev|prod>`, which fails the deploy unless each
-port's listener (`ss -ltnp`) is the app's pm2 pid (`pm2 jlist`) or its child.
-
-`fixready`, `karaoke` and `scorecard` come from separate repos but are plain
-Next apps (`next start`, no custom server), so their entries here use the same
-direct next-binary shape (#2573); the next deploy recreates them through
-`scripts/pm2-reconcile.sh`. Standalone app repos (e.g. `ima-jin/links`) must
-follow the same rule in their own pm2 entry.
-
-## Changing an app's start command: `pm2-reconcile.sh` (#2547)
-
-`pm2 restart <app>` and `pm2 startOrRestart <file> --only <app>` on an existing
-process keep the exec path pm2 stored when the app was first started; they only
-refresh args/env. After the ecosystem moved from `npm start` to the direct next
-binary, dev therefore ran `npm start -p 3104` (npm swallowed `-p`, `next start`
-treated `3104` as a project directory) and events, coffee, dykil, learn and
-market crash-looped on 2026-10-04. Prod processes are stored as `npm start` too.
-
-Both deploy workflows (and `scripts/build.sh`'s restart) now go through
-`scripts/pm2-reconcile.sh <ecosystem-file> <name>...`, which compares the
-ecosystem's `script` (resolved against `cwd`) and `interpreter` with pm2's
-stored `pm_exec_path` / `exec_interpreter` (`pm2 jlist`). When they differ, or
-pm2 doesn't have the app, it runs `pm2 delete <name>` then
-`pm2 start <file> --only <name>`; matching apps get the usual
-`pm2 startOrRestart`. The workflows then `pm2 save`, so a resurrect doesn't
-bring back the stale definition. No manual pm2 steps are needed: the first
-deploy carrying this recreates every stale app on its own.
-
-Follow-ups (#2572):
-
-- **The port is freed between delete and start.** Deleting an `npm start` tree
-  kills only the npm wrapper; its `next-server` grandchild is reparented to init
-  and keeps the port (the 2026-10-02 orphan). Before every `pm2 start`,
-  reconcile reaps any listener on the app's port (`env.PORT` or `-p <port>`)
-  that pm2 doesn't own, with the same logic `build.sh` uses
-  (`scripts/lib/reap-port.sh`). If the port can't be freed the app is **not**
-  started and the run fails.
-- **A failed reconcile fails the deploy.** Both workflows exit 1 with an
-  `::error::` annotation when `pm2-reconcile.sh` exits non-zero, and
-  `build.sh` records the service as a restart failure (exit 2) instead of
-  falling through to a cold start that could mask it. A failing `pm2 jlist` is a
-  failure too, not "every app is absent".
-- **Install check.** `pm2-reconcile.sh` (and the health check below) first
-  verify that `pm2` and `node` are on PATH and that the ecosystem file exists,
-  and exit 2 naming what is missing.
-
-## Explicit `kill_timeout` and crash-loop alert (#2547)
-
-prod-events crash-looped for ~12h (~48k restarts) behind a still-serving orphan
-and nobody was told. Two more guards:
-
-- **`kill_timeout: 15000`** on every app. pm2's default is 1600 ms, after which
-  it SIGKILLs; Next needs longer to drain connections and exit, and a kill that
-  races shutdown is how a process survives a restart. `ecosystem-config.test.mjs`
-  requires it (>= 10 s) on every entry.
-- **`scripts/check-pm2-restarts.sh <dev|prod>`** compares each app's pm2
-  `restart_time` with the samples it saved inside a sliding window and exits 1
-  (optionally POSTing `{"text": ...}` to a webhook) when an app restarted more
-  than N times in that window. It keeps running until the loop stops, so a
-  crash loop cannot hide behind a 200. Run it every minute on the host:
-
-  ```cron
-  * * * * * cd ~/prod/imajin-ai && RESTART_ALERT_WEBHOOK=https://... ./scripts/check-pm2-restarts.sh prod >> ~/prod/restart-alert.log 2>&1
-  ```
-
-  Tunables: `RESTART_ALERT_THRESHOLD` (default 5), `RESTART_ALERT_WINDOW`
-  (default 600 s), `RESTART_ALERT_STATE`, `RESTART_ALERT_WEBHOOK`.
-
-## Scheduled pm2 health check: errored/stopped alert (#2572)
-
-Once pm2 parks an app `errored` (after `max_restarts`) or `stopped`, its restart
-counter stops moving, so the crash-loop alert above goes quiet and nothing says
-the service is down. Three scripts close that gap, and the deploy workflows
-install them, so no host needs a manual crontab edit:
-
-- **`scripts/check-pm2-status.sh <dev|prod>`** reads `pm2 jlist` and exits 1
-  (POSTing `{"text": ...}` to the same webhook) for every ecosystem-declared app
-  whose status is `errored` or `stopped`. It ignores transient states
-  (`launching`, `waiting restart`, which the restart check covers), apps pm2
-  doesn't know (declared but hosted elsewhere), and `stopped` apps declared with
-  `autorestart: false` (one-shot jobs). An app stays reported on every run but
-  is POSTed only when new or after `STATUS_ALERT_REPEAT` (default 3600 s), so a
-  parked app doesn't page every minute.
-- **`scripts/pm2-health-check.sh <dev|prod>`** runs the install check, then
-  both checks, and exits with the worst result.
-- **`scripts/install-pm2-health-cron.sh <dev|prod>`** (run by `deploy-dev.yml`
-  and `deploy-prod.yml` after every deploy; idempotent) checks pm2, node,
-  crontab and the ecosystem file exist, then installs a per-scope every-minute
-  crontab line (`# imajin-pm2-health:<scope>`) that logs only problems to
-  `~/.cache/imajin/pm2-health.<scope>.log`. The deploy then runs
-  `pm2-health-check.sh` once more, so a deploy that leaves an app errored,
-  stopped or crash-looping is red immediately.
-
-The webhook is the repo secret `PM2_ALERT_WEBHOOK` (optional): the installer
-stores it in the 0600 file `~/.config/imajin/pm2-alert-webhook.<scope>` (cron has
-no environment), and the checks also honour `RESTART_ALERT_WEBHOOK` /
-`STATUS_ALERT_WEBHOOK` in the environment. Without a webhook the problems still
-reach the log and the post-deploy step, and the installer warns.
-
-## Kernel cron scheduler: `prod-kernel-cron` / `dev-kernel-cron` (#2550)
-
-We don't deploy on Vercel, so the kernel's scheduled jobs are not run by any
-platform cron. They are declared in code in `apps/kernel/src/cron/schedule.ts`
-(path, UTC schedule, no-overlap flag; `apps/kernel/vercel.json` is gone) and run
-by one small process per environment, declared next to the kernel in these
-ecosystem files. It execs `src/cron/scheduler.ts` directly under
-`node --import tsx` (never `npm start`, see above), loads the kernel's
-`.env.local` via `--env-file` (for its vault bootstrap identity only), fetches
-the cron bearer secret from the vault at boot, and calls each `/api/cron/*` route
-on loopback (`CRON_BASE_URL`, must match the kernel's port) with
-`Authorization: Bearer <that secret>`.
-
-- A job never overlaps itself: a tick that fires while the previous run is still
-  in flight is skipped and logged (`status: "skipped"`).
-- One JSON log line per run (job, status, httpStatus, durationMs) in
-  `pm2 logs <env>-kernel-cron`. The secret is never logged.
-- Last run and outcome per job: `GET /api/admin/cron-status` with the same
-  bearer (the scheduler's, or an agent holding a grant for the purpose; there is
-  no env var to curl with). `stale: true` means a scheduled tick passed with no
-  run; `schedulerSeen: false` means the scheduler has never written state. State
-  lives in `apps/kernel/.cron-state.json` (gitignored; override with
-  `CRON_STATE_PATH`).
-- Every `/api/cron/*` route fails closed: a cron secret the vault cannot supply
-  gives 503 plus a WARN, a wrong bearer gives 401.
-- **The secret is a vault grant, never hand-set (epic #2241, #2245 pattern).**
-  `CRON_SECRET` is an internal secret generated in the vault, per environment
-  (purpose `kernel.cron-secret`). The kernel reads it in-process from its own
-  vault (memory only); the scheduler authenticates as its bootstrap identity
-  (`KERNEL_CRON_VAULT_BOOTSTRAP_DID` / `_PRIVATE_KEY` in the kernel's
-  `.env.local`) and fetches the current grant at boot with `loadFromVault`,
-  keeping it in memory only. Each fetch sends one deferred ack (on first use).
-  `scripts/provision-service-bootstrap.mjs`, run by both deploy workflows after
-  the gate and before `check-env`, mints that identity and grants it the secret,
-  so **the only human step is the normal deploy tap: no SSH, no `.env.local`
-  edit.** If the identity or grant is missing the deploy still fails closed, but
-  the failure points at the vault: the provisioning step names the grant it could
-  not make, `check-env` points at provisioning, and the scheduler exits non-zero
-  with a vault-pointing error. (The scheduler retries for up to two minutes
-  while the kernel is still booting; `CRON_VAULT_FETCH_TIMEOUT_MS` overrides.)
-- Rotating the secret is a /jin card (a vault rotate): the kernel re-resolves it
-  without a restart, and the scheduler picks the new grant up on its next boot.
-- Both deploy workflows always include the scheduler in the restart set and
-  restart it from the ecosystem file, so `pm2 startOrRestart` starts it even
-  when pm2 has never seen it. No manual `pm2 start`.
-- Adding a cron route means adding a manifest entry (and vice versa):
-  `scripts/ci-guard-cron-manifest.mjs`, run by `scripts/__tests__/ci-guard-cron-manifest.test.mjs`
-  in the Test job, fails CI on drift. The manifest is per-app, so an app that
-  leaves the kernel brings its own `src/cron/schedule.ts`.
-
-## Known drift captured on 2026-07-16 (documented, not yet reconciled)
-
-The prod file does **not** match what actually runs, in two ways. Both are
-recorded here deliberately so the file is an honest snapshot, not an idealized one:
-
-1. **Compiled-kernel services.** `prod-auth`, `prod-registry`, `prod-connections`,
-   `prod-pay`, `prod-profile`, `prod-chat`, `prod-media` are listed as separate
-   pm2 apps (ports 7001–7009) but in practice are **compiled into the single
-   `prod-jin` kernel process** on port 7000 and served as path prefixes
-   (`/auth`, `/media`, …), not as separate processes/subdomains. They will not
-   appear in `pm2 list`. `prod-jin` itself was started ad-hoc as
-   `server.js -p 7000`. Dev has no equivalent split — dev runs the one
-   `dev-jin` kernel process.
-
-2. **`prod-scorecard` (port 7402)** exists in prod (`~/prod/imajin-scorecard`)
-   with no dev counterpart, and is not yet reflected in the deploy skill's
-   process table.
-
-Reconciling the prod file to reality (drop the compiled-in services, or annotate
-them explicitly) is follow-up work — this commit's job is to *capture* the current
-state under version control, not to change what runs.
-
-## `scripts/build.sh` exit codes (#2382)
-
-Both `deploy-dev.yml` and `deploy-prod.yml` invoke `build.sh` indirectly, via
-`scripts/build-changed.sh` under `set -euo pipefail`. Neither workflow
-branches on the *specific* exit code today — any non-zero exit already fails
-the Actions job — but the values below are still fixed and meaningful for
-anyone reading a failed run's log, so keep them stable:
-
-| Exit code | Meaning |
-|-----------|---------|
-| `0` | Every app built, every port was clear, and every service (re)started. |
-| `1` | A build `FAILED` and/or an orphaned port could not be cleared (`PORT_REAP_FAILED`). |
-| `2` | Every app built and every port was clear, but pm2 could neither restart nor cold-start one or more services (`RESTART_FAILED`). |
-
-Code `2` closes the gap reported in #2382: before this fix, a service that
-failed to restart (`build.sh:290-347`) fell into `RESTART_FAILED` but the
-final exit check (`build.sh:362`, pre-fix) only looked at `FAILED` and
-`PORT_REAP_FAILED` — so a dirty restart left a green Actions run. See
-`docs/ops/DEPLOY-POSTURE.md` §2/§4.1 item 4 for the original investigation.
-
-## links is no longer in these ecosystem files (#1986 phase 2)
-
-`links` was removed from both `ecosystem.dev.config.js` and
-`ecosystem.prod.config.js` when `apps/links` was pruned from this monorepo
-(the app's own repo, [ima-jin/links](https://github.com/ima-jin/links), now
-owns it end to end — phase 1 of #1986). Its ports (3102 dev / 7102 prod) and
-Caddy route (`jin.imajin.ai/links`) are unchanged; the operator re-points the
-`dev-links`/`prod-links` pm2 entry at a checkout of the `ima-jin/links` repo
-instead of `~/dev/imajin-ai/apps/links` / `~/prod/imajin-ai/apps/links`. This
-repo's deploy workflows no longer build, migrate, or restart it — that is now
-`ima-jin/links`'s own CI/CD's job. See `docs/ops/DEPLOY-POSTURE.md` for the
-full note.
-
-## learn is no longer in these ecosystem files (#2503)
-
-`learn` was removed from both `ecosystem.dev.config.js` and
-`ecosystem.prod.config.js` when `apps/learn` was pruned from this monorepo
-(the app's own repo, [ima-jin/learn](https://github.com/ima-jin/learn), now
-owns it end to end — #1987 step 5). The `dev-learn` / `prod-learn` pm2 entries
-now point at `ima-jin/learn` checkouts, not at
-`~/dev/imajin-ai/apps/learn` / `~/prod/imajin-ai/apps/learn`. Its ports
-(3103 dev / 7103 prod) and Caddy route (`jin.imajin.ai/learn`) are unchanged.
-This repo's deploy workflows no longer build, migrate, or provision it — that
-is `ima-jin/learn`'s own deploy. A node operator deploying only the kernel
-needs no learn checkout at all. The `learn` Postgres schema stays in place
-(the standalone app owns that data); nothing here drops it. Until the standalone
-app's prod cutover is accepted, prod has no in-repo learn process (a deliberate
-prod gap per the 2026-10-09 ruling). See `docs/ops/DEPLOY-POSTURE.md` for the
-full note.
-
-## coffee is no longer in these ecosystem files (#2500)
-
-`coffee` was removed from both `ecosystem.dev.config.js` and
-`ecosystem.prod.config.js` when `apps/coffee` was pruned from this monorepo
-(the app's own repo, [ima-jin/coffee](https://github.com/ima-jin/coffee), now
-owns it end to end — #1984 step 5). The `dev-coffee` / `prod-coffee` pm2 entries
-now point at `ima-jin/coffee` checkouts (`~/dev/coffee` and `~/prod/coffee`), not
-at `~/dev/imajin-ai/apps/coffee` / `~/prod/imajin-ai/apps/coffee`. Its ports
-(3100 dev / 7100 prod) and Caddy route (`jin.imajin.ai/coffee`) are unchanged.
-This repo's deploy workflows no longer build, migrate, or provision it — that is
-`ima-jin/coffee`'s own deploy. A node operator deploying only the kernel needs no
-coffee checkout at all. The `coffee` Postgres schema stays in place (the
-standalone app owns that data); nothing here drops it. See
-`docs/ops/DEPLOY-POSTURE.md` for the full note.
-
-## market is no longer in these ecosystem files (#2512)
-
-`market` was removed from both `ecosystem.dev.config.js` and
-`ecosystem.prod.config.js` when `apps/market` was pruned from this monorepo
-(the app's own repo, [ima-jin/market](https://github.com/ima-jin/market), now
-owns it end to end — #1989 step 5). The `dev-market` / `prod-market` pm2 entries
-now point at `ima-jin/market` checkouts, not at
-`~/dev/imajin-ai/apps/market` / `~/prod/imajin-ai/apps/market`. Its ports
-(3104 dev / 7104 prod) and Caddy route (`jin.imajin.ai/market`) are unchanged.
-This repo's deploy workflows no longer build, migrate, or provision it — that is
-`ima-jin/market`'s own deploy. A node operator deploying only the kernel needs no
-market checkout at all. The kernel reads `MARKET_SERVICE_URL` **and**
-`MARKET_WEBHOOK_SECRET` to forward pay webhooks to standalone market
-(`notifyMarketService`); **leave both env vars in place** until
-[market#15](https://github.com/ima-jin/market/issues/15) merges and deploys.
-Until that migration ships, standalone market verifies only the legacy Bearer,
-which `apps/kernel/src/lib/auth/kernel-webhook-legacy.ts` attaches only while
-`MARKET_WEBHOOK_SECRET` is set. The detached kernel signature is additive;
-it does not replace market's current Bearer check. The kernel value must continue
-to match market's existing `WEBHOOK_SECRET`. Remove the legacy var only after
-market#15 ships and signed verification is confirmed on that deployment.
-See `docs/security/kernel-webhooks.md` for the rollout gates. The `market` Postgres
-schema stays in place (the standalone app owns that data); nothing here drops it.
-Until the standalone app's prod cutover is accepted, prod has no in-repo market
-process (a deliberate prod gap per the 2026-10-09 ruling). See
-`docs/ops/DEPLOY-POSTURE.md` for the full note.
-
-## dykil is no longer in these ecosystem files (#2523)
-
-`dykil` was removed from both `ecosystem.dev.config.js` and
-`ecosystem.prod.config.js` when `apps/dykil` was pruned from this monorepo
-(the app's own repo, [ima-jin/dykil](https://github.com/ima-jin/dykil), now
-owns it end to end — #1985 step 5). The `dev-dykil` / `prod-dykil` pm2 entries
-now point at `ima-jin/dykil` checkouts (`~/dev/dykil` and `~/prod/dykil`), not
-at `~/dev/imajin-ai/apps/dykil` / `~/prod/imajin-ai/apps/dykil`; each is claimed
-as its own app identity (dev `did:imajin:0c03781444e6630c`, prod
-`did:imajin:cd9af3460069cb34`). Its ports (3101 dev / 7101 prod) and Caddy route
-(`jin.imajin.ai/dykil`) are unchanged. This repo's deploy workflows no longer
-build, migrate, or provision it — that is `ima-jin/dykil`'s own deploy
-(`scripts/deploy.sh <dev|prod>`). A node operator deploying only the kernel
-needs no dykil checkout at all. The `dykil` Postgres schema stays in place
-(the standalone app reads it read-only and the legacy import depends on it);
-nothing here drops it. See `docs/ops/DEPLOY-POSTURE.md` for the full note.
-
-## events is external now (#2517)
-
-Events is built, tested and deployed from [ima-jin/events](https://github.com/ima-jin/events),
-not this workspace. Standalone dev was signed off in #2529 on 2026-10-16 02:33Z;
-prod has run from `~/prod/events` since 2026-10-16 22:44Z. #2804 and #2806
-already removed `dev-events` and `prod-events` from the kernel ecosystems.
-The processes use `~/dev/events` / `~/prod/events`; #2517 removes the kernel
-source copy and local setup/check-env references. A kernel-only node needs
-no events checkout. The app owns its deploy script and registered identity.
-Its ports **3006 dev / 7006 prod**, health **`/events/api/health`**, and Caddy
-**`/events` prefix** are unchanged; no Caddy reconfiguration accompanies this prune.
-
-The `events` schema and data remain owned by `events` / `ima-jin/events`.
-All migration files and ownership metadata remain untouched, including shared
-history. This is not the #1991 ownership handoff, #2844 or the #2525 baseline squash;
-no schema or data is dropped. Public kernel APIs used by standalone remain available.
-
-### Cutover ruling — 2026-10-20
-
-#2516 closed under the [operator ruling](https://github.com/ima-jin/imajin-ai/issues/2516#issuecomment-6294184437):
-buy/QR smoke is deferred to the future event in #2989. The old source-prune
-buy/refund prerequisite and retained kernel-copy rollback instruction are
-historical, not a present release gate. Use the standalone repo's current
-runbook and the normal reviewed, production-approved deployment workflow.
-
-Name-based kernel restarts may still bounce standalone processes, but reuse
-stored definitions. Removing an ecosystem declaration neither performs cutover
-nor makes it safe to leave a monorepo process on a frozen build.
-
-### Rollback
-
-The kernel-copy rollback is retired. Events rollback uses its owned prior
-deployment ref. A rollback is an operator action using reviewed code and a verified matching build/dependency set,
-through the standard approved workflow; verify cwd, listener, prefixed health and
-pm2 persistence. Never restart an old `.next` against drifting `node_modules`.
-No SQL/data rollback or live server action is part of #2517.
-
-## corpus is not in the prod pm2 config (#2232, decided 2026-09-22)
-
-`ecosystem.prod.config.js` has no `prod-corpus` entry. Per #2232 (multi-host
-deploy), corpus runs on **gx10**, not this host (the ProLiant) — Ryan decided
-this explicitly, closing the open question from #2246/#2249 about whether
-corpus belongs in this repo's prod pm2 config. `dev-corpus` stays in
-`ecosystem.dev.config.js`: corpus still runs in dev on this host today.
-
-This file's `cwd` entries are also the source `scripts/check-env.ts` (#2246)
-reads to decide, per environment, whether a service with no `.env.local` is a
-hard error (it's a deploy target here) or just a warning (it isn't). Removing
-`prod-corpus` is what makes a missing `apps/corpus/.env.local` a warning under
-`check-env --env prod` instead of the error it was before — do not re-add a
-`prod-corpus` block solely to silence that warning; only add it back once
-corpus is actually deployed on this host again.
+## Authentication deadlines
+
+Kernel boot injects in-process JWT verification and current-identity lookup; infrastructure packages do not import kernel code. Standalone corpus and broker consumers use HTTP. Remaining auth and WebSocket HTTP calls share a five-second headers-and-body deadline without retry. Incoming request timeout alone does not bound an outbound response-header wait.
+
+Internal diagnostics include only safe cause code, target path and duration, never cookies, credential headers, query strings or raw upstream errors. The real-network reproduction is `packages/auth/tests/session-stall-repro.test.ts`; it uses ephemeral test material, not real sessions or databases. Server Action reference noise is a separate failure class.
+
+## Configuration and deployment
+
+| Tracked file | Environment path | Kernel port |
+|---|---|---|
+| `ecosystem.dev.config.js` | `~/dev/ecosystem.config.js` | 3000 |
+| `ecosystem.prod.config.js` | `~/prod/ecosystem.config.js` | 7000 |
+
+Edit the tracked config through a reviewed PR. The deploy workflows copy it into place before builds and reconcile processes from that file; do not hand-edit a live config without recording the change here.
+
+Production deployment follows Release dispatch, reviewed release PR, automatic tag/deploy dispatch and the existing production approval. Redeploy an approved ref through that workflow. Do not create tags by hand, bypass approval or use a manual production pull.
+
+## Kernel environment loading
+
+The standalone kernel runs through Node with `--env-file` pointing to its untracked kernel environment file. Plain Node does not load that file automatically, and PM2's unsupported `env_file` property is not a substitute. Only the path belongs in the ecosystem definition; secret values do not.
+
+Missing env files make Node fail; a missing production signing key makes protected operations refuse rather than use a development key. A real deployment preserves `--env-file`, reconciles from the tracked config and saves PM2 state so reboot resurrection keeps the invocation.
+
+Do not diagnose this by printing env files or full PM2 dumps. Use the vault-path consistency checker and safe signing-identity diagnostics; any development fallback in a production identity is a failure, not permission to reseal data with a replacement key.
+
+## Direct listener and process reconciliation
+
+PM2 must supervise the listener, not an npm wrapper whose child can retain the port after restart. Next apps execute the Next binary directly; the kernel executes its server, and the development corpus daemon uses Node's in-process TypeScript loader.
+
+`scripts/pm2-reconcile.sh <ecosystem-file> <name>...` compares the stored executable and interpreter with the tracked definition. A stale or absent definition is recreated; a matching one uses the ordinary file-based restart. Before start, unowned listeners are reaped through the shared port helper. Failure to free a port, query PM2 or reconcile a process fails deployment rather than masking it with a cold start.
+
+The workflows save process state and run `scripts/assert-pm2-listeners.sh` to establish listener ownership. An intentional stopped-process snapshot is preserved across build/restart selection, except for the explicitly deployed production kernel. Consult the workflow and shared selector for cron-worker handling.
+
+Each ecosystem app has an explicit shutdown timeout. Do not shorten it to PM2's default or use an npm wrapper to work around a stale invocation.
+
+## PM2 restart and stopped-service checks
+
+`scripts/check-pm2-restarts.sh` compares restart counters within a sliding window and reports crash loops. `scripts/check-pm2-status.sh` reports parked errored/stopped declared apps, respecting intentional stops and one-shot policy. `scripts/pm2-health-check.sh` runs the install preflight and both checks with the worst exit result.
+
+The deploy workflows run the idempotent `scripts/install-pm2-health-cron.sh` per environment and execute a post-deploy check. The schedule logs problems in the environment's PM2 health log. Optional webhook configuration is stored in a protected file rather than embedded in crontab. Without a webhook, failures remain in logs and deployment results.
+
+Restart threshold/window/state and status-repeat settings are documented in those scripts. A quiet restart counter is not proof that a parked process is healthy. Process status, HTTP liveness and aggregate readiness remain separate signals.
+
+## Kernel cron scheduler
+
+`apps/kernel/src/cron/schedule.ts` declares job paths, UTC schedules and overlap policy. One `*-kernel-cron` process per environment runs the scheduler directly with Node's TypeScript loader and kernel bootstrap configuration. `CRON_BASE_URL` must match the kernel's loopback port.
+
+The scheduler obtains its cron bearer from a live vault grant into memory; do not hand-set a cron secret. Provisioning creates the bootstrap identity and grant before check-env/build. Missing custody or authority fails closed; the bounded boot retry is not permission to bypass it.
+
+A job does not overlap itself. Logs contain job, outcome, HTTP status and duration, never the bearer. The authenticated cron-status projection reports last run, stale ticks and whether the scheduler has recorded state. Each cron route refuses missing vault custody or a wrong bearer.
+
+Rotation uses the existing vault approval rail. The kernel resolves the current secret, while the scheduler fetches its grant at boot. The cron manifest guard rejects route/schedule drift. Apps own their schedulers outside this workspace.
+
+## Scoped pay callers and card rail
+
+Deploy the kernel contract before app callers. Approve required refund and pledge-charge service scopes through the operator-countersigned app-service scope flow; registration or a shared pay key does not replace scoped authority.
+
+Legacy pledges without app-bound setup transactions require fresh setup. Reconcile ambiguous/interrupted charges before retrying rather than assuming processor idempotency lasts indefinitely. Session-cookie topups create pending funding, not direct credits of caller-supplied cash.
+
+Node-owned Stripe topup sells receipt-backed MJN, not emitted MJNx. Its connector belongs to the node DID, not the human operator or buyer. Historical withdrawal reconciliation reads that account; supported withdrawal requests use the documented rail. Unconfigured node custody yields the explicit card-rail configuration error without preventing kernel startup.
+
+Operator setup, separately per environment:
+
+1. Resolve the node's public identity from the registry contract and confirm it matches the bootstrapped node identity.
+2. Create a restricted Stripe credential with Checkout Sessions write, Payment Intents read and Webhook Endpoints write; historical transfer reconciliation also needs Transfers read. Do not use a full-access key.
+3. Enter it only through the authenticated masked Stripe connector input over TLS in that node's authorized context. The flow seals the API key, provisions the per-owner webhook and seals its signing secret separately.
+4. Approve both readable vault custody and the node owner's Stripe event scope. A bare sealed field without a live grant/webhook is not a configured rail.
+5. Inspect metadata-only connector status and webhook delivery, then verify a test-mode topup completes and credits MJN once. Revocation must make the next attempt refuse; clients do not cache unsealed keys.
+
+If node-owner context is unavailable, leave the rail disabled until properly provisioned. Generic vault Set/Rotate does not replace connector webhook provisioning and scope approval. Never paste credentials into chat, source, shell history, env files, logs or diagnostic responses.
+
+See the [pay spec](https://jin.imajin.ai/pay/api/spec) and [registration contract](../docs/REGISTRATION.md).
+
+## Independently owned apps and corpus
+
+Coffee, dykil, events, learn, links and market own their source, PM2 definitions, builds, migrations and deployment procedures. Kernel-only nodes need no checkout of those apps. The [environment guide](../docs/ENVIRONMENTS.md) retains their routing/port configuration.
+
+An app process retaining an environment-prefixed name can still be bounced by the kernel's name-based restart selection. That does not transfer build or schema ownership. Reconcile the actual working directory and public health before claiming a cutover; do not run a frozen removed-app build against drifting dependencies.
+
+App schemas, rows and recorded migration history remain intact. For legacy webhook consumers, keep matching service URLs and bearer secrets until each receiver's signed-webhook deployment is verified. The additive kernel signature alone does not establish receiver support. Consult the owned app runbook and [webhook security guide](../docs/security/kernel-webhooks.md).
+
+- Keep `COFFEE_SERVICE_URL` and `COFFEE_WEBHOOK_SECRET` set while coffee uses its legacy Bearer.
+- Keep `LEARN_SERVICE_URL` and `LEARN_WEBHOOK_SECRET` set while learn uses its legacy Bearer.
+- Keep `MARKET_SERVICE_URL` and `MARKET_WEBHOOK_SECRET` set while market uses its legacy Bearer.
+
+Each kernel secret must match the receiver's `WEBHOOK_SECRET`.
+`kernel-webhook-legacy.ts` attaches the Bearer only while that secret is set;
+the detached signature is additive. Remove compatibility configuration only
+after that receiver's signed verification is deployed and verified.
+
+### Events rollback
+
+Events uses its owned prior deployment ref with a matching build/dependency set through the standard approved workflow. Verify working directory, listener, prefixed health and PM2 persistence. The removed kernel copy is not a rollback target, and no SQL/data rollback follows from a code rollback.
+
+### Corpus placement
+
+The production ecosystem has no corpus entry; recorded production placement is on a separate host. Development corpus remains an ecosystem-owned daemon. Configure the actual service URL and follow the [corpus runbook](../apps/corpus/README.md) for source-owner grants, OAuth selection and separately authorized migration.
+
+Check-env uses ecosystem working directories to decide whether a missing service environment is a target error or a non-target warning. Do not add a fictitious production daemon merely to suppress a warning.
+
+## SSH and inference deployment
+
+The [vault SSH action contract](../docs/deploy/vault-ssh-deploy.md) requires repository/environment-bound authority, verified OIDC, pinned public host keys, host CA/principal policy and non-swappable ephemeral keys. Source fixtures do not establish host trust.
+
+The [inference updater](infer-passthrough/README.md) is separate systemd automation with exact-SHA successful production deployment evidence and declared-mode health gates. Installation and privileged runner configuration are operator prerequisites, not consequences of a kernel source merge.
+
+## Build exit codes
+
+| Code | Meaning |
+|---|---|
+| `0` | Builds, listener clearing and required restarts succeed. |
+| `1` | A build fails or an orphan listener cannot be cleared. |
+| `2` | Builds and ports are ready, but a required restart/cold-start fails. |
+
+Any nonzero result fails the workflow. Use [rollback guidance](../docs/ops/ROLLBACK.md) and the [baseline contract](../migrations/BASELINE.md) for recovery; migrations remain forward-only and recorded rows are not rewritten.

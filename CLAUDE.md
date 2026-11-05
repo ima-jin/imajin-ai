@@ -12,7 +12,6 @@ Imajin's kernel serves **Attestation · Communication · Attribution · Settleme
 - [Environment configuration](docs/ENVIRONMENTS.md): ports, domains and configuration ownership.
 - [PR checklist](docs/PR-CHECKLIST.md): submission requirements.
 - [Migration discipline](docs/MIGRATIONS.md): root kernel SQL and app-owned migration boundaries.
-- [Known debt](docs/DEBT.md): existing refactor ownership.
 - [Design](DESIGN.md): frontend conventions.
 - [Canon and RFCs](docs/canon/rfcs/INDEX.md): protocol grammar and explicitly historical records.
 - [Root README](README.md): app and package entry points.

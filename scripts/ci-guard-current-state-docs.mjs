@@ -46,7 +46,7 @@ export const HISTORY_RECORDS = new Set([
 
 const DOC_EXTENSIONS = new Set(['.md', '.txt']);
 const HISTORY_HEADING = /\bv\d+\.\d+\.\d+\b|\b(?:addendum|delta)\b/i;
-const METHOD_ROUTE = /^(?:(?:GET|HEAD|POST|PUT|PATCH|DELETE|OPTIONS)(?:\s*[,|/]\s*|\s+))+(?:https?:\/\/[^/\s]+)?\/\S+/;
+const METHODS = new Set(['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS']);
 const PATH_ROUTE = /^\/\S+(?:\s+[—–-]|\s*\||\s*$)/;
 
 function routeLine(line) {
@@ -55,7 +55,27 @@ function routeLine(line) {
   if (line.trim().startsWith('|') && line.split('|').filter(cell => cell.trim()).length > 3) return false;
   const text = line.trim().replaceAll('`', '')
     .replaceAll(/^(?:[-*+]|\d+\.)\s+|\|\s*/g, '');
-  return METHOD_ROUTE.test(text) || PATH_ROUTE.test(text);
+  const tokens = text.replaceAll(/[,|]/g, ' ').split(/\s+/);
+  let index = 0;
+  while (METHODS.has(tokens[index])) index += 1;
+  const path = tokens[index] ?? '';
+  return (index > 0 && (path.startsWith('/') || path.startsWith('https://') || path.startsWith('http://')))
+    || PATH_ROUTE.test(text);
+}
+
+function advanceFence(fence, marker, line) {
+  if (!fence) return marker;
+  return marker[0] === fence[0] && marker.length >= fence.length && line.trim() === marker
+    ? null : fence;
+}
+
+function headingAt(lines, index) {
+  const atx = /^ {0,3}#{1,6}\s+(.+)/.exec(lines[index])?.[1];
+  if (atx) return { text: atx, line: index + 1 };
+  if (index > 0 && /^ {0,3}(?:=+|-+)\s*$/.test(lines[index])) {
+    return { text: lines[index - 1].trim(), line: index };
+  }
+  return { text: '', line: index + 1 };
 }
 
 /** Six consecutive route-shaped lines are an inventory, even inside a fence.
@@ -74,17 +94,13 @@ export function scanDocument(source, file = 'README.md') {
     }
     const marker = /^ {0,3}(`{3,}|~{3,})/.exec(line)?.[1];
     if (marker) {
-      if (!fence) fence = marker;
-      else if (marker[0] === fence[0] && marker.length >= fence.length
-        && line.trim() === marker) fence = null;
+      fence = advanceFence(fence, marker, line);
       continue;
     }
     if (fence) continue;
-    const atx = /^ {0,3}#{1,6}\s+(.+)/.exec(line)?.[1];
-    const setext = index > 0 && /^ {0,3}(?:=+|-+)\s*$/.test(line)
-      ? lines[index - 1].trim() : '';
-    if (HISTORY_HEADING.test(atx ?? setext)) {
-      hits.push({ file, line: atx ? index + 1 : index, rule: 'history heading' });
+    const heading = headingAt(lines, index);
+    if (HISTORY_HEADING.test(heading.text)) {
+      hits.push({ file, line: heading.line, rule: 'history heading' });
     }
   }
   return hits;

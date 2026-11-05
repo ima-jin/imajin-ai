@@ -119,10 +119,24 @@ describe('current-state consumer documentation guard', () => {
     const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'));
     expect(pkg.scripts['check:current-state-docs']).toBe('node scripts/ci-guard-current-state-docs.mjs');
   });
+  it('passes the actual repository without broad records-directory exemptions', () => {
+    expect(scanRepo(root)).toEqual([]);
+  });
+
+  it.each([
+    'README.md', 'CLAUDE.md', 'apps/kernel/README.md',
+    'apps/kernel/public/llms.txt', 'apps/kernel/public/llms-full.txt',
+    'docs/developer-guide.md', 'docs/ops/DEPLOY-POSTURE.md',
+    'deploy/README.md', 'deploy/infer-passthrough/README.md', 'migrations/BASELINE.md',
+  ])('keeps the rewritten consumer document %s free of release and issue history', file => {
+    const text = readFileSync(join(root, file), 'utf8');
+    expect(text).not.toMatch(/\bv\d+\.\d+(?:\.\d+)?\b|(?:issues|pull)\/\d+|#\d{3,}|\b\d{4}-\d{2}-\d{2}\b/);
+    expect(scanDocument(text, file)).toEqual([]);
+  });
 
   it.each(['llms.txt', 'llms-full.txt'])('%s is concept-first, compact and links every defined service spec', name => {
     const text = readFileSync(join(root, 'apps/kernel/public', name), 'utf8');
-    expect(text).toMatch(/^# Imajin\n\n> [^\n]+\n/);
+    expect(text).toMatch(/^# Imajin\r?\n\r?\n> [^\r\n]+\r?\n/);
     for (const heading of ['What Imajin is', 'Key concepts', 'How to integrate', 'Service specifications', 'Further reading']) {
       expect(text).toContain(`## ${heading}`);
     }

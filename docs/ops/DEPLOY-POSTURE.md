@@ -61,6 +61,15 @@ App tables and recorded migration history remain intact. The kernel migration ru
 
 Payment callbacks to standalone apps have compatibility configuration. Keep a configured legacy bearer and matching receiver secret until that receiver's signed-webhook deployment is independently verified. The kernel's additive signature alone does not establish receiver support. Use each app's runbook for callback adoption; do not infer completion from absence of source in this repository.
 
+- Keep `COFFEE_SERVICE_URL` and `COFFEE_WEBHOOK_SECRET` set while coffee uses its legacy Bearer.
+- Keep `LEARN_SERVICE_URL` and `LEARN_WEBHOOK_SECRET` set while learn uses its legacy Bearer.
+- Keep `MARKET_SERVICE_URL` and `MARKET_WEBHOOK_SECRET` set while market uses its legacy Bearer.
+
+Each kernel secret must match the receiver's `WEBHOOK_SECRET`.
+`kernel-webhook-legacy.ts` attaches the Bearer only while that secret is set;
+the detached signature is additive. Remove compatibility configuration only
+after that receiver's signed verification is deployed and verified.
+
 ## Corpus and inference hosts
 
 Corpus production is assigned to a separate host in the recorded configuration. Configure `CORPUS_SERVICE_URL` for its actual address; localhost is correct only when the daemon is colocated. GitHub partitions require registry-resolved source owners, live owner-issued grants and that owner's selected OAuth connector. Membership or a local CLI login is not consent.
