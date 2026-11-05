@@ -108,7 +108,8 @@ Internal diagnostics include only safe cause code, target path and duration, nev
 ## Database deadlines and pool-stall reproduction
 
 The shared `@imajin/db` client retains `max: 10`, `idle_timeout: 20` and
-`connect_timeout: 10`. Each new connection supplies PostgreSQL
+`connect_timeout: 10`. Its process-global singleton makes Next's separate
+bundles and the DB liveness check use the same pool. Each new connection supplies PostgreSQL
 `statement_timeout=30000` and `idle_in_transaction_session_timeout=60000`
 startup parameters. Runtime settings (milliseconds, non-negative integers):
 
@@ -125,6 +126,12 @@ caller without waiting indefinitely for its transport. Never await same-kernel
 HTTP or non-DB work inside a transaction. Stage external work before checkout
 or deliver only after commit. Query cancellation is best-effort when the
 transport is broken; the DB-aware watchdog is the recovery backstop.
+Broker consent notifications now insert on the dedupe transaction's own
+connection and deliver after commit. Relay operations originating inside a
+transaction (including signed-mail audit) queue until the outermost commit;
+rollback/timeout drops the queued delivery. Savepoints merge into their parent.
+An autocommit/COMMIT timeout does not prove that a write was not applied:
+do not automatically retry value-moving writes after an ambiguous response.
 
 **Explicit opt-outs:** a dedicated long-running worker may set the relevant
 `DB_*_TIMEOUT_MS=0` (or a larger bound) only in that worker's environment, never

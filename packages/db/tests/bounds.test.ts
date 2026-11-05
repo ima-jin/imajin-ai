@@ -1,6 +1,7 @@
 import postgres from 'postgres';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { boundSql, timeoutSetting } from '../src/bounds';
+import { deferAfterCommit } from '../src/transaction-effects';
 
 const bounds = { acquireMs: 100, queryMs: 400 };
 function deferred<T>() {
@@ -24,7 +25,73 @@ beforeEach(() => { vi.useFakeTimers(); });
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
 
 describe('shared DB bounds', () => {
-  it.each(['-1', 'NaN', '', '1.5', '1e4', 'Infinity', '9007199254740992'])('rejects invalid setting %s', value => {
+  it('refuses new and pre-created SQL after a transaction expires', async () => {
+    const f = fixture();
+    let late!: typeof f.sql;
+    let query!: ReturnType<typeof f.sql.unsafe>;
+    Object.assign(f.sql, { begin: (callback: (sql: typeof f.sql) => unknown) => Promise.resolve(callback(f.sql)) });
+    const pending = expect(boundSql(f.sql, bounds).begin(async tx => {
+      late = tx;
+      query = tx.unsafe('SELECT 1');
+      await new Promise(() => undefined);
+    })).rejects.toMatchObject({ code: 'DB_QUERY_TIMEOUT' });
+    await vi.advanceTimersByTimeAsync(401);
+    await pending;
+    expect(() => late.unsafe('SELECT 2')).toThrow('DB_QUERY_TIMEOUT');
+    await expect(Promise.resolve(query)).rejects.toThrow('DB_QUERY_TIMEOUT');
+  });
+  it.each(['reject', 'throw'])('observes cancellation transport %s without retaining the caller', async kind => {
+    const f = fixture(true);
+    const canceller = vi.fn(() => {
+      if (kind === 'throw') throw new Error('cancel transport failed');
+      return Promise.reject(new Error('cancel transport failed'));
+    });
+    Object.assign(f.query, { canceller });
+    const pending = expect(boundSql(f.sql, bounds).unsafe('SELECT 1')).rejects.toMatchObject({ code: 'DB_QUERY_TIMEOUT' });
+    await vi.advanceTimersByTimeAsync(401);
+    await pending;
+    expect(canceller).toHaveBeenCalledOnce();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+  it('delivers effects only after a successful transaction completes', async () => {
+    const f = fixture();
+    let committed = false;
+    const deliver = vi.fn(async () => { expect(committed).toBe(true); });
+    Object.assign(f.sql, { begin: async (callback: (sql: typeof f.sql) => unknown) => {
+      const value = await callback(f.sql);
+      committed = true;
+      return value;
+    } });
+    expect(await boundSql(f.sql, bounds).begin(async () => {
+      deferAfterCommit(deliver);
+      return 'result';
+    })).toBe('result');
+    expect(deliver).toHaveBeenCalledOnce();
+  });
+  it('never delivers queued self-HTTP on rollback', async () => {
+    const f = fixture();
+    Object.assign(f.sql, { begin: (callback: (sql: typeof f.sql) => unknown) => Promise.resolve(callback(f.sql)) });
+    const deliver = vi.fn();
+    await expect(boundSql(f.sql, bounds).begin(async () => {
+      deferAfterCommit(deliver);
+      throw new Error('rollback');
+    })).rejects.toThrow('rollback');
+    expect(deliver).not.toHaveBeenCalled();
+  });
+  it('bounds a stalled COMMIT even after the callback has completed', async () => {
+    const f = fixture();
+    const deliver = vi.fn();
+    Object.assign(f.sql, { begin: async (callback: (sql: typeof f.sql) => unknown) => {
+      await callback(f.sql);
+      return new Promise(() => undefined);
+    } });
+    const pending = expect(boundSql(f.sql, bounds).begin(async () => { deferAfterCommit(deliver); }))
+      .rejects.toMatchObject({ code: 'DB_QUERY_TIMEOUT' });
+    await vi.advanceTimersByTimeAsync(401);
+    await pending;
+    expect(deliver).not.toHaveBeenCalled();
+  });
+  it.each(['-1', 'NaN', '', '1.5', '1e4', 'Infinity', '2147483648', '9007199254740992'])('rejects invalid setting %s', value => {
     expect(() => timeoutSetting({ TIMEOUT: value }, 'TIMEOUT', 100)).toThrow('non-negative integer');
   });
   it('allows explicit zero opt-out and a positive override', () => {

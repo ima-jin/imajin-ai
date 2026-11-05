@@ -1,4 +1,5 @@
 import type postgres from 'postgres';
+import { transactionEffects } from './transaction-effects';
 
 export class DatabaseTimeoutError extends Error {
   constructor(readonly code: 'DB_ACQUIRE_TIMEOUT' | 'DB_QUERY_TIMEOUT') {
@@ -16,7 +17,7 @@ export interface DatabaseBounds {
 export function timeoutSetting(env: NodeJS.ProcessEnv, name: string, fallback: number): number {
   const value = env[name];
   if (value === undefined) return fallback;
-  if (!/^\d+$/.test(value) || !Number.isSafeInteger(Number(value))) {
+  if (!/^\d+$/.test(value) || !Number.isSafeInteger(Number(value)) || Number(value) > 2_147_483_647) {
     throw new Error(`${name} must be a non-negative integer in milliseconds`);
   }
   return Number(value);
@@ -27,14 +28,29 @@ type Pending = Promise<unknown> & {
   cancel(): void;
   // postgres.js 3.x cancel() uses this same field to distinguish queued work.
   state: unknown;
+  canceller?: ((query: Pending) => Promise<unknown>) | null;
 };
 
+function cancelQuery(query: Pending): void {
+  try {
+    // postgres.js cancel() discards this promise. Observe it ourselves so an
+    // unreachable cancellation transport cannot become an unhandled rejection.
+    if (query.canceller) {
+      const cancel = query.canceller;
+      query.canceller = null;
+      void Promise.resolve(cancel(query)).catch(() => undefined);
+    } else {
+      query.cancel();
+    }
+  } catch { /* Cancellation is best-effort; the caller's deadline still wins. */ }
+}
+
 /** Bound lazy postgres.js queries without eagerly executing SQL fragments. */
-function boundQuery(query: Pending, bounds: DatabaseBounds): Pending {
+function boundQuery(query: Pending, bounds: DatabaseBounds, assertActive: () => void): Pending {
   let result: Promise<unknown> | undefined;
-  let proxy: Pending;
   function execute(): Promise<unknown> {
     if (result) return result;
+    assertActive();
     let acquireTimer: ReturnType<typeof setTimeout> | undefined;
     let queryTimer: ReturnType<typeof setTimeout> | undefined;
     let rejectDeadline: (error: Error) => void;
@@ -42,7 +58,7 @@ function boundQuery(query: Pending, bounds: DatabaseBounds): Pending {
     const expire = (code: DatabaseTimeoutError['code']) => {
       // Settle the caller even when a broken transport cannot acknowledge cancel.
       rejectDeadline(new DatabaseTimeoutError(code));
-      query.cancel(); // Removes unassigned queries from postgres.js's queue.
+      cancelQuery(query); // Removes unassigned queries from postgres.js's queue.
     };
     if (bounds.acquireMs > 0) {
       acquireTimer = setTimeout(() => {
@@ -57,8 +73,9 @@ function boundQuery(query: Pending, bounds: DatabaseBounds): Pending {
     });
     return result;
   }
-  proxy = new Proxy(query, {
+  const proxy = new Proxy(query, {
     get(target, property) {
+      if (property === 'cancel') return () => cancelQuery(target);
       if (property === 'then') return execute().then.bind(execute());
       if (property === 'catch') return execute().catch.bind(execute());
       if (property === 'finally') return execute().finally.bind(execute());
@@ -101,21 +118,26 @@ function transaction(
   target: Sql, method: 'begin' | 'savepoint', args: unknown[], bounds: DatabaseBounds,
 ): Promise<unknown> {
   const callback = args.at(-1) as (sql: Sql) => unknown;
+  const effects = transactionEffects();
   let expired = false;
   let acquired: (() => void) | undefined;
   let rejectTimeout!: (error: Error) => void;
+  let completionTimer: ReturnType<typeof setTimeout> | undefined;
   const deadline = new Promise<never>((_, reject) => { rejectTimeout = reject; });
   const started = new Promise<void>(resolve => { acquired = resolve; });
   const run = async (sql: Sql) => {
     acquired?.();
     if (expired) throw new DatabaseTimeoutError('DB_ACQUIRE_TIMEOUT');
+    if (bounds.queryMs > 0) {
+      completionTimer = setTimeout(() => rejectTimeout(new DatabaseTimeoutError('DB_QUERY_TIMEOUT')), bounds.queryMs);
+    }
     let active = true;
     const scoped = boundSql(sql, bounds, () => {
-      if (!active) throw new DatabaseTimeoutError('DB_QUERY_TIMEOUT');
+      if (!active || !effects.isActive()) throw new DatabaseTimeoutError('DB_QUERY_TIMEOUT');
     });
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {
-      const work = callback(scoped);
+      const work = effects.run(() => callback(scoped));
       const pending = Array.isArray(work) ? Promise.all(work) : Promise.resolve(work);
       if (bounds.queryMs === 0) return await pending;
       return await Promise.race([
@@ -128,7 +150,7 @@ function transaction(
           }, bounds.queryMs);
         }),
       ]);
-    } finally { active = false; clearTimeout(timer); }
+    } finally { active = false; effects.close(); clearTimeout(timer); }
   };
   const pending = Reflect.apply(Reflect.get(target, method), target, [...args.slice(0, -1), run]) as Promise<unknown>;
   // Stop measuring checkout once the transaction callback receives its connection.
@@ -138,13 +160,17 @@ function transaction(
     if (error instanceof DatabaseTimeoutError && error.code === 'DB_ACQUIRE_TIMEOUT') expired = true;
     throw error;
   });
-  return Promise.race([checkout, deadline]);
+  return Promise.race([checkout, deadline]).then(async value => {
+    clearTimeout(completionTimer);
+    await effects.committed();
+    return value;
+  }).finally(() => { effects.close(); clearTimeout(completionTimer); });
 }
 
 /** Keep SQL helpers/fragments intact; wrap only executable queries and scopes. */
 export function boundSql<T extends Sql>(sql: T, bounds: DatabaseBounds, assertActive = () => undefined): T {
   const wrap = (value: unknown) => value && typeof value === 'object' && 'cancel' in value && 'then' in value
-    ? boundQuery(value as Pending, bounds) : value;
+    ? boundQuery(value as Pending, bounds, assertActive) : value;
   return new Proxy(sql, {
     apply(target, thisArg, args) { assertActive(); return wrap(Reflect.apply(target, thisArg, args)); },
     get(target, property) {

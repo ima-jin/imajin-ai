@@ -8,16 +8,19 @@ const STORE = Symbol.for('imajin.kernel.ws-tokens');
 const shared = globalThis as typeof globalThis & {
   [STORE]?: Map<string, { did: string; expires: number }>;
 };
-const tokenStore = shared[STORE] ??= new Map<string, { did: string; expires: number }>();
+const tokenStore = shared[STORE] ?? new Map<string, { did: string; expires: number }>();
 
 // Clean up expired tokens periodically
-const cleanup = setInterval(() => {
-  const now = Date.now();
-  tokenStore.forEach((entry, token) => {
-    if (entry.expires < now) tokenStore.delete(token);
-  });
-}, 60000);
-cleanup.unref();
+if (!shared[STORE]) {
+  shared[STORE] = tokenStore;
+  const cleanup = setInterval(() => {
+    const now = Date.now();
+    tokenStore.forEach((entry, token) => {
+      if (entry.expires < now) tokenStore.delete(token);
+    });
+  }, 60000);
+  cleanup.unref();
+}
 
 export function createWsToken(did: string): string {
   const token = randomBytes(32).toString('hex');

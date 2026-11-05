@@ -1,11 +1,25 @@
 import { afterEach, expect, it, vi } from 'vitest';
-const { create } = vi.hoisted(() => ({ create: vi.fn(() => Object.assign(() => undefined, { options: {} })) }));
+const { create } = vi.hoisted(() => ({
+  create: vi.fn(() => Object.assign(() => undefined, {
+    options: { connection: { statement_timeout: 0, idle_in_transaction_session_timeout: 0 } },
+  })),
+}));
 vi.mock('postgres', () => ({ default: create }));
-afterEach(() => { vi.unstubAllEnvs(); vi.resetModules(); create.mockClear(); });
+afterEach(() => {
+  Reflect.deleteProperty(globalThis, Symbol.for('imajin.db.client'));
+  vi.unstubAllEnvs(); vi.resetModules(); create.mockClear();
+});
 it('configures conservative server startup timeouts without changing max 10', async () => {
   vi.stubEnv('DATABASE_URL', 'postgres://localhost/runtime_test');
   const { getClient } = await import('../src/client');
   expect(getClient()).toBe(getClient());
+  expect(create).toHaveBeenCalledOnce();
+  expect(getClient().options.connection).toMatchObject({
+    statement_timeout: 30_000, idle_in_transaction_session_timeout: 60_000,
+  });
+  vi.resetModules();
+  const duplicate = await import('../src/client');
+  expect(duplicate.getClient()).toBe(getClient());
   expect(create).toHaveBeenCalledOnce();
   expect(create).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({
     max: 10, idle_timeout: 20, connect_timeout: 10,

@@ -59,7 +59,7 @@ async function notifyOnce(request: BrokerPipelineState['request'], prepared: Pre
  * Notify the subject of an inbound consent request that was rejected due to
  * `no_consent` (#1220).
  *
- * Fires a `broker:consent-request` notification via the notify service so the
+ * Persists a `broker:consent-request` through the injected kernel writer so the
  * subject can approve or deny inline from the notification bell, without
  * opening the disclosure dashboard.
  *
@@ -93,20 +93,18 @@ export async function sendConsentRequestNotification(
 
   try {
     const prepared = await prepare({
-          to: request.subject,
-          scope: 'broker:consent-request',
-          urgency: 'urgent',
-          data: {
-            requesterDid: request.requester,
-            // The `{did, appDid}` pair every owner-facing alert renders from:
-            // `did` is the principal (this notification's recipient), `appDid`
-            // the delegate that actually acted (#2366).
-            did: request.subject,
-            ...(request.appDid ? { appDid: request.appDid } : {}),
-            purpose: request.purpose,
-            fields: request.fields,
-            requestedAt: new Date().toISOString(),
-          },
+      to: request.subject,
+      scope: 'broker:consent-request',
+      urgency: 'urgent',
+      data: {
+        requesterDid: request.requester,
+        // Principal and acting app remain distinct on owner-facing surfaces.
+        did: request.subject,
+        ...(request.appDid ? { appDid: request.appDid } : {}),
+        purpose: request.purpose,
+        fields: request.fields,
+        requestedAt: new Date().toISOString(),
+      },
     });
     if (await notifyOnce(request, prepared)) await prepared.deliver();
   } catch (err) {

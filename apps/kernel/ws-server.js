@@ -57,8 +57,8 @@ async function authenticateToken(cookieName, token) {
     if (!res.ok) return null;
     const data = await res.json();
     return data.did || data.identity?.did || null;
-  } catch (err) {
-    console.error('[WS] Auth error:', err.message);
+  } catch {
+    console.error('[WS] Auth unavailable');
     return null;
   }
 }
@@ -79,8 +79,8 @@ async function authenticateWsToken(token) {
     if (!res.ok) return null;
     const data = await res.json();
     return data.did || null;
-  } catch (err) {
-    console.error('[WS] Token auth error:', err.message);
+  } catch {
+    console.error('[WS] Token auth unavailable');
     return null;
   }
 }
@@ -101,8 +101,8 @@ async function updateLastSeen(did) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ did, lastSeenAt: new Date().toISOString() }),
     });
-  } catch (err) {
-    console.error('[WS] Failed to update last_seen:', err.message);
+  } catch {
+    console.error('[WS] Last-seen update unavailable');
   }
 }
 

@@ -28,7 +28,8 @@ vi.mock('@imajin/logger', () => ({
 // dfos.ts pulls in the kernel db + node-identity modules at import time, both
 // of which call @imajin/db's getClient() eagerly — stub the package so import
 // doesn't require a real DATABASE_URL.
-vi.mock('@imajin/db', () => ({
+vi.mock('@imajin/db', async original => ({
+  ...await original<typeof import('@imajin/db')>(),
   getClient: () => vi.fn(),
   createDb: () => ({}),
 }));
@@ -109,7 +110,8 @@ describe('checkRelayChain', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     expect(await checkRelayChain('did:dfos:jin')).toBe(true);
-    expect(fetchMock).toHaveBeenCalledWith('http://localhost:7000/registry/relay/identities/did%3Adfos%3Ajin');
+    expect(fetchMock).toHaveBeenCalledWith('http://localhost:7000/registry/relay/identities/did%3Adfos%3Ajin',
+      expect.objectContaining({ signal: expect.any(AbortSignal) }));
   });
 
   it('returns false when the fetch throws', async () => {
