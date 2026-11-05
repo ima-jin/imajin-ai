@@ -117,7 +117,7 @@ export class PostgresRelayStore implements RelayStore, RelayWriteStore, RelayWri
   constructor(private readonly db: PostgresJsDatabase<Record<string, unknown>>) {}
 
   async commit(batch: CommitBatch): Promise<CommitResult> {
-    return this.db.transaction(async (tx) => {
+    return await this.db.transaction(async (tx) => {
       const store = new PostgresRelayStore(tx as unknown as PostgresJsDatabase<Record<string, unknown>>);
       if (batch.kind === 'blob') {
         await store.putBlob(batch.key, batch.bytes);
