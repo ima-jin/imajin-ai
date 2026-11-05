@@ -32,9 +32,9 @@ export function OrgHeldRenewalForm({ orgDid, provider }: Readonly<{ orgDid: stri
     <p>Extend the existing grant before the expiry sweep erases its material. No key is revealed, copied, replaced or requested.</p>
     <p>A human owner or admin must countersign this irreversible custody action in their personal /jin Inbox.</p>
     {error && <p role="alert">Renewal unavailable. Check your owner/admin identity and choose an expiry later than the existing grant. Erased or revoked grants cannot be renewed here.</p>}
-    {pending ? <p role="status">Renewal proposed, not yet applied. Switch to your personal identity and <Link className="underline" href="/jin">sign the renewal in your Inbox</Link>. Then refresh the identity card to check its grade.</p>
+    {pending ? <output className="block">Renewal proposed, not yet applied. Switch to your personal identity and <Link className="underline" href="/jin">sign the renewal in your Inbox</Link>. Then refresh the identity card to check its grade.</output>
       : <form onSubmit={event => void submit(event)} className="space-y-3">
-        <label className="block">New grant expiry (local time)
+        <label className="block"><span>New grant expiry (local time)</span>
           <input type="datetime-local" required value={expiresAt} disabled={busy}
             onChange={event => setExpiresAt(event.target.value)}
             className="block rounded border border-gray-700 bg-gray-950 p-2" />
