@@ -14,6 +14,10 @@ const shards = ci.jobs['test-shards'];
 const aggregate = ci.jobs.test;
 
 describe('required Test check', () => {
+  it('intentionally fails for the reversible required-check proof', () => {
+    expect(true).toBe(false);
+  });
+
   it('runs four shards without cancelling siblings on failure', () => {
     expect(shards.strategy).toEqual({ 'fail-fast': false, matrix: { shard: [1, 2, 3, 4] } });
     expect(aggregate.name).toBe('Test');
