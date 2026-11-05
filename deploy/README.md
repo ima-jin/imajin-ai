@@ -20,8 +20,11 @@ The probe runs as `jin` with the same `PM2_HOME` as the apps, and invokes only
 `jlist` (which includes secrets), `all`, or `--update-env`.
 
 Each target is `http://127.0.0.1:<port>/api/health?liveness=1`.
-For the kernel, this query is **process liveness only**, with no DB, vault or
-HTTP fan-out. `/api/health` without the query retains its aggregate readiness
+For the kernel, this query checks **the same shared pool with SELECT 1**,
+bounded to **1.5 seconds**, cancelling the query on timeout. A full/wedged pool
+returns 503 rather than a false process-only 200. No separate connection can
+mask pool exhaustion, and no vault, registry or HTTP fan-out runs here.
+`/api/health` without the query retains its aggregate readiness
 contract. Restarting the kernel for a sibling's readiness failure would amplify
 an outage; do not point this watchdog at aggregate readiness.
 
@@ -56,7 +59,7 @@ operator evidence.
 Operator steps (repeat for dev/prod, do not execute from an agent run):
 
 1. Deploy this code through the normal reviewed release/deploy pipeline.
-   Verify `GET /api/health?liveness=1` answers immediately; verify every tracked
+   Verify `GET /api/health?liveness=1` answers within 2s with `database: true`; verify every tracked
    app actually implements `/api/health` (a 404 is a configuration failure).
 2. Check the appropriate kernel env file contains the existing internal key
    without displaying it, and that node metadata has the intended operator DID.
@@ -64,11 +67,28 @@ Operator steps (repeat for dev/prod, do not execute from an agent run):
    `node deploy/liveness-probe.mjs --env prod --once --dry-run`.
    Dry-run is the default and never restarts or sends a real receipt. It does
    persist observations. Do not run a second copy alongside an active daemon.
-4. Install the provided `deploy/imajin-liveness@.service` as a systemd template
-   using the host's normal privileged service-install procedure. Verify the Node
-   binary path, `User=jin`, repository/env paths and `PM2_HOME` for this host.
-   Enable `imajin-liveness@dev` and `imajin-liveness@prod` only after review.
-   The unit explicitly passes `--execute`; there is no automatic deploy hook.
+4. Verify `/usr/bin/node`, `User=jin`, both `/home/jin/{dev,prod}/imajin-ai`
+   repository/env paths, and `PM2_HOME=/home/jin/.pm2`. After review, run the
+   following exact, idempotent operator commands **on the host** (never from
+   an agent run). Install from the reviewed production checkout after both
+   environments carry the DB-aware health route:
+
+   ```bash
+   sudo install -m 0644 /home/jin/prod/imajin-ai/deploy/imajin-liveness@.service /etc/systemd/system/imajin-liveness@.service
+   sudo systemctl daemon-reload
+   sudo systemctl enable --now imajin-liveness@dev.service imajin-liveness@prod.service
+   sudo systemctl is-enabled imajin-liveness@dev.service imajin-liveness@prod.service
+   sudo systemctl is-active imajin-liveness@dev.service imajin-liveness@prod.service
+   sudo journalctl -u imajin-liveness@dev.service -u imajin-liveness@prod.service --since '5 minutes ago' --no-pager
+   ```
+
+   Both `is-enabled` and `is-active` must report two successful units; zero
+   installed units is **not** completion. Repeating install/enable is safe.
+   For an already-running unit after a future reviewed code/unit update,
+   restart only the two watchdog instances with
+   `sudo systemctl restart imajin-liveness@dev.service imajin-liveness@prod.service`.
+   This is not a PM2 application restart. The unit explicitly passes
+   `--execute`; there is no automatic deploy hook.
 5. Inspect the journal and `/jin` Record. Test a **stub**, never deliberately
    block production: `pnpm --silent test:agent scripts/__tests__/liveness-probe.test.mjs`.
    It withholds real HTTP responses and uses a stubbed restart command to
@@ -84,6 +104,44 @@ Internal diagnostics include only safe cause code, target path and duration, nev
 
 - `UND_ERR_HEADERS_TIMEOUT` identifies an outbound response-header stall in `packages/auth/src/internal-fetch.cjs`; the receiving server's request timeout does not bound that wait.
 - `REPRO_DEFAULT_HEADERS=1` enables the optional native-header-timeout diagnostic in the real-network repro; it can wait about five minutes and is not the bounded-pass criterion.
+
+## Database deadlines and pool-stall reproduction
+
+The shared `@imajin/db` client retains `max: 10`, `idle_timeout: 20` and
+`connect_timeout: 10`. Each new connection supplies PostgreSQL
+`statement_timeout=30000` and `idle_in_transaction_session_timeout=60000`
+startup parameters. Runtime settings (milliseconds, non-negative integers):
+
+- `DB_STATEMENT_TIMEOUT_MS`: default 30000, server statement execution.
+- `DB_IDLE_TRANSACTION_TIMEOUT_MS`: default 60000, server idle-in-transaction.
+- `DB_ACQUIRE_TIMEOUT_MS`: default 10000, queued queries/reservations/transactions.
+- `DB_QUERY_TIMEOUT_MS`: default 40000, total client query response/transaction
+  callback deadline, including checkout for queries.
+
+Timed-out queries are cancelled, including removal of still-queued work.
+Reservations arriving late are released; transaction callbacks never start
+after a checkout timeout. A callback deadline forces rollback and rejects the
+caller without waiting indefinitely for its transport. Never await same-kernel
+HTTP or non-DB work inside a transaction. Stage external work before checkout
+or deliver only after commit. Query cancellation is best-effort when the
+transport is broken; the DB-aware watchdog is the recovery backstop.
+
+**Explicit opt-outs:** a dedicated long-running worker may set the relevant
+`DB_*_TIMEOUT_MS=0` (or a larger bound) only in that worker's environment, never
+the HTTP kernel environment. No kernel request path opts out. The migration
+runner `scripts/migrate.mjs` uses its own direct postgres client, not the shared
+runtime client, and therefore deliberately retains migration-specific policy.
+The companion `0236_database_runtime_bounds.sql` is idempotent `SELECT 1`:
+no role/database-wide timeout is changed and no rows are rewritten/deleted.
+
+Local-only real PostgreSQL repro: start a disposable Postgres with a loopback
+port and **database `imajin_runtime_repro`**, set `DB_BOUNDS_REPRO_URL` in the
+environment, then run `pnpm exec tsx scripts/repro-db-pool-stall.ts`.
+The script refuses non-loopback or other database targets. It holds all ten
+pool connections, asserts bounded query failure, serves the actual shared
+DB liveness check, and exercises the watchdog with a **fake exact-app restart**
+that releases those connections. It proves recovery, receipt delivery and
+cooldown without invoking PM2, systemd, or any production endpoint.
 
 ## Configuration and deployment
 

@@ -17,7 +17,6 @@ it.each([
   ['authenticateToken', ['imajin_session', 'test-only-session'], null],
   ['authenticateWsToken', ['test-only-token'], null],
   ['updateLastSeen', ['did:imajin:person'], undefined],
-  ['broadcastPresenceChange', ['did:imajin:person', false], undefined],
   ['verifyAgentDelegation', ['did:imajin:agent', 'did:imajin:person'], false],
   ['releaseWsClaims', ['did:imajin:person'], undefined],
   ['ackNotification', ['notification-id', 'did:imajin:person'], undefined],

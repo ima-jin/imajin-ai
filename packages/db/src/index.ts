@@ -1,4 +1,5 @@
 export { createDb, getClient } from './client';
+export { checkDatabaseLiveness } from './liveness';
 export type { AnyDatabase, PostgresJsDatabase } from './client';
 
 // Per-app migration status (#2384) — see migration-status.ts for the full

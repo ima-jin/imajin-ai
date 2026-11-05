@@ -4,15 +4,20 @@ import { randomBytes } from 'node:crypto';
  * Short-lived WS auth tokens.
  * Token → DID mapping, expires after 30 seconds.
  */
-const tokenStore = new Map<string, { did: string; expires: number }>();
+const STORE = Symbol.for('imajin.kernel.ws-tokens');
+const shared = globalThis as typeof globalThis & {
+  [STORE]?: Map<string, { did: string; expires: number }>;
+};
+const tokenStore = shared[STORE] ??= new Map<string, { did: string; expires: number }>();
 
 // Clean up expired tokens periodically
-setInterval(() => {
+const cleanup = setInterval(() => {
   const now = Date.now();
   tokenStore.forEach((entry, token) => {
     if (entry.expires < now) tokenStore.delete(token);
   });
 }, 60000);
+cleanup.unref();
 
 export function createWsToken(did: string): string {
   const token = randomBytes(32).toString('hex');
