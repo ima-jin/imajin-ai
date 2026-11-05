@@ -27,6 +27,8 @@ The root migrations below are kernel-owned in `ownership.json`, additive and ide
 - `0231_usage_projection_chain.sql` upserts the `usage.incurred` row in `kernel.bus_chain_configs` with NULL scope so the chain runs attestation, emit and the usage-projection reactor. The reactor writes the existing `usage.incurred` table keyed by the usage id; it adds no table.
 - `0232_loop_event_signed_receipts.sql` adds nullable `signature`, `publisher_did` and `cause_event_id` columns to `kernel.loop_events`, a self-referencing `cause_event_id` foreign key and its index. Historical unsigned rows stay unsigned.
 - `0233_mail_domains.sql` adds `kernel.mail_domains` with the Postal domain id, exact DNS records, verification state, operation claim and ownership-binding attestation id, plus a pending-check index on `next_check_at`. It holds no credentials.
+- `0234_pay_transactions_source_kind_fee.sql` widens the `pay.transactions.source_kind` check to allow `fee`, so fee wallet-effect claims reuse `transactions.idempotency_key` and a retried `fee.*` receipt credits once.
+- `0235_fee_ledger_projection.sql` adds a nullable `receipt_id` to `pay.fee_ledger` with a unique index, and upserts the `fee.record`, `fee.rebate` and `fee.surcharge` chains in `kernel.bus_chain_configs` at NULL scope as awaited loop-projection → fee-ledger → emit, so `pay.fee_ledger` rows are projected from signed receipts. Scoped rows get the same reactors and keep their enabled policy. Historical rows stay unsigned.
 
 Apply these files in filename order only when absent from the ledger, after any pending `0228`–`0230` files. The fixed cut through `0215`, baseline inventory, historical checksums and existing ledger rows remain unchanged.
 
