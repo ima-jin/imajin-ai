@@ -5,6 +5,7 @@ import { db, channelLinkTokens, channelLinks } from '@/src/db';
 import { and, eq, isNull, gt } from 'drizzle-orm';
 import { generateId } from '@/src/lib/kernel/id';
 import { createLogger } from '@imajin/logger';
+import { resolveApprovalDid } from '@/src/lib/auth/channel-link-approval';
 
 const log = createLogger('kernel');
 
@@ -24,21 +25,30 @@ export async function POST(request: NextRequest) {
     // of returning them to the approval flow (#1797).
     return NextResponse.redirect(new URL('/auth/login?next=/auth/settings', request.url));
   }
-  const did = authResult.identity.id;
-
   let tokenValue: string | null = null;
   let returnTo = '/auth/settings';
+  let bindAs: unknown;
 
   const contentType = request.headers.get('content-type') ?? '';
   if (contentType.includes('application/json')) {
     const body = await request.json().catch(() => ({}));
     tokenValue = typeof body.token === 'string' ? body.token : null;
     returnTo = typeof body.returnTo === 'string' ? body.returnTo : returnTo;
+    bindAs = body.bindAs;
   } else {
     const form = await request.formData().catch(() => null);
     tokenValue = form?.get('token')?.toString() ?? null;
     returnTo = form?.get('returnTo')?.toString() ?? returnTo;
+    bindAs = form?.get('bindAs') ?? undefined;
   }
+
+  const binding = resolveApprovalDid(authResult.identity, bindAs);
+  if ('error' in binding) {
+    const target = new URL(returnTo, request.url);
+    target.searchParams.set('error', binding.error);
+    return NextResponse.redirect(target);
+  }
+  const { did } = binding;
 
   if (!tokenValue) {
     return NextResponse.redirect(new URL(`${returnTo}?error=missing+token`, request.url));
