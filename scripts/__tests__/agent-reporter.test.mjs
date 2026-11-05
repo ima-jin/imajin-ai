@@ -183,23 +183,13 @@ test('coverage', () => { expect(value()).toBe(42); });`, {
     const lcov = join(dir, 'coverage/lcov.info');
     expect(existsSync(lcov)).toBe(true);
     expect(readFileSync(lcov, 'utf8')).toContain('SF:value.mjs');
-  }, 30000);
-
-  it('preserves coverage line counts when native shard blobs are merged', () => {
-    const dir = fixture(`import { value } from './value.mjs';
-test('coverage', () => { expect(value()).toBe(42); });`, {
-      coverage: { include: ['value.mjs'], reporter: ['lcov'] },
-    });
-    writeFileSync(join(dir, 'value.mjs'), 'export const value = () => 42;\n');
+    const lines = () => readFileSync(lcov, 'utf8')
+      .split('\n').filter((line) => /^(SF|LF|LH):/.test(line));
+    const expected = lines();
     writeFileSync(join(dir, 'other.test.mjs'),
       `import { test, expect } from ${JSON.stringify(vitest)};
 import { value } from './value.mjs';
 test('other coverage', () => { expect(value()).toBe(42); });\n`);
-    const baseline = run(dir, ['--agent', '--coverage']);
-    expect(baseline.status, baseline.output).toBe(0);
-    const lines = () => readFileSync(join(dir, 'coverage/lcov.info'), 'utf8')
-      .split('\n').filter((line) => /^(SF|LF|LH):/.test(line));
-    const expected = lines();
     for (const shard of [1, 2]) {
       const result = run(dir, ['--agent', '--coverage', '--reporter=blob', `--shard=${shard}/2`]);
       expect(result.status, result.output).toBe(0);
@@ -210,7 +200,7 @@ test('other coverage', () => { expect(value()).toBe(42); });\n`);
     expect(merged.status, merged.output).toBe(0);
     expect(merged.output).toContain('2 passed · 0 skipped · 2 files');
     expect(lines()).toEqual(expected);
-  });
+  }, 30000);
 });
 
 describe('agent script and workflow contracts', () => {

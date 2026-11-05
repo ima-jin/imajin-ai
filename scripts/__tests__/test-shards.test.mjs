@@ -102,7 +102,8 @@ describe('database project selection', () => {
     expect(unit).toContain('exclude: [...configDefaults.exclude, ...databaseTests]');
     expect(unit).not.toMatch(/testTimeout|hookTimeout/);
     expect(workspace).toContain('include: databaseTests');
-    expect(workspace).toContain('minForks: 1, maxForks: 1');
+    expect(workspace).toContain('singleFork: true');
+    expect(read('vitest.config.ts')).toContain('maxWorkers: 2');
     expect(workspace).toContain('testTimeout: 15_000');
     expect(workspace).toContain('hookTimeout: 30_000');
     expect(workspace).not.toMatch(/retry:|\.skip/);

@@ -13,7 +13,6 @@ export default defineWorkspace([
       include: testInclude,
       exclude: [...configDefaults.exclude, ...databaseTests],
       pool: 'forks',
-      poolOptions: { forks: { minForks: 1, maxForks: 2 } },
     },
   },
   {
@@ -22,7 +21,9 @@ export default defineWorkspace([
       name: 'database',
       include: databaseTests,
       pool: 'forks',
-      poolOptions: { forks: { minForks: 1, maxForks: 1 } },
+      // Vitest 2 schedules singleFork projects after ordinary fork work,
+      // recycles workers, then runs this project's files in one fork.
+      poolOptions: { forks: { singleFork: true } },
       testTimeout: 15_000,
       hookTimeout: 30_000,
     },

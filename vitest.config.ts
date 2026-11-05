@@ -14,6 +14,9 @@ export const testInclude = [
 
 export default defineConfig({
   test: {
+    // Four CI shards share the host with other jobs and merge groups.
+    minWorkers: 1,
+    maxWorkers: 2,
     coverage: {
       // v8 rather than istanbul: no instrumentation step, so the suite runs at
       // close to its normal speed. Must stay major-aligned with the root vitest
