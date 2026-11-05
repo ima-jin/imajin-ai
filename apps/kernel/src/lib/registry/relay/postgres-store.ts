@@ -1,4 +1,4 @@
-import { eq, and, gt, sql, inArray } from 'drizzle-orm';
+import { eq, and, gt, sql, inArray, isNull, desc } from 'drizzle-orm';
 import type { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import type {
   RelayStore,
@@ -8,10 +8,17 @@ import type {
   BlobKey,
   LogEntry,
   OperationKind,
+  CommitBatch,
+  CommitResult,
+  OperationCommit,
+  RelayWriteStore,
+  RelayWriterState,
+  RelayStats,
+  StoredRevocation,
 } from '@metalabel/dfos-web-relay';
-import { createKeyResolver, createHistoricalIdentityResolver } from '@metalabel/dfos-web-relay';
+import { createAsOfKeyResolver, createIdentityResolver } from '@metalabel/dfos-web-relay';
 import { decodeJwsUnsafe } from '@metalabel/dfos-protocol/crypto';
-import { verifyIdentityChain, verifyContentChain } from '@metalabel/dfos-protocol/chain';
+import { verifyIdentityChain, verifyContentChain, parseProtocolTimestampUnix } from '@metalabel/dfos-protocol/chain';
 import {
   relayOperations,
   relayIdentityChains,
@@ -29,9 +36,13 @@ import { mapWithConcurrency } from '@/src/lib/async/sequential';
 /** Max document blob reads in flight while assembling one `getDocuments` page. */
 const DOCUMENT_BLOB_READ_CONCURRENCY = 5;
 
+type StoredPublicCredential = NonNullable<Awaited<ReturnType<RelayStore['getPublicCredentialByCID']>>>;
+type OpOrigin = NonNullable<Parameters<RelayWriterState['putRawOp']>[2]>;
+type PendingOp = Awaited<ReturnType<RelayWriterState['getUnsequencedOps']>>[number];
+
 interface ReadLogResult {
   entries: LogEntry[];
-  cursor: string | null;
+  next: string | null;
 }
 
 interface DocumentLogEntry {
@@ -78,8 +89,60 @@ function parseDocumentBlob(blob: Uint8Array): unknown {
   }
 }
 
-export class PostgresRelayStore implements RelayStore {
+function storedRevocation(row: typeof relayRevocations.$inferSelect): StoredRevocation {
+  return {
+    cid: row.cid,
+    issuerDID: row.issuerDid,
+    credentialCID: row.credentialCid,
+    jwsToken: row.jwsToken,
+    createdAt: row.signedCreatedAt ?? '',
+  };
+}
+
+function validateOperationCommit(batch: OperationCommit): void {
+  if (batch.logEntry && batch.logEntry.cid !== batch.operation.cid) {
+    throw new Error('commit: log entry does not describe the committed operation');
+  }
+  if (batch.identityChain && batch.contentChain) {
+    throw new Error('commit: one operation extends one chain, not two');
+  }
+  const removal = batch.removePublicCredential;
+  if (removal && (!batch.revocation || batch.revocation.issuerDID !== removal.issuerDID
+    || batch.revocation.credentialCID !== removal.credentialCID)) {
+    throw new Error('commit: credential removal requires its issuer-signed revocation');
+  }
+}
+
+export class PostgresRelayStore implements RelayStore, RelayWriteStore, RelayWriterState {
   constructor(private readonly db: PostgresJsDatabase<Record<string, unknown>>) {}
+
+  async commit(batch: CommitBatch): Promise<CommitResult> {
+    return await this.db.transaction(async (tx) => {
+      const store = new PostgresRelayStore(tx as unknown as PostgresJsDatabase<Record<string, unknown>>);
+      if (batch.kind === 'blob') {
+        await store.putBlob(batch.key, batch.bytes);
+        return 'new';
+      }
+      validateOperationCommit(batch);
+      const inserted = await tx.insert(relayOperations).values(batch.operation)
+        .onConflictDoNothing().returning({ cid: relayOperations.cid });
+      if (inserted.length === 0) return 'duplicate';
+      if (batch.identityChain) await store.putIdentityChain(batch.identityChain);
+      if (batch.contentChain) await store.putContentChain(batch.contentChain);
+      if (batch.countersignature) {
+        await store.addCountersignature(batch.countersignature.targetCID, batch.countersignature.jwsToken);
+      }
+      if (batch.revocation) await store.addRevocation(batch.revocation);
+      if (batch.publicCredential) await store.addPublicCredential(batch.publicCredential);
+      if (batch.removePublicCredential) {
+        const { issuerDID, credentialCID } = batch.removePublicCredential;
+        await tx.update(relayPublicCredentials).set({ revokedBy: batch.revocation!.cid })
+          .where(and(eq(relayPublicCredentials.cid, credentialCID), eq(relayPublicCredentials.issuerDid, issuerDID)));
+      }
+      if (batch.logEntry) await store.appendToLog(batch.logEntry);
+      return 'new';
+    });
+  }
 
   async getOperation(cid: string): Promise<StoredOperation | undefined> {
     const rows = await this.db
@@ -93,6 +156,30 @@ export class PostgresRelayStore implements RelayStore {
       jwsToken: row.jwsToken,
       chainType: row.chainType as StoredOperation['chainType'],
       chainId: row.chainId,
+    };
+  }
+
+  async getStats(): Promise<RelayStats> {
+    const counts = await this.db.select({ kind: relayOperationLog.kind, count: sql<string>`count(*)` })
+      .from(relayOperationLog).groupBy(relayOperationLog.kind);
+    const countsByKind: RelayStats['countsByKind'] = {
+      identity: 0, content: 0, artifact: 0, credential: 0, countersign: 0, revocation: 0,
+    };
+    for (const row of counts) {
+      let kind = row.kind;
+      if (kind === 'identity-op') kind = 'identity';
+      if (kind === 'content-op') kind = 'content';
+      if (Object.hasOwn(countsByKind, kind)) countsByKind[kind as keyof typeof countsByKind] = Number(row.count);
+    }
+    const first = await this.db.select().from(relayOperationLog).orderBy(relayOperationLog.seq).limit(1);
+    const last = await this.db.select({ cid: relayOperationLog.cid }).from(relayOperationLog)
+      .orderBy(desc(relayOperationLog.seq)).limit(1);
+    const createdAt = first[0] ? decodeJwsUnsafe(first[0].jwsToken)?.payload?.createdAt : null;
+    return {
+      opCount: Object.values(countsByKind).reduce((sum, count) => sum + count, 0),
+      countsByKind,
+      oldestOpAt: typeof createdAt === 'string' ? createdAt : null,
+      headCid: last[0]?.cid ?? null,
     };
   }
 
@@ -219,7 +306,7 @@ export class PostgresRelayStore implements RelayStore {
 
   async addCountersignature(operationCid: string, jwsToken: string): Promise<void> {
     const decoded = decodeJwsUnsafe(jwsToken);
-    const witnessDid = decoded ? decoded.header.kid.split('#')[0] : null;
+    const witnessDid = decoded?.header.kid?.split('#')[0] ?? null;
 
     await this.db.insert(relayCountersignatures).values({
       operationCid,
@@ -234,10 +321,11 @@ export class PostgresRelayStore implements RelayStore {
       jwsToken: entry.jwsToken,
       kind: entry.kind,
       chainId: entry.chainId,
+      ingestedAt: entry.ingestedAt,
     }).onConflictDoNothing();
   }
 
-  async readLog(params: { after?: string; limit: number }): Promise<ReadLogResult> {
+  async readLog(params: { after?: string; limit: number }): Promise<ReadLogResult | null> {
     let cursorSeq: bigint | null = null;
     let cursorNotFound = false;
 
@@ -252,13 +340,13 @@ export class PostgresRelayStore implements RelayStore {
       if (cursorRow) {
         cursorSeq = cursorRow.seq as bigint;
       } else {
-        // Unknown cursor: return empty page instead of falling back to beginning
+        // Cursors are relay-local; unknown positions must not look caught up.
         cursorNotFound = true;
       }
     }
 
     if (cursorNotFound) {
-      return { entries: [], cursor: null };
+      return null;
     }
 
     const query = this.db
@@ -276,12 +364,13 @@ export class PostgresRelayStore implements RelayStore {
       jwsToken: row.jwsToken,
       kind: row.kind as OperationKind,
       chainId: row.chainId,
+      ingestedAt: row.ingestedAt,
     }));
 
     const lastEntry = entries.at(-1);
-    const cursor = entries.length === params.limit && lastEntry ? lastEntry.cid : null;
+    const next = entries.length === params.limit && lastEntry ? lastEntry.cid : null;
 
-    return { entries, cursor };
+    return { entries, next };
   }
 
   async getIdentityStateAtCID(
@@ -361,9 +450,12 @@ export class PostgresRelayStore implements RelayStore {
       currentCID = op.previousCID;
     }
 
-    const resolveKey = createKeyResolver(this);
-    const resolveIdentity = createHistoricalIdentityResolver(this);
-    const state = await verifyContentChain({ log: path, resolveKey, enforceAuthorization: true, resolveIdentity });
+    const resolveKey = createAsOfKeyResolver(this);
+    const resolveIdentity = createIdentityResolver(this);
+    const state = await verifyContentChain({
+      log: path, resolveKey, enforceAuthorization: true, resolveIdentity,
+      isRevoked: (issuerDID, credentialCID, asOfUnix) => this.isCredentialRevoked(issuerDID, credentialCID, asOfUnix),
+    });
 
     const targetDecoded = decodeJwsUnsafe(opsByCID.get(cid)!.jws);
     const lastCreatedAt =
@@ -392,21 +484,28 @@ export class PostgresRelayStore implements RelayStore {
       });
   }
 
-  async putRawOp(cid: string, jwsToken: string): Promise<void> {
+  async putRawOp(cid: string, jwsToken: string, origin: OpOrigin = 'direct'): Promise<void> {
     await this.db
       .insert(relayPendingOperations)
-      .values({ cid, jwsToken, status: 'pending' })
+      .values({ cid, jwsToken, origin, status: 'pending' })
       .onConflictDoNothing();
   }
 
-  async getUnsequencedOps(limit: number): Promise<string[]> {
+  async getUnsequencedOps(after: string, limit: number): Promise<PendingOp[]> {
     const rows = await this.db
-      .select({ jwsToken: relayPendingOperations.jwsToken })
+      .select()
       .from(relayPendingOperations)
-      .where(eq(relayPendingOperations.status, 'pending'))
-      .orderBy(relayPendingOperations.receivedAt)
+      .where(and(
+        eq(relayPendingOperations.status, 'pending'),
+        after ? gt(relayPendingOperations.cid, after) : undefined,
+      ))
+      .orderBy(relayPendingOperations.cid)
       .limit(limit);
-    return rows.map((r) => r.jwsToken);
+    return rows.map((r) => ({
+      jwsToken: r.jwsToken,
+      origin: r.origin as OpOrigin,
+      cursor: r.cid,
+    }));
   }
 
   async markOpsSequenced(cids: string[]): Promise<void> {
@@ -441,13 +540,15 @@ export class PostgresRelayStore implements RelayStore {
 
   async getRevocations(issuerDID: string): Promise<string[]> {
     const rows = await this.db
-      .select({ credentialCid: relayRevocations.credentialCid })
+      .select()
       .from(relayRevocations)
       .where(eq(relayRevocations.issuerDid, issuerDID));
     return rows.map((r) => r.credentialCid);
   }
 
-  async addRevocation(revocation: { cid: string; issuerDID: string; credentialCID: string; jwsToken: string }): Promise<void> {
+  async addRevocation(revocation: StoredRevocation): Promise<void> {
+    const boundary = parseProtocolTimestampUnix(revocation.createdAt);
+    const signedCreatedAt = boundary === null ? null : revocation.createdAt;
     await this.db
       .insert(relayRevocations)
       .values({
@@ -455,16 +556,49 @@ export class PostgresRelayStore implements RelayStore {
         issuerDid: revocation.issuerDID,
         credentialCid: revocation.credentialCID,
         jwsToken: revocation.jwsToken,
+        signedCreatedAt,
       })
-      .onConflictDoNothing();
+      .onConflictDoUpdate({
+        target: [relayRevocations.issuerDid, relayRevocations.credentialCid],
+        set: { cid: revocation.cid, jwsToken: revocation.jwsToken, signedCreatedAt },
+        setWhere: sql`(
+          COALESCE(${boundary}::double precision, '-Infinity'::double precision),
+          ${revocation.cid} COLLATE "C"
+        ) < (
+          COALESCE(floor(extract(epoch FROM ${relayRevocations.signedCreatedAt}::timestamptz)), '-Infinity'::double precision),
+          ${relayRevocations.cid} COLLATE "C"
+        )`,
+      });
   }
 
-  async isCredentialRevoked(issuerDID: string, credentialCID: string): Promise<boolean> {
+  async getRevocation(issuerDID: string, credentialCID: string): Promise<StoredRevocation | undefined> {
     const rows = await this.db
-      .select({ credentialCid: relayRevocations.credentialCid })
+      .select()
       .from(relayRevocations)
       .where(and(eq(relayRevocations.issuerDid, issuerDID), eq(relayRevocations.credentialCid, credentialCID)));
-    return rows.length > 0;
+    return rows[0] ? storedRevocation(rows[0]) : undefined;
+  }
+
+  async getRevocationForCredential(credentialCID: string): Promise<StoredRevocation | undefined> {
+    const rows = await this.db.select().from(relayRevocations)
+      .where(eq(relayRevocations.credentialCid, credentialCID))
+      .orderBy(sql`${relayRevocations.issuerDid} COLLATE "C"`).limit(1);
+    return rows[0] ? storedRevocation(rows[0]) : undefined;
+  }
+
+  async getRevocationsByIssuer(issuerDID: string): Promise<StoredRevocation[]> {
+    const rows = await this.db.select().from(relayRevocations)
+      .where(eq(relayRevocations.issuerDid, issuerDID))
+      .orderBy(sql`${relayRevocations.credentialCid} COLLATE "C"`);
+    return rows.map(storedRevocation);
+  }
+
+  async isCredentialRevoked(issuerDID: string, credentialCID: string, asOfUnix?: number): Promise<boolean> {
+    const revocation = await this.getRevocation(issuerDID, credentialCID);
+    if (!revocation) return false;
+    if (asOfUnix === undefined || asOfUnix <= 0) return true;
+    const boundary = parseProtocolTimestampUnix(revocation.createdAt);
+    return boundary === null || boundary <= asOfUnix;
   }
 
   async getPublicCredentials(resource: string): Promise<string[]> {
@@ -472,16 +606,31 @@ export class PostgresRelayStore implements RelayStore {
     const rows = await this.db
       .select({ jwsToken: relayPublicCredentials.jwsToken })
       .from(relayPublicCredentials)
-      .where(
+      .where(and(
+        isNull(relayPublicCredentials.revokedBy),
         isChainRequest
-          ? sql`${relayPublicCredentials.att} @> ${JSON.stringify([{ resource }])}::jsonb
-             OR ${relayPublicCredentials.att} @> '[{"resource":"chain:*"}]'::jsonb`
+          ? sql`(${relayPublicCredentials.att} @> ${JSON.stringify([{ resource }])}::jsonb
+             OR ${relayPublicCredentials.att} @> '[{"resource":"chain:*"}]'::jsonb)`
           : sql`${relayPublicCredentials.att} @> ${JSON.stringify([{ resource }])}::jsonb`,
-      );
+      ));
     return rows.map((r) => r.jwsToken).filter((t): t is string => t !== null);
   }
 
-  async addPublicCredential(credential: { cid: string; issuerDID: string; att: { resource: string; action: string }[]; exp: number; jwsToken: string }): Promise<void> {
+  async getPublicCredentialByCID(cid: string): Promise<StoredPublicCredential | undefined> {
+    const rows = await this.db.select().from(relayPublicCredentials)
+      .where(and(eq(relayPublicCredentials.cid, cid), isNull(relayPublicCredentials.revokedBy)));
+    const row = rows[0];
+    if (!row) return undefined;
+    if (!row.issuerDid || !row.jwsToken || row.exp === null || !Array.isArray(row.att)) {
+      throw new Error('Incomplete stored public credential');
+    }
+    return {
+      cid: row.cid, issuerDID: row.issuerDid, att: row.att as StoredPublicCredential['att'],
+      exp: row.exp, jwsToken: row.jwsToken, createdAt: row.signedCreatedAt, ingestedAt: row.ingestedAt,
+    };
+  }
+
+  async addPublicCredential(credential: StoredPublicCredential): Promise<void> {
     await this.db
       .insert(relayPublicCredentials)
       .values({
@@ -490,14 +639,10 @@ export class PostgresRelayStore implements RelayStore {
         att: credential.att,
         exp: credential.exp,
         jwsToken: credential.jwsToken,
+        signedCreatedAt: credential.createdAt,
+        ingestedAt: credential.ingestedAt,
       })
       .onConflictDoNothing();
-  }
-
-  async removePublicCredential(credentialCID: string): Promise<void> {
-    await this.db
-      .delete(relayPublicCredentials)
-      .where(eq(relayPublicCredentials.cid, credentialCID));
   }
 
   private async resolveDocumentForEntry(

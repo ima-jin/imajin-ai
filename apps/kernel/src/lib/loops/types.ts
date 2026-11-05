@@ -13,12 +13,17 @@ import { SIGNED_MESSAGE_MAX_AGE, FUTURE_TOLERANCE } from '@imajin/auth';
 import type { LoopOutput } from '@imajin/bus';
 import { isBoundedLoopJson, isLoopOutput, isWithinLoopMetadataBudget } from './output-validation';
 import { isStepEventType, STEP_EVENT_TYPES, validateStepPayload, type StepEventType } from './step-types';
+import { FEE_EVENT_TYPES, isFeeEventType, validateFeeReceipt, type FeeEventType } from '../pay/fee-receipt-payload';
 
 export const LOOP_LIFECYCLE_TYPES = ['loop.started', 'loop.progress', 'loop.blocked', 'loop.finished'] as const;
 export type LoopLifecycleType = (typeof LOOP_LIFECYCLE_TYPES)[number];
 export const SURFACE_EVENT_TYPES = ['surface.acquired', 'surface.released', 'surface.conflicted'] as const;
 export type SurfaceEventType = (typeof SURFACE_EVENT_TYPES)[number];
-export type LoopRailType = LoopLifecycleType | SurfaceEventType | StepEventType;
+export type LoopRailType = LoopLifecycleType | SurfaceEventType | StepEventType | FeeEventType;
+
+function isLoopRailType(value: unknown): value is LoopRailType {
+  return isLoopLifecycleType(value) || isSurfaceEventType(value) || isStepEventType(value) || isFeeEventType(value);
+}
 
 export function isSurfaceEventType(value: unknown): value is SurfaceEventType {
   return typeof value === 'string' && (SURFACE_EVENT_TYPES as readonly string[]).includes(value);
@@ -45,7 +50,6 @@ export interface LoopRefs {
   issue?: string;
   pr?: string;
   runId?: string;
-  sessionKey?: string;
   sessionId?: string;
   conflictingLoopId?: string;
   conflictingHolderDid?: string;
@@ -56,6 +60,8 @@ export interface LoopEnvelope {
   kind: string;
   principal: string;
   parentLoopId?: string | null;
+  /** Signed causal link to an existing receipt, independent of loop lineage. */
+  causeEventId?: string | null;
   refs?: LoopRefs | null;
   output?: LoopOutput;
   state: string;
@@ -81,7 +87,12 @@ export interface LoopIngestRequest {
 const ED25519_PUBLIC_KEY_HEX = /^[0-9a-f]{64}$/i;
 const ED25519_SIGNATURE_HEX = /^[0-9a-f]{128}$/i;
 const MAX_SUMMARY_LENGTH = 2000;
-const REFS_KEYS = new Set(['issue', 'pr', 'runId', 'sessionKey', 'sessionId', 'conflictingLoopId', 'conflictingHolderDid']);
+const REFS_KEYS = new Set(['issue', 'pr', 'runId', 'sessionId', 'conflictingLoopId', 'conflictingHolderDid']);
+
+/** Project recognized refs only; legacy harness addressing is never a kernel fact. */
+export function kernelLoopRefs(raw: object): LoopRefs & Record<string, unknown> {
+  return Object.fromEntries(Object.entries(raw).filter(([key]) => REFS_KEYS.has(key)));
+}
 
 export type ParseResult<T> = { ok: true; value: T } | { ok: false; error: string };
 
@@ -97,7 +108,7 @@ function parseRefs(raw: unknown): ParseResult<LoopRefs | null | undefined> {
   const refs: LoopRefs = {};
   for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
     if (!REFS_KEYS.has(key)) {
-      return { ok: false, error: 'payload.refs contains an unrecognized ref' };
+      continue;
     }
     if (typeof value !== 'string' || value.length === 0) {
       return { ok: false, error: 'payload.refs values must be non-empty strings' };
@@ -120,6 +131,8 @@ function parseEnvelope(raw: unknown): ParseResult<LoopEnvelope> {
     return { ok: false, error: 'payload must be an object' };
   }
   const { loopId, kind, principal, parentLoopId, refs, state, summary, at } = raw as Record<string, unknown>;
+  const cause = parseCauseEventId((raw as Record<string, unknown>).causeEventId);
+  if (!cause.ok) return cause;
 
   if (typeof loopId !== 'string' || loopId.length === 0) {
     return { ok: false, error: 'payload.loopId must be a non-empty string' };
@@ -148,9 +161,13 @@ function parseEnvelope(raw: unknown): ParseResult<LoopEnvelope> {
 
   const refsResult = parseRefs(refs);
   if (!refsResult.ok) return refsResult;
+  return parseEnvelopeOutput(raw as Record<string, unknown>);
+}
+
+function parseEnvelopeOutput(raw: Record<string, unknown>): ParseResult<LoopEnvelope> {
   if (!isBoundedLoopJson(raw)) return { ok: false, error: 'payload must contain bounded JSON' };
-  const { output } = raw as Record<string, unknown>;
-  if (!isWithinLoopMetadataBudget(raw as Record<string, unknown>)) {
+  const { output } = raw;
+  if (!isWithinLoopMetadataBudget(raw)) {
     return { ok: false, error: 'payload metadata exceeds 16 KiB' };
   }
   if (output !== undefined && !isLoopOutput(output)) {
@@ -159,6 +176,14 @@ function parseEnvelope(raw: unknown): ParseResult<LoopEnvelope> {
 
   // Do not reconstruct: absent/null optionals and extensions are signed fields.
   return { ok: true, value: raw as LoopEnvelope };
+}
+
+export function parseCauseEventId(raw: unknown): ParseResult<string | null | undefined> {
+  if (raw === undefined || raw === null) return { ok: true, value: raw };
+  if (typeof raw !== 'string' || raw.trim().length === 0 || raw.length > 512) {
+    return { ok: false, error: 'payload.causeEventId must be a non-empty event id of at most 512 characters' };
+  }
+  return { ok: true, value: raw };
 }
 
 export function parseSignature(raw: unknown): ParseResult<LoopPublisherSignature> {
@@ -191,8 +216,8 @@ export function parseLoopIngestRequest(raw: unknown): ParseResult<LoopIngestRequ
   }
   const { type, payload, publisherDid, signature } = raw as Record<string, unknown>;
 
-  if (!isLoopLifecycleType(type) && !isSurfaceEventType(type) && !isStepEventType(type)) {
-    return { ok: false, error: `type must be one of ${[...LOOP_LIFECYCLE_TYPES, ...SURFACE_EVENT_TYPES, ...STEP_EVENT_TYPES].join(', ')}` };
+  if (!isLoopRailType(type)) {
+    return { ok: false, error: `type must be one of ${[...LOOP_LIFECYCLE_TYPES, ...SURFACE_EVENT_TYPES, ...STEP_EVENT_TYPES, ...FEE_EVENT_TYPES].join(', ')}` };
   }
   if (!isDid(publisherDid)) {
     return { ok: false, error: 'publisherDid must be a DID string' };
@@ -200,6 +225,9 @@ export function parseLoopIngestRequest(raw: unknown): ParseResult<LoopIngestRequ
 
   const envelopeResult = parseEnvelope(payload);
   if (!envelopeResult.ok) return envelopeResult;
+  if (isFeeEventType(type) && !validateFeeReceipt(type, envelopeResult.value, publisherDid)) {
+    return { ok: false, error: 'Invalid platform fee receipt' };
+  }
   if (isStepEventType(type) && !validateStepPayload(type, envelopeResult.value, publisherDid)) {
     return { ok: false, error: 'Invalid step observation; zones and exited state are derived' };
   }

@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server';
 import { and, eq } from 'drizzle-orm';
 import { db, attestationSignatures } from '@/src/db';
 import { isActiveGroupMember } from './group-membership';
+import { isAgentCapableSubtype } from '../kernel/connection-principal-policy';
 
 export interface DocumentActor {
   effectiveDid: string;
@@ -17,7 +18,7 @@ export async function requireDocumentActor(
   const auth = await requireAuth(request, { service: 'auth', sessionOnly: true });
   if ('error' in auth) return NextResponse.json({ error: auth.error }, { status: auth.status });
   const identity = auth.identity;
-  if (identity.actingFor || identity.subtype === 'agent') {
+  if (identity.actingFor || isAgentCapableSubtype(identity.subtype)) {
     return NextResponse.json({ error: 'Human document authority required' }, { status: 403 });
   }
   if (options.write && identity.actingAs

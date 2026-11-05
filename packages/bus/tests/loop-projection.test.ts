@@ -166,6 +166,9 @@ describe('loopProjectionReactor (#2295)', () => {
         at: '2026-09-22T00:00:00.000Z',
       }),
       '2026-09-22T00:00:00.000Z',
+      null, // signature
+      null, // publisherDid
+      null, // causeEventId
     ]);
 
     expect(calls[0].text).toContain('INSERT INTO kernel.loops');

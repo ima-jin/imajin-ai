@@ -173,6 +173,27 @@ The current credential primitive also requires an already verified binding;
 this adapter cannot bootstrap ownership for a pending claim. Its verification
 TXT support is for an already verified domain, not an ownership bypass.
 
+## Mail domains
+
+An org whose custom domain is already verified can send mail as that domain
+through the node's Postal server. A human owner or admin opens **Organization
+settings** (`/jin/org-settings`) → **Mail domain verification**, clicks **Set up
+domain mail**, then publishes the send-only DNS records the panel shows. The panel never suggests MX records or a
+second SPF policy; its SPF guidance merges `include:` into the domain's current
+SPF record and keeps an existing `-all` (for example Microsoft 365).
+
+The domain moves pending → verified once Postal reports the records as
+verified. A minute-level cron re-checks pending domains with backoff, and the
+panel's check button re-checks on demand. Sending as the domain needs both Postal's
+verification and a current verified ownership binding. Revoking or losing the
+ownership binding disables mail in the same transition and keeps the history.
+
+The routes are session-only for the org's human owner/admin; agents, delegated
+callers and countersigned requests are refused. See the jin service `/spec` for
+the request shapes. The node operator configures the Postal admin connection
+once (`POSTAL_ADMIN_URL`, `POSTAL_ORGANIZATION` and the vault-sealed
+`POSTAL_ADMIN_TOKEN`); see [Deploy posture](../ops/DEPLOY-POSTURE.md).
+
 ## Acceptance verification
 
 The domain integration tests exercise PostgreSQL-compatible migrations twice,

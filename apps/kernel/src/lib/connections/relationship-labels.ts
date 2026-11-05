@@ -4,6 +4,7 @@ import { evaluateDelegationPolicy } from '@imajin/auth/delegation-policy';
 import { db, identities, identityMembers, connections, attestations } from '@/src/db';
 import type { RelationshipLabel } from '@/src/db/schemas/connections';
 import { prepareMechanicalAttestation } from '@/src/lib/auth/emit-mechanical-attestation';
+import { isAgentCapableSubtype } from '@/src/lib/kernel/connection-principal-policy';
 
 type Transaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
 type Actor = Pick<Identity, 'id' | 'actingFor' | 'actingAs'>;
@@ -31,7 +32,7 @@ async function hasControllerAuthority(tx: Transaction, orgDid: string, actor: Ac
   if (org?.scope !== 'business' || org.suspendedAt) return false;
   const [originalActor] = await tx.select({ scope: identities.scope, subtype: identities.subtype, suspendedAt: identities.suspendedAt })
     .from(identities).where(eq(identities.id, actor.id)).for('share');
-  if (originalActor?.scope !== 'actor' || originalActor.subtype === 'agent' || originalActor.suspendedAt) return false;
+  if (originalActor?.scope !== 'actor' || isAgentCapableSubtype(originalActor.subtype) || originalActor.suspendedAt) return false;
   const members = await tx.select({ role: identityMembers.role, allowedServices: identityMembers.allowedServices })
     .from(identityMembers).where(and(
       eq(identityMembers.identityDid, orgDid), eq(identityMembers.memberDid, actor.id),

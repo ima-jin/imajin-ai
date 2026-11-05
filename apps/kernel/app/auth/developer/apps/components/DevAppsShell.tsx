@@ -129,8 +129,7 @@ function AppCard({ app }: Readonly<{ app: App }>) {
   );
 }
 
-export default function DevAppsShell({ apps: initialApps }: Readonly<Props>) {
-  const [apps] = useState<App[]>(initialApps);
+export default function DevAppsShell({ apps }: Readonly<Props>) {
   const [showForm, setShowForm] = useState(false);
   const [newApp, setNewApp] = useState<RegisteredApp | null>(null);
 

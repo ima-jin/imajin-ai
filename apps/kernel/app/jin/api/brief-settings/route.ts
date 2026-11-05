@@ -3,6 +3,7 @@ import { requireAuth } from '@imajin/auth';
 import { corsHeaders } from '@/src/lib/kernel/cors';
 import { isBriefStorage } from '@/src/lib/warp/brief';
 import { readBriefStorage, writeBriefStorage } from '@/src/lib/warp/brief-ledger';
+import { isAgentCapableSubtype } from '@/src/lib/kernel/connection-principal-policy';
 
 export const dynamic = 'force-dynamic';
 
@@ -10,7 +11,7 @@ async function actor(request: NextRequest) {
   const auth = await requireAuth(request, { service: 'warp', sessionOnly: true });
   if ('error' in auth) return { error: auth.error, status: auth.status };
   const identity = auth.identity;
-  if (identity.actingFor || identity.subtype === 'agent'
+  if (identity.actingFor || isAgentCapableSubtype(identity.subtype)
     || (identity.actingAs && identity.actingAsRole !== 'owner' && identity.actingAsRole !== 'admin')) {
     return { error: 'Principal owner authority required', status: 403 };
   }

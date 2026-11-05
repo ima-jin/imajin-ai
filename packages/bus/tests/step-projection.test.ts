@@ -13,6 +13,9 @@ const { calls, store, fakeSql } = vi.hoisted(() => {
     (strings: TemplateStringsArray, ...values: unknown[]) => {
       const text = strings.join(' ? ');
       calls.push({ text, values });
+      if (text.includes('SELECT id FROM kernel.loop_events')) {
+        return Promise.resolve(store.events.has(values[0]) ? [{ id: values[0] }] : []);
+      }
       if (text.includes('SELECT principal')) {
         return Promise.resolve(store.owner ? [{ principal: store.owner }] : []);
       }
@@ -77,17 +80,19 @@ describe('step observations (#2878)', () => {
     const event = stepEvent({ type });
     await loopProjectionReactor(event, {});
 
-    expect(calls).toHaveLength(2);
-    expect(calls[0].text).toContain('SELECT principal FROM kernel.loops');
-    expect(calls[0].text).toContain('FOR UPDATE');
-    expect(calls[0].values).toEqual(['loop_1']);
-    expect(calls[1].text).toContain('INSERT INTO kernel.loop_events');
-    expect(calls[1].text).toContain('ON CONFLICT (id) DO NOTHING');
-    expect(calls[1].values).toEqual([
+    expect(calls).toHaveLength(4);
+    expect(calls[0].text).toContain('pg_advisory_xact_lock');
+    expect(calls[1].text).toContain('SELECT id FROM kernel.loop_events');
+    expect(calls[2].text).toContain('SELECT principal FROM kernel.loops');
+    expect(calls[2].text).toContain('FOR UPDATE');
+    expect(calls[2].values).toEqual(['loop_1']);
+    expect(calls[3].text).toContain('INSERT INTO kernel.loop_events');
+    expect(calls[3].text).toContain('ON CONFLICT (id) DO NOTHING');
+    expect(calls[3].values).toEqual([
       event.id, 'loop_1', type, event.issuer, event.payload!.principal,
-      JSON.stringify(event.payload), event.payload!.at,
+      JSON.stringify(event.payload), event.payload!.at, null, null, null,
     ]);
-    // No lifecycle INSERT/UPDATE, lease release, advisory acquisition, or dispatch.
+    // Receipt deduplication locks do not acquire leases or dispatch work.
     expect(calls.some(call => /(?:INSERT INTO|UPDATE) kernel\.(?:loops|surface_lease)\b/.test(call.text))).toBe(false);
     expect(store.committed).toBe(true);
   });
@@ -95,7 +100,7 @@ describe('step observations (#2878)', () => {
   it.each([undefined, 'did:imajin:someone-else'])('rejects absent or foreign parent owner %s', async (owner) => {
     store.owner = owner;
     await expect(loopProjectionReactor(stepEvent(), {})).rejects.toBeInstanceOf(LoopOwnershipConflictError);
-    expect(calls).toHaveLength(1);
+    expect(calls).toHaveLength(3);
     expect(store.events.size).toBe(0);
     expect(store.committed).toBe(false);
   });
@@ -135,8 +140,7 @@ describe('step observations (#2878)', () => {
     await loopProjectionReactor(event, {});
 
     const inserts = calls.filter(call => call.text.includes('INSERT INTO kernel.loop_events'));
-    expect(inserts).toHaveLength(2);
-    expect(inserts[0]).toEqual(inserts[1]);
+    expect(inserts).toHaveLength(1);
     expect(inserts.every(call => call.text.includes('ON CONFLICT (id) DO NOTHING'))).toBe(true);
     expect(store.events.size).toBe(1);
     expect(store.events.get(event.id)?.[0]).toBe(event.id);
@@ -147,7 +151,7 @@ describe('step observations (#2878)', () => {
     await expect(loopProjectionReactor(stepEvent({ type: 'step.finished' }), {})).rejects.toThrow('history unavailable');
     expect(store.committed).toBe(false);
     expect(store.events.size).toBe(0);
-    expect(calls).toHaveLength(2);
+    expect(calls).toHaveLength(4);
   });
 
   it('ignores unknown step types', async () => {

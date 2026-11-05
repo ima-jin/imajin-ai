@@ -113,6 +113,7 @@ describe('kernel manifest', () => {
       'usage-billed-ingest': '0 2 * * *',
       'google-gmail-watch-renew': '0 3 * * *',
       'domain-recheck': '17 * * * *',
+      'mail-domain-check': '* * * * *',
     });
   });
 

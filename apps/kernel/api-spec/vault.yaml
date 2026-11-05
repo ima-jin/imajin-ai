@@ -35,6 +35,8 @@ tags:
     description: vault.mint (#2242) — Ed25519 keypairs born inside the vault
   - name: vault-import
     description: Third-party credentials sealed once for an identity and purpose-bound consumer (#2260)
+  - name: vault-org-held
+    description: Org-held provider keys sealed under an org DID; lifecycle runs on the countersigned approval rail
 
 components:
   securitySchemes:
@@ -45,6 +47,18 @@ components:
     bearerAuth:
       type: http
       scheme: bearer
+    deploymentRead:
+      type: apiKey
+      in: header
+      name: x-imajin-deployment-read
+      description: >-
+        Base64url JSON signed by the configured gateway Ed25519 DID. Binds
+        repository, ownerDid, recipientDid, reserved purpose, nonce, timestamp,
+        ephemeralKey, HTTP method, full path/query and SHA-256 of the request
+        body. Domain imajin-deployment-read-v1; freshness 60 seconds.
+        Responses are X25519/HKDF-SHA256/AES-256-GCM encrypted to the signed
+        ephemeral key and Ed25519 signed by the pinned kernel witness.
+        See deploy/infer-passthrough/deployment-read-protocol.mjs for exact bytes.
     githubOidc:
       type: apiKey
       in: header
@@ -85,6 +99,98 @@ components:
         error: { type: string }
 
 paths:
+  /api/vault/delegation/grants:
+    get:
+      tags: [vault-import]
+      operationId: vaultDelegationGrants
+      summary: Discover the authenticated recipient's existing grants
+      description: |
+        Cookie/bearer callers retain the existing metadata-only list contract.
+        Deployment-read callers use the deploymentRead signature header and
+        exact purpose infer-passthrough/github-deploy-read. The server checks
+        its configured owner and gateway DID/public key, then filters active,
+        unexpired, applied deployment imports. No grant ID is copied by an
+        operator. A signed, encrypted envelope contains {grants:
+        [{grantId, expiresAt, createdAt}]}. No wrapped keys are returned.
+      security: [{ cookieAuth: [] }, { bearerAuth: [] }, { deploymentRead: [] }]
+      parameters:
+        - in: query
+          name: purpose
+          schema: { type: string }
+      responses:
+        "200": { description: Recipient metadata or gateway encrypted envelope; no-store }
+        "401": { description: Authentication required }
+        "403": { description: Invalid or unavailable deployment authority }
+  /api/vault/delegation/grants/{grantId}/fetch:
+    post:
+      tags: [vault-import]
+      operationId: vaultDelegationGrantFetch
+      summary: Fetch an existing delegation grant using its intended recipient
+      description: |
+        This is the pre-existing fetch surface, not a second secret store.
+        Ordinary cookie/bearer behavior is unchanged EXCEPT that reserved
+        deployment purpose and immutable deployimport_ fields refuse generic
+        plaintext fetch. Deployment requests require an empty body and a
+        fresh host signature over the exact endpoint. Before and after decrypt,
+        the server verifies subject, repository, recipient, purpose, expiry,
+        active/non-revoked reusable grant, and the applied import content hash.
+        A persisted vault.deployment-read.fetched attestation is required.
+        Gateway replies contain only an encrypted, kernel-signed envelope
+        opening to {value, grantId, field, repository, purpose, recipientDid, fetchedAt,
+        expiresAt}. Envelope lifetime is at most 60 seconds and no later than
+        grant expiry. Replaying a signed request reveals only ciphertext for
+        the original ephemeral key. Never cache, log or persist response bytes.
+      security: [{ cookieAuth: [] }, { bearerAuth: [] }, { deploymentRead: [] }]
+      parameters:
+        - in: path
+          name: grantId
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: Existing ordinary value response or encrypted gateway envelope; no-store }
+        "401": { description: Authentication required }
+        "403": { description: "Wrong principal/repository/recipient/purpose, expired/revoked or unavailable authority" }
+        "404": { description: Ordinary grant absent or not granted to caller }
+        "410": { description: Ordinary one-time grant already consumed }
+  /api/vault/delegation/grants/{grantId}/ack:
+    post:
+      tags: [vault-import]
+      operationId: vaultDelegationGrantAck
+      summary: Acknowledge each successful gateway delivery through the existing ack surface
+      description: |
+        Ordinary ack semantics remain unchanged. Deployment signature auth
+        accepts only {outcome:"used", fetchedAt:<fetch response timestamp>},
+        signed with the endpoint and its body hash. No notes or arbitrary
+        evidence may be stored. A stale ack cannot confirm a newer fetch.
+        Requires the same current applied import authority as fetch plus a
+        successful prior fetch. Repeated acknowledgments are idempotent;
+        after a new fetch a newer ack timestamp clears the unmatched-fetch
+        timeline alert. Each delivery emits vault.deployment-read.acked with
+        metadata only. Reply is a signed encrypted {ok:true, ackedAt} envelope.
+      security: [{ cookieAuth: [] }, { bearerAuth: [] }, { deploymentRead: [] }]
+      parameters:
+        - in: path
+          name: grantId
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [outcome]
+              properties:
+                outcome: { type: string, enum: [used, failed, discarded] }
+                fetchedAt:
+                  type: string
+                  format: date-time
+                  description: Required only for deployment-read; exactly the corresponding fetch timestamp.
+      responses:
+        "200": { description: Existing acknowledgment or encrypted gateway acknowledgment; no-store }
+        "401": { description: Authentication required }
+        "403": { description: Invalid or unavailable deployment authority }
+        "409": { description: Ordinary grant not fetched or conflicting acknowledgment }
   /vault/api/spec:
     get:
       tags: [vault-mint]
@@ -129,7 +235,7 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/SshCa" }
-        "400": { description: Invalid JSON, purpose or unexpected property }
+        "400": { description: "Invalid JSON, purpose or unexpected property" }
         "401": { description: Authentication required }
         "403": { description: Not the vault node or its delegate }
         "409": { description: Active CA already exists or unsupported custody }
@@ -168,7 +274,7 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/SshCa" }
-        "400": { description: Invalid JSON, purpose or unexpected property }
+        "400": { description: "Invalid JSON, purpose or unexpected property" }
         "401": { description: Authentication required }
         "403": { description: Not the vault node or its delegate }
         "404": { description: No active signer for this purpose }
@@ -210,7 +316,7 @@ paths:
                 properties:
                   caId: { type: string }
                   alreadyRevoked: { type: boolean }
-        "400": { description: Invalid JSON, purpose, CA id or unexpected property }
+        "400": { description: "Invalid JSON, purpose, CA id or unexpected property" }
         "401": { description: Authentication required }
         "403": { description: Not the vault node or its delegate }
         "404": { description: No CA with this id and purpose }
@@ -348,7 +454,7 @@ paths:
                       environment: { type: string }
                       runId: { type: string }
                       runAttempt: { type: string }
-                      jtiHash: { type: string, description: Issuer-domain-separated SHA256 of jti, pattern: "^[a-f0-9]{64}$" }
+                      jtiHash: { type: string, description: "Issuer-domain-separated SHA256 of jti", pattern: "^[a-f0-9]{64}$" }
                       expiresAt: { type: integer, description: Verified OIDC expiry in Unix seconds }
                   grantee: { type: string }
                   principal: { type: string }
@@ -358,10 +464,10 @@ paths:
                   validAfter: { type: integer, description: Unix seconds inclusive }
                   validBefore: { type: integer, description: Unix seconds exclusive }
                   publicKeyFingerprint: { type: string, description: OpenSSH SHA256 fingerprint of the caller public wire key }
-        "400": { description: Invalid public key, principal, TTL, job or unexpected option }
+        "400": { description: "Invalid public key, principal, TTL, job or unexpected option" }
         "401": { description: Authentication required }
         "403": { description: No matching live grant or active signer }
-        "429": { description: Grant has already issued 10 certificates in the last 60 seconds; signed authenticated refusal, no certificate }
+        "429": { description: "Grant has already issued 10 certificates in the last 60 seconds; signed authenticated refusal, no certificate" }
         "503": { description: Signing or signed audit unavailable; no certificate }
   /api/vault/ssh-ca/grants:
     post:
@@ -407,7 +513,7 @@ paths:
               properties:
                 purpose: { $ref: "#/components/schemas/SshCaPurpose" }
                 caId: { type: string }
-                grantee: { type: string, description: Credential DID, not the node custody identity }
+                grantee: { type: string, description: "Credential DID, not the node custody identity" }
                 repository: { type: string, description: Exact case-sensitive owner/repository for GitHub OIDC }
                 repositoryId: { type: string, pattern: "^[1-9][0-9]{0,19}$", description: Immutable GitHub repository_id }
                 repositoryOwnerId: { type: string, pattern: "^[1-9][0-9]{0,19}$", description: Immutable GitHub repository_owner_id }
@@ -570,6 +676,20 @@ paths:
         use this countersigned re-import rail for replacement credentials.
         Plaintext is never echoed, logged, returned, or persisted unsealed.
 
+        Gateway deployment-read mode uses the existing /jin paste-once form:
+        purpose infer-passthrough/github-deploy-read, the configured gateway
+        consumer DID and a required future expiresAt. The server adds the fixed
+        deploymentRead repository/recipient binding to the countersigned
+        proposal; explicit API metadata must match it. Owner must match
+        INFER_DEPLOY_READ_OWNER_DID, recipient must match the configured
+        INFER_DEPLOY_READ_RECIPIENT_DID and its pinned Ed25519 public key.
+        All bindings are rechecked at approved execution and every delivery.
+        Existing active authority requires explicit replacesField rotation.
+        Only Deployments:read, Contents:read and metadata on ima-jin/imajin-ai
+        are authorized; provider permissions remain the operator's outer bound.
+        No write permission or broad agent credential is authorized.
+        Gateway delivery reuses the list/fetch/ack routes documented here.
+
         Cloudflare mode supplies cloudflare instead of a generic consumer and
         purpose. The server forces consumerDid to its own node DID and purpose
         to dns.cloudflare:<zoneId>. After countersignature the kernel verifies
@@ -599,6 +719,14 @@ paths:
                 - required: [purpose, consumerDid]
                 - required: [cloudflare]
               properties:
+                deploymentRead:
+                  type: object
+                  additionalProperties: false
+                  required: [repository, recipientDid]
+                  description: Optional for the reserved purpose; server derives it from the existing import form fields.
+                  properties:
+                    repository: { type: string, const: ima-jin/imajin-ai }
+                    recipientDid: { type: string }
                 cloudflare: { $ref: "#/components/schemas/CloudflareAuthority" }
                 ownerDid:
                   type: string
@@ -872,3 +1000,53 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
+  /api/vault/org-held/renew:
+    post:
+      tags: [vault-org-held]
+      operationId: vaultOrgHeldRenew
+      summary: Propose renewing an org-held provider key's expiry
+      description: |
+        Kernel-root route behind the /jin/vault/renew form. Session cookie only
+        (no bearer, agent, presence or delegated callers); route policy
+        kernel.vault.org-held.renew, classed irreversible. The caller must be a
+        human owner or admin of orgDid, with no actingFor and actingAs either
+        absent or equal to orgDid. Files a vault:renew-org-held-key proposal on
+        the countersigned operator-approval rail and returns it as pending.
+        Approval re-checks owner/admin authority, membership, connector,
+        sealed-entry generation and the exact grant under the org custody lock,
+        then extends expiry and re-signs the same grant in place with a signed
+        vault.key.renewed attestation. The credential is never unsealed,
+        regenerated, copied or returned. Responses are Cache-Control no-store.
+      security: [{ cookieAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [orgDid, provider, expiresAt]
+              properties:
+                orgDid: { type: string, pattern: "^did:imajin:[A-Za-z0-9]+$" }
+                provider: { type: string, description: Org-held connector provider id }
+                expiresAt: { type: string, format: date-time, description: New expiry; must be in the future }
+      responses:
+        "201":
+          description: Renewal proposal filed and awaiting approval
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [proposalId, status]
+                properties:
+                  proposalId: { type: string }
+                  status: { type: string, enum: [pending] }
+        "400":
+          description: Invalid JSON or renewal request
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401": { description: Authentication required }
+        "403": { description: "Route policy refusal, wrong acting context, or not a human org owner/admin" }
+        "409": { description: "Renewal not possible: ownership/authority check failed or the grant material is already erased" }
+        "503": { description: Renewal unavailable; generic error without secret details }

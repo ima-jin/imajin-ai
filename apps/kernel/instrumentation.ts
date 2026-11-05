@@ -29,6 +29,10 @@ export async function register() {
     await import('@imajin/logger/db');
     const { registerKernelSessionResolver } = await import('@/src/lib/auth/session-resolver');
     registerKernelSessionResolver();
+    const { registerWsRuntime } = await import('@/src/lib/ws/register-runtime');
+    registerWsRuntime();
+    const { registerConsentNotifications } = await import('@/src/lib/notify/consent-notifications');
+    registerConsentNotifications();
 
     const { loadVaultAtBoot } = await import('@/src/lib/vault/vault-repository');
     await loadVaultAtBoot();

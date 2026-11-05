@@ -1,21 +1,39 @@
 import postgres from 'postgres';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import type { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
+import { boundSql, timeoutSetting } from './bounds';
 
-let _client: ReturnType<typeof postgres> | null = null;
+const CLIENT = Symbol.for('imajin.db.client');
+const shared = globalThis as typeof globalThis & { [CLIENT]?: ReturnType<typeof postgres> };
 
 function getClient() {
-  if (!_client) {
-    if (!process.env.DATABASE_URL) {
+  if (!shared[CLIENT]) {
+    const url = process.env.DATABASE_URL;
+    if (!url) {
       throw new Error('DATABASE_URL environment variable is not set');
     }
-    _client = postgres(process.env.DATABASE_URL, {
+    const env = process.env;
+    const acquireMs = timeoutSetting(env, 'DB_ACQUIRE_TIMEOUT_MS', 10_000);
+    const queryMs = timeoutSetting(env, 'DB_QUERY_TIMEOUT_MS', 40_000);
+    const connection = {
+      statement_timeout: timeoutSetting(env, 'DB_STATEMENT_TIMEOUT_MS', 30_000),
+      idle_in_transaction_session_timeout: timeoutSetting(env, 'DB_IDLE_TRANSACTION_TIMEOUT_MS', 60_000),
+    };
+    const client = postgres(url, {
       max: 10,
       idle_timeout: 20,
       connect_timeout: 10,
+      connection,
+    });
+    // postgres.js gives URL startup parameters precedence over connection.
+    // Explicit runtime policy must win even when an old URL contains zero.
+    Object.assign(client.options.connection, connection);
+    shared[CLIENT] = boundSql(client, {
+      acquireMs,
+      queryMs,
     });
   }
-  return _client;
+  return shared[CLIENT];
 }
 
 export function createDb<TSchema extends Record<string, unknown>>(schema: TSchema): PostgresJsDatabase<TSchema> {

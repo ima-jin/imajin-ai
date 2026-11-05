@@ -49,6 +49,10 @@ interface Consent {
   scopes: string[];
   privateKey: string;
   agentBinding?: AgentOAuthBinding;
+  /** Acting principal that requested this agent's self-context authorization. */
+  delegatorDid?: string;
+  /** Backfills must not replace or normalize any existing live grant. */
+  onlyIfMissing?: boolean;
 }
 
 async function mintGrant(tx: Transaction, consent: Consent, scopes: string[]) {
@@ -56,6 +60,7 @@ async function mintGrant(tx: Transaction, consent: Consent, scopes: string[]) {
   const payload = {
     scopes, appId: consent.appId, callbackUrl: consent.callbackUrl,
     ...(consent.agentBinding ? { agentBinding: consent.agentBinding } : {}),
+    ...(consent.delegatorDid ? { delegatorDid: consent.delegatorDid } : {}),
   };
   const signature = authCrypto.signSync(canonicalize({
     subject_did: consent.appDid, type: 'app.authorized',
@@ -65,16 +70,18 @@ async function mintGrant(tx: Transaction, consent: Consent, scopes: string[]) {
   await tx.insert(attestations).values({
     id, issuerDid: consent.ownerDid, subjectDid: consent.appDid,
     type: 'app.authorized', contextId: consent.appId, contextType: 'app',
+    delegatorDid: consent.delegatorDid,
     payload, signature, issuedAt: new Date(issuedAt),
   });
   return id;
 }
 
 /** All grant, signed revocation, refresh-token and app projection writes commit together. */
-export function upsertAppAuthorization(consent: Consent): Promise<string> {
-  return db.transaction(async tx => {
+export function upsertAppAuthorization(consent: Consent, transaction?: Transaction): Promise<string> {
+  const write = async (tx: Transaction) => {
     await lockPair(tx, consent.ownerDid, consent.appDid);
     const grants = await liveGrants(tx, consent.ownerDid, consent.appDid);
+    if (consent.onlyIfMissing && grants.length > 0) return grants[0].id;
     const scopes = [...new Set(consent.scopes)];
     const newest = grants[0];
     const previousBinding = (newest?.payload as { agentBinding?: AgentOAuthBinding } | null)?.agentBinding;
@@ -90,7 +97,8 @@ export function upsertAppAuthorization(consent: Consent): Promise<string> {
     const id = reuse ? newest.id : await mintGrant(tx, consent, scopes);
     await projectAppAuthorizationGrant({ ownerDid: consent.ownerDid, appDid: consent.appDid, scopes }, tx);
     return id;
-  });
+  };
+  return transaction ? write(transaction) : db.transaction(write);
 }
 
 /** A surplus revoke must not disconnect the app's surviving grant. */

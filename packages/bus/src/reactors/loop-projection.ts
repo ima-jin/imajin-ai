@@ -5,6 +5,7 @@ import type { BusEvent, ReactorHandler } from '../types';
 const log = createLogger('bus:loop-projection');
 
 const LIFECYCLE_TYPES = new Set(['loop.started', 'loop.progress', 'loop.blocked', 'loop.finished']);
+const FEE_TYPES = new Set(['fee.record', 'fee.rebate', 'fee.surcharge']);
 const STEP_TYPES = new Set([
   'step.queued', 'step.updated', 'step.claimed', 'step.started', 'step.progress',
   'step.blocked', 'step.finished', 'step.observed', 'step.attested',
@@ -66,7 +67,7 @@ export class LoopOwnershipConflictError extends Error {
  */
 export const loopProjectionReactor: ReactorHandler = async (event) => {
   const stepObservation = STEP_TYPES.has(event.type);
-  if (!LIFECYCLE_TYPES.has(event.type) && !stepObservation) return;
+  if (!LIFECYCLE_TYPES.has(event.type) && !stepObservation && !FEE_TYPES.has(event.type)) return;
 
   const payload = (event.payload ?? {}) as Record<string, unknown>;
   if (stepObservation) validateStepObservation(event, payload);
@@ -96,6 +97,20 @@ export const loopProjectionReactor: ReactorHandler = async (event) => {
   const sql = getClient();
 
   await sql.begin(async (tx) => {
+    if (FEE_TYPES.has(event.type)) {
+      // One signed fact per wallet/ledger identity, even when concurrent
+      // deliveries observe different actual-vs-estimated Stripe fees.
+      await tx`SELECT pg_advisory_xact_lock(hashtextextended(${loopId}, 3260))`;
+      const priorFee = await tx`SELECT id FROM kernel.loop_events WHERE loop_id = ${loopId} LIMIT 1`;
+      if (priorFee.length > 0 && priorFee[0].id !== event.id) {
+        throw new Error('A different signed fee receipt already owns this identity');
+      }
+    }
+    if (event.id) {
+      await tx`SELECT pg_advisory_xact_lock(hashtextextended(${event.id}, 3268))`;
+      const prior = await tx`SELECT id FROM kernel.loop_events WHERE id = ${event.id}`;
+      if (prior.length > 0) return;
+    }
     if (signedCompletion) {
       // Same principal/issuer/loop lock used by signed surface acquisitions.
       const loopLock = JSON.stringify([principal, event.issuer, loopId]);
@@ -142,10 +157,12 @@ export const loopProjectionReactor: ReactorHandler = async (event) => {
     // publishers may generate a local id.
     await tx`
       INSERT INTO kernel.loop_events
-        (id, loop_id, type, issuer, principal, payload, occurred_at)
+        (id, loop_id, type, issuer, principal, payload, occurred_at, signature, publisher_did, cause_event_id)
       VALUES
         (${event.id ?? randomUUID()}, ${loopId}, ${event.type}, ${event.issuer}, ${principal},
-         ${JSON.stringify(payload)}::jsonb, ${at}::timestamptz)
+         ${JSON.stringify(payload)}::jsonb, ${at}::timestamptz,
+         ${event.signature ? JSON.stringify(event.signature) : null}::jsonb,
+         ${event.publisherDid ?? null}, ${event.causeEventId ?? null})
       ON CONFLICT (id) DO NOTHING
     `;
     if (signedCompletion) {

@@ -12,6 +12,11 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 
 vi.mock('@imajin/logger/db', () => ({}));
 const mockSessionResolver = vi.hoisted(() => vi.fn());
+const { mockWsRuntime, mockConsentNotifications } = vi.hoisted(() => ({
+  mockWsRuntime: vi.fn(), mockConsentNotifications: vi.fn(),
+}));
+vi.mock('@/src/lib/ws/register-runtime', () => ({ registerWsRuntime: mockWsRuntime }));
+vi.mock('@/src/lib/notify/consent-notifications', () => ({ registerConsentNotifications: mockConsentNotifications }));
 vi.mock('@/src/lib/auth/session-resolver', () => ({
   registerKernelSessionResolver: mockSessionResolver,
 }));
@@ -58,6 +63,8 @@ function setRuntime(value: string | undefined): void {
 
 afterEach(() => {
   mockSessionResolver.mockClear();
+  mockWsRuntime.mockClear();
+  mockConsentNotifications.mockClear();
   setRuntime(originalRuntime);
   mockLoadVaultAtBoot.mockClear();
   mockProvideVaultInternalApiKey.mockClear();
@@ -72,6 +79,8 @@ describe('kernel instrumentation register()', () => {
     setRuntime('nodejs');
     await register();
     expect(mockSessionResolver).toHaveBeenCalledTimes(1);
+    expect(mockWsRuntime).toHaveBeenCalledOnce();
+    expect(mockConsentNotifications).toHaveBeenCalledOnce();
   });
   it('registers the signed loop chain observer at server boot', async () => {
     setRuntime('nodejs');
@@ -149,6 +158,8 @@ describe('kernel instrumentation register()', () => {
 
     expect(mockLoadVaultAtBoot).not.toHaveBeenCalled();
     expect(mockSessionResolver).not.toHaveBeenCalled();
+    expect(mockWsRuntime).not.toHaveBeenCalled();
+    expect(mockConsentNotifications).not.toHaveBeenCalled();
     expect(mockProvideVaultInternalApiKey).not.toHaveBeenCalled();
     expect(mockEnsureEmissionExecutor).not.toHaveBeenCalled();
     expect(mockEnsureWebhookSigner).not.toHaveBeenCalled();

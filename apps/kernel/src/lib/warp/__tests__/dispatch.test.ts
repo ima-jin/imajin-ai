@@ -38,6 +38,7 @@ const {
   };
 });
 
+vi.mock('../run-access', async () => import('./run-access-stub'));
 vi.mock('../connector', () => ({
   requireAgentKey: requireAgentKeyMock,
 }));
@@ -438,8 +439,9 @@ describe('dispatch config surface', () => {
 
 describe('dispatch lineage passthrough', () => {
   it('sends conversationId as top-level conversation_id, not inside config', async () => {
+    respondJson({ run_id: 'run-parent-1', conversation_id: 'conv-123' });
     respondJson(QUEUED_RUN);
-    await dispatchAgentRun(PRINCIPAL, { prompt: 'go', conversationId: 'conv-123' });
+    await dispatchAgentRun(PRINCIPAL, { prompt: 'go', parentRunId: 'run-parent-1', conversationId: 'conv-123' });
 
     expect(lastRequestBody().conversation_id).toBe('conv-123');
     expect(lastConfig()).not.toHaveProperty('conversation_id');
@@ -853,6 +855,7 @@ describe('warp.agent.dispatched', () => {
   });
 
   it('records the Warp-confirmed conversation and parent lineage (#1939)', async () => {
+    respondJson({ run_id: 'run-parent-1', conversation_id: 'conv-123' });
     respondJson({ ...QUEUED_RUN, conversation_id: 'conv-123', parent_run_id: 'run-parent-1' });
     await dispatchAgentRun(PRINCIPAL, {
       prompt: 'go',

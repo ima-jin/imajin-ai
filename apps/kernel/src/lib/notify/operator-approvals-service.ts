@@ -51,7 +51,7 @@ function commandService() {
 }
 
 /** Native cards expose display fields, never harness addressing material. The original content hash is unchanged. */
-function publicApprovalDetail(row: OperatorApprovalRow): Record<string, unknown> | null {
+function publicApprovalDetail(row: Pick<OperatorApprovalRow, 'source' | 'kind' | 'detail'>): Record<string, unknown> | null {
   const detail = (row.detail as Record<string, unknown> | null) ?? null;
   if (row.source !== EXEC_COMMAND_SOURCE || row.kind !== EXEC_COMMAND_KIND || !detail) return detail;
   const fields = ['command', 'host', 'cwd', 'agentId', 'requestedBy', 'approvalId', 'expiresAt'];
@@ -234,7 +234,7 @@ export async function recordApprovalRequested(params: RecordApprovalRequestedPar
     kind,
     summary,
     keysTouched,
-    detail,
+    detail: publicApprovalDetail({ source, kind, detail }),
     contentHash,
     notificationId,
     signerDid,

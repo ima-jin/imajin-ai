@@ -321,12 +321,11 @@ components:
         actingDid: { type: string }
     LoopRefs:
       type: object
-      description: "Bare ids/numbers in the referenced system's own vocabulary — the kernel never resolves or validates these."
+      description: "Bare ids/numbers in the referenced system's own vocabulary — the kernel never resolves or validates these. Ingest keeps only these keys; anything else, including a harness sessionKey, is dropped and never stored."
       properties:
         issue: { type: string, description: "GitHub issue number, e.g. '2295'." }
         pr: { type: string, description: "GitHub PR number." }
         runId: { type: string, description: "Warp run id." }
-        sessionKey: { type: string, description: "OpenClaw gateway session key." }
         sessionId: { type: string, description: "Original source session id." }
         conflictingLoopId: { type: string, description: "Holder loop named by a surface.conflicted warning; never an exclusive refusal." }
         conflictingHolderDid: { type: string, description: "Holder DID in same-principal surface conflict warnings only." }
@@ -379,8 +378,9 @@ components:
         runs:
           type: array
           description: >-
-            Deduplicated registered runs with runId or sessionKey refs whose
-            lifetime overlaps the window, or that have matched usage in it.
+            Deduplicated registered runs (keyed by the loop's runId ref, else
+            its loopId) whose lifetime overlaps the window, or that have
+            matched usage in it.
             Ordered by lastSeenAt descending, then runId.
           items: { $ref: "#/components/schemas/RegistryRunCost" }
         issues:
@@ -717,6 +717,7 @@ components:
         kind: { type: string, example: "warp.run", description: "Open vocabulary, e.g. warp.run | openclaw.subagent | openclaw.automation | openclaw.keeper | bus.chain | review | pr. The kernel never branches on it." }
         principal: { type: string, description: "onBehalfOf DID this loop is scoped to — the GET /api/loops authz boundary." }
         parentLoopId: { type: string, nullable: true, description: "Lineage — the loop this one was spawned from, when known." }
+        causeEventId: { type: [string, "null"], minLength: 1, maxLength: 512, description: "Signed causal link to an existing kernel.loop_events.id; independent of parent loop lineage. Missing or null means a root receipt." }
         refs: { $ref: "#/components/schemas/LoopRefs" }
         state: { type: string, example: "running", description: "Publisher-defined state label." }
         summary: { type: string, maxLength: 2000 }
@@ -725,13 +726,14 @@ components:
         brief: { $ref: "#/components/schemas/WarpBrief" }
     StoredLoopEnvelope:
       type: object
-      description: "Sanitized envelope retaining loop metadata and optional inline output or private artifact wrapper."
+      description: "Signed facts retaining loop metadata and optional inline output or private artifact wrapper. Signed ingest rejects credential-bearing facts rather than persisting unverifiable redactions. Legacy unsigned rows remain readable."
       required: [loopId, kind, principal, state, summary, at]
       properties:
         loopId: { type: string }
         kind: { type: string }
         principal: { type: string }
         parentLoopId: { type: [string, "null"] }
+        causeEventId: { type: [string, "null"] }
         refs: { $ref: "#/components/schemas/LoopRefs" }
         state: { type: string }
         summary: { type: string }
@@ -820,6 +822,13 @@ components:
         issuer: { type: string, description: "The verified publisher DID." }
         principal: { type: string }
         payload: { $ref: "#/components/schemas/StoredLoopEnvelope" }
+        signature:
+          oneOf:
+            - $ref: "#/components/schemas/LoopPublisherSignature"
+            - type: "null"
+          description: "Original publisher signature, or null for legacy unsigned rows. Verify against publisherDid over the original type and payload; oversized output is reconstructed from its private artifact."
+        publisherDid: { type: [string, "null"], description: "DID whose registered key verifies the signature; null for historical unsigned rows." }
+        causeEventId: { type: [string, "null"], description: "Indexed self-FK to the causal event id; signed as payload.causeEventId." }
         occurredAt: { type: string, format: date-time }
         createdAt: { type: string, format: date-time }
     ApprovalRef:
@@ -1267,6 +1276,81 @@ paths:
         "400": { description: Invalid scope or lease }
         "403": { description: Current human zone owner authority required }
         "503": { description: Delegation unavailable }
+  /api/orgs/{ownerDid}/mail-domains:
+    parameters:
+      - { name: ownerDid, in: path, required: true, schema: { type: string } }
+    get:
+      tags: [jin]
+      operationId: listOrganizationMailDomains
+      summary: Read stored mail-domain state and current send-only DNS guidance
+      description: >-
+        Session-only human with current owner/admin membership. The path selects
+        the org; X-Acting-For cannot select it. A supplied acting-as identity must
+        match. Returns domains plus availableDomains (currently verified zone-owner
+        bindings). Each domain has ownerDid, domain, state (pending/verified/disabled),
+        ownershipVerified, dnsOk, records, checkedAt, error and guidance.
+        records preserves Postal values; guidance.records is the only list to add:
+        ownership/SPF/DKIM/return-path, never MX. Guidance merges current DNS SPF
+        with Postal's include, preserving existing providers and all qualifiers.
+        DNS failures or multiple SPF policies withhold SPF guidance with an error.
+        This GET never calls Postal or writes DNS. Cache-Control private, no-store.
+      security: [{ cookieAuth: [] }]
+      responses:
+        "200": { description: "Stored domains, safe guidance and availableDomains" }
+        "401": { description: Real session required }
+        "403": { description: Current human organization owner/admin required }
+        "503": { description: Mail domain status unavailable }
+    post:
+      tags: [jin]
+      operationId: provisionOrganizationMailDomain
+      summary: Idempotently provision mail for an already owner-verified domain
+      description: >-
+        Same current human member gate as GET plus registered owner-countersign
+        policy. Agents cannot execute; the human must re-issue. Refuses unless
+        the domain binding is verified to this owner DID. Creates in Postal
+        with the runtime node vault credential, persists exact DNS records and
+        pending/verified state. No DNS writes, mailboxes or organization creation.
+        Failures persist pending with a safe error, never verified.
+      security: [{ cookieAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [domain]
+              properties:
+                domain: { type: string, minLength: 1, maxLength: 253 }
+      responses:
+        "200": { description: "MailDomainStatus envelope {domain}, Cache-Control no-store" }
+        "400": { description: Invalid JSON or domain }
+        "401": { description: Real session required }
+        "403": { description: Human owner/admin and verified domain binding required }
+        "503": { description: Postal unavailable or credential/configuration invalid; error is sanitized }
+  /api/orgs/{ownerDid}/mail-domains/{domain}/check:
+    parameters:
+      - { name: ownerDid, in: path, required: true, schema: { type: string } }
+      - { name: domain, in: path, required: true, schema: { type: string } }
+    post:
+      tags: [jin]
+      operationId: checkOrganizationMailDomain
+      summary: Check Postal ownership and sending DNS, persisting the new state
+      description: >-
+        Same session-only current human owner/admin and registered countersign
+        policy as provisioning. Uses Postal's narrow check endpoint. A failed
+        initial create is retried idempotently first. No transaction spans HTTP.
+        Revocation disables sending atomically; stale in-flight responses cannot
+        restore readiness. Pending domains are polled with bounded backoff by
+        authenticated cron; polling stops after verified or disabled.
+      security: [{ cookieAuth: [] }]
+      responses:
+        "200": { description: "MailDomainStatus envelope {domain}, Cache-Control no-store" }
+        "400": { description: Invalid domain }
+        "401": { description: Real session required }
+        "403": { description: Human owner/admin and verified domain binding required }
+        "409": { description: Provision the mail domain first }
+        "503": { description: Postal unavailable; sending remains gated }
   /api/orgs/{ownerDid}/mail-senders:
     parameters:
       - { name: ownerDid, in: path, required: true, schema: { type: string } }
@@ -1279,7 +1363,7 @@ paths:
         this exact business, community, or family identity. Bearer credentials
         and app tokens (including app tokens moved into cookies) are refused.
         Readiness is keyed by configured domain and is server-authoritative;
-        until ownership and mail verification are implemented it is always false.
+        it requires stored Postal verification and a current verified owner binding.
         Saving configuration never enables custom-domain delivery.
       security: [{ cookieAuth: [] }]
       responses:
@@ -2609,7 +2693,8 @@ paths:
         delegation must be authorized. An optional principal must match that
         effective DID, never broaden the lookup. Both registry and usage
         reads are principal-scoped. Usage matches exact run ids before unique
-        sessionKey aliases; ambiguous aliases are not allocated, each usage
+        aliases from loop ids and signed runId refs on the run's own and
+        child loop events; ambiguous aliases are not allocated, each usage
         row counts at most once, and error-status usage is excluded. No
         external provider calls, pagination, row limit, or window-length cap.
       servers:

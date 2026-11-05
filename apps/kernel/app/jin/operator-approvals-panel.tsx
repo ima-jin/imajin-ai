@@ -1,4 +1,5 @@
 'use client';
+import { VaultRenewalApproval } from './vault-renewal-approval';
 
 import { VaultImportApproval } from './vault-import-approval';
 import { CloudflareApprovalDetail } from './cloudflare-approval-detail';
@@ -590,6 +591,8 @@ function renderVaultRevokeDetail(approval: OperatorApprovalCard): ReactNode {
 
 function renderVaultDetail(approval: OperatorApprovalCard): ReactNode {
   switch (approval.kind) {
+    case 'vault:renew-org-held-key':
+      return <VaultRenewalApproval detail={approval.detail} />;
     case 'vault:import':
       return <VaultImportApproval detail={approval.detail} />;
     case 'vault:mint':

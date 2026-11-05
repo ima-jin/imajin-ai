@@ -8,6 +8,7 @@ const h = vi.hoisted(() => ({
   ownerDid: '', caller: {} as ConnectionCaller, credential: '', unavailable: false,
   publish: vi.fn(), key: vi.fn(), resolve: vi.fn(),
 }));
+vi.mock('@/src/lib/warp/run-access', async () => import('../../warp/__tests__/run-access-stub'));
 vi.mock('@/src/lib/mcp/agent-binding', () => ({
   AgentOAuthError: class extends Error {
     constructor(readonly code: string, message: string) { super(message); this.name = 'AgentOAuthError'; }

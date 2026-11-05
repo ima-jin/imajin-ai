@@ -31,6 +31,7 @@ export const ATTESTATION_TYPES = [
   'domain.revoked',
   'cloudflare.mutation',
   'mail.sent',
+  'mail.domain.changed',
   'event.attendance',
   'institution.verified',
   'vouch.given',
@@ -230,7 +231,11 @@ export const ATTESTATION_TYPES = [
   // minted key's grant is revoked. See ATTESTATION_TYPES above.
   'vault.key.minted',
   'vault.key.imported',
+  'vault.key.renewed',
   'vault.key.revoked',
+  // Recipient-bound gateway delivery provenance; never a bilateral claim.
+  'vault.deployment-read.fetched',
+  'vault.deployment-read.acked',
   // #2251 — per-principal agent-reach exchange. Minted mechanically (kernel
   // node key) on every reach attempt, answered or denied: binds the foreign
   // agent DID, the foreign-principal stub DID it declared `onBehalfOf`, the
@@ -361,6 +366,7 @@ export const MECHANICAL_ATTESTATION_TYPES = [
   'cloudflare.mutation',
   'mail.sent',
   'identity.owner.transferred',
+  'mail.domain.changed',
   // #2894 — unilateral read provenance, never awaiting a countersignature.
   'google.data.read',
   'session.created',
@@ -411,6 +417,9 @@ export const MECHANICAL_ATTESTATION_TYPES = [
   'vault.key.minted',
   'vault.key.imported',
   'vault.key.revoked',
+  'vault.key.renewed',
+  'vault.deployment-read.fetched',
+  'vault.deployment-read.acked',
   // #2251 — minted mechanically by the kernel node key on every reach
   // attempt (answered or denied). See ATTESTATION_TYPES above.
   'agent.reach',

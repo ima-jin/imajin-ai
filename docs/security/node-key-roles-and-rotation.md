@@ -50,6 +50,16 @@ overlap by both kid and public key, and accepts currently published non-expired
 keys during grace and binds each delivery to its recipient app DID. Unlike corpus's boot reconciliation, apps do not need a restart
 or a key-file/env edit during an overlapping rotation. See `kernel-webhooks.md`.
 
+Gateway deployment-read delivery (#3190) uses S5 for the short-lived,
+recipient/purpose/repository-bound encrypted response witness and S3 for
+persisted fetched/acked provenance. `vault/deployment-read.ts` reuses D2/D3
+through the existing imported-secret grant fetch. The gateway verifies a pinned
+kernel public key; node-root rotation fails closed until the reviewed public
+trust configuration follows that rotation. Imported deployment credentials
+remain excluded from the legacy plaintext sweep and must retain their
+human-authorized import custody. The gateway's existing app signing identity is
+independent of the node root and is not a new node-key consumer.
+
 S3 also covers DNS domain evidence (#2902):
 `apps/kernel/src/lib/domains/signing.ts` verifies the configured node DID's
 registered public key before using `AUTH_PRIVATE_KEY` for DNS verification
@@ -652,12 +662,14 @@ file: ``- `path` — role``.
 - `apps/kernel/src/lib/inference/consent.ts` — S5
 - `apps/kernel/src/lib/inference/resolve.ts` — S5
 - `apps/kernel/src/lib/usage/billed/receipt.ts` — S5
+- `apps/kernel/src/lib/pay/fee-receipts.ts` — S3/S5 (signs fee facts as the configured platform DID with the node key; signed loop ingest and replay re-verification require that DID's current registered key, so historical replay after rotation fails closed under the existing current-key verifier gap in §7; never re-sign stored receipts)
 - `apps/kernel/src/lib/loops/cycle.ts` — S5
 - `apps/kernel/src/lib/loops/emit.ts` — S5 (signed native loop lifecycle observations)
 - `apps/kernel/src/lib/loops/surface-conflict.ts` — S5 (node-witness-signed advisory collision observations, #2405)
 - `apps/kernel/src/lib/loops/authorize-publisher.ts` — S5
 - `apps/kernel/src/lib/loops/verify-publisher-signature.ts` — S5
 - `apps/kernel/src/lib/warp/loop-emit.ts` — S5
+- `apps/kernel/src/lib/warp/run-access.ts` — S5 (public node-witness DID comparison for signed dispatch receipts and explicit internal callers; does not sign or expose key material; witness-DID rotation fails closed on old receipts until the existing S5 key-history gap is addressed)
 - `apps/kernel/src/lib/auth/reach-delivery.ts` — S5 (node-signed reach delivery events; delivery attestations use S3 preparation)
 - `apps/kernel/src/lib/github/approvals-execution.ts` — S5
 - `apps/kernel/src/lib/access/approvals-execution.ts` — S5
@@ -686,15 +698,20 @@ file: ``- `path` — role``.
 - `apps/kernel/src/lib/vault/mint-authority.ts` — D2
 - `apps/kernel/src/lib/vault/import-authority.ts` — D2 (node identity comparison only; real human/group ownership remains independently checked)
 - `apps/kernel/src/lib/vault/import.ts` — D2/S3 (v2 static-secret custody and node-attested, human-countersigned import/rotation)
+- `apps/kernel/src/lib/vault/deployment-read.ts` — D2/S5/S3 (existing imported grant custody; recipient/repository/purpose-bound encrypted response witness and fetched/acked provenance; gateway pins the public witness and fails closed across unconfigured node-root rotation)
 - `apps/kernel/app/api/vault/import/route.ts` — D2 (pins Cloudflare credential consumer to this kernel node; never releases token material)
 - `apps/kernel/src/lib/cloudflare/authority.ts` — D2 (node consumer identifier for verified-domain credential resolution; edge authority remains owner-granted)
 - `apps/kernel/src/lib/dns/provider.ts` — D2 (node consumer identifier for the connector's existing zone-scoped DNS credential; no signing, sealing or new secret)
 - `apps/kernel/src/lib/cloudflare/zone-grants.ts` — D2 (public node consumer identifier comparison for metadata-only zone grant discovery; never unseals or signs)
 - `apps/kernel/src/lib/vault/cloudflare-import.ts` — D2 (checks node-only token custody against exact verified zone ownership)
 - `apps/kernel/src/lib/vault/group-key.ts` — D2/D3/S3 (explicit node-key configuration gate; countersigned group-to-node custody, wrapped-key revoke and transactional signed audit)
+- `apps/kernel/src/lib/vault/org-held-renewal.ts` — D2/D3/S3 (human owner/admin countersigned expiry re-signing of existing org-held custody; checks current node/owner X25519 public bindings, never unwraps or re-seals; node-root rotation refuses old grants rather than migrating or exporting material)
 - `apps/kernel/src/lib/vault/bank-details.ts` — D2/D3/S3/S6 (explicit node-key presence gate; field sealing via existing custody helpers, signed private documents and retained revocation; no generic export or renewal)
 - `apps/kernel/src/lib/kernel/external-mcp.ts` — D2/D3/S3 (member-subject, kernel-only credential custody and signed lifecycle/call receipts; external-mcp-key fields are excluded from generic fetch, renewal and rotation handoff; after node-root rotation the member must reconnect from their original provider account, never export the key)
+- `apps/kernel/src/lib/kernel/external-mcp-authority.ts` — D2 (public node grantee DID comparison in the shared read-only MCP/HTTP authorization decision; reads grant metadata only, never vault entries or signing/unseal keys; node-root rotation fails closed until custody is restored through the existing connection controls)
+- `apps/kernel/src/lib/inference/http-connector-authority.ts` — D2 (public node grantee DID for read-only HTTP custody-grant metadata; reuses connector scope predicates, never reads credential bytes or signs; node-root rotation requires the corresponding connector grants to be restored through their existing controls)
 - `apps/kernel/src/lib/kernel/org-held-connection.ts` — D2/D3/S3 (org-subject, kernel-only static-secret custody with actor-attributed lifecycle receipts; private fields never enter generic fetch, renewal or rotation export; after node-root rotation an org admin must load again from the original provider account, never export the key)
+- `apps/kernel/src/lib/kernel/connector-token-paste.ts` — D2/D3 (authenticated /jin org seals bind org-subject custody to the current node grantee through the existing vault primitive; after node-root rotation a human org admin must re-seal from the original provider account, never export the key; personal seals retain node self-grant custody)
 - `apps/kernel/src/lib/inference/org-held-brain.ts` — D2/D3 (live member-grant-gated org Anthropic custody; checks node signing identity and unseals only in-process with the node X25519 key; after node-root rotation the org admin must reload through the existing org-held connection rail, never export the key)
 - `apps/kernel/src/lib/vault/internal-secret.ts` — D2
 - `apps/kernel/src/lib/vault/internal-secret-revoke.ts` — D2
@@ -723,6 +740,7 @@ file: ``- `path` — role``.
 - `apps/kernel/app/profile/api/contact/verify-email/route.ts` — D4
 - `apps/kernel/app/profile/api/contact/verify-email/confirm/route.ts` — D4
 - `scripts/provision-service-bootstrap.mjs` — ops
+- `scripts/backfill-agent-apps.ts` — ops/S3/S4 (operator-only agent app registration and server-witnessed self-context consent; reads the current node key in-process, never loads agent keys or re-signs existing grants; historical proofs need the same node-key rotation history as other registry/consent records)
 - `scripts/grant-attestation-internal-api-key.ts` — ops
 - `scripts/lib/attestation-internal-api-key-grant.ts` — ops
 - `scripts/lib/cron-secret-grant.ts` — ops

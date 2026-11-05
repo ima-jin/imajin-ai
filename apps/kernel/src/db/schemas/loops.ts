@@ -1,4 +1,4 @@
-import { pgSchema, text, jsonb, timestamp, index, integer, uniqueIndex } from 'drizzle-orm/pg-core';
+import { pgSchema, text, jsonb, timestamp, index, integer, uniqueIndex, type AnyPgColumn } from 'drizzle-orm/pg-core';
 import type { LoopOutput } from '@imajin/bus';
 import { sql } from 'drizzle-orm';
 
@@ -49,10 +49,14 @@ export const loopEvents = loopsSchema.table('loop_events', {
   issuer: text('issuer').notNull(),
   principal: text('principal').notNull(),
   payload: jsonb('payload').notNull(),
+  signature: jsonb('signature'),
+  publisherDid: text('publisher_did'),
+  causeEventId: text('cause_event_id').references((): AnyPgColumn => loopEvents.id),
   occurredAt: timestamp('occurred_at', { withTimezone: true }).notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => ({
   loopIdIdx: index('idx_loop_events_loop_id').on(table.loopId, table.occurredAt),
+  causeIdx: index('idx_loop_events_cause_event_id').on(table.causeEventId),
   sessionIdx: index('idx_loop_events_principal_session').on(table.principal, sql`(${table.payload}->'refs'->>'sessionKey')`),
   principalIdx: index('idx_loop_events_principal').on(table.principal, table.occurredAt),
 }));

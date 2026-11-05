@@ -41,5 +41,6 @@ it('has no remaining raw internal fetch calls in auth or the WS entrypoint', () 
   }
   const ws = readFileSync(join(process.cwd(), 'apps/kernel/ws-server.js'), 'utf8');
   expect(ws).not.toMatch(/\bawait fetch\(/);
-  expect(ws.match(/\bawait internalFetch\(/g)).toHaveLength(8);
+  expect(ws.match(/\bawait internalFetch\(/g)).toHaveLength(7);
+  expect(ws).not.toContain('/chat/api/participants/');
 });

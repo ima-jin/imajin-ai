@@ -19,6 +19,9 @@
  * to the pre-refactor baseline.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+vi.mock('@/src/lib/pay/fee-receipts', async () => ({
+  publishFeeReceipt: (await import('@/src/lib/pay/__tests__/fee-receipt-fixture')).fixturePublishFeeReceipt,
+}));
 
 interface TxFixture {
   id: string;
@@ -64,7 +67,7 @@ vi.mock('@/src/db', async () => {
   const { select, update, insert } = createMockDb(state, limitResultFor);
 
   return {
-    db: { select, update, insert },
+    db: { select, update, insert, transaction: (cb: (tx: unknown) => Promise<unknown>) => cb({ select, update, insert }) },
     transactions,
     feeLedger,
     balances,

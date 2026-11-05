@@ -10,7 +10,7 @@ export interface SurfaceConflict {
   loopId: string;
   holderDid?: string;
 }
-export function loopObservationId(request: LoopIngestRequest): string {
+export function loopObservationId(request: { type: string; payload: Record<string, unknown>; publisherDid: string; signature: LoopIngestRequest['signature'] }): string {
   return `signed-loop:${createHash('sha256').update(canonicalize(request)).digest('hex')}`;
 }
 
@@ -92,9 +92,11 @@ export async function projectSurfaceLease(
     await requireStepOwner(tx, surface, payload);
     await tx`SELECT surface FROM kernel.surface_lease WHERE surface = ${surface} FOR UPDATE`;
     const inserted = await tx`
-      INSERT INTO kernel.loop_events (id, loop_id, type, issuer, principal, payload, occurred_at)
+      INSERT INTO kernel.loop_events
+        (id, loop_id, type, issuer, principal, payload, occurred_at, signature, publisher_did, cause_event_id)
       VALUES (${id}, ${payload.loopId}, ${type}, ${publisherDid}, ${payload.principal},
-              ${evidence}::jsonb, ${payload.at}::timestamptz)
+              ${evidence}::jsonb, ${payload.at}::timestamptz,
+              ${JSON.stringify(signature)}::jsonb, ${publisherDid}, ${request.payload.causeEventId ?? null})
       ON CONFLICT (id) DO NOTHING RETURNING id
     `;
     if (inserted.length === 0) {

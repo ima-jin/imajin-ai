@@ -1,6 +1,6 @@
 {
   "name": "@imajin/dfos",
-  "version": "0.8.30",
+  "version": "0.8.33",
   "private": true,
   "type": "module",
   "main": "./dist/index.js",
@@ -24,7 +24,7 @@
   },
   "dependencies": {
     "@imajin/auth": "workspace:*",
-    "@metalabel/dfos-protocol": "^0.13.5",
+    "@metalabel/dfos-protocol": "0.55.0",
     "@noble/curves": "^1.8.1"
   },
   "devDependencies": {

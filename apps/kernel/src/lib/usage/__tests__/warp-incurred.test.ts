@@ -14,10 +14,12 @@ vi.mock('@imajin/db', () => ({ getClient }));
 vi.mock('@imajin/logger', () => ({ createLogger: () => log }));
 vi.mock('@/src/lib/inference/usage-ledger', () => ({ publishUsageIncurred: publish }));
 vi.mock('@/src/lib/warp/dispatch', () => ({ getAgentRun: getRun, listAgentRuns: list }));
+vi.mock('@/src/lib/warp/run-access', async () => import('../../warp/__tests__/run-access-stub'));
 import { recordWarpRunUsage, warpRunCredits, WARP_CREDIT_RATE_CONFIG } from '../warp-incurred';
 import { sweepWarpIncurredUsage, WARP_USAGE_SETTLE_MS } from '../../warp/usage-sweep';
 
 const OWNER = 'did:imajin:owner';
+const SYSTEM = { actorDid: 'did:imajin:node-witness' };
 const CREATED = '2026-10-19T12:00:00.000Z';
 const ROOT = resolve(__dirname, '../../../../../../migrations/archive/pre-kernel-baseline');
 let pg: PGlite;
@@ -78,8 +80,8 @@ describe('Warp incurred terminal meter', () => {
     ]);
     getRun.mockResolvedValue({ ...run(), runId: 'unsettled' });
     await sweepWarpIncurredUsage(new Date('2026-10-23T12:00:00Z'));
-    expect(getRun.mock.calls).toEqual([[OWNER, 'unsettled']]);
-    expect(list.mock.calls).toEqual([[OWNER, { ancestorRunId: 'unsettled', limit: 500 }]]);
+    expect(getRun.mock.calls).toEqual([[OWNER, 'unsettled', SYSTEM]]);
+    expect(list.mock.calls).toEqual([[OWNER, { ancestorRunId: 'unsettled', limit: 500 }, SYSTEM]]);
   });
   it.each([
     { label: 'priced and older than 24h', credits: 6500, ageOffset: -1, refetch: false },
@@ -101,8 +103,8 @@ describe('Warp incurred terminal meter', () => {
       'warp.run.completed', JSON.stringify(observed), terminalAt.toISOString(),
     ]);
     await sweepWarpIncurredUsage(now);
-    expect(getRun.mock.calls).toEqual(refetch ? [[OWNER, 'run-a']] : []);
-    expect(list.mock.calls).toEqual(refetch ? [[OWNER, { ancestorRunId: 'run-a', limit: 500 }]] : []);
+    expect(getRun.mock.calls).toEqual(refetch ? [[OWNER, 'run-a', SYSTEM]] : []);
+    expect(list.mock.calls).toEqual(refetch ? [[OWNER, { ancestorRunId: 'run-a', limit: 500 }, SYSTEM]] : []);
     if (!refetch) expect(await snapshot()).toEqual(before);
     if (credits === null) expect(await snapshot()).toMatchObject([{ cost_usd: '100.00000000' }]);
   });
@@ -116,8 +118,8 @@ describe('Warp incurred terminal meter', () => {
         'warp.run.completed', '2026-10-21T00:00:00Z', eventType, '2026-10-23T00:00:00Z',
       ]);
       await sweepWarpIncurredUsage(now);
-      expect(getRun.mock.calls).toEqual([[OWNER, 'run-a']]);
-      expect(list.mock.calls).toEqual([[OWNER, { ancestorRunId: 'run-a', limit: 500 }]]);
+      expect(getRun.mock.calls).toEqual([[OWNER, 'run-a', SYSTEM]]);
+      expect(list.mock.calls).toEqual([[OWNER, { ancestorRunId: 'run-a', limit: 500 }, SYSTEM]]);
     },
   );
 
@@ -128,7 +130,7 @@ describe('Warp incurred terminal meter', () => {
     ]);
     getRun.mockResolvedValueOnce({ ...run(), runId: 'run-a' }).mockResolvedValueOnce({ ...run(), runId: 'legacy' });
     await sweepWarpIncurredUsage(new Date('2026-10-23T12:00:00Z'));
-    expect(getRun.mock.calls).toEqual([[OWNER, 'run-a'], [OWNER, 'legacy']]);
+    expect(getRun.mock.calls).toEqual([[OWNER, 'run-a', SYSTEM], [OWNER, 'legacy', SYSTEM]]);
   });
 
   it('does not settle a root using a different principal’s terminal observation', async () => {
@@ -138,7 +140,7 @@ describe('Warp incurred terminal meter', () => {
       'did:other', 'warp.run.completed', '2026-10-21T00:00:00Z',
     ]);
     await sweepWarpIncurredUsage(new Date('2026-10-23T12:00:00Z'));
-    expect(getRun.mock.calls).toEqual([[OWNER, 'run-a']]);
+    expect(getRun.mock.calls).toEqual([[OWNER, 'run-a', SYSTEM]]);
   });
   it('retries a failed meter write from a durable terminal record without any in-flight dispatch', async () => {
     getClient.mockImplementationOnce(() => { throw new Error('synthetic-private-marker'); });
@@ -166,7 +168,7 @@ describe('Warp incurred terminal meter', () => {
     });
     await sweepWarpIncurredUsage();
     expect((await snapshot()).map(row => row.external_id)).toEqual(['child', 'grandchild', 'run-a']);
-    expect(list).toHaveBeenNthCalledWith(2, OWNER, { ancestorRunId: 'run-a', limit: 500, cursor: 'more' });
+    expect(list).toHaveBeenNthCalledWith(2, OWNER, { ancestorRunId: 'run-a', limit: 500, cursor: 'more' }, SYSTEM);
     expect(publish).toHaveBeenCalledTimes(3);
   });
   it('writes a single canonical run row with credits, actual model, original timestamp and rate provenance', async () => {

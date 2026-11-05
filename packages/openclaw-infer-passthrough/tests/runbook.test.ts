@@ -18,7 +18,7 @@ describe('principal migration runbook (#3041)', () => {
       'update.sh --check',
     ]) expect(runbook).toContain(contract);
     const operator = runbook.slice(runbook.indexOf('**(b) Agent-native'));
-    const plugin = operator.indexOf('deploy plugin PR #151');
+    const plugin = operator.indexOf("Deploy the plugin's per-agent credential transport");
     const declaration = operator.indexOf('Set the explicit line `INFER_PROXY_AUTH_MODE=agent`');
     const reinstall = operator.indexOf('Reinstall **both checker + update.sh**');
     const promote = operator.indexOf('Only then let the tag promote');
@@ -44,7 +44,7 @@ describe('principal migration runbook (#3041)', () => {
     for (const contract of [
       'Authorization: Bearer', 'x-api-key', 'x-acting-as', 'app+jwt', 'azp', 'sub',
       'invalid_agent_credential', '401', '403', '502', 'INFER_PROXY_AUTH_MODE=host-static',
-      '#3182', 'No running host',
+      "principal relationship and allowed-service checks", 'No running host',
     ]) expect(runbook).toContain(contract);
   });
   it('installs tracked units/helpers from an approved release and follows the production gate (#3082)', () => {
@@ -57,9 +57,13 @@ describe('principal migration runbook (#3041)', () => {
     expect(runbook).toContain('Deployments: read');
     expect(runbook).toContain('no write');
     expect(runbook).toContain('bootstrap.sh');
-    expect(runbook).toContain('TODO #3190');
+    expect(runbook).toContain('infer-passthrough/github-deploy-read');
+    expect(runbook).toContain('infer-passthrough-deployment-read.service');
+    expect(runbook).toContain('no GitHub credential env fallback');
+    expect(runbook).not.toContain('TODO #3190');
+    expect(runbook).toContain('Credential delivery is a prerequisite');
     expect(runbook).toContain('production-deployment.mjs');
-    expect(runbook).toContain('Keep the existing unit as-is until this change lands');
+    expect(runbook).toContain('Keep the existing unit as-is until the reviewed replacement completes');
     expect(runbook).not.toContain('independent of the production');
     expect(updaterUnit).toContain('LoadCredential=github-token:/etc/imajin/infer-passthrough-github-token');
     expect(updaterUnit).not.toMatch(/GRANT_ID|ATTESTATION_ID|GH_TOKEN=|GITHUB_TOKEN=/);
@@ -68,16 +72,37 @@ describe('principal migration runbook (#3041)', () => {
     const deployUrl = new URL('../../../deploy/infer-passthrough/', import.meta.url);
     const env = readFileSync(new URL('infer-passthrough.env.example', deployUrl), 'utf8');
     const unit = readFileSync(new URL('infer-passthrough.service', deployUrl), 'utf8');
+    const updater = readFileSync(new URL('update.sh', deployUrl), 'utf8');
     const timer = readFileSync(new URL('infer-passthrough-update.timer', deployUrl), 'utf8');
     expect(env).toContain('INFER_PROXY_PRINCIPAL_DID=');
     expect(env).not.toMatch(/^[^#\n]*(?:GRANT_ID|ATTESTATION_ID|INFER_PROXY_ROUTES_CONFIG)=/m);
     expect(unit).toContain('EnvironmentFile=/etc/imajin/infer-passthrough.env');
-    expect(unit).toContain('/current/node_modules/.bin/tsx');
+    // The tsx CLI can relay a process-group signal twice if its IPC acknowledgement is delayed.
+    const launch = 'node --import tsx packages/openclaw-infer-passthrough/src/server.ts';
+    expect(unit).toContain(`ExecStart=/usr/bin/env ${launch}`);
+    const candidateLaunch = updater.slice(
+      updater.indexOf('systemd-run --unit=infer-passthrough-candidate'),
+      updater.indexOf('health "$candidate_port"'),
+    );
+    expect(candidateLaunch).toContain(launch);
+    expect(candidateLaunch).toContain('--working-directory="$candidate"');
+    expect(candidateLaunch).toContain('/usr/bin/env INFER_PROXY_HOST=127.0.0.1 INFER_PROXY_PORT="$candidate_port"');
+    expect(updater).not.toContain(['node_modules', '.bin', 'tsx'].join('/'));
+    expect(unit).toContain('KillMode=control-group');
     expect(unit).not.toMatch(/GRANT_ID|ATTESTATION_ID/);
     expect(timer).toContain('OnUnitInactiveSec=2min');
     const runbook = readFileSync(new URL('README.md', deployUrl), 'utf8');
     expect(runbook).toContain('systemctl enable --now infer-passthrough-update.timer');
     expect(runbook).toContain('check-health.mjs 8787');
+  });
+  it('documents in-process tsx loading for both pm2 and systemd', () => {
+    const readme = readFileSync(new URL('README.md', packageUrl), 'utf8');
+    expect(readme).toContain("script: 'packages/openclaw-infer-passthrough/src/server.ts'");
+    expect(readme).toContain("interpreter: 'node'");
+    expect(readme).toContain("node_args: '--import tsx'");
+    expect(readme).toContain('ExecStart=/usr/bin/env node --import tsx packages/openclaw-infer-passthrough/src/server.ts');
+    expect(readme).not.toContain(['node_modules', '.bin', 'tsx'].join('/'));
+    expect(readme).toContain('the tsx CLI relays process-group signals twice under contention (#3270)');
   });
   it('ships grant-free optional example routes', () => {
     const routes = loadRoutes(fileURLToPath(new URL('config/routes.example.json', packageUrl)));

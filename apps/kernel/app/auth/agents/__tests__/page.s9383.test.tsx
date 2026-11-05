@@ -31,7 +31,10 @@ function installFetch() {
         keypair: { publicKey: 'pub', privateKey: 'priv' },
       });
     }
-    if (url.endsWith('/auth/api/agents')) return res({ agents: [] });
+    if (url.endsWith('/auth/api/agents')) return res({
+      agents: [],
+      delegator: { did: 'did:imajin:ryan', name: 'Ryan', handle: 'veteze', isOrganization: false, actorDid: 'did:imajin:ryan' },
+    });
     if (url.endsWith('/auth/api/session')) return res({ did: 'did:imajin:ryan', handle: 'ryan' });
     if (url.endsWith('/auth/api/knock/pending')) return res({ knocks: [] });
     return res({});
@@ -49,7 +52,7 @@ async function createAgentAndShowCopyButton() {
   render(<AgentsPage />);
   await waitFor(() => expect(screen.queryByText('Loading agents…')).toBeNull());
   fireEvent.click(screen.getByText('+ Create Agent'));
-  fireEvent.change(screen.getByLabelText('Handle'), { target: { value: 'veteze-jin-travel' } });
+  fireEvent.change(screen.getByLabelText('Handle'), { target: { value: 'travel' } });
   fireEvent.click(screen.getByRole('button', { name: 'Create Agent' }));
   return screen.findByText('Copy OpenClaw Config');
 }

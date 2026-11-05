@@ -409,9 +409,11 @@ export function validateApprovalRequestedPayload(data: Record<string, unknown>):
   // generic bounds check above, same enforcement point every other kind's
   // detail skips today (only exec.command needs it: the operator is
   // deciding whether to let a real command run on a real host).
+  let storedDetail = detailResult.detail;
   if (sourceKind.kind === EXEC_COMMAND_KIND) {
     const execDetailResult = validateExecCommandDetail(detailResult.detail);
     if (!execDetailResult.ok) return execDetailResult;
+    storedDetail = { ...execDetailResult.detail };
   }
 
   const normalizedKeysTouched = (keysTouched as string[] | undefined) ?? [];
@@ -430,7 +432,7 @@ export function validateApprovalRequestedPayload(data: Record<string, unknown>):
     ok: true,
     source: sourceKind.source,
     kind: sourceKind.kind,
-    detail: detailResult.detail,
+    detail: storedDetail,
     contentHash: contentHashResult.contentHash,
   };
 }

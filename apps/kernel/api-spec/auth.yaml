@@ -48,6 +48,16 @@ components:
       scheme: bearer
       bearerFormat: JWT
       description: "Existing app-service+jwt from POST /auth/api/apps/token/service; the operation's token scope and live operator approval are required."
+    orgBotAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: app+jwt
+      description: |
+        Existing per-agent credential used by /infer/v1/self: sub = azp = bot DID,
+        audience imajin:apps, scope infer:completions. x-api-key is an alternative
+        only when Authorization is absent. No service tokens, session fallback,
+        borrowed subject or acting-for selector. Live infer-service assignment
+        to the x-acting-as org is checked on every call.
     internalKeyAuth:
       type: apiKey
       in: header
@@ -627,6 +637,239 @@ components:
         error_description: { type: string, example: "This app is not registered with the kernel, or its registration has been revoked." }
 
 paths:
+  /api/channel-link/speaker:
+    post:
+      tags: [auth]
+      summary: Resolve one channel sender and check org membership as the org bot
+      security: [{ orgBotAuth: [] }]
+      parameters:
+        - { name: x-acting-as, in: header, required: true, schema: { type: string } }
+      description: |
+        Read-only, private/no-store. The bot acts as a business/community/family
+        org, never as the sender. Reuses requireAgentAssignment (membership
+        role=agent or live audience-matching delegation; infer restrictions apply).
+        Only active channel_links with appDid equal to the credential's own bot
+        DID count; another bot's or registry app's links never count.
+        No link returns unknown_sender with did null. Linked presence and agent
+        senders return presence_refused or agent_refused regardless of membership.
+        Otherwise an active identity_members row on this org alone admits the
+        sender (reason null); a removed row alone returns removed; no row returns
+        not_member. No role, scope or per-channel grant is required for senders.
+        No membership cache outlives the request: removal/unlink flips the next
+        call. No member list, roles or other member's data is returned.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: &channelSenderInput
+              type: object
+              additionalProperties: false
+              required: [channel, channelUid]
+              properties:
+                channel: { type: string, enum: [telegram, whatsapp, signal] }
+                channelUid: { type: string, minLength: 1, pattern: '\S', description: Trimmed; never placed in query parameters. }
+      responses:
+        "200":
+          description: Only this sender's DID and admission result
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [did, admitted, reason]
+                properties:
+                  did: { type: [string, "null"] }
+                  admitted: { type: boolean }
+                  reason:
+                    type: [string, "null"]
+                    enum: [null, not_member, removed, unknown_sender, presence_refused, agent_refused]
+        "400": { description: "Invalid JSON object, channel, blank/non-string channelUid or extra fields" }
+        "401": { description: "Missing, malformed, invalid or expired agent app token" }
+        "403": { description: "Not an assigned active agent-capable caller acting as an active org; wrong token subject/type/audience/scope, acting-for selector or excluded service" }
+        "503": { description: Channel link unavailable; no partial admission result }
+  /api/channel-link/agent:
+    post:
+      tags: [auth]
+      summary: Mint a bot-scoped channel-link challenge using the org bot credential
+      security: [{ orgBotAuth: [] }]
+      parameters:
+        - { name: x-acting-as, in: header, required: true, schema: { type: string } }
+      description: |
+        Same live caller gate as speaker. Inserts a 15-minute single-use token
+        under appDid = bot DID, not the acting org or a registry app. Fixed
+        requestedScopes [channel:speaker] describes sender identification only,
+        never acting-for permission. Approve via /auth/channel-link/{token};
+        the existing approval handlers bind the user's own DID by default
+        (org binding requires explicit bindAs: org) and emit channel.link.created.
+        With no registry app, the page displays
+        the bot identity name, handle, then DID. The next speaker call sees the
+        approved binding. Existing app-auth mint and resolve are unchanged.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: *channelSenderInput
+      responses:
+        "201":
+          description: Private no-store single-use approval URL
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [linkToken, url, expiresAt]
+                properties:
+                  linkToken: { type: string }
+                  url: { type: string, format: uri }
+                  expiresAt: { type: string, format: date-time }
+        "400": { description: "Invalid JSON object, channel, blank/non-string channelUid or extra fields" }
+        "401": { description: "Missing, invalid or expired agent app token" }
+        "403": { description: Same assigned-org-bot caller and token boundaries as speaker }
+        "503": { description: Link token creation unavailable }
+  /api/channel-link:
+    post:
+      tags: [auth]
+      summary: Existing app-auth channel-link token mint (unchanged)
+      security: [{ appServiceAuth: [] }]
+      description: |
+        Existing requireAppAuth contract (app+jwt and app-service+jwt, or
+        X-App-DID + X-App-Authorization). appDid comes from app authentication.
+        Defaults requestedScopes to availability:read and availability:write;
+        a supplied array retains string entries. Token expires in 15 minutes.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [channel, channelUid]
+              properties:
+                channel: { type: string, enum: [telegram, whatsapp, signal] }
+                channelUid: { type: string, minLength: 1 }
+                requestedScopes: { type: array, items: { type: string } }
+      responses:
+        "201":
+          description: Link token created
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [linkToken, url, expiresAt]
+                properties:
+                  linkToken: { type: string }
+                  url: { type: string, format: uri }
+                  expiresAt: { type: string, format: date-time }
+        "400": { description: Invalid JSON or missing/invalid channel or channelUid }
+        "401": { description: App authentication required }
+        "403": { description: App authentication refused }
+        "500": { description: Failed to create link token }
+  /api/channel-link/resolve:
+    get:
+      tags: [auth]
+      summary: Existing app-auth active channel-link lookup (unchanged)
+      security: [{ appServiceAuth: [] }]
+      description: |
+        Existing requireAppAuth contract, including app+jwt and app-service+jwt
+        or X-App-DID + X-App-Authorization. Only active links matching channel,
+        channelUid and authenticated appDid. No org admission check.
+      parameters:
+        - { name: channel, in: query, required: true, schema: { type: string } }
+        - { name: channelUid, in: query, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: Existing sender DID and approved scopes
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [did, scopes]
+                properties:
+                  did: { type: string }
+                  scopes: { type: array, items: { type: string } }
+        "400": { description: channel and channelUid query params are required }
+        "401": { description: App authentication required }
+        "403": { description: App authentication refused }
+        "404": { description: No active channel link found }
+  /api/channel-link/approve:
+    post:
+      tags: [auth]
+      summary: Approve a channel link as self or explicitly as the acting org
+      security: [{ cookieAuth: [] }, { bearerAuth: [] }]
+      description: |
+        requireAuth validates the existing acting-as authority before approval.
+        Absent bindAs or self always binds the authenticated user's own DID,
+        even with x-acting-as, for both app-keyed and agent-keyed tokens.
+        Only explicit bindAs: org selects resolveActingDid(identity), requiring
+        a verified acting-as org different from the user's own DID. An acting-for
+        human is not an org binding. No silent fallback. Rejection writes no link
+        and leaves the challenge unconsumed. The standard page sends no bindAs.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token]
+              properties:
+                token: { type: string, minLength: 1 }
+                scopes: { type: array, items: { type: string }, description: Approved subset; defaults to requested scopes. }
+                bindAs: &channelLinkBindAs
+                  type: string
+                  enum: [self, org]
+                  default: self
+                  description: Only org opts into the authenticated acting-as org; context alone never selects it.
+      responses:
+        "201":
+          description: Binding written and token consumed for the selected DID
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [linkId, channel, channelUid, appDid, scopes]
+                properties:
+                  linkId: { type: string }
+                  channel: { type: string }
+                  channelUid: { type: string }
+                  appDid: { type: string }
+                  scopes: { type: array, items: { type: string } }
+        "400": { description: "invalid bindAs, invalid JSON, missing/expired/used token or no valid approved scopes" }
+        "401": { description: Authentication required }
+        "403": { description: "bindAs=org requires acting as an org; existing acting-as validation also applies" }
+  /api/channel-link/approve-redirect:
+    post:
+      tags: [auth]
+      summary: Approve a channel link from a form and redirect
+      security: [{ cookieAuth: [] }, { bearerAuth: [] }]
+      description: |
+        Same shared binding policy as approve: absent bindAs or self binds the
+        user's own DID even under x-acting-as; org is explicit opt-in and requires
+        a verified acting-as org different from the user, never an acting-for
+        human. Existing authentication and acting-as checks remain in force.
+        Accepts URL-encoded or multipart form fields and the existing JSON
+        transport. The approval page adds no bindAs field.
+        Invalid bindAs (400-equivalent) redirects with error=invalid+bindAs.
+        Missing org context (403-equivalent) redirects with the error
+        bindAs=org requires acting as an org. Both leave links unchanged and
+        tokens unconsumed; neither silently falls back to self.
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema: &channelLinkApprovalForm
+              type: object
+              required: [token]
+              properties:
+                token: { type: string, minLength: 1 }
+                returnTo: { type: string, default: /auth/settings }
+                bindAs: *channelLinkBindAs
+          multipart/form-data:
+            schema: *channelLinkApprovalForm
+          application/json:
+            schema: *channelLinkApprovalForm
+      responses:
+        "307":
+          description: "Success redirects to returnTo; 400/403 validation failures redirect there with error, and authentication failures redirect to login"
+          headers:
+            Location: { schema: { type: string } }
   /api/org-connections:
     get:
       summary: List org-tagged member connection state and suspension history

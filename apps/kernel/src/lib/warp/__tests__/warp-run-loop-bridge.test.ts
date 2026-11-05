@@ -29,6 +29,7 @@ const {
   emitWarpRunLoopEventMock: vi.fn(),
 }));
 
+vi.mock('../run-access', async () => import('./run-access-stub'));
 vi.mock('../connector', () => ({
   requireAgentKey: requireAgentKeyMock,
 }));
@@ -140,7 +141,7 @@ describe('dispatchAgentRun bridges loop.started', () => {
     await dispatchAgentRun(PRINCIPAL, { prompt: 'Untrusted prose: issue #999' });
     await vi.waitFor(() => expect(emitWarpRunLoopEventMock).toHaveBeenCalled());
     expect(emitWarpRunLoopEventMock.mock.calls[0][0].refs).toEqual({
-      runId: RUN_ID, sessionKey: 'session', issue: 'https://github.com/o/r/issues/1', pr: 'https://github.com/o/r/pull/2',
+      runId: RUN_ID, issue: 'https://github.com/o/r/issues/1', pr: 'https://github.com/o/r/pull/2',
     });
     expect(emitWarpRunLoopEventMock.mock.calls[0][0].prArtifacts).toEqual(['https://github.com/o/r/pull/2']);
   });
@@ -200,11 +201,13 @@ describe('sendFollowup resume bridges a fresh loop.started segment', () => {
     ));
     expect(events.every(event => event.brief?.assetId === null && event.runId === RUN_ID)).toBe(true);
   });
-  it('uses only a confirmed new session id on resume', async () => {
+  it('retains run identity on resume without exporting the confirmed harness session', async () => {
     respondJson({ run_id: RUN_ID, state: 'SUCCEEDED', session_id: 'old-session' });
     respondJson({ session_id: 'new-session' });
     await sendFollowup(PRINCIPAL, RUN_ID, { message: 'continue', resume: true });
-    expect(emitWarpRunLoopEventMock.mock.calls[0][0].refs).toEqual({ sessionKey: 'new-session' });
+    const transition = emitWarpRunLoopEventMock.mock.calls[0][0];
+    expect(transition.runId).toBe(RUN_ID);
+    expect(transition.refs).toBeUndefined();
   });
   it('emits loop.started (not loop.progress/finished) for a resumed terminal run, carrying its lineage', async () => {
     respondJson({ run_id: RUN_ID, state: 'SUCCEEDED', parent_run_id: 'run-parent-1' });

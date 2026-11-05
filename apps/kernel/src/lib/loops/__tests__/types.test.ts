@@ -58,7 +58,6 @@ describe('parseLoopIngestRequest', () => {
     { label: 'payload.at far in the past (stale replay)', raw: validBody({ payload: { ...validBody().payload, at: '2000-01-01T00:00:00.000Z' } }) },
     { label: 'payload.at far in the future', raw: validBody({ payload: { ...validBody().payload, at: '2999-01-01T00:00:00.000Z' } }) },
     { label: 'payload.summary empty', raw: validBody({ payload: { ...validBody().payload, summary: '' } }) },
-    { label: 'payload.refs unknown key', raw: validBody({ payload: { ...validBody().payload, refs: { bogus: '1' } } }) },
     { label: 'payload.refs non-string value', raw: validBody({ payload: { ...validBody().payload, refs: { issue: 123 } } }) },
     { label: 'signature.keyId too short', raw: validBody({ signature: { keyId: 'ab', alg: 'ed25519', sig: 'b'.repeat(128) } }) },
     { label: 'signature.alg wrong', raw: validBody({ signature: { keyId: 'a'.repeat(64), alg: 'secp256k1', sig: 'b'.repeat(128) } }) },
@@ -88,6 +87,14 @@ describe('parseLoopIngestRequest', () => {
     { kind: 'text', text: 'hello', result: 'type confusion' },
   ])('rejects malformed output %#', output => {
     expect(parseLoopIngestRequest(validBody({ payload: { ...validBody().payload, output } })).ok).toBe(false);
+  });
+
+  it('accepts unknown refs unchanged until signature verification', () => {
+    const payload = { ...validBody().payload, refs: { runId: 'run', sessionKey: { legacy: true }, bogus: null } };
+    const result = parseLoopIngestRequest(validBody({ payload }));
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error('expected valid wire shape');
+    expect(result.value.payload).toBe(payload);
   });
 
   it('bounds metadata by UTF8 bytes', () => {

@@ -1,5 +1,6 @@
 const { WebSocketServer } = require('ws');
 const { internalFetch } = require('../../packages/auth/src/internal-fetch.cjs');
+const { getWsRuntime, boundedWsOperation } = require('./src/lib/ws/runtime');
 const { createAlsoRegistry } = require('./src/lib/ws/also-registry');
 const { createNotificationBacklogReplayer } = require('./src/lib/ws/notification-backlog');
 const { createPrivateNotifications, isPrivateReachFrame } = require('./src/lib/ws/private-notifications');
@@ -48,14 +49,16 @@ async function authenticateWithCookie(req) {
 async function authenticateToken(cookieName, token) {
   const port = process.env.PORT || '3000';
   try {
+    const runtime = getWsRuntime();
+    if (runtime) return await boundedWsOperation(() => runtime.session(token));
     const res = await internalFetch(`http://localhost:${port}/auth/api/session`, {
       headers: { Cookie: `${cookieName}=${token}` },
     });
     if (!res.ok) return null;
     const data = await res.json();
     return data.did || data.identity?.did || null;
-  } catch (err) {
-    console.error('[WS] Auth error:', err.message);
+  } catch {
+    console.error('[WS] Auth unavailable');
     return null;
   }
 }
@@ -66,6 +69,8 @@ async function authenticateToken(cookieName, token) {
 async function authenticateWsToken(token) {
   const port = process.env.PORT || '3000';
   try {
+    const runtime = getWsRuntime();
+    if (runtime) return await boundedWsOperation(() => runtime.token(token));
     const res = await internalFetch(`http://localhost:${port}/chat/api/ws-token/validate`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -74,8 +79,8 @@ async function authenticateWsToken(token) {
     if (!res.ok) return null;
     const data = await res.json();
     return data.did || null;
-  } catch (err) {
-    console.error('[WS] Token auth error:', err.message);
+  } catch {
+    console.error('[WS] Token auth unavailable');
     return null;
   }
 }
@@ -85,14 +90,19 @@ async function authenticateWsToken(token) {
  */
 async function updateLastSeen(did) {
   try {
+    const runtime = getWsRuntime();
+    if (runtime) {
+      await boundedWsOperation(() => runtime.lastSeen(did));
+      return;
+    }
     const port = process.env.PORT || '3000';
     await internalFetch(`http://localhost:${port}/profile/api/presence/update`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ did, lastSeenAt: new Date().toISOString() }),
     });
-  } catch (err) {
-    console.error('[WS] Failed to update last_seen:', err.message);
+  } catch {
+    console.error('[WS] Last-seen update unavailable');
   }
 }
 
@@ -171,28 +181,9 @@ function broadcastToConversation(conversationId, payload, excludeDid = null) {
 /**
  * Broadcast presence change to relevant conversations
  */
-async function broadcastPresenceChange(did, isOnline) {
-  try {
-    const port = process.env.PORT || '3000';
-    const res = await internalFetch(`http://localhost:${port}/chat/api/participants/${encodeURIComponent(did)}/conversations`);
-    if (!res.ok) return;
-    const data = await res.json();
-    const conversationIds = data.conversationIds || [];
-
-    const payload = {
-      type: 'user_presence',
-      did,
-      online: isOnline,
-      lastSeen: isOnline ? null : new Date().toISOString(),
-    };
-
-    // Broadcast to each conversation
-    conversationIds.forEach(convId => {
-      broadcastToConversation(convId, payload);
-    });
-  } catch (err) {
-    console.error('[WS] Failed to broadcast presence:', err.message);
-  }
+async function broadcastPresenceChange() {
+  // The v1 participants endpoint was retired in #435 and always returned 410.
+  // Do not create a self-request for a presence broadcast that cannot deliver.
 }
 
 /**
@@ -519,6 +510,7 @@ function setupWebSocket(server) {
     // Try cookie auth first, but allow deferred auth via first message
     const did = await authenticateWithCookie(req);
 
+    if (socket.destroyed) return;
     wss.handleUpgrade(req, socket, head, (ws) => {
       const meta = { did: did || null, alsoDids: new Set(), subscriptions: new Set(), authenticated: !!did };
       socketMeta.set(ws, meta);

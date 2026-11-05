@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { requireAppAuth, requireAuth } from '@imajin/auth';
 import { corsHeaders } from './cors';
-import { connectionCaller } from './connection-principal-policy';
+import { connectionCaller, isAgentCapableSubtype } from './connection-principal-policy';
 import { connectExternalMcp, disconnectExternalMcp, externalMcpStatus, invokeExternalMcp, type ExternalMcpCaller } from './external-mcp';
 import { EXTERNAL_MCP_SCOPE, ExternalMcpError, memberDidSchema, parseExternalMcpCall } from './external-mcp-policy';
 
@@ -9,7 +9,7 @@ export async function personalMember(request: NextRequest): Promise<ExternalMcpC
   const auth = await requireAuth(request, { sessionOnly: true, service: 'connections' });
   if ('error' in auth) throw new ExternalMcpError(auth.status, 'Member session required');
   const identity = auth.identity;
-  if (identity.actingFor || identity.actingAs || identity.subtype === 'agent' || identity.scope !== 'actor') {
+  if (identity.actingFor || identity.actingAs || isAgentCapableSubtype(identity.subtype) || identity.scope !== 'actor') {
     throw new ExternalMcpError(403, 'Personal member session required');
   }
   return { memberDid: identity.id };

@@ -16,6 +16,7 @@
  */
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { Readable } from 'node:stream';
+import { pathToFileURL } from 'node:url';
 import { loadConfig, resolveDirectApiKey } from './config.js';
 import { CatalogRouter } from './catalog-router.js';
 import { HealthTracker } from './health.js';
@@ -31,6 +32,7 @@ import { RouteTokenProvider } from './token-provider.js';
 import { stripTrailingSlashes } from './url-utils.js';
 import type { ProxyConfig } from './types.js';
 import { handleAgentRequest, readAgentCredential, type AgentEndpoint } from './agent-handler.js';
+import { installGracefulShutdown } from './shutdown.js';
 
 const log = createLogger('openclaw-infer-passthrough');
 
@@ -335,7 +337,7 @@ export function startServer(config: ProxyConfig = loadConfig()): ReturnType<type
 }
 
 // Only auto-start when run directly (tsx src/server.ts), not when imported by tests.
-const isMain = process.argv[1] && import.meta.url === `file://${process.argv[1]}`;
+const isMain = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
 if (isMain) {
-  startServer();
+  installGracefulShutdown(startServer());
 }

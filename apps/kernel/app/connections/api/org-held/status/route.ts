@@ -4,6 +4,7 @@ import { SESSION_COOKIE_NAME } from '@imajin/config';
 import { corsHeaders } from '@/src/lib/kernel/cors';
 import { ExternalMcpError, memberDidSchema } from '@/src/lib/kernel/external-mcp-policy';
 import { readOrgHeldStatus } from '@/src/lib/kernel/org-held-status';
+import { isAgentCapableSubtype } from '@/src/lib/kernel/connection-principal-policy';
 
 export const dynamic = 'force-dynamic';
 
@@ -20,7 +21,7 @@ export async function GET(request: NextRequest) {
     if ('error' in auth) throw new ExternalMcpError(auth.status, 'Organization member session required');
     const orgDid = memberDidSchema.safeParse(request.nextUrl.searchParams.get('orgDid'));
     if (!orgDid.success) throw new ExternalMcpError(400, 'Valid orgDid required');
-    if (auth.identity.subtype === 'agent' || request.headers.has('x-acting-for')) {
+    if (isAgentCapableSubtype(auth.identity.subtype) || request.headers.has('x-acting-for')) {
       throw new ExternalMcpError(403, 'Organization member session required');
     }
     return NextResponse.json(await readOrgHeldStatus({ actorDid: auth.identity.id, orgDid: orgDid.data }), { headers });

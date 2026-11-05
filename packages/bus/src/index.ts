@@ -14,6 +14,7 @@ import { supplyRecorderReactor } from './reactors/supply-recorder';
 import { brokerPredicateInvalidationReactor } from './reactors/broker-predicate-invalidation';
 import { paymentRequestNotifyReactor } from './reactors/payment-request-notify';
 import { loopProjectionReactor } from './reactors/loop-projection';
+import { usageProjectionReactor } from './reactors/usage-projection';
 
 // Auto-register built-in reactors on import
 registerReactor('attestation', attestationReactor);
@@ -31,6 +32,7 @@ registerReactor('supply-recorder', supplyRecorderReactor);
 registerReactor('broker-predicate-invalidation', brokerPredicateInvalidationReactor);
 registerReactor('payment-request-notify', paymentRequestNotifyReactor);
 registerReactor('loop-projection', loopProjectionReactor);
+registerReactor('usage-projection', usageProjectionReactor);
 
 export { publish } from './publish';
 export { LoopOwnershipConflictError } from './reactors/loop-projection';
@@ -46,6 +48,8 @@ export type { ChainObservation, ChainObserver } from './chain-observer';
 export { publishAppEvent, APP_EVENT_REACTORS, APP_EVENT_SCOPE } from './publish-app-event';
 export type { AppEventInput, AppEventResult } from './publish-app-event';
 export { broker } from './broker';
+export { registerConsentNotificationPreparer } from './reactors/consent-request-notify';
+export type { ConsentNotification, PreparedConsentNotification } from './reactors/consent-request-notify';
 export { registerReactor, getReactor } from './registry';
 export { registerSettleExecutor, getSettleExecutor } from './reactors/settle';
 export type { SettleExecutor, SettleExecutorParams, SettleExecutorResult } from './reactors/settle';
@@ -65,6 +69,7 @@ export { mutualReachConsentReactor } from './reactors/mutual-reach-consent';
 export { intersectionScopeReactor } from './reactors/intersection-scope';
 export type {
   BusEvent,
+  FeeReceiptPayload,
   BusEventMap,
   BusEventType,
   ReactorConfig,

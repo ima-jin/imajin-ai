@@ -7,6 +7,7 @@ import { NextRequest } from 'next/server';
 import type { Identity } from '@imajin/auth';
 import type { VaultFile } from '@imajin/vault-core';
 import { readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 
 vi.setConfig({ testTimeout: 30_000, hookTimeout: 30_000 });
 const h = vi.hoisted(() => ({
@@ -59,7 +60,8 @@ vi.mock('@imajin/logger', () => ({ createLogger: () => ({ debug: h.log, info: h.
 vi.mock('@imajin/bus', () => ({ publish: h.publish }));
 vi.mock('../egress-fetch', () => ({ egressSafeFetch: h.upstream }));
 vi.mock('@/src/lib/kernel/node-identity', () => ({ getNodeDid: async () => h.nodeDid }));
-vi.mock('@/src/lib/kernel/connector-registry-store', () => ({
+vi.mock('@/src/lib/kernel/connector-registry-store', async original => ({
+  ...await original<typeof import('@/src/lib/kernel/connector-registry-store')>(),
   connectorRegistryId: (memberDid: string, provider: string) => `conn_${memberDid}_${provider}`,
 }));
 vi.mock('@/src/lib/vault/vault-repository', () => ({
@@ -71,14 +73,17 @@ vi.mock('@/src/lib/vault/vault-repository', () => ({
     },
   }),
 }));
-import { identities, identityMembers, attestations, channelLinks } from '@/src/db/schemas/auth';
+import { identities, identityMembers, attestations, channelLinks, delegationGrants } from '@/src/db/schemas/auth';
 import { registryApps } from '@/src/db/schemas/registry';
 import { connectors, orgConnectionSuspensions, orgConnectionEvents, orgConnectionMemberGrants } from '@/src/db/schemas/connectors';
 import { vaultDelegationGrants, vaultOwnerEnvelopes, vaultGrantRequests } from '@/src/db/schemas/vault';
 import { canonicalize, crypto, generateKeypair, requireAuth, requireAppAuth } from '@imajin/auth';
 import { _resetSealingCache, getNodeSigningIdentity } from '@/src/lib/vault/sealing';
-import { fetchGrantSecret, loadAndUnseal, loadAndUnsealByGrantee, listRenewableGrants, vaultService } from '@/src/lib/vault';
-import { connectExternalMcp, disconnectExternalMcp, invokeExternalMcp } from '../external-mcp';
+import { fetchGrantSecret, loadAndUnseal, loadAndUnsealByGrantee, listRenewableGrants, sealAndStoreV2, vaultService } from '@/src/lib/vault';
+import { authorizeExternalMcp, connectExternalMcp, disconnectExternalMcp, invokeExternalMcp } from '../external-mcp';
+import { discoveryExternalConnection, listDiscoveryConnectorMetadata } from '@/src/lib/inference/self-discovery-connectors';
+import { requireAgentKey } from '@/src/lib/warp/connector';
+import type { InferenceAuthContext } from '@/src/lib/inference/auth';
 import { parseExternalMcpCall, POSTMAN_MCP_URL, EXTERNAL_MCP_SCOPE } from '../external-mcp-policy';
 import { GET, POST, DELETE, OPTIONS } from '@/app/connections/api/external-mcp/postman/route';
 import { POST as RPC, OPTIONS as RPC_OPTIONS } from '@/app/connections/api/external-mcp/postman/rpc/route';
@@ -93,14 +98,19 @@ import { GET as ORG_GET, POST as ORG_LOAD, DELETE as ORG_REMOVE, OPTIONS as ORG_
 import { GET as ORG_STATUS, POST as ORG_CHANGE } from '@/app/auth/api/org-connections/route';
 import { removeGroupController } from '@/src/lib/auth/remove-group-controller';
 import { GET as MEMBER_GRANTS, POST as GRANT_MEMBER, DELETE as REVOKE_MEMBER, OPTIONS as GRANT_OPTIONS } from '@/app/connections/api/org-held/[provider]/grants/route';
-import { requireOrgConnectionMemberGrant, listOrgConnectionMemberGrants, revokeRemovedMemberOrgGrants } from '../org-connection-member-grants';
+import { changeOrgConnectionMemberGrant, requireOrgConnectionMemberGrant, listOrgConnectionMemberGrants, revokeRemovedMemberOrgGrants } from '../org-connection-member-grants';
 import { orgConnectionMemberGrantRoute } from '../org-connection-member-grant-route';
 import { GET as READ_MEMBER_STATUS, OPTIONS as STATUS_OPTIONS } from '@/app/connections/api/org-held/status/route';
+import { authorizeOrgConnectionAdmin } from '../org-held-connection-policy';
+import { readOrgHeldStatus } from '../org-held-status';
 import { SESSION_COOKIE_NAME } from '@imajin/config';
+import { POST as sealAnthropicToken } from '@/app/anthropic/api/token/route';
+import { resolveOrgHeldBrain } from '@/src/lib/inference/org-held-brain';
 
-const tables = [identities, identityMembers, attestations, channelLinks, registryApps, connectors, orgConnectionSuspensions, orgConnectionEvents,
+const tables = [identities, identityMembers, delegationGrants, attestations, channelLinks, registryApps, connectors, orgConnectionSuspensions, orgConnectionEvents,
   vaultDelegationGrants, vaultOwnerEnvelopes, vaultGrantRequests, orgConnectionMemberGrants];
 const keys = generateKeypair();
+const credentialHash = (value: string) => createHash('sha256').update(value).digest('hex');
 let client: PGlite;
 let database: ReturnType<typeof drizzle>;
 let sequence = 0;
@@ -210,6 +220,46 @@ describe('member-readable org-held status without custody or grant authority', (
   it('redacts unexpected auth/store errors', async () => {
     vi.mocked(requireAuth).mockRejectedValueOnce(new Error('Synthetic internal failure'));
     expect(await memberStatus()).toMatchObject({ status: 503, body: { error: 'Organization key status unavailable' } });
+  });
+});
+describe('agent-capable subtypes cannot enter human member/admin paths', () => {
+  it.each(['agent', 'presence'])('org-held-connection-policy refuses a live %s admin despite human session claims', async subtype => {
+    await asOrg();
+    await database.update(identities).set({ subtype }).where(eq(identities.id, member));
+    const before = await permanentState();
+    await expect(database.transaction(tx => authorizeOrgConnectionAdmin(tx, { orgDid: org, actorDid: member })))
+      .rejects.toMatchObject({ status: 403, message: 'Active organization owner or admin required' });
+    expect(await permanentState()).toBe(before);
+    expect(h.fetch).not.toHaveBeenCalled();
+  });
+  it.each(['agent', 'presence'])('org-held-connection-route refuses a %s admin session before store access', async subtype => {
+    await asOrg();
+    h.identity.subtype = subtype;
+    const before = await permanentState();
+    const transactions = h.transactionsStarted;
+    const result = await call(ORG_LIST);
+    expect(result).toMatchObject({ status: 403, body: { error: 'Organization admin act-as required' } });
+    expect(h.transactionsStarted).toBe(transactions);
+    expect(await permanentState()).toBe(before);
+    expect(h.fetch).not.toHaveBeenCalled();
+  });
+  it.each(['agent', 'presence'])('org-held-status refuses a live %s member despite human session claims', async subtype => {
+    await asOrg('member');
+    await database.update(identities).set({ subtype }).where(eq(identities.id, member));
+    const before = await permanentState();
+    await expect(readOrgHeldStatus({ orgDid: org, actorDid: member }))
+      .rejects.toMatchObject({ status: 403, message: 'Active organization membership required' });
+    expect(await permanentState()).toBe(before);
+    expect(h.fetch).not.toHaveBeenCalled();
+  });
+  it.each(['agent', 'presence'])('external-mcp-route refuses a personal %s session before store access', async subtype => {
+    h.identity.subtype = subtype;
+    const before = await permanentState();
+    const transactions = h.transactionsStarted;
+    expect(await call(GET)).toMatchObject({ status: 403, body: { error: 'Personal member session required' } });
+    expect(h.transactionsStarted).toBe(transactions);
+    expect(await permanentState()).toBe(before);
+    expect(h.fetch).not.toHaveBeenCalled();
   });
 });
 async function permanentState() {
@@ -623,6 +673,12 @@ describe('org-admin suspension (#3167)', () => {
     const get = vi.spyOn(vaultService, 'get');
     asMember();
     expect(await call(RPC, 'POST', rpcCall())).toMatchObject({ status: 403, body: unavailable });
+    expect(await discoveryExternalConnection({
+      ownerDid: member, caller: { actorDid: member },
+    }, { provider: 'external-mcp-postman', scope: EXTERNAL_MCP_SCOPE }, 'mcp')).toMatchObject({
+      ownerDid: member, usable: false, reason: { code: 'connection_suspended' },
+      fix: { href: '/auth/members', actingDid: org },
+    });
     expect(get).not.toHaveBeenCalled();
     get.mockRestore();
     expect(h.fetch).not.toHaveBeenCalled();
@@ -797,6 +853,201 @@ describe('org-admin suspension (#3167)', () => {
     expect(memberships[0].removedAt).toBeNull();
     expect(requireAuth).toHaveBeenCalledWith(expect.anything(), { service: 'auth', sessionOnly: true });
   });
+});
+
+describe('read-only connector discovery matches actual call authorization (#3256)', () => {
+  const postman = { provider: 'external-mcp-postman', scope: EXTERNAL_MCP_SCOPE, service: 'connections' };
+  const warp = { provider: 'warp', scope: 'warp:dispatch', service: 'warp' };
+  const agentDid = () => `${member}agent`;
+
+  async function discover(context: InferenceAuthContext, target = postman, family: 'mcp' | 'http' = 'mcp') {
+    const before = await permanentState();
+    const blocked = () => { throw new Error('Discovery must not fetch, peek or unseal a credential'); };
+    const get = vi.spyOn(vaultService, 'get').mockImplementation(blocked);
+    const peek = vi.spyOn(vaultService, 'peek').mockImplementation(blocked);
+    try {
+      const row = await discoveryExternalConnection(context, target, family);
+      expect(get).not.toHaveBeenCalled();
+      expect(peek).not.toHaveBeenCalled();
+      expect(h.fetch).not.toHaveBeenCalled();
+      expect(h.upstream).not.toHaveBeenCalled();
+      expect(await permanentState()).toBe(before);
+      const serialized = JSON.stringify(row);
+      expect(serialized).not.toMatch(/sealedKeyField|custodyId|wrappedKey|wrappedNonce|ownerSignature|upstreamBinding/);
+      for (const value of h.secrets) expect(serialized).not.toContain(value);
+      h.outputs.push(row);
+      return row;
+    } finally { get.mockRestore(); peek.mockRestore(); }
+  }
+
+  async function assignAgent(principalDid: string, subtype = 'agent') {
+    await database.insert(identities).values({
+      id: agentDid(), publicKey: keys.publicKey, scope: 'actor', subtype,
+    });
+    await database.insert(identityMembers).values({
+      identityDid: principalDid, memberDid: agentDid(), role: 'agent',
+      allowedServices: ['connections', 'warp'],
+    });
+  }
+
+  it.each(['scope-revoked', 'scope-excluded', 'custody-revoked', 'custody-expired'])(
+    'own HTTP projection and the real TypeSafe gate agree on %s without discovery unsealing', async boundary => {
+      const { requireGrantAndKey, vaultField } = await import('@/src/lib/typesafe/connector');
+      const value = orgKey().secret;
+      await sealAndStoreV2(vaultField(member), value);
+      await database.insert(channelLinks).values({
+        id: `typesafe-${sequence}`, channel: 'typesafe', channelUid: member, did: member,
+        appDid: 'did:imajin:typesafe-connector', status: 'active', scopes: ['typesafe:decide'],
+      });
+      const context: InferenceAuthContext = {
+        ownerDid: member, appDid, caller: { actorDid: member },
+        toolAuth: { scopes: ['infer:completions', 'typesafe:decide'], serviceToken: false },
+      };
+      const read = async () => {
+        const before = await permanentState();
+        const blocked = () => { throw new Error('HTTP discovery must never access custody bytes'); };
+        const get = vi.spyOn(vaultService, 'get').mockImplementation(blocked);
+        const peek = vi.spyOn(vaultService, 'peek').mockImplementation(blocked);
+        try {
+          const rows = await listDiscoveryConnectorMetadata(context);
+          expect(get).not.toHaveBeenCalled();
+          expect(peek).not.toHaveBeenCalled();
+          expect(await permanentState()).toBe(before);
+          expect(JSON.stringify(rows)).not.toContain(value);
+          expect(JSON.stringify(rows)).not.toContain(vaultField(member));
+          return rows.find(row => row.provider === 'typesafe');
+        } finally { get.mockRestore(); peek.mockRestore(); }
+      };
+      expect(await read()).toMatchObject({
+        ownerDid: member, configured: true, usable: true, authority: 'own-key',
+      });
+      expect(await requireGrantAndKey(member, 'typesafe:decide')).toBe(value);
+      if (boundary === 'scope-revoked') await database.update(channelLinks).set({ status: 'revoked' })
+        .where(eq(channelLinks.did, member));
+      if (boundary === 'scope-excluded') await database.update(channelLinks).set({ scopes: [] })
+        .where(eq(channelLinks.did, member));
+      if (boundary === 'custody-revoked') await database.update(vaultDelegationGrants).set({ status: 'revoked' })
+        .where(eq(vaultDelegationGrants.field, vaultField(member)));
+      if (boundary === 'custody-expired') await database.update(vaultDelegationGrants).set({ expiresAt: new Date(0) })
+        .where(eq(vaultDelegationGrants.field, vaultField(member)));
+      expect(await read()).toMatchObject({ usable: false, fix: { href: '/auth/connectors/typesafe' } });
+      await expect(requireGrantAndKey(member, 'typesafe:decide')).rejects.toThrow();
+    },
+  );
+  it('distinguishes a configured personal MCP connection from revoked custody and agrees with the real gate', async () => {
+    await connect(false);
+    const context = { ownerDid: member, caller: { actorDid: member } };
+    expect(await discover(context)).toMatchObject({
+      configured: true, usable: true, ownerDid: member, authority: 'own-key', grantStatus: 'granted',
+    });
+    const admitted = await authorizeExternalMcp({ memberDid: member, caller: context.caller });
+    expect(admitted.ownerDid).toBe(member);
+    admitted.credential = '';
+    await database.update(vaultDelegationGrants).set({ status: 'revoked' })
+      .where(eq(vaultDelegationGrants.subject, member));
+    expect(await discover(context)).toMatchObject({
+      configured: true, usable: false, reason: { code: 'credential_unavailable' },
+      fix: { actingDid: member },
+    });
+    await expect(authorizeExternalMcp({ memberDid: member, caller: context.caller }))
+      .rejects.toMatchObject({ status: 403 });
+  });
+
+  it.each(['agent', 'presence'])('uses the assigned human keys for a %s MCP caller without a member grant', async subtype => {
+    await connect(false);
+    await assignAgent(member, subtype);
+    const caller = { actorDid: agentDid(), actingFor: member };
+    expect(await discover({ ownerDid: member, caller })).toMatchObject({
+      ownerDid: member, authority: 'delegated', configured: true, usable: true,
+    });
+    const admitted = await authorizeExternalMcp({ memberDid: agentDid(), caller });
+    expect(admitted.ownerDid).toBe(member);
+    admitted.credential = '';
+    await database.update(identityMembers).set({ allowedServices: ['infer'] })
+      .where(eq(identityMembers.memberDid, agentDid()));
+    expect(await discover({ ownerDid: member, caller })).toMatchObject({
+      usable: false, configurationStatus: 'not-disclosed', reason: { code: 'service_not_allowed' },
+      fix: { href: '/auth/agents', actingDid: member },
+    });
+    await expect(authorizeExternalMcp({ memberDid: agentDid(), caller })).rejects.toMatchObject({
+      status: 403, code: 'service_not_allowed',
+    });
+  });
+
+  it.each(['agent', 'presence'])('uses the assigned org HTTP keys for a %s without a member grant', async subtype => {
+    await asOrg();
+    expect((await orgRequest('POST', 'warp', orgKey())).status).toBe(201);
+    await assignAgent(org, subtype);
+    const caller = { actorDid: agentDid(), actingAs: org };
+    const context = { ownerDid: org, caller };
+    expect(await discover(context, warp, 'http')).toMatchObject({
+      ownerDid: org, authority: 'org-held', configured: true, usable: true,
+    });
+    // This is the actual HTTP/MCP Warp credential gate, not a duplicate test predicate.
+    expect(await requireAgentKey(org, caller)).toBe(h.secrets[0]);
+    await database.update(identityMembers).set({ removedAt: new Date() })
+      .where(eq(identityMembers.memberDid, agentDid()));
+    expect(await discover(context, warp, 'http')).toMatchObject({
+      usable: false, configurationStatus: 'not-disclosed', reason: { code: 'agent_not_assigned' },
+    });
+    await expect(requireAgentKey(org, caller)).rejects.toMatchObject({ status: 403, code: 'agent_not_assigned' });
+  });
+
+  it.each(['revoked-grant', 'removed-member', 'presence-member', 'suspended-org', 'expired-custody'])(
+    'member-grant HTTP discovery and the actual Warp gate both refuse %s', async boundary => {
+      await asOrg();
+      expect((await orgRequest('POST', 'warp', orgKey())).status).toBe(201);
+      await database.insert(orgConnectionMemberGrants).values({
+        id: `discovery-grant-${sequence}`, orgDid: org, memberDid: member, provider: 'warp',
+        connectionId: (await orgRows())[0].id, grantedByDid: member,
+      });
+      const caller = { actorDid: member, actingAs: org };
+      const context = { ownerDid: org, caller };
+      expect(await discover(context, warp, 'http')).toMatchObject({
+        configured: true, usable: true, ownerDid: org, authority: 'member-grant',
+      });
+      expect(await requireAgentKey(org, caller)).toBe(h.secrets[0]);
+      if (boundary === 'revoked-grant') await database.update(orgConnectionMemberGrants).set({ revokedAt: new Date() })
+        .where(eq(orgConnectionMemberGrants.memberDid, member));
+      if (boundary === 'removed-member') await database.update(identityMembers).set({ removedAt: new Date() })
+        .where(eq(identityMembers.memberDid, member));
+      if (boundary === 'presence-member') await database.update(identities).set({ subtype: 'presence' })
+        .where(eq(identities.id, member));
+      if (boundary === 'suspended-org') await database.update(identities).set({ suspendedAt: new Date() })
+        .where(eq(identities.id, org));
+      if (boundary === 'expired-custody') await database.update(vaultDelegationGrants).set({ expiresAt: new Date(0) })
+        .where(eq(vaultDelegationGrants.subject, org));
+      const row = await discover(context, warp, 'http');
+      expect(row.usable).toBe(false);
+      expect(row.fix).toMatchObject({ actingDid: org, href: expect.stringMatching(/^\/auth\//) });
+      await expect(requireAgentKey(org, caller)).rejects.toMatchObject({ status: 403 });
+    },
+  );
+
+  it.each(['missing-token-scope', 'missing-consent-scope', 'revoked-consent', 'missing-service-approval'])(
+    'a configured app MCP connection remains unusable for %s', async boundary => {
+      await connect(false);
+      await installApp();
+      const context: InferenceAuthContext = {
+        ownerDid: member, caller: { actorDid: member }, appDid,
+        toolAuth: { scopes: [EXTERNAL_MCP_SCOPE], serviceToken: true },
+      };
+      expect((await discover(context)).usable).toBe(true);
+      if (boundary === 'missing-token-scope') context.toolAuth!.scopes = ['infer:completions'];
+      if (boundary === 'missing-consent-scope') await database.update(channelLinks).set({ scopes: ['infer:completions'] })
+        .where(eq(channelLinks.did, member));
+      if (boundary === 'revoked-consent') await database.update(channelLinks).set({ revokedAt: new Date() })
+        .where(eq(channelLinks.did, member));
+      if (boundary === 'missing-service-approval') await database.update(registryApps).set({ approvedServiceScopes: ['infer:completions'] })
+        .where(eq(registryApps.appDid, appDid));
+      const row = await discover(context);
+      expect(row).toMatchObject({ usable: false, configurationStatus: 'not-disclosed' });
+      // Token-scope denial belongs to requireAppAuth; the other boundaries are the shared call gate.
+      if (boundary !== 'missing-token-scope') await expect(authorizeExternalMcp({
+        memberDid: member, caller: context.caller, appDid, serviceToken: true,
+      })).rejects.toMatchObject({ status: 403 });
+    },
+  );
 });
 
 const upstreamOrigin = 'https://external-api.example';
@@ -1172,7 +1423,7 @@ describe('org-held member grants: durable lifecycle and live metadata contract',
   }
   async function expectDenied(overrides: Partial<ReturnType<typeof context>> = {}) {
     await expect(requireOrgConnectionMemberGrant({ ...context(), ...overrides })).rejects.toMatchObject({
-      status: 403, message: expect.stringContaining('org-connection member grant'),
+      status: 403, message: expect.stringMatching(/org-connection member grant|No active connection/),
     });
   }
 
@@ -1220,6 +1471,37 @@ describe('org-held member grants: durable lifecycle and live metadata contract',
       expect(h.vault).toEqual(vaultBefore);
       expect(await database.select().from(vaultDelegationGrants)).toEqual(custodyBefore);
     } finally { read.mockRestore(); }
+  });
+
+  it.each(['human', 'device', 'agent', 'presence'])('member-grant route keeps %s session eligibility explicit', async subtype => {
+    await prepare();
+    h.identity.subtype = subtype;
+    const before = await permanentState();
+    const transactions = h.transactionsStarted;
+    const response = await grantRequest('GET');
+    if (subtype === 'human' || subtype === 'device') {
+      expect(response).toMatchObject({ status: 200, body: { grants: [] } });
+    } else {
+      expect(response).toMatchObject({ status: 403, body: { error: 'Organization admin act-as required' } });
+      expect(h.transactionsStarted).toBe(transactions);
+    }
+    expect(await permanentState()).toBe(before);
+  });
+
+  it.each(['human', 'device', 'agent', 'presence'])('member-grant policy keeps %s grantee eligibility explicit', async subtype => {
+    await prepare();
+    expect((await grantRequest()).status).toBe(200);
+    await database.update(identities).set({ subtype }).where(eq(identities.id, grantee()));
+    const before = await permanentState();
+    if (subtype === 'human' || subtype === 'device') {
+      expect((await grantRequest()).status).toBe(200);
+      expect(await requireOrgConnectionMemberGrant(context())).toMatchObject({ memberDid: grantee() });
+    } else {
+      expect((await grantRequest()).status).toBe(403);
+      await expect(requireOrgConnectionMemberGrant(context()))
+        .rejects.toMatchObject({ status: 403, code: 'org_membership_required' });
+    }
+    expect(await permanentState()).toBe(before);
   });
 
   async function prepareTwoGrants() {
@@ -1454,23 +1736,145 @@ describe('org-held member grants: durable lifecycle and live metadata contract',
   });
 });
 
+describe('/jin Anthropic seal human provenance (#3313)', () => {
+  it('re-seals an existing unprovenanced /jin row through normal writes, retaining the old custody history', async () => {
+    await prepare();
+    const field = `anthropic-api-key:${org}`;
+    await sealAndStoreV2(field, orgKey().secret);
+    const store = await vi.importActual<typeof import('../connector-registry-store')>('../connector-registry-store');
+    await store.recordConnectorRegistration({ ownerDid: org, provider: 'anthropic', sealedKeyField: field });
+    const [before] = await orgRows();
+    expect(before.loadedByDid).toBeNull();
+    expect((await seal()).status).toBe(201);
+    expect(await orgRows()).toEqual([expect.objectContaining({ id: before.id, loadedByDid: member, loadedAt: expect.any(Date) })]);
+    const custody = await database.select().from(vaultDelegationGrants).where(eq(vaultDelegationGrants.field, field));
+    expect(custody).toEqual(expect.arrayContaining([
+      expect.objectContaining({ subject: h.nodeDid, status: 'superseded' }),
+      expect.objectContaining({ subject: org, grantedTo: h.nodeDid, status: 'active' }),
+    ]));
+  });
+
+  it.each([true, false])('resolves the actual /jin org seal through real vault crypto with assignedAgent=%s', async assigned => {
+    await prepare();
+    expect((await seal()).status).toBe(201);
+    const agentDid = `${member}agent`;
+    if (assigned) {
+      await database.insert(identities).values({
+        id: agentDid, publicKey: keys.publicKey, scope: 'actor', subtype: 'agent',
+      });
+      await database.insert(identityMembers).values({
+        identityDid: org, memberDid: agentDid, role: 'agent', allowedServices: ['infer'],
+      });
+    } else {
+      await changeOrgConnectionMemberGrant({ orgDid: org, actorDid: member }, 'anthropic', {
+        memberDid: member, reason: 'Test org inference',
+      }, 'grant');
+    }
+    const brain = await resolveOrgHeldBrain({
+      memberDid: assigned ? agentDid : member, orgDid: org,
+      ...(assigned ? { assignedAgentDid: agentDid } : {}),
+    }, 'claude-test');
+    expect(credentialHash(brain.apiKey)).toBe(credentialHash(h.secrets.at(-1)!));
+    expect(brain.credentialDid).toBe(org);
+    expect(brain.orgUsage?.connectionId).toBe((await orgRows())[0].id);
+  });
+
+  async function seal() {
+    const { secret } = orgKey();
+    return sealAnthropicToken(new NextRequest('https://kernel.test/anthropic/api/token', {
+      method: 'POST', headers: { 'x-acting-as': org },
+      body: JSON.stringify({ token: secret, loadedByDid: org, loadedAt: new Date(0) }),
+    }));
+  }
+  async function prepare() {
+    await asOrg();
+    await database.update(identities).set({ subtype: 'human' }).where(eq(identities.id, member));
+  }
+
+  it('seals under the org DID and records the authenticated human and time, then refreshes both on re-seal', async () => {
+    await prepare();
+    const before = new Date();
+    expect((await seal()).status).toBe(201);
+    const [row] = await orgRows();
+    expect(row).toMatchObject({
+      ownerDid: org, provider: 'anthropic', slot: 'primary', sealedKeyField: `anthropic-api-key:${org}`,
+      loadedByDid: member, loadedAt: expect.any(Date),
+    });
+    expect(row.loadedAt!.getTime()).toBeGreaterThanOrEqual(before.getTime());
+    await database.update(connectors).set({ loadedByDid: 'did:imajin:previous-human', loadedAt: new Date(0) })
+      .where(eq(connectors.id, row.id));
+    expect((await seal()).status).toBe(201);
+    expect(await orgRows()).toEqual([expect.objectContaining({
+      id: row.id, loadedByDid: member, loadedAt: expect.any(Date),
+    })]);
+    expect((await orgRows())[0].loadedAt!.getTime()).toBeGreaterThanOrEqual(before.getTime());
+  });
+
+  it.each([false, true])('does not invent org loader provenance for a personal seal with delegated=%s', async delegated => {
+    await prepare();
+    h.identity.actingAs = undefined;
+    if (delegated) h.identity.actingFor = member;
+    const response = await seal();
+    expect(response.status).toBe(201);
+    expect(await orgRows()).toEqual([]);
+    const [personal] = await database.select().from(connectors).where(eq(connectors.ownerDid, member));
+    expect(personal).toMatchObject({
+      provider: 'anthropic', sealedKeyField: `anthropic-api-key:${member}`, loadedByDid: null, loadedAt: null,
+    });
+  });
+
+  it.each(['member', 'removed', 'restricted', 'suspended-org', 'suspended-actor', 'agent-session', 'agent-in-db'])(
+    'refuses an org seal for %s before custody or provenance writes', async boundary => {
+      await prepare();
+      await changeOrgBoundary(boundary);
+      const before = await permanentState();
+      expect((await seal()).status).toBe(403);
+      expect(await permanentState()).toBe(before);
+    },
+  );
+
+  it('refuses a pure app credential without attributing the load to an org or service', async () => {
+    await prepare();
+    await installApp();
+    h.authError = true;
+    const before = await permanentState();
+    expect((await seal()).status).toBe(401);
+    expect(await permanentState()).toBe(before);
+  });
+});
+
 describe('org-held service keys: real SQL, signatures and private vault custody', () => {
+  it('shares one Anthropic provider row with the ordinary seal projection and revocation', async () => {
+    await asOrg();
+    await orgRequest('POST', 'anthropic', orgKey());
+    const [loaded] = await orgRows();
+    const store = await vi.importActual<typeof import('../connector-registry-store')>('../connector-registry-store');
+    const field = `anthropic-api-key:${org}`;
+    await store.recordConnectorRegistration({ ownerDid: org, provider: 'anthropic', sealedKeyField: field });
+    expect(await orgRows()).toEqual([expect.objectContaining({
+      id: loaded.id, ownerDid: org, provider: 'anthropic', slot: 'primary', sealedKeyField: field, status: 'active',
+    })]);
+    await store.revokeConnectorRegistration(org, 'anthropic');
+    expect(await orgRows()).toEqual([expect.objectContaining({ id: loaded.id, status: 'revoked' })]);
+    expect((await orgRequest()).status).toBe(404);
+  });
+
   it('isolates org custody from the existing generic provider registration and revoke writers', async () => {
     await asOrg();
-    const loaded = await orgRequest('POST', 'anthropic', orgKey());
+    const loaded = await orgRequest('POST', 'warp', orgKey());
     const [orgHeld] = await orgRows();
     const store = await vi.importActual<typeof import('../connector-registry-store')>('../connector-registry-store');
-    await store.recordConnectorRegistration({ ownerDid: org, provider: 'anthropic', sealedKeyField: 'ordinary:fixture' });
-    await store.revokeConnectorRegistration(org, 'anthropic');
+    await store.recordConnectorRegistration({ ownerDid: org, provider: 'warp', sealedKeyField: 'ordinary:fixture' });
+    await store.revokeConnectorRegistration(org, 'warp');
     expect(await database.select().from(connectors).where(eq(connectors.id, orgHeld.id))).toEqual([orgHeld]);
-    expect((await orgRequest()).body).toEqual(loaded.body);
+    expect((await orgRequest('GET', 'warp')).body).toEqual(loaded.body);
     await expect(store.createConnectorConnection(org, 'org-held-anthropic')).rejects.toThrow('Unknown connector');
   });
   it('hides unconfigured slots and refuses removed slots without changing their history', async () => {
     await asOrg();
     expect((await orgRequest('DELETE')).body).toEqual({ revoked: true });
     await database.insert(connectors).values({
-      id: `empty_org_${sequence}`, ownerDid: org, provider: 'org-held-anthropic', slot: 'primary',
+      id: `empty_org_${sequence}`, ownerDid: org, provider: 'anthropic', slot: 'primary',
       channel: 'anthropic', connectorDid: h.nodeDid,
     });
     expect((await call(ORG_LIST)).body).toEqual({ connections: [] });
@@ -1487,7 +1891,10 @@ describe('org-held service keys: real SQL, signatures and private vault custody'
     expect(loaded.status).toBe(201);
     expect(loaded.body).toEqual({ provider, loadedByDid: member, loadedAt: expect.any(String), status: 'loaded' });
     const [row] = await orgRows();
-    expect(row).toMatchObject({ ownerDid: org, provider: `org-held-${provider}`, slot: 'primary', loadedByDid: member });
+    expect(row).toMatchObject({
+      ownerDid: org, provider: provider === 'anthropic' ? provider : `org-held-${provider}`,
+      slot: 'primary', loadedByDid: member,
+    });
     const [grant] = await database.select().from(vaultDelegationGrants).where(eq(vaultDelegationGrants.field, row.sealedKeyField!));
     expect(grant).toMatchObject({ subject: org, grantedTo: h.nodeDid, status: 'active' });
     const entry = await vaultService.get(row.sealedKeyField!);

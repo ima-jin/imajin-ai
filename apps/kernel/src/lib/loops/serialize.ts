@@ -5,6 +5,7 @@
  * `GET /api/loops` / `GET /api/loops/:loopId` routes return.
  */
 import type { LoopOutput, StoredLoopOutput } from '@imajin/bus';
+import { kernelLoopRefs, type LoopPublisherSignature } from './types';
 
 export interface LoopJson {
   loopId: string;
@@ -29,6 +30,9 @@ export interface LoopEventJson {
   issuer: string;
   principal: string;
   payload: Record<string, unknown> & { output?: LoopOutput | StoredLoopOutput };
+  signature?: LoopPublisherSignature | null;
+  publisherDid?: string | null;
+  causeEventId?: string | null;
   occurredAt: string;
   createdAt: string;
 }
@@ -58,6 +62,9 @@ export interface RawLoopEventRow {
   issuer: string;
   principal: string;
   payload: Record<string, unknown> | null;
+  signature?: LoopPublisherSignature | null;
+  publisher_did?: string | null;
+  cause_event_id?: string | null;
   occurred_at: string | Date;
   created_at: string | Date;
 }
@@ -76,7 +83,7 @@ export function serializeLoop(row: RawLoopRow): LoopJson {
     kind: row.kind,
     principal: row.principal,
     parentLoopId: row.parent_loop_id,
-    refs: row.refs ?? {},
+    refs: kernelLoopRefs(row.refs ?? {}),
     state: row.state,
     summary: row.summary,
     lastEventType: row.last_event_type,
@@ -96,6 +103,9 @@ export function serializeLoopEvent(row: RawLoopEventRow): LoopEventJson {
     issuer: row.issuer,
     principal: row.principal,
     payload: row.payload ?? {},
+    signature: row.signature ?? null,
+    publisherDid: row.publisher_did ?? null,
+    causeEventId: row.cause_event_id ?? null,
     occurredAt: toIso(row.occurred_at),
     createdAt: toIso(row.created_at),
   };

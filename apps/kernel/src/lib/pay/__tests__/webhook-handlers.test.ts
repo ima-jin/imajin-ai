@@ -8,6 +8,9 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+vi.mock('../fee-receipts', async () => ({
+  publishFeeReceipt: (await import('./fee-receipt-fixture')).fixturePublishFeeReceipt,
+}));
 
 // ---------------------------------------------------------------------------
 // Shared mock wiring (must be hoisted so vi.mock factories can reference them)
@@ -15,7 +18,11 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const mocks = vi.hoisted(() => {
   const onConflictDoUpdateMock = vi.fn().mockResolvedValue(undefined);
-  const insertValuesMock = vi.fn(() => ({ onConflictDoUpdate: onConflictDoUpdateMock }));
+  const insertResult = () => ({
+    onConflictDoUpdate: onConflictDoUpdateMock,
+    onConflictDoNothing: () => ({ returning: async () => [{ id: 'tx_claim' }] }),
+  });
+  const insertValuesMock = vi.fn(insertResult);
   const insertMock = vi.fn(() => ({ values: insertValuesMock }));
   const publishMock = vi.fn().mockResolvedValue(undefined);
   const generateIdMock = vi.fn((prefix: string) => `${prefix}_test`);
@@ -24,7 +31,7 @@ const mocks = vi.hoisted(() => {
     cb({ insert: insertMock }),
   );
 
-  return { onConflictDoUpdateMock, insertValuesMock, insertMock, publishMock, generateIdMock, transactionMock };
+  return { onConflictDoUpdateMock, insertResult, insertValuesMock, insertMock, publishMock, generateIdMock, transactionMock };
 });
 
 vi.mock('@/src/db', () => ({
@@ -140,8 +147,8 @@ describe('reconcileStripeFee', () => {
       currency,
     });
 
-    // Should have inserted feeLedger row (rebate) + balance row = 2 insert calls
-    expect(mocks.insertMock).toHaveBeenCalledTimes(2);
+    // feeLedger + transaction claim + balance
+    expect(mocks.insertMock).toHaveBeenCalledTimes(3);
 
     const feeLedgerValues = mocks.insertValuesMock.mock.calls[0][0];
     expect(feeLedgerValues.role).toBe('processor_rebate');
@@ -159,7 +166,7 @@ describe('reconcileStripeFee', () => {
       currency,
     });
 
-    expect(mocks.insertMock).toHaveBeenCalledTimes(2);
+    expect(mocks.insertMock).toHaveBeenCalledTimes(3);
 
     const feeLedgerValues = mocks.insertValuesMock.mock.calls[0][0];
     expect(feeLedgerValues.role).toBe('processor_surcharge');
@@ -233,7 +240,7 @@ describe('processChainDistribution', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.insertValuesMock.mockImplementation(() => ({ onConflictDoUpdate: mocks.onConflictDoUpdateMock }));
+    mocks.insertValuesMock.mockImplementation(mocks.insertResult);
   });
 
   it('skips entries with amountCents <= 0', async () => {
@@ -288,10 +295,10 @@ describe('processChainDistribution', () => {
     const chain = [{ did: 'did:imajin:buyer', role: 'buyer_credit', share: 0.02 }];
     await processChainDistribution({ tx, totalAmountCents: 10000, currency, buyerDid: null, chain });
 
-    // feeLedger + balances + balanceRollups = 3 inserts
-    expect(mocks.insertMock).toHaveBeenCalledTimes(3);
+    // feeLedger + transaction claim + balances + balanceRollups
+    expect(mocks.insertMock).toHaveBeenCalledTimes(4);
 
-    const balanceRow = mocks.insertValuesMock.mock.calls[1][0];
+    const balanceRow = mocks.insertValuesMock.mock.calls[2][0];
     // 10000 * 0.02 = 200 cents → 200/100 = 2.0
     expect(balanceRow.unit).toBe('MJNx');
     expect(balanceRow.amount).toBe('2.00000000');
@@ -301,9 +308,9 @@ describe('processChainDistribution', () => {
     const chain = [{ did: 'did:imajin:node', role: 'node', share: 0.03 }];
     await processChainDistribution({ tx, totalAmountCents: 10000, currency, buyerDid: null, chain });
 
-    expect(mocks.insertMock).toHaveBeenCalledTimes(3);
+    expect(mocks.insertMock).toHaveBeenCalledTimes(4);
 
-    const balanceRow = mocks.insertValuesMock.mock.calls[1][0];
+    const balanceRow = mocks.insertValuesMock.mock.calls[2][0];
     // 10000 * 0.03 = 300 cents → 300/100 = 3.0
     expect(balanceRow.unit).toBe('MJN');
     expect(balanceRow.amount).toBe('3.00000000');
@@ -361,7 +368,7 @@ describe('processChainDistribution with taxes[] (#2435)', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.insertValuesMock.mockImplementation(() => ({ onConflictDoUpdate: mocks.onConflictDoUpdateMock }));
+    mocks.insertValuesMock.mockImplementation(mocks.insertResult);
   });
 
   // Insert payloads, flattened: a multi-row `.values([...])` yields one entry per row.
@@ -424,15 +431,15 @@ describe('processChainDistribution with taxes[] (#2435)', () => {
     expect(mocks.insertMock).toHaveBeenCalledTimes(2);
   });
 
-  it('books every row of a multi-tax manifest (GST + PST) in one transaction with two multi-row inserts', async () => {
+  it('books every tax receipt atomically with its own transaction twin', async () => {
     const gst = taxRow({ jurisdiction: 'CA-BC', kind: 'GST', rateBps: 500, amount: 500, remitTo: 'did:imajin:authority:ca-cra' });
     const pst = taxRow({ jurisdiction: 'CA-BC', kind: 'PST', rateBps: 700, amount: 700, remitTo: 'did:imajin:authority:ca-bc' });
     await processChainDistribution({
       tx, totalAmountCents: 11200, currency, buyerDid: 'did:imajin:buyer', chain: [], taxes: [gst, pst],
     });
 
-    expect(mocks.transactionMock).toHaveBeenCalledTimes(1);
-    expect(mocks.insertMock).toHaveBeenCalledTimes(2); // one feeLedger insert + one transactions insert
+    expect(mocks.transactionMock).toHaveBeenCalledTimes(2);
+    expect(mocks.insertMock).toHaveBeenCalledTimes(4); // fee + twin, once per receipt
     expect(feeLedgerRows()).toEqual([
       expect.objectContaining({ role: 'tax', amountCents: 500, status: 'held_in_trust' }),
       expect.objectContaining({ role: 'tax', amountCents: 700, status: 'held_in_trust' }),

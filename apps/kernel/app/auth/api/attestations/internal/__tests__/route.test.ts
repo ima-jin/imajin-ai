@@ -169,6 +169,20 @@ describe('node-issued-only types (#2081)', () => {
 });
 
 describe('attestation.created payload (internal route)', () => {
+  it.each(['vault.deployment-read.fetched', 'vault.deployment-read.acked'])('signs and persists registered gateway provenance %s', async type => {
+    const payload = {
+      repository: 'ima-jin/imajin-ai', recipientDid: 'did:imajin:gateway',
+      purpose: 'infer-passthrough/github-deploy-read', grantId: 'vdg_fixture',
+    };
+    const response = await POST(makeReq({
+      issuer_did: 'did:imajin:node', subject_did: SUBJECT, type,
+      context_id: 'vdg_fixture', context_type: 'vault.delegation', payload,
+    }));
+    expect(response.status).toBe(201);
+    expect(await response.json()).toMatchObject({ id: 'att_internal_123' });
+    expect(h.mockInsertValues).toHaveBeenCalledWith(expect.objectContaining({ type, payload, signature: 'fake-signature' }));
+    expect(publishedPayload()).toMatchObject({ type, pendingSignature: false });
+  });
   it.each([
     'search-console.sites.list', 'search-console.searchAnalytics.query', 'search-console.urlInspection.inspect',
     'business-profile.locations.list', 'business-profile.reviews.list',

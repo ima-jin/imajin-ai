@@ -21,6 +21,8 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { createLogger } from '@imajin/logger';
 import { corsHeaders, corsOptions } from '@/src/lib/kernel/cors';
 import { resolveConnectorOwnerDid } from '@/src/lib/kernel/connector-owner-did';
+import type { ConnectorRegistration } from './connector-registry-store';
+import { ExternalMcpError } from './external-mcp-policy';
 
 const log = createLogger('kernel');
 
@@ -28,7 +30,10 @@ export interface ConnectorTokenRouteOpts {
   /** Display name used in log lines and the failure message, e.g. `'Gemini'`. */
   name: string;
   /** Seal the pasted credential for this DID. */
-  sealApiKey: (ownerDid: string, apiKey: string, baseUrl?: string, modelId?: string) => Promise<void>;
+  sealApiKey: (ownerDid: string, apiKey: string, baseUrl?: string, modelId?: string,
+    orgSealProvenance?: ConnectorRegistration['orgSealProvenance']) => Promise<void>;
+  /** Anthropic's /jin org seal records the authenticated human, never a request-body actor. */
+  orgSealProvenance?: (request: NextRequest, ownerDid: string) => Promise<ConnectorRegistration['orgSealProvenance']>;
   /** Whether a key is already sealed for this DID. */
   keySealed: (ownerDid: string) => Promise<boolean>;
   keyPending?: (ownerDid: string) => Promise<boolean>;
@@ -117,9 +122,17 @@ export function createConnectorTokenRoutes(
     }
 
     try {
-      await opts.sealApiKey(ownerDid, token, optionalString(body.baseUrl), optionalString(body.modelId));
+      const provenance = await opts.orgSealProvenance?.(request, ownerDid);
+      const overrides = [optionalString(body.baseUrl), optionalString(body.modelId)] as const;
+      if (provenance) await opts.sealApiKey(ownerDid, token, ...overrides, provenance);
+      else await opts.sealApiKey(ownerDid, token, ...overrides);
       log.info({ ownerDid }, `${opts.name} API key sealed`);
-    } catch {
+    } catch (error) {
+      if (error instanceof ExternalMcpError) {
+        return NextResponse.json({ error: 'Organization credential sealing not authorized' }, {
+          status: error.status, headers: cors,
+        });
+      }
       log.error({ ownerDid }, `${opts.name} API key sealing failed`);
       return NextResponse.json(
         { error: `Failed to seal ${opts.name} API key` },

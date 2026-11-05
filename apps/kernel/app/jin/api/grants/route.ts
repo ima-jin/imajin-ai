@@ -21,6 +21,7 @@ import { requireAuth } from '@imajin/auth';
 import { corsHeaders } from '@/src/lib/kernel/cors';
 import { getOperatorDid, isOperatorIdentity } from '@/src/lib/notify/operator-approvals';
 import { listAuthGrantsForDelegator, listGrantsForOperator } from '@/src/lib/jin/grants-lane';
+import { isAgentCapableSubtype } from '@/src/lib/kernel/connection-principal-policy';
 
 export const dynamic = 'force-dynamic';
 
@@ -34,7 +35,7 @@ export async function GET(request: NextRequest) {
 
   const { identity } = authResult;
   if (identity.actingAs) {
-    if (identity.actingFor || identity.subtype === 'agent' || !['owner', 'admin'].includes(identity.actingAsRole ?? '')) {
+    if (identity.actingFor || isAgentCapableSubtype(identity.subtype) || !['owner', 'admin'].includes(identity.actingAsRole ?? '')) {
       return NextResponse.json({ error: 'Only an org owner or admin may manage org grants' }, { status: 403, headers: cors });
     }
     const grants = await listAuthGrantsForDelegator(identity.actingAs);

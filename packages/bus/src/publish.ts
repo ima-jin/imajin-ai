@@ -26,7 +26,7 @@ export interface PublishResult {
 
 export async function publish<T extends BusEventType>(
   type: T,
-  event: { id?: string; issuer: string; subject: string; scope: string; payload: BusEventMap[T]; correlationId?: string; timestamp?: string }
+  event: Omit<BusEvent, 'type' | 'payload'> & { payload: BusEventMap[T] }
 ): Promise<PublishResult> {
   const fullEvent: BusEvent = {
     ...event,
@@ -100,7 +100,7 @@ export async function publish<T extends BusEventType>(
       log.error({ err: String(err), reactor: reactor.type, event: type }, 'Reactor threw');
       // Loop ingest promises read-after-write: ownership/persistence failures
       // in its awaited projection must reach the caller, never report success.
-      if (reactor.await && reactor.type === 'loop-projection') throw err;
+      if (reactor.await && (reactor.type === 'loop-projection' || reactor.propagateError)) throw err;
     }
   });
 

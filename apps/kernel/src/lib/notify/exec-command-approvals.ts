@@ -33,7 +33,6 @@
  *   - `host` — gateway|node id|sandbox identifier.
  *   - `cwd` — working directory the command runs in.
  *   - `agentId` — the requesting agent's id.
- *   - `sessionKey` — the requesting agent's session key.
  *   - `requestedBy` — the requesting agent's DID (`did:...`).
  *   - `approvalId` — the OpenClaw-side approval id (distinct from the
  *     kernel's own `proposalId`).
@@ -73,7 +72,6 @@ export interface ExecCommandDetail {
   host: string;
   cwd: string;
   agentId: string;
-  sessionKey: string;
   requestedBy: string;
   approvalId: string;
   expiresAt: string;
@@ -84,7 +82,7 @@ export type ExecCommandDetailValidationResult =
   | { ok: false; error: string };
 
 /** Every `ExecCommandDetail` field, in the order acceptance requires validating them. */
-const REQUIRED_STRING_FIELDS = ['command', 'host', 'cwd', 'agentId', 'sessionKey', 'requestedBy', 'approvalId', 'expiresAt'] as const;
+const REQUIRED_STRING_FIELDS = ['command', 'host', 'cwd', 'agentId', 'requestedBy', 'approvalId', 'expiresAt'] as const;
 
 function isNonEmptyString(value: unknown): value is string {
   return typeof value === 'string' && value.length > 0;
@@ -126,7 +124,6 @@ export function validateExecCommandDetail(detail: Record<string, unknown> | null
       host: detail.host as string,
       cwd: detail.cwd as string,
       agentId: detail.agentId as string,
-      sessionKey: detail.sessionKey as string,
       requestedBy,
       approvalId: detail.approvalId as string,
       expiresAt,

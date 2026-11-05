@@ -1,6 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { sendDisclosureReceipt } from '../src/reactors/audit';
-import { sendConsentRequestNotification } from '../src/reactors/consent-request-notify';
 
 const mocks = vi.hoisted(() => ({ key: vi.fn(), fetch: vi.fn() }));
 vi.mock('@imajin/auth', () => ({ getVaultInternalApiKey: mocks.key }));
@@ -28,10 +27,6 @@ const callers = [
     subjectDid: 'did:imajin:fake-subject', requesterDid: 'did:imajin:fake-requester',
     purpose: 'test', fields: ['test'], releasedAt: '2026-10-14T00:00:00Z',
   })],
-  ['consent request', () => sendConsentRequestNotification({
-    type: 'test', subject: 'did:imajin:fake-subject', requester: 'did:imajin:fake-requester',
-    purpose: 'test', fields: ['test'], scope: 'test',
-  }, 'no_consent')],
 ] as const;
 describe.each(callers)('%s', (_name, send) => {
   it('uses the vault key in Authorization, never the legacy webhook header', async () => {

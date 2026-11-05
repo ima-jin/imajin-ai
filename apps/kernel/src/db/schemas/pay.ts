@@ -21,7 +21,8 @@ export const transactions = paySchema.table('transactions', {
   unit: text('unit').notNull().default('MJN'),
   // #2016: provenance kind — 'receipt' (backed by a rail receipt, minted or
   // burned), 'emission' (protocol mint against an attestation), or
-  // 'transfer' (internal ledger movement, no new receipt or mint).
+  // 'transfer' (internal ledger movement, no new receipt or mint), or
+  // 'fee' (idempotent wallet-effect claim, not another payment).
   sourceKind: text('source_kind').notNull().default('transfer'),
   // #2016: the auth.attestations row an emission was minted against. Only
   // ever populated for sourceKind='emission' rows going forward — historical
@@ -145,6 +146,7 @@ export const connectedAccounts = paySchema.table('connected_accounts', {
  */
 export const feeLedger = paySchema.table('fee_ledger', {
   id: text('id').primaryKey(),
+  receiptId: text('receipt_id'),
   transactionId: text('transaction_id').notNull(),
   recipientDid: text('recipient_did').notNull(),
   role: text('role').notNull(),
@@ -154,6 +156,7 @@ export const feeLedger = paySchema.table('fee_ledger', {
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 }, (table) => ({
   txIdx: index('idx_fee_ledger_tx').on(table.transactionId),
+  receiptIdx: uniqueIndex('uniq_fee_ledger_receipt').on(table.receiptId),
   recipientIdx: index('idx_fee_ledger_recipient').on(table.recipientDid, table.status),
 }));
 

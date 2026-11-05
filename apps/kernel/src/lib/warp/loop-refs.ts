@@ -17,7 +17,6 @@ export function githubLoopRef(value: unknown, entity: 'issues' | 'pull'): string
 
 export function warpRunLoopRefs(run: Pick<WarpAgentRun, 'runId' | 'sessionId' | 'triggerUrl' | 'artifacts'>): LoopRefs {
   const refs: LoopRefs = { runId: run.runId };
-  if (run.sessionId) refs.sessionKey = run.sessionId;
   const issue = githubLoopRef(run.triggerUrl, 'issues');
   if (issue) refs.issue = issue;
   const prs = warpRunPrArtifacts(run);

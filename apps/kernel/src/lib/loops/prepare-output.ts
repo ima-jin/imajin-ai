@@ -1,5 +1,5 @@
 import type { JsonValue, LoopEventPayload, StoredLoopOutput } from '@imajin/bus';
-import type { LoopEnvelope, LoopLifecycleType } from './types';
+import { kernelLoopRefs, type LoopEnvelope, type LoopLifecycleType } from './types';
 import { redactLoopJson } from './output-redaction';
 import { putLoopOutputArtifact } from './artifact-store';
 import { getClient } from '@imajin/db';
@@ -8,7 +8,8 @@ import { canonicalize } from '@imajin/auth';
 export const MAX_INLINE_LOOP_OUTPUT_BYTES = 16384;
 
 export function redactLoopEnvelope(payload: LoopEnvelope): LoopEnvelope {
-  return redactLoopJson(payload as unknown as JsonValue) as unknown as LoopEnvelope;
+  const redacted = redactLoopJson(payload as unknown as JsonValue) as unknown as LoopEnvelope;
+  return redacted.refs ? { ...redacted, refs: kernelLoopRefs(redacted.refs) } : redacted;
 }
 
 /** Atomic owner reservation closes the check/write race before any artifact or bus write.

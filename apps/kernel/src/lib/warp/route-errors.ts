@@ -11,7 +11,7 @@
  */
 import { NextResponse } from 'next/server';
 import { CorpusContextError } from './corpus-context';
-import { WarpApiError, WarpBriefEventError, WarpBriefSizeError } from './errors';
+import { WarpApiError, WarpBriefEventError, WarpBriefSizeError, WarpRunAccessError } from './errors';
 import { ExternalMcpError } from '@/src/lib/kernel/external-mcp-policy';
 
 /** Status Warp returned, mapped to what *our* caller should see. */
@@ -45,6 +45,9 @@ function upstreamErrorResponse(err: WarpApiError, cors: Record<string, string>):
  * upstream failure is nothing they can act on.
  */
 export function warpErrorResponse(err: unknown, cors: Record<string, string>): NextResponse {
+  if (err instanceof WarpRunAccessError) {
+    return NextResponse.json({ error: 'warp_run_forbidden' }, { status: 403, headers: cors });
+  }
   if (err instanceof ExternalMcpError) {
     return NextResponse.json({ error: err.message }, { status: err.status, headers: cors });
   }

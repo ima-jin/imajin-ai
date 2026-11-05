@@ -8,8 +8,12 @@ or session stores (#3150). This boundary is CI-enforced by
 `scripts/ci-guard-harness-boundary.mjs` in the `ci-guards` job: production source
 under `apps/kernel/src/**` and `apps/kernel/app/**` cannot import OpenClaw/gateway
 clients, address gateway RPC/HTTP surfaces, or read harness transcripts/session
-stores. Opaque signed event data such as `refs.sessionKey` and
-`meet.transcript.available` remains allowed. Legacy exceptions are keyed to the
+stores. Harness `sessionKey` identifiers and JSON keys are forbidden as data too
+(#3259). Unknown refs are stripped after signature verification, before storage,
+bus publication or retained publisher proofs; old historical JSON is not rewritten
+or used for joins. Reads and spend correlate only loopId/runId, with run aliases
+from signed loop history and parent lineage. `meet.transcript.available` remains
+allowed as a signed content event. Legacy exceptions are keyed to the
 exact file, detection kind and value in the guard, each with a one-line reason;
 they are a shrinking ratchet, not permission for new harness calls.
 This guard is a static tripwire, not a proof: boundary review is still required for concatenated strings such as `'/tools/' + 'invoke'` or `'sessions' + '_send'`, `import(variable)`, renamed destructured imports such as `{ sessions_send: send }`, `spawn`/`execSync` of `openclaw`, and `OPENCLAW_GATEWAY_TOKEN`, none of which it detects.
@@ -442,9 +446,10 @@ The kernel continues to learn only from signed events, never gateway RPC.
 
 ## Registry refs and spend (#2290)
 
-`refs` are signed publisher data: `runId`, `sessionKey`, `issue`, `pr`.
-`GET /api/loops` and MCP `loops_list` accept exact-match filters with those
-names, including on ancestor reads. GitHub subject refs should be canonical
+`refs` are signed publisher data: `runId`, `sessionId`, `issue`, `pr`; ingest
+drops any other key, including a harness `sessionKey`. `GET /api/loops` and MCP
+`loops_list` accept exact-match `runId`, `issue` and `pr` filters, including on
+ancestor reads. GitHub subject refs should be canonical
 `https://github.com/owner/repo/issues/N` / `/pull/N` URLs or `owner/repo#N`;
 unknown strings remain visible as refs but are never guessed into an issue.
 
@@ -454,9 +459,10 @@ authenticated effective principal only. Each run includes signed refs, loop
 identity/state, and `metered: {usd, turns} | null`. Issue and PR totals include
 their explicit ref and distinct run count. Both sides of the join are principal
 scoped. USD is summed from non-error `usage.incurred` rows in the half-open
-window: exact `session_id = runId` wins, otherwise an unambiguous
-`session_id = sessionKey` joins. Duplicate loops cannot multiply a usage row;
-shared session aliases stay unattributed. Null cost is unknown, not zero.
+window: exact `session_id = runId` wins, otherwise an unambiguous alias joins.
+Aliases come only from signed run history: loop ids and the `runId` refs on the
+run's own and child (`parentLoopId`) loop events, never harness addressing.
+Duplicate loops cannot multiply a usage row; shared aliases stay unattributed. Null cost is unknown, not zero.
 Old loops with usage in the window are included. Session-only loops use their
 stable loopId as the correlation identity, not an invented Warp run id. A run
 with any unpriced usage and a subject with any unknown run cost remain unknown,

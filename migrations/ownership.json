@@ -18,6 +18,12 @@
     }
   },
   "tables": {
+    "kernel.mail_domains": {
+      "owner": "kernel",
+      "schema": "kernel",
+      "firstMigration": "0233_mail_domains.sql",
+      "notes": "Send-only Postal records and verification state; signed lifecycle history is retained in auth.attestations."
+    },
     "kernel.org_connection_member_grants": {
       "owner": "kernel",
       "schema": "kernel",

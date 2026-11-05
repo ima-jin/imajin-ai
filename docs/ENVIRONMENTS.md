@@ -111,7 +111,7 @@ untouched by this source prune.
 future-event buy/QR smoke remains #2989. The former kernel-copy rollback is
 retired; events rollback uses its owned prior deployment ref with matching
 build/dependencies. The existing production reviewer gate remains; no SQL/data rollback.
-See [deploy/README.md](../deploy/README.md#events-is-external-now-2517).
+See [deploy/README.md](../deploy/README.md#events-rollback).
 
 The kernel reaches corpus over HTTP via `CORPUS_SERVICE_URL`
 (`apps/kernel/.env.example`) — its `localhost` default is only correct when

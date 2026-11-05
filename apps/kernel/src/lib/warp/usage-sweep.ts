@@ -58,15 +58,17 @@ async function replayTerminalObservations(): Promise<void> {
 }
 
 async function observeRoot(principalDid: string, rootRunId: string): Promise<void> {
+  const { nodeRunCaller } = await import('./run-access');
+  const caller = nodeRunCaller();
   // Re-reading known roots repairs a meter failure even when terminal publish
   // itself failed after its claim, leaving no terminal payload to replay.
-  await recordWarpRunUsage(principalDid, await getAgentRun(principalDid, rootRunId));
+  await recordWarpRunUsage(principalDid, await getAgentRun(principalDid, rootRunId, caller));
   const seenCursors = new Set<string>();
   const nextPage = async (cursor?: string): Promise<void> => {
     const page = await listAgentRuns(principalDid, {
       ancestorRunId: rootRunId, limit: 500,
       ...(cursor === undefined ? {} : { cursor }),
-    });
+    }, caller);
     await forEachSequential(page.runs, async (child) => {
       if (child.parentRunId && child.runId !== rootRunId) await recordWarpRunUsage(principalDid, child);
     });

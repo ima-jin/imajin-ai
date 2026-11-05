@@ -1,7 +1,8 @@
-# Release deployment for infer-passthrough (#3041, #3082)
-Release interlock #3230: agent-mode promotion requires an explicitly declared host auth mode after plugin PR #151 is deployed.
+# Inference passthrough deployment
+Agent-mode promotion requires an explicitly declared host auth mode after the plugin's per-agent credential transport is deployed.
+SIGTERM/SIGINT stops accepting requests, drains active responses, then exits 0; `INFER_PROXY_SHUTDOWN_GRACE_MS` defaults to 5000 ms (positive integer, hard cap 8000 ms; invalid values use the default), after which remaining connections/calls are cut. A second signal exits immediately. Verify live restart behavior after the production-approved deployment.
 
-## Calling-agent contract (#3224)
+## Calling-agent contract
 
 The default mode is `INFER_PROXY_AUTH_MODE=agent` (also when unset).
 Every inference call carries the calling agent's **own** kernel-minted credential,
@@ -29,7 +30,7 @@ uses a direct provider key, even during a kernel outage.
   The existing kernel contract also carries `iss`, `aud` (normally `imajin:apps`
   for inference, the MCP resource audience for MCP), space-delimited `scope`,
   and `attestationId`. It is **not** a session JWT, `session-app+jwt`,
-  `app-service+jwt`, or a new token scheme. The plugin obtains/refreshes it
+  `app-service+jwt`, or a different token scheme. The plugin obtains/refreshes it
   using the existing app-token flow; no key belongs in provider config.
 - The sidecar checks shape/expiry only; it does not trust decoded claims as
   authorization. The kernel checks the signature, issuer, audience and scopes,
@@ -55,9 +56,9 @@ kernel; agent calls never consult the host principal's catalog cache.
   under the gateway identity; the plugin must refresh its own JWT.
 - Kernel **403** (including membership, scopes or required member grant) and
   other non-401 HTTP responses, including 5xx: status and body forwarded.
-  A header selects, never authorizes. **On current main an org's own agent
-  can still receive 403 until #3182 lands.** This PR changes no kernel
-  key-resolution or org-grant policy and does not work around that refusal.
+  A header selects, never authorizes. Assigned agents use the kernel's live
+  principal relationship and allowed-service checks; human member-grant policy
+  remains distinct. The sidecar does not work around a refusal.
 - Network failure or time-to-first-byte timeout: **502**, `upstream_unavailable`
   or `upstream_timeout`; no direct-provider/shared-key fallback.
 - Unknown HTTP endpoint/method: **404**. Credentials and keys are never included
@@ -69,8 +70,8 @@ prove a caller's grant or completion. The deployment checker accepts this payloa
 only with an explicitly declared `agent` mode from the host env file (see the
 release gate below); undeclared mode still requires route mint evidence.
 Do not treat liveness as per-agent readiness or bypass that gate during rollout.
-Live Artifact-Jin → @artifact attribution proof belongs on plugin sibling
-ima-jin/openclaw-imajin-plugin#150 after both implementations ship.
+Verify a real agent completion and its principal attribution independently;
+source tests and liveness do not establish that proof.
 
 ### Explicit non-agent host compatibility
 
@@ -88,10 +89,10 @@ credentials. Provider-only optional route entries need no principal in agent mod
 The shipped env example's historical app/principal fields are host-only; for
 agent rollout explicitly set `INFER_PROXY_AUTH_MODE=agent`, remove provider marker auth,
 and have the plugin attach the per-agent JWT and configured selector on each call.
-No running host is changed by this PR. All host changes described here are
+No running host is changed by reading this runbook. All host changes described here are
 operator instructions for a reviewed release, not actions performed in this run.
 
-## v0.8.31 release gate (#3230)
+## Declared-mode release gate
 
 The **server default** is agent, but the **deployment gate default** is deliberately
 undeclared and route-gated. `update.sh` reads only anchored
@@ -112,8 +113,8 @@ also refuses the update.
   `--check` probes. Redirects are refused; startup/network failures are retried
   without exposing details.
 
-**Operator precondition before cutting v0.8.31: pick one and record which.**
-These are post-PR operator steps, not actions performed by this PR:
+**Operator precondition before promotion: pick one and record which.**
+These are operator steps, not automatic changes made by the source tree:
 
 **(a) Legacy bridge:** add `INFER_PROXY_AUTH_MODE=host-static` to
 `/etc/imajin/infer-passthrough.env` before the tag. The candidate serves mint-backed
@@ -123,8 +124,7 @@ principal. This bridge does not meet "agent signs as itself everywhere".
 
 **(b) Agent-native, in this exact order:**
 
-1. Merge and **deploy plugin PR #151** (the implementation for plugin issue #150)
-   to the gateway first: imajin-openai/imajin-xai must send each calling agent's
+1. **Deploy the plugin's per-agent credential transport** to the gateway first: imajin-openai/imajin-xai must send each calling agent's
    own app+jwt and configured x-acting-as, not the shared static key.
 2. Set the explicit line `INFER_PROXY_AUTH_MODE=agent` in
    `/etc/imajin/infer-passthrough.env`. Removing the host-static line is **not**
@@ -144,9 +144,9 @@ After either option, verify `journalctl -u infer-passthrough-update` shows
 Liveness alone is not this completion proof; record the chosen option and evidence.
 
 ## Legacy host-static release deployment
-Gateway bootstrap migration is tracked in #3185; no live host is changed by this PR.
-Thereafter the timer fetches release tags and `origin/main` every two minutes.
-It selects the highest eligible stable `vX.Y.Z` (not a prerelease), without a
+Gateway bootstrap is an operator-authorized operation, not an automatic host change.
+The installed timer fetches release tags and `origin/main` every two minutes.
+It selects the highest eligible stable release tag, excluding prereleases, without a
 recurring hand step. **The updater follows the production gate**: a tag alone is
 not permission to run code with production app credentials. No tags or deployments
 are created here, and Ryan's existing `production` approval gate is not bypassed.
@@ -175,7 +175,7 @@ dependencies. Install/build and the proxy run as `imajin`, **not root**. Root on
 orchestrates worktrees, the atomic `current` symlink and systemd.
 
 Before touching the live service, a transient `infer-passthrough-candidate` unit
-runs the new code on **127.0.0.1:8788**, using the same restricted EnvironmentFile.
+runs the candidate code on **127.0.0.1:8788**, using the same restricted EnvironmentFile.
 With undeclared or host-static mode, the candidate's `/health` must mint (or cache
 a valid token) for **every configured route**, except the explicitly reported
 unregistered MCP audience. Break-glass cannot satisfy this probe. With explicitly
@@ -198,9 +198,8 @@ failures and all openai/anthropic failures still gate promotion.
 
 ## One-time installation / migration
 
-Keep the existing unit as-is until this change lands and its release completes
-the existing `production` approval gate. No gateway changes are performed by this
-PR. Subsequent migration is pushed via the **Bootstrap inference gateway**
+Keep the existing unit as-is until the reviewed replacement completes
+the existing `production` approval gate. Migration is pushed via the **Bootstrap inference gateway**
 workflow (`infer-passthrough-bootstrap.yml`), not an interactive sudo session.
 The workflow has `permissions: {}` and only starts a fixed root-owned systemd
 entry point on the dedicated `infer-passthrough-gateway` host runner. The runner
@@ -234,8 +233,8 @@ first step also compares `github.ref` and `github.workflow_ref` (passed through
 workflow. This is a **second layer only**: a branch copy could remove that step,
 so it cannot replace the runner-group restriction.
 
-The operator runs these **read-only** verification calls once; this PR does not
-run them or claim the group exists. Replace `<id>` with the group's numeric ID:
+The operator runs these **read-only** verification calls before dispatch;
+source tests do not claim the group exists. Replace `<id>` with the group's numeric ID:
 
 ```bash
 gh api orgs/ima-jin/actions/runner-groups
@@ -269,10 +268,11 @@ same SHA again before migration. Do not use these commands on unreviewed code.
 ```bash
 install -d -o root -g root -m 0755 /usr/local/libexec/infer-passthrough
 install -o root -g root -m 0755 deploy/infer-passthrough/bootstrap.sh deploy/infer-passthrough/update.sh /usr/local/libexec/infer-passthrough/
-install -o root -g root -m 0644 deploy/infer-passthrough/bootstrap.py deploy/infer-passthrough/check-health.mjs deploy/infer-passthrough/production-deployment.mjs deploy/infer-passthrough/*.service deploy/infer-passthrough/*.timer /usr/local/libexec/infer-passthrough/
+install -o root -g root -m 0644 deploy/infer-passthrough/bootstrap.py deploy/infer-passthrough/check-health.mjs deploy/infer-passthrough/production-deployment.mjs deploy/infer-passthrough/deployment-read.mjs deploy/infer-passthrough/deployment-read-protocol.mjs deploy/infer-passthrough/*.service deploy/infer-passthrough/*.timer /usr/local/libexec/infer-passthrough/
 git rev-parse HEAD > /usr/local/libexec/infer-passthrough/release.sha
 chmod 0644 /usr/local/libexec/infer-passthrough/release.sha
 install -o root -g root -m 0644 deploy/infer-passthrough/infer-passthrough-bootstrap.service /etc/systemd/system/
+install -o root -g root -m 0644 deploy/infer-passthrough/infer-passthrough-deployment-read.service /etc/systemd/system/
 systemctl daemon-reload
 ```
 
@@ -282,6 +282,7 @@ Install this exact sudoers rule with `visudo -f
 
 ```sudoers
 gateway-runner ALL=(root) NOPASSWD: /usr/bin/systemctl start infer-passthrough-bootstrap.service
+gateway-runner ALL=(root) NOPASSWD: /usr/bin/systemctl start infer-passthrough-deployment-read.service
 ```
 
 No wildcards or caller-supplied arguments are permitted. Only this entry point
@@ -291,7 +292,7 @@ A failed bootstrap retains backups, restores the old unit/drop-ins/env/routes
 and prior link, and permits retry without manual cleanup. Power loss/SIGKILL
 cannot run rollback: inspect retained `bootstrap-*` backups before retrying.
 
-### Prerequisites and credential blocker
+### Prerequisites and kernel deployment-read delivery
 
 Linux/systemd, Python 3, git, Node **22 or 24**, and pnpm **9** are required.
 The bootstrap confirms versions; it does not install packages or run dependency
@@ -302,23 +303,102 @@ using the **unit's PATH**, including Ubuntu's `/usr/sbin/runuser`:
 env PATH=/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin sh -c 'command -v node pnpm python3 git systemd-run runuser flock'
 ```
 
-**Blocked by [gap(kernel) #3190](https://github.com/ima-jin/imajin-ai/issues/3190),
-a native child of #3039:** live `/spec` returns 404; the discoverable
-`/vault/api/spec` describes seal/import/delegation and SSH signing, but no
-repository-credential-to-gateway systemd consumer was found. TODO #3190 must
-supply that authorized delivery and rotation path. **Do not paste, export, copy
+**Credential delivery is a prerequisite.** Discovery:
+[`/vault/api/spec`](https://jin.imajin.ai/vault/api/spec) (source
+`apps/kernel/api-spec/vault.yaml`), not
+`/spec`. The consumer composes `POST /api/vault/import` with the existing
+delegation list/fetch/ack endpoints. There is no new fetch surface, SSH channel,
+or parallel secret store.
+
+Arrange the authorized delivery and rotation path below before bootstrap.
+**Do not paste, export, copy
 from Actions, or manually write a GitHub token as a workaround.** The bootstrap
 fails closed before host mutation if that credential is absent, empty, not
-root-owned, or not mode 0600. This PR does not claim delivery is implemented.
+root-owned, or not mode 0600. This runbook does not establish that delivery is installed.
 
-The kernel consumer must provision
-`/etc/imajin/infer-passthrough-github-token`. Both bootstrap and updater use
-`LoadCredential=github-token:...`; the existing production-deployment helper
-reads the value in process memory from systemd's credential directory. Require
+The operator imports the credential **only through the paste-once vault form on
+/jin**. Select the authorized owner (personal or acting-as organization),
+consumer = the gateway recipient DID, purpose =
+`infer-passthrough/github-deploy-read`, and a future expiry. The server binds the
+repository to `ima-jin/imajin-ai` in the human-countersigned proposal. Require
 **Deployments: read**, **Contents: read** and metadata only, **no write**,
 Actions-write or administration permission. No token belongs in argv, env files,
 units, logs, workflow secrets, issues or PR text. This repo is public: bare git
 fetch needs no token; only the deployment API consumes the restricted credential.
+The operator verifies fine-grained GitHub permissions at issuance; vault scope
+cannot reduce an overprivileged provider token. Rotation uses the existing
+import card's `replacesField` path, never an extra active credential.
+
+The trusted host bundle has public policy in root-owned, non-group/world-writable
+`/etc/imajin/infer-passthrough-deployment-read.json`: `kernelOrigin` (HTTPS origin
+only), `kernelPublicKey` (pinned Ed25519 hex public key), `repository`
+(`ima-jin/imajin-ai`), `ownerDid`, and `recipientDid`. Kernel public policy is
+`INFER_DEPLOY_READ_OWNER_DID`, `INFER_DEPLOY_READ_RECIPIENT_DID`, and
+`INFER_DEPLOY_READ_RECIPIENT_PUBLIC_KEY`. The recipient DID is derived from its
+registered public key using the existing `did:imajin:<first-16-hex>` convention.
+Missing policy fails closed; no owner or recipient defaults exist.
+
+The consumer reuses the gateway's **existing** `OPENCLAW_APP_PRIVATE_KEY`
+signing identity. It captures the fixed service's `systemctl show Environment`
+in memory, then applies the existing root:root 0600
+`/etc/imajin/infer-passthrough.env` overrides, matching bootstrap migration
+precedence. Neither value is printed, passed in argv, or exported to the
+consumer's environment. Only the existing hex signing-seed assignment is parsed;
+configuration is never shell-sourced. The derived public DID must match the
+pinned recipient policy. Missing/malformed identity fails closed, not by minting
+a new identity or requesting a manually populated secret file.
+
+This reuses an existing narrow gateway identity, not a GitHub credential or an
+operator/broad agent token. There is **no GitHub credential env fallback**:
+deployment-read bytes come only from the approved vault import and restricted
+delivery channel. Identity custody stays on the existing vault/provision/seal
+rail; never generate a seed in a shell, print it, or transfer it over SSH.
+No new identity store or SSH CA/service-at-boot custody is introduced.
+
+After the existing `production` environment approval and exact-main workflow
+guard, the dedicated gateway runner starts the fixed
+`infer-passthrough-deployment-read.service`, then bootstrap. Both services use
+only their explicit `sudo -n systemctl start ...` grants; neither checks out or
+executes a caller's code as root. A later approved dispatch re-delivers/rotates
+without interactive sudo, a copied grant ID, or a service restart.
+
+Delivery discovers the recipient's exact-purpose grant, signs each request
+with its own DID, and accepts only kernel-signed encrypted responses. The
+shared `deployment-read-protocol.mjs` specifies canonical signed bytes:
+domain-separated method/path/query/body hash, repository, owner, recipient,
+purpose, random nonce, timestamp and fresh X25519 ephemeral public key. Requests
+expire after 60 seconds. Replies are AES-256-GCM encrypted under a
+domain-separated X25519/HKDF-SHA256 key and Ed25519 signed by the pinned kernel.
+Replaying a captured signature cannot decrypt a response without the original
+ephemeral private key. TLS redirects, arbitrary origins and oversized replies
+are refused; no response or upstream exception is logged.
+
+The trusted service, bootstrap and updater serialize delivery with the same
+OS-released `flock` at
+`/run/imajin-infer-passthrough-credential/delivery.lock`. Systemd creates its
+root-owned 0700 runtime directory for all three consumers, preserves it between
+invocations, and recreates it after reboot. No shared writable lock directory
+is trusted. A failed concurrent delivery cannot restore bytes over a successful
+rotation. Every credential-consuming host unit disables core dumps.
+The root consumer writes a unique exclusive 0600 temp file beside
+`/etc/imajin/infer-passthrough-github-token`, sets root:root ownership, fsyncs,
+atomically renames and fsyncs the directory, then acknowledges the fetch through
+the existing ack route. On ordinary write/ack failure it restores the previous
+bytes from memory (or removes a failed first install); no plaintext backup is
+kept. Power loss may leave a restricted temp file or an installed but unacked
+file; re-delivery is safe. The import timeline retains the unmatched-fetch alert
+until ack succeeds. Persisted metadata-only fetched/acked attestations and signed
+response envelopes provide provenance; no database history is deleted.
+
+Both bootstrap and updater retain `LoadCredential=github-token:...`. Delivery
+must precede bootstrap because systemd loads credentials before starting it.
+Absent/empty/unsafe credentials still fail closed. The production-deployment
+helper additionally refreshes the vault authority on **every** deployment check
+and uses the fresh value in process memory, never a stale systemd snapshot:
+expired/revoked authority or unavailable vault means no deployment lookup or
+promotion, even if an older credential file remains. There is no env/file
+fallback, manual/interim token input, SSH copy or Actions-secret workaround.
+No live host operation or production proof is performed by these tests.
 
 ### What the pushed bootstrap does
 
@@ -355,12 +435,12 @@ fetch needs no token; only the deployment API consumes the restricted credential
 The operator checklist before dispatch is: manually verify/install the reviewed
 bundle and narrow root grant; verify the **Org settings → Actions → Runner groups**
 boundary and all three read-only checks above (repo-only, exact selected main
-workflow, no public/fork PR jobs, gateway in no other group); then arrange #3190
+workflow, no public/fork PR jobs, gateway in no other group); then arrange authorized
 credential delivery. Neither that group nor a bootstrapped host is claimed here.
-These prerequisites must all be available before claiming #3171 is verified. After release, the operator
-only dispatches the gated workflow and verifies WorkingDirectory, absent routes,
-`/healthz`, active timer, and a no-op second invocation. Tracker #3171 and
-operator consent #3172 remain pending their post-release host proofs. Missing grants require consent, not
+These prerequisites must all be available before claiming the host is verified. The operator
+dispatches the gated workflow and verifies WorkingDirectory, absent routes,
+`/healthz`, active timer, and a no-op second invocation. Record host and
+operator-consent proofs separately from source test results. Missing grants require consent, not
 host file edits; an unregistered MCP audience requires registration, not consent.
 
 ## Release check and diagnosis

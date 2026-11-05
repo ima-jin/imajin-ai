@@ -1,3 +1,32 @@
+export interface ReceiptSignature {
+  keyId: string;
+  alg: 'ed25519';
+  sig: string;
+}
+
+/** Signed platform fee fact; the loop receipt is the source, not the fee row. */
+export interface FeeReceiptPayload extends LoopEventPayload {
+  output?: never;
+  transactionId: string;
+  recipientDid: string;
+  role: string;
+  amountCents: number;
+  currency: string;
+  stripeEventId: string;
+  status: 'paid_out' | 'accrued' | 'held_in_trust';
+  chainIndex?: number;
+  sellerDid?: string;
+  tax?: {
+    jurisdiction: string;
+    kind: string;
+    rateBps: number;
+    remitTo: string;
+    registrationNumber: string;
+    service: string;
+    buyerDid: string | null;
+  };
+}
+
 export interface BusEvent {
   id?: string;               // stable signed-ingest observation id, when supplied
   type: string;              // 'ticket.purchased', 'newsletter.sent', etc.
@@ -7,6 +36,9 @@ export interface BusEvent {
   payload?: Record<string, unknown>;
   correlationId?: string;    // trace across reactors
   timestamp?: string;        // ISO 8601, defaults to now
+  signature?: ReceiptSignature;
+  publisherDid?: string;
+  causeEventId?: string | null;
 }
 
 export interface ReactorConfig {
@@ -14,6 +46,7 @@ export interface ReactorConfig {
   config: Record<string, unknown>;  // type-specific config
   condition?: string;        // optional: future use for conditional execution
   await?: boolean;           // default false (fire-and-forget)
+  propagateError?: boolean;  // awaited persistence steps may fail their publisher
   enabled: boolean;
 }
 
@@ -2122,6 +2155,14 @@ export interface BusEventMap {
     transactionId?: string | null;
     agentDid?: string | null;
     warpRunId?: string | null;
+    /** Optional full-row receipt projection fields (#3261). */
+    provider?: string;
+    model?: string;
+    connectorId?: string;
+    tokensIn?: number;
+    tokensOut?: number;
+    pricing?: Record<string, unknown>;
+    status?: 'error';
   };
   /**
    * The daily clock-rollup over `usage.incurred` (#1148): one signed record

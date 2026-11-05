@@ -23,7 +23,7 @@ import {
 } from '@imajin/vault-core';
 import { verifySync, crypto as authCrypto } from '@imajin/auth';
 import { publish } from '@imajin/bus';
-import { and, eq, isNull, gt, or, like, desc, type SQL } from 'drizzle-orm';
+import { and, eq, isNull, like, desc, type SQL } from 'drizzle-orm';
 import { createLogger } from '@imajin/logger';
 import {
   db,
@@ -42,7 +42,7 @@ import { VaultDelegationError } from './errors';
 import { isInternalSecretField } from './internal-secret';
 import { rotateInternalSecret } from './internal-secret-rotate';
 import { reissueFieldGrants } from './shared-internal-secret';
-import { isBankDetailsField, isCloudflareImportedKeyField, isExternalMcpField, isPrivateCustodyField, isSshCaField } from './field-grammar';
+import { isBankDetailsField, isCloudflareImportedKeyField, isDeploymentReadImportedKeyField, isExternalMcpField, isPrivateCustodyField, isSshCaField } from './field-grammar';
 import { isCloudflarePurpose } from '@/src/lib/cloudflare/contract';
 import { forEachSequential, mapWithConcurrency } from '@/src/lib/async/sequential';
 
@@ -1530,19 +1530,12 @@ async function fetchActiveGrant(
   field: string,
   nodeDid: string,
 ): Promise<VaultDelegationGrant | null> {
+  const { activeVaultGrantWhere } = await import('./active-grant-policy');
   const rows = await db
     .select()
     .from(vaultDelegationGrants)
     .where(
-      and(
-        eq(vaultDelegationGrants.grantedTo, nodeDid),
-        eq(vaultDelegationGrants.field, field),
-        eq(vaultDelegationGrants.status, 'active'),
-        or(
-          isNull(vaultDelegationGrants.expiresAt),
-          gt(vaultDelegationGrants.expiresAt, new Date()),
-        ),
-      ),
+      activeVaultGrantWhere(field, nodeDid),
     )
     .limit(1);
   return rows[0] ?? null;
@@ -1729,11 +1722,22 @@ export async function getGrantById(grantId: string): Promise<VaultDelegationGran
  * `toVaultErrorResponse`.
  */
 
+function isDeploymentReadGrant(grant: Pick<VaultDelegationGrant, 'field' | 'purpose'>): boolean {
+  return grant.purpose === 'infer-passthrough/github-deploy-read' || isDeploymentReadImportedKeyField(grant.field);
+}
+
+function fetchTimestamp(grant: VaultDelegationGrant, deploymentReadDelivery = false): Date {
+  if (!deploymentReadDelivery) return new Date();
+  return new Date(Math.max(Date.now(), (grant.lastFetchedAt?.getTime() ?? 0) + 1));
+}
+
 export async function fetchGrantSecret(params: {
   grantId: string;
   granteeDid: string;
   /** Trusted in-process credential use only; never forwarded from an HTTP body. */
   kernelCredentialUse?: boolean;
+  /** Reserved host delivery path; never taken from a generic HTTP request. */
+  deploymentReadDelivery?: boolean;
 }): Promise<GrantFetchOutcome> {
   const rows = await db
     .select()
@@ -1748,6 +1752,9 @@ export async function fetchGrantSecret(params: {
     // Deliberately distinct from 'not_found' only in the caller's log, never in
     // the HTTP response shape: confirming a grantId exists but belongs to
     // someone else would let a caller enumerate grantIds it cannot use.
+    return { status: 'not_grantee' };
+  }
+  if (isDeploymentReadGrant(grant) && !params.deploymentReadDelivery) {
     return { status: 'not_grantee' };
   }
   if (isSshCaField(grant.field) || (!params.kernelCredentialUse && (isExternalMcpField(grant.field) || isBankDetailsField(grant.field) || isCloudflarePurpose(grant.purpose) || isCloudflareImportedKeyField(grant.field)))) {
@@ -1793,7 +1800,7 @@ export async function fetchGrantSecret(params: {
   // is the precondition ackGrant checks; it never gates the fetch outcome
   // itself, so a write failure here would only be visible as a later
   // 'not_fetched' ack refusal, not as a fetch error.
-  const lastFetchedAt = new Date();
+  const lastFetchedAt = fetchTimestamp(grant, params.deploymentReadDelivery);
   await db
     .update(vaultDelegationGrants)
     .set({ lastFetchedAt })
@@ -1931,11 +1938,22 @@ function resolveExistingAck(
  * acks for the same grant can never both "win" the write; the loser re-reads
  * the row and reports idempotent-ok or conflict against whichever won.
  */
+function deploymentAckRefusal(grant: VaultDelegationGrant, params: {
+  deploymentReadDelivery?: boolean; deploymentFetchedAt?: string;
+}): GrantAckOutcome | null {
+  if (!isDeploymentReadGrant(grant)) return null;
+  if (!params.deploymentReadDelivery) return { status: 'not_grantee' };
+  if (params.deploymentFetchedAt !== grant.lastFetchedAt?.toISOString()) return { status: 'not_fetched' };
+  return null;
+}
+
 export async function ackGrant(params: {
   grantId: string;
   granteeDid: string;
   outcome: AckOutcome;
   evidence?: AckEvidence | null;
+  deploymentReadDelivery?: boolean;
+  deploymentFetchedAt?: string;
 }): Promise<GrantAckOutcome> {
   const rows = await db
     .select()
@@ -1949,11 +1967,15 @@ export async function ackGrant(params: {
   if (grant.grantedTo !== params.granteeDid) {
     return { status: 'not_grantee' };
   }
+  const deploymentRead = isDeploymentReadGrant(grant);
+  const deploymentRefusal = deploymentAckRefusal(grant, params);
+  if (deploymentRefusal) return deploymentRefusal;
   if (grant.lastFetchedAt === null) {
     return { status: 'not_fetched' };
   }
 
-  const existing = resolveExistingAck(grant, params.outcome);
+  const refreshedDelivery = deploymentRead && grant.ackedAt !== null && grant.ackedAt < grant.lastFetchedAt;
+  const existing = refreshedDelivery ? null : resolveExistingAck(grant, params.outcome);
   if (existing) {
     return existing;
   }
@@ -1965,7 +1987,11 @@ export async function ackGrant(params: {
       ackOutcome: params.outcome,
       ackEvidence: params.evidence ?? null,
     })
-    .where(and(eq(vaultDelegationGrants.id, grant.id), isNull(vaultDelegationGrants.ackedAt)))
+    .where(and(
+      eq(vaultDelegationGrants.id, grant.id),
+      refreshedDelivery ? eq(vaultDelegationGrants.ackedAt, grant.ackedAt!) : isNull(vaultDelegationGrants.ackedAt),
+      deploymentRead ? eq(vaultDelegationGrants.lastFetchedAt, grant.lastFetchedAt) : undefined,
+    ))
     .returning({
       ackedAt: vaultDelegationGrants.ackedAt,
       ackOutcome: vaultDelegationGrants.ackOutcome,
@@ -1977,13 +2003,14 @@ export async function ackGrant(params: {
     // are immutable post-issuance, so the values already in `grant` still
     // apply to whichever ack won.
     const [after] = await db
-      .select({ ackedAt: vaultDelegationGrants.ackedAt, ackOutcome: vaultDelegationGrants.ackOutcome })
+      .select({ ackedAt: vaultDelegationGrants.ackedAt, ackOutcome: vaultDelegationGrants.ackOutcome, lastFetchedAt: vaultDelegationGrants.lastFetchedAt })
       .from(vaultDelegationGrants)
       .where(eq(vaultDelegationGrants.id, grant.id))
       .limit(1);
     if (!after) {
       return { status: 'not_found' };
     }
+    if (deploymentRead && after.lastFetchedAt?.toISOString() !== params.deploymentFetchedAt) return { status: 'not_fetched' };
     return resolveExistingAck(
       { ...after, subject: grant.subject, purpose: grant.purpose },
       params.outcome,

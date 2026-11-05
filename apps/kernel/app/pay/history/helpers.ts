@@ -5,7 +5,7 @@
 // generateStaticParams, etc.) — "X is not a valid Page export field".
 import { buildPublicUrl } from '@imajin/config';
 import { transactions, type Transaction } from '@/src/db';
-import { eq, or, gte, lte, inArray, type SQL } from 'drizzle-orm';
+import { eq, ne, and, or, gte, lte, inArray, type SQL } from 'drizzle-orm';
 import type { DisplayEntry, SerializedTx } from './TransactionList';
 
 export interface SearchParams {
@@ -42,9 +42,9 @@ export function buildTransactionConditions(
   searchParams: SearchFilterParams,
 ): { userTxCondition: SQL; conditions: SQL[] } {
   const { service, currency, from, to } = searchParams;
-  const userTxCondition = or(
-    eq(transactions.fromDid, did),
-    eq(transactions.toDid, did),
+  const userTxCondition = and(
+    ne(transactions.sourceKind, 'fee'),
+    or(eq(transactions.fromDid, did), eq(transactions.toDid, did)),
   )!;
 
   const conditions = [userTxCondition];

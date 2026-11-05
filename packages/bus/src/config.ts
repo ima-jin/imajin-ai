@@ -57,6 +57,15 @@ function stepObservationChain(): ReactorConfig[] {
   return loopLifecycleChain().map(reactor => ({ ...reactor, await: true }));
 }
 
+/** Signed receipt persists before its rebuildable kernel fee projection. */
+function feeReceiptChain(): ReactorConfig[] {
+  return [
+    { type: 'loop-projection', config: {}, await: true, enabled: true },
+    { type: 'fee-ledger', config: {}, await: true, propagateError: true, enabled: true },
+    { type: 'emit', config: {}, enabled: true },
+  ];
+}
+
 /**
  * The `mjn` reactor entry shared by every emitting chain (#2017). Deliberately
  * carries NO amounts: the emission schedule (`emit[]`: recipients → amount or
@@ -237,15 +246,9 @@ const DEFAULTS: Record<string, ReactorConfig[]> = {
   'payment.charge': [
     { type: 'emit', config: {}, enabled: true },
   ],
-  'fee.record': [
-    { type: 'emit', config: {}, enabled: true },
-  ],
-  'fee.rebate': [
-    { type: 'emit', config: {}, enabled: true },
-  ],
-  'fee.surcharge': [
-    { type: 'emit', config: {}, enabled: true },
-  ],
+  'fee.record': feeReceiptChain(),
+  'fee.rebate': feeReceiptChain(),
+  'fee.surcharge': feeReceiptChain(),
   'customer': [
     { type: 'attestation', config: { attestationType: 'customer' }, enabled: true },
   ],
@@ -689,10 +692,12 @@ const DEFAULTS: Record<string, ReactorConfig[]> = {
   // #1147/#1148 — Agent Resource-Accounting Layer's `usage.incurred` primitive.
   // "Bread is free" pattern: `attestation` writes the durable signed record,
   // `emit` makes it observable, deliberately NO `settle` (metered, not
-  // billed). Kept in sync with migration 0120.
+  // billed). usage-projection materializes the receipt; kept in sync with
+  // migration 0231_usage_projection_chain.sql (DB rows override defaults).
   'usage.incurred': [
     { type: 'attestation', config: { attestationType: 'usage.incurred' }, enabled: true },
     { type: 'emit', config: {}, enabled: true },
+    { type: 'usage-projection', config: {}, enabled: true },
   ],
   // #1148 — the daily clock-rollup's own signed record, one per (principal,
   // window). `await: true` on `attestation` only here (not on the per-call

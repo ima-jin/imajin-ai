@@ -18,6 +18,29 @@ beforeEach(() => {
 });
 
 describe('brief settings route', () => {
+  it.each([{}, { actingAs: 'did:imajin:org', actingAsRole: 'admin' }])(
+    'denies agents and presences for reads and writes in context %j',
+    async (context) => {
+      for (const subtype of ['agent', 'presence']) {
+        mocks.auth.mockResolvedValue({ identity: { id: 'did:imajin:caller', subtype, ...context } });
+        for (const response of [await GET(request()), await PUT(request({ storage: 'hash-only' }))]) {
+          expect(response.status).toBe(403);
+          expect(await response.json()).toEqual({ error: 'Principal owner authority required' });
+        }
+        expect(mocks.read).not.toHaveBeenCalled();
+        expect(mocks.write).not.toHaveBeenCalled();
+      }
+    },
+  );
+  it('allows a human admin acting as an org without using the personal DID for storage', async () => {
+    mocks.auth.mockResolvedValue({
+      identity: { id: 'did:imajin:human', subtype: 'human', actingAs: 'did:imajin:org', actingAsRole: 'admin' },
+    });
+    expect((await GET(request())).status).toBe(200);
+    expect(mocks.read).toHaveBeenCalledWith('did:imajin:org');
+    expect((await PUT(request({ storage: 'hash-only' }))).status).toBe(200);
+    expect(mocks.write).toHaveBeenCalledWith('did:imajin:org', 'did:imajin:human', 'hash-only');
+  });
   it('reads the authenticated principal, disables caching and uses scoped session auth', async () => {
     const response = await GET(request());
     expect(await response.json()).toEqual({ storage: 'full-text' });

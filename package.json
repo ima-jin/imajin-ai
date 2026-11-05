@@ -1,6 +1,6 @@
 {
   "name": "imajin-ai",
-  "version": "0.8.30",
+  "version": "0.8.33",
   "private": true,
   "scripts": {
     "dev": "pnpm -r --parallel dev",
@@ -23,6 +23,7 @@
     "db:migrate": "node scripts/migrate.mjs",
     "check:migration-ownership": "node scripts/check-migration-ownership.mjs",
     "check:cross-schema": "node scripts/ci-guard-cross-schema-reads.mjs",
+    "check:current-state-docs": "node scripts/ci-guard-current-state-docs.mjs",
     "check:dist-react": "node scripts/ci-guard-dist-react-binding.mjs",
     "check:events-pruned": "node scripts/ci-guard-events-pruned.mjs",
     "sonar:baseline": "powershell -ExecutionPolicy Bypass -File scripts/sonar/phase1-capture-baseline.ps1",
@@ -82,7 +83,7 @@
   },
   "dependencies": {
     "@imajin/auth": "workspace:*",
-    "@metalabel/dfos-protocol": "^0.13.5",
+    "@metalabel/dfos-protocol": "0.55.0",
     "@noble/ed25519": "^2.3.0",
     "@noble/hashes": "^1.7.2",
     "bs58": "^6.0.0",

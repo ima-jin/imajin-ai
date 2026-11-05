@@ -1,4 +1,4 @@
-import { and, eq, isNotNull, like, sql } from 'drizzle-orm';
+import { and, eq, isNotNull, like, or, sql } from 'drizzle-orm';
 import { db, attestations, connectors, type ConnectorRow } from '@/src/db';
 import { prepareMechanicalAttestation } from '@/src/lib/auth/emit-mechanical-attestation';
 import { deleteFromVault, revokeStaticSecretGrant, sealAndGrantStaticSecret, vaultService } from '@/src/lib/vault';
@@ -15,10 +15,12 @@ type Transaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
 function selection(orgDid: string, provider?: string) {
   return and(eq(connectors.ownerDid, orgDid), eq(connectors.slot, 'primary'),
-    provider === undefined ? like(connectors.provider, `${ORG_HELD_PREFIX}%`) : eq(connectors.provider, orgHeldProvider(provider)));
+    provider === undefined ? or(eq(connectors.provider, 'anthropic'), like(connectors.provider, `${ORG_HELD_PREFIX}%`))
+      : eq(connectors.provider, orgHeldProvider(provider)));
 }
 function metadata(row: ConnectorRow) {
-  return { provider: row.provider.slice(ORG_HELD_PREFIX.length), loadedByDid: row.loadedByDid, loadedAt: row.loadedAt, status: 'loaded' as const };
+  return { provider: row.provider === 'anthropic' ? row.provider : row.provider.slice(ORG_HELD_PREFIX.length),
+    loadedByDid: row.loadedByDid, loadedAt: row.loadedAt, status: 'loaded' as const };
 }
 function providerEntry(provider: string) {
   const entry = getConnector(provider);

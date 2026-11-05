@@ -54,11 +54,10 @@ export interface ListLoopsFilters {
   runId?: string | null;
   issue?: string | null;
   pr?: string | null;
-  sessionKey?: string | null;
 }
 function refsFilter(filters: ListLoopsFilters): string {
   return JSON.stringify(Object.fromEntries(
-    ['runId', 'issue', 'pr', 'sessionKey']
+    ['runId', 'issue', 'pr']
       .map((key) => [key, filters[key as keyof ListLoopsFilters]])
       .filter(([, value]) => typeof value === 'string' && value.length > 0),
   ));

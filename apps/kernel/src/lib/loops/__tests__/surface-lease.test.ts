@@ -68,6 +68,8 @@ beforeAll(async () => {
   const migration = readFileSync(resolve(process.cwd(), 'migrations/archive/pre-kernel-baseline/0194_surface_lease.sql'), 'utf8');
   await client.exec(migration);
   await client.exec(migration);
+  await client.exec(readFileSync(resolve(process.cwd(), 'migrations/0231_usage_projection_chain.sql'), 'utf8'));
+  await client.exec(readFileSync(resolve(process.cwd(), 'migrations/0232_loop_event_signed_receipts.sql'), 'utf8'));
   const makeTagged = (connection: Pick<PGlite, 'query'>) => async (strings: TemplateStringsArray, ...values: unknown[]) => {
     const text = strings.reduce((result, part, i) => result + (i ? `$${i}` : '') + part, '');
     queries.push(text);

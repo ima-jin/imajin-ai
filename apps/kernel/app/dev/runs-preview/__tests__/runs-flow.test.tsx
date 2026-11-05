@@ -1,10 +1,10 @@
 // @vitest-environment jsdom
-import { webcrypto } from 'node:crypto';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { RunsPanel } from '@/app/jin/runs-panel';
 import { dispatchSessionCommand, prepareSignedSessionCommand, type SessionCommandClient } from '@/app/jin/session-command-client';
 import { createRunsPreviewTransport } from '../transport';
+import { loadOperatorSigner } from '@/app/jin/__tests__/operator-signing-test-support';
 
 vi.mock('next/navigation', () => ({ useSearchParams: () => new URLSearchParams() }));
 
@@ -22,12 +22,12 @@ async function createFlowFixture() {
     },
   };
 }
-beforeEach(() => {
+beforeEach(async () => {
   vi.useRealTimers();
   localStorage.clear();
   sessionStorage.clear();
   vi.stubEnv('NODE_ENV', 'development');
-  vi.stubGlobal('crypto', webcrypto);
+  await loadOperatorSigner();
 });
 afterEach(() => {
   cleanup();
@@ -41,6 +41,9 @@ afterEach(() => {
 });
 
 describe('real Runs components on exact-contract fixture transport', () => {
+  // This flow performs several real signature round trips; coverage on a busy CI
+  // runner can exceed Vitest's 5s default without any simulated agent latency.
+  vi.setConfig({ testTimeout: 15_000 });
   it('signs send/spawn and inline native approve/deny through the shared endpoint, then displays attested results', async () => {
     // Only polling is virtual; outcomes are released explicitly after delivery.
     vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });

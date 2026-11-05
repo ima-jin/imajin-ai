@@ -2,6 +2,7 @@ import { requireAuth, type Identity } from '@imajin/auth';
 import { enforceDelegationPolicy, type MutationClass } from '@imajin/auth/delegation-policy';
 import { and, eq, isNull } from 'drizzle-orm';
 import { db, identities, identityMembers } from '@/src/db';
+import { isAgentCapableSubtype } from '../kernel/connection-principal-policy';
 
 /** Resolve actual authority, never the role supplied by an acting-as overlay. */
 export async function canManageIdentityDomains(did: string, callerDid: string): Promise<boolean> {
@@ -9,7 +10,7 @@ export async function canManageIdentityDomains(did: string, callerDid: string): 
     .from(identities)
     .where(and(eq(identities.id, did), isNull(identities.suspendedAt)))
     .limit(1);
-  if (!target || target.subtype === 'agent') return false;
+  if (!target || isAgentCapableSubtype(target.subtype)) return false;
   if (target.scope === 'actor') return callerDid === did;
 
   const [member] = await db.select({ role: identityMembers.role })
@@ -44,7 +45,7 @@ export async function requireDomainManager(
     .from(identities)
     .where(and(eq(identities.id, caller.id), isNull(identities.suspendedAt)))
     .limit(1);
-  if (!actor || actor.subtype === 'agent' || !await canManageIdentityDomains(did, caller.id)) {
+  if (!actor || isAgentCapableSubtype(actor.subtype) || !await canManageIdentityDomains(did, caller.id)) {
     return Response.json({ error: 'Active identity owner or admin required' }, { status: 403 });
   }
   return caller;

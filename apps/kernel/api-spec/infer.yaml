@@ -15,6 +15,127 @@ components:
       scheme: bearer
       bearerFormat: JWT
   schemas:
+    DiscoveryFix:
+      type: object
+      additionalProperties: false
+      required: [control, href, actingDid]
+      properties:
+        control: { type: string, description: Existing /jin-linked control name. }
+        href: { type: string, description: Existing kernel admin page or anchor. }
+        actingDid: { type: string, description: Identity the operator must select before using the control. }
+    SelfDiscovery:
+      type: object
+      additionalProperties: false
+      required: [identity, usableModels, connectors]
+      properties:
+        name: { type: [string, "null"], description: Serving-agent display name in the operator projection only. }
+        identity:
+          type: object
+          additionalProperties: false
+          required: [did, handle, kind, tier, actAs]
+          properties:
+            did: { type: string, description: "Authenticated signer, or bound agent in operator mode; never replaced by the org DID." }
+            handle: { type: [string, "null"] }
+            kind: { type: string, description: "Identity subtype, or scope when no subtype exists." }
+            tier: { type: string }
+            actAs: { type: [string, "null"], description: Verified acting-org selector. }
+        usableModels:
+          type: array
+          description: Same routing winners and model IDs as the current caller's usable-model catalog.
+          items:
+            type: object
+            additionalProperties: false
+            required: [id, connector, credentialDid, picked]
+            properties:
+              id: { type: string }
+              connector: { type: string }
+              credentialDid: { type: string }
+              picked: { type: boolean }
+        connectors:
+          type: array
+          items: { $ref: "#/components/schemas/SelfDiscoveryConnector" }
+    OperatorSelfDiscovery:
+      type: object
+      additionalProperties: false
+      required: [principalDid, cards]
+      properties:
+        principalDid: { type: string, description: Verified acting principal, not the raw personal session DID. }
+        cards:
+          type: array
+          description: Bound serving agents; only this principal's inference and authorized tool relationships are visible.
+          items: { $ref: "#/components/schemas/SelfDiscovery" }
+    SelfDiscoveryConnector:
+      type: object
+      additionalProperties: false
+      required: [provider, family, authority, configured, grantStatus, usable, usableModels]
+      properties:
+        provider: { type: string }
+        family: { type: string, enum: [openai-compatible, anthropic, mcp, http] }
+        authority:
+          type: [string, "null"]
+          enum: [own-key, org-held, delegated, member-grant, null]
+          description: Canonical route or tool authorization lane; null when authorization is denied or no call gate exists.
+        kind: { type: string, enum: [own, A, B, C] }
+        billedPrincipal:
+          type: object
+          additionalProperties: false
+          required: [did, handle]
+          properties:
+            did: { type: string }
+            handle: { type: [string, "null"] }
+        card:
+          type: object
+          additionalProperties: false
+          required: [id, label]
+          properties:
+            id: { type: string }
+            label: { type: string }
+        ownerDid: { type: string, description: Credential owner selected by the tool call gate; denied selectors reveal no private installation metadata. }
+        configurationStatus:
+          type: string
+          enum: [configured, not-configured, not-disclosed]
+          description: Tool-row configuration disclosure. not-disclosed means configured=false is not evidence that a principal has no connection.
+        authorizedScopes:
+          type: array
+          items: { type: string }
+          description: Current tool scopes admitted by the credential ceiling and existing connector scope predicate.
+        credentialStatus:
+          type: string
+          const: not-probed
+          description: Tool rows never read vault entries or verify/decrypt credentials; upstream identity and validity are not observed.
+        configured:
+          type: boolean
+          description: Inference resolver loaded flag; tool rows use authorized connection/custody metadata or signer-owned registry metadata. Consult configurationStatus before interpreting false.
+        grantStatus:
+          type: string
+          enum: [granted, denied, not-required, not-evaluated]
+        selectedModels:
+          type: array
+          description: Resolver probe using the first current catalog model, or default discovery when empty.
+          items: { type: string }
+        usableModels:
+          type: array
+          description: Current catalog winners for this route's matching selectors; empty for alternative selectors and metadata rows.
+          items: { type: string }
+        usable:
+          type: [boolean, "null"]
+          description: Canonical inference route result or tool authorization and custody-grant metadata result. For tools, true is not a live credential/upstream probe. Null means no known call gate was evaluated.
+        selectors:
+          type: object
+          additionalProperties: false
+          properties:
+            actingAs: { type: string }
+            actingFor: { type: string }
+        reason:
+          type: object
+          additionalProperties: false
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              enum: [no_grant, no_model_selected, not_a_member, key_not_loaded, not_authorized, route_unavailable, tool_scope_required, agent_not_assigned, service_not_allowed, identity_inactive, org_membership_required, org_grant_required, connection_not_loaded, connection_suspended, credential_unavailable]
+            message: { type: string }
+        fix: { $ref: "#/components/schemas/DiscoveryFix" }
     UsableModelList:
       type: object
       required: [object, data]
@@ -94,6 +215,73 @@ components:
                   actingAs: { type: string }
                   actingFor: { type: string }
 paths:
+  /v1/self:
+    get:
+      operationId: discoverInferenceSelf
+      summary: Discover the signing agent, connectors, usable models and authority
+      description: |
+        Read-only, private/no-store projection using exactly resolveInferenceAuth
+        with infer:completions, listUsableModels and listInferenceRoutes.
+        Uses the signer's own app token; selectors never authorize.
+        The first usable catalog model is passed to route discovery because
+        org-held cards choose a model per call. Top-level usableModels matches
+        the current catalog; alternative held selectors are not separate catalogs.
+        Downstream grant/model denials return diagnostic rows and an empty model
+        list. Auth/scope/act-as failures keep the usable-model route's 401/403
+        error shape, without a partial identity response.
+        Every unusable inference row names an existing fixing control and the
+        identity the operator should select on /jin before opening it.
+        MCP/HTTP rows reuse the tool call authorization predicates. The verified
+        token's inference scope is never a tool grant. Tool scopes, assignment,
+        allowed services, member grants, suspension and custody-grant lifecycle
+        are evaluated without fetching, peeking, decrypting or unsealing a tool
+        credential. Authorized rows name the credential owner and authority lane.
+        authorizedScopes lists the admitted operations. credentialStatus is
+        not-probed: usable=true describes authorization metadata, not provider
+        availability, credential integrity or the external account identity.
+        configurationStatus=not-disclosed prevents denied tool authority from
+        becoming an oracle for a selected principal's private installations;
+        configured=false in that state does not mean no connection exists.
+        Each denial names an existing operator fixing control and acting DID.
+        App HTTP upstream rows are limited to the authenticated service app's
+        declared catalogue and exact current binding, never private enumeration.
+        Known unconfigured providers remain listed; unknown signer-owned providers
+        use http with usable=null and grantStatus=not-evaluated.
+        No credentials, vault references or private exception details are returned.
+      security:
+        - appToken: []
+      parameters:
+        - in: query
+          name: agents
+          schema: { type: string, const: "1" }
+          description: |
+            Operator view for /jin. Requires a direct principal session (org owner/admin
+            when acting as an org); refuses agent delegation. Lists bound serving
+            agents using the same discovery projection and live inference resolver.
+            Does not expose the agent's private connectors or other clients.
+        - in: header
+          name: x-acting-as
+          schema: { type: string }
+          description: Existing verified org selector, never an authorization.
+        - in: header
+          name: x-acting-for
+          schema: { type: string }
+          description: Existing verified principal/speaker selector; member grant rules remain unchanged.
+      responses:
+        "200":
+          description: Caller-scoped self-discovery.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - { $ref: "#/components/schemas/SelfDiscovery" }
+                  - { $ref: "#/components/schemas/OperatorSelfDiscovery" }
+        "400": { description: Invalid agents selector. }
+        "401": { description: Missing or invalid credentials. }
+        "403": { description: Same scope or act-as rejection as the usable-model route. }
+        "404": { description: Signer identity not found or suspended. }
+        "429": { description: Rate limit exceeded. }
+        "503": { description: Discovery unavailable; no private exception details. }
   /v1/models/usable:
     get:
       operationId: listUsableModels

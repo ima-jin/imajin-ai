@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { MAIL_PURPOSES, type MailPurpose, type SenderConfig } from '@/src/lib/mail/types';
 import { SenderForm } from './sender-form';
+import { MailDomainsPanel } from './mail-domains-panel';
 
 type Group = { groupDid: string; role: string; scope: string; name: string | null; handle: string | null };
 export type SenderSettings = {
@@ -77,6 +78,7 @@ export default function OrgSettingsPage() {
         )}
         {settings && (
           <>
+            <MailDomainsPanel key={ownerDid} ownerDid={ownerDid} />
             <label className="block"><span>App override DID (optional)</span>
               <input className="mt-1 block w-full rounded bg-gray-900 p-3" value={appDid} onChange={event => setAppDid(event.target.value.trim())} placeholder="Leave empty for organization defaults" />
             </label>

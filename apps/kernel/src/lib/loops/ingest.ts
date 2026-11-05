@@ -23,14 +23,15 @@ import { rateLimit } from '@imajin/config';
 import * as bus from '@imajin/bus';
 import { verifyLoopPublisherSignature } from './verify-publisher-signature';
 import { authorizeLoopPublisher } from './authorize-publisher';
-import { isLoopLifecycleType, type LoopIngestRequest } from './types';
-import { prepareLoopOutput, redactLoopEnvelope, reserveLoopOwnership } from './prepare-output';
+import { isLoopLifecycleType, isSurfaceEventType, parseCauseEventId, type LoopIngestRequest } from './types';
+import { MAX_INLINE_LOOP_OUTPUT_BYTES, prepareLoopOutput, redactLoopEnvelope, reserveLoopOwnership } from './prepare-output';
 import { isBoundedLoopJson, isLoopOutput, isWithinLoopMetadataBudget } from './output-validation';
 import { redactLoopText } from './output-redaction';
 import { canonicalize } from '@imajin/auth';
 import { projectSurfaceLease, loopObservationId, type SurfaceConflict } from './surface-lease';
 import { signSurfaceConflict } from './surface-conflict';
 import { isStepEventType, validateStepPayload } from './step-types';
+import { isFeeEventType, validateFeeReceipt } from '../pay/fee-receipt-payload';
 
 const log = createLogger('kernel:loops');
 
@@ -44,9 +45,6 @@ export async function ingestLoopEvent(request: LoopIngestRequest): Promise<Inges
     log.warn({ type, loopId: redactLoopText(payload.loopId), publisherDid: redactLoopText(publisherDid) }, 'loop event signature rejected');
     return { ok: false, error: verification.error, status: 400 };
   }
-  const validation = validateLoopFacts(request);
-  if (!validation.ok) return validation;
-  const sanitized = validation.payload;
 
   // #2358: a valid signature only proves publisherDid controls its own key —
   // it says nothing about whether publisherDid may write history for
@@ -62,6 +60,9 @@ export async function ingestLoopEvent(request: LoopIngestRequest): Promise<Inges
       code: 'loop_publisher_unauthorized',
     };
   }
+  const validation = validateLoopFacts(request);
+  if (!validation.ok) return validation;
+  const sanitized = validation.payload;
 
   try {
     if (isLoopLifecycleType(type) && !await reserveLoopOwnership(type, sanitized)) {
@@ -83,8 +84,10 @@ export async function ingestLoopEvent(request: LoopIngestRequest): Promise<Inges
     await bus.publish(type, {
       id: loopObservationId(request),
       issuer: publisherDid,
-      subject: sanitized.principal,
-      scope: 'loop',
+      ...receiptRouting(type, sanitized),
+      signature,
+      publisherDid,
+      causeEventId: payload.causeEventId ?? null,
       // Never reintroduce credentials or spilled output through lease evidence.
       payload: publishedPayload,
       correlationId: sanitized.loopId,
@@ -105,6 +108,11 @@ export async function ingestLoopEvent(request: LoopIngestRequest): Promise<Inges
   return { ok: true };
 }
 
+function receiptRouting(type: LoopIngestRequest['type'], payload: LoopIngestRequest['payload']) {
+  if (isFeeEventType(type)) return { subject: String(payload.recipientDid), scope: 'pay' };
+  return { subject: payload.principal, scope: 'loop' };
+}
+
 function warnUnauthorizedPublisher(publisherDid: string, principal: string): void {
   const warningKey = `loops:publisher-unauthorized:${JSON.stringify([publisherDid, principal])}`;
   if (!rateLimit(warningKey, 1, 60 * 60 * 1000).limited) {
@@ -115,13 +123,24 @@ function warnUnauthorizedPublisher(publisherDid: string, principal: string): voi
 function validateLoopFacts(request: LoopIngestRequest):
   { ok: true; payload: LoopIngestRequest['payload'] } | { ok: false; error: string; status: number } {
   const { type, payload, publisherDid } = request;
+  if (isFeeEventType(type) && !validateFeeReceipt(type, payload, publisherDid)) {
+    return { ok: false, error: 'Invalid platform fee receipt', status: 400 };
+  }
+  const cause = parseCauseEventId(payload.causeEventId);
+  if (!cause.ok) return { ok: false, error: cause.error, status: 400 };
   if (isStepEventType(type) && !validateStepPayload(type, payload, publisherDid)) {
     return { ok: false, error: 'Invalid step observation', status: 400 };
   }
   if (!isBoundedLoopJson(payload) || !isWithinLoopMetadataBudget(payload) || (payload.output !== undefined && !isLoopOutput(payload.output))) {
     return { ok: false, error: 'Invalid loop output', status: 400 };
   }
+  if (!canRecoverSignedOutput(request)) {
+    return { ok: false, error: 'Oversized signed output cannot include reserved receipt metadata', status: 400 };
+  }
   const sanitized = redactLoopEnvelope(payload);
+  if (canonicalize(payload) !== canonicalize(sanitized)) {
+    return { ok: false, error: 'Signed receipts must contain only credential-free kernel facts', status: 400 };
+  }
   if (!isWithinLoopMetadataBudget(sanitized)) {
     return { ok: false, error: 'Redacted loop metadata exceeds 16 KiB', status: 400 };
   }
@@ -129,6 +148,14 @@ function validateLoopFacts(request: LoopIngestRequest):
     return { ok: false, error: 'Loop identity fields must not contain credentials', status: 400 };
   }
   return { ok: true, payload: sanitized };
+}
+
+function canRecoverSignedOutput({ type, payload }: LoopIngestRequest): boolean {
+  if (!payload.output || Buffer.byteLength(canonicalize(payload.output), 'utf8') <= MAX_INLINE_LOOP_OUTPUT_BYTES) return true;
+  const reserved = isSurfaceEventType(type)
+    ? ['publisherProof', 'evidence', 'observedConflictingLoopId', 'observedConflictingHolderDid']
+    : ['publisherProof'];
+  return !reserved.some(field => Object.hasOwn(payload, field));
 }
 
 /** A collision is data, never a dispatch denial or harness call. */

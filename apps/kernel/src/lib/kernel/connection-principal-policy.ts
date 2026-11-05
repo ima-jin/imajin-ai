@@ -15,10 +15,12 @@ export function connectionCaller(actorDid: string, selectors: Pick<ConnectionCal
   };
 }
 export function sessionConnectionCaller(identity: Identity): { caller?: ConnectionCaller } {
-  if (!identity.actingAs && !identity.actingFor && identity.subtype !== 'agent') return {};
+  if (!identity.actingAs && !identity.actingFor && !isAgentCapableSubtype(identity.subtype)) return {};
   return { caller: connectionCaller(identity.id, identity) };
 }
 export const callerArguments = (caller?: ConnectionCaller): [ConnectionCaller] | [] => caller ? [caller] : [];
+/** Eligibility for assignment checks only; subtype never grants authority. */
+export const isAgentCapableSubtype = (subtype: string | null | undefined) => subtype === 'agent' || subtype === 'presence';
 export const missingConnection = (did: string) => new ExternalMcpError(
   403, `No active connection for ${did}. Configure that identity's connectors on /auth/connectors while acting as ${did}`,
   'connection_not_loaded',

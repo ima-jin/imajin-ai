@@ -16,4 +16,8 @@ export const { GET, POST, OPTIONS } = createConnectorTokenRoutes({
   name: 'Anthropic',
   sealApiKey,
   keySealed: anthropicKeySealed,
+  orgSealProvenance: async (request, ownerDid) => {
+    const { resolveOrgSealProvenance } = await import('@/src/lib/kernel/org-seal-provenance');
+    return resolveOrgSealProvenance(request, ownerDid);
+  },
 });

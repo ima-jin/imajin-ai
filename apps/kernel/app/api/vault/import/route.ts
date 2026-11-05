@@ -7,14 +7,28 @@ import { generateId } from '@/src/lib/kernel/id';
 import { computeApprovalContentHash } from '@/src/lib/notify/operator-approvals';
 import { recordApprovalRequested } from '@/src/lib/notify/operator-approvals-service';
 import { importProposer, listImportOwners, canExecuteImport } from '@/src/lib/vault/import-authority';
-import { listImportedKeyCards, requireImportRotationTarget, validateImportBody } from '@/src/lib/vault/import';
+import { listImportedKeyCards, requireImportRotationTarget, validateImportBody, type VaultImportBody } from '@/src/lib/vault/import';
 import { stageImport, importFingerprint, discardImportForProposal, type ImportDetail } from '@/src/lib/vault/import-staging';
 import { getNodeSigningIdentity, isVaultTier1 } from '@/src/lib/vault/sealing';
 import { cloudflarePurpose } from '@/src/lib/cloudflare/contract';
 import { requireCloudflareImportBinding } from '@/src/lib/vault/cloudflare-import';
 import { listDomains } from '@/src/lib/domains/service';
+import { normalizeDeploymentReadImport, requireDeploymentReadBinding } from '@/src/lib/vault/deployment-read-binding';
 
 export const dynamic = 'force-dynamic';
+
+function buildImportDetail(raw: VaultImportBody): ImportDetail {
+  return {
+    ownerDid: raw.ownerDid,
+    consumerDid: raw.cloudflare ? getNodeSigningIdentity().senderDid : raw.consumerDid,
+    purpose: raw.cloudflare ? cloudflarePurpose(raw.cloudflare.zoneId) : raw.purpose.trim(),
+    fingerprint: importFingerprint(raw.secret), label: raw.label ?? null,
+    expiresAt: raw.expiresAt ? new Date(raw.expiresAt).toISOString() : null,
+    replacesField: raw.replacesField ?? null,
+    ...(raw.cloudflare ? { cloudflare: raw.cloudflare } : {}),
+    ...(raw.deploymentRead ? { deploymentRead: raw.deploymentRead } : {}),
+  };
+}
 
 async function discardFailedImport(stagingRef: string | undefined, proposalId: string, approverDid: string, detail: ImportDetail) {
   if (!stagingRef) return;
@@ -68,22 +82,17 @@ export async function POST(request: NextRequest) {
   if (auth.response) return auth.response;
   let raw: unknown;
   try { raw = await request.json(); } catch { return auth.fail('Invalid JSON', 400); }
+  raw = normalizeDeploymentReadImport(raw);
   if (!validateImportBody(raw)) return auth.fail('Invalid vault import request', 400);
   if (!auth.owners.some(owner => owner.did === raw.ownerDid)) return auth.fail('Owner not authorized', 403);
   if (isVaultTier1()) return auth.fail('Vault import requires synchronous node custody', 409);
-  const proposalId = generateId(raw.cloudflare ? 'cfimport' : 'vimport');
-  const detail: ImportDetail = {
-    ownerDid: raw.ownerDid,
-    consumerDid: raw.cloudflare ? getNodeSigningIdentity().senderDid : raw.consumerDid,
-    purpose: raw.cloudflare ? cloudflarePurpose(raw.cloudflare.zoneId) : raw.purpose.trim(),
-    fingerprint: importFingerprint(raw.secret), label: raw.label ?? null,
-    expiresAt: raw.expiresAt ? new Date(raw.expiresAt).toISOString() : null,
-    replacesField: raw.replacesField ?? null,
-    ...(raw.cloudflare ? { cloudflare: raw.cloudflare } : {}),
-  };
+  const importPrefix = raw.deploymentRead ? 'deployimport' : 'vimport';
+  const proposalId = generateId(raw.cloudflare ? 'cfimport' : importPrefix);
+  const detail = buildImportDetail(raw);
   let stagingRef: string | undefined;
   try {
     if (!(await canExecuteImport(auth.approverDid, detail.ownerDid))) return auth.fail('Approver cannot authorize this owner', 403);
+    try { requireDeploymentReadBinding(detail); } catch { return auth.fail('Deployment binding unavailable', 403); }
     try { await requireCloudflareImportBinding(detail); } catch { return auth.fail('Verified zone binding unavailable', 403); }
     try { await requireImportRotationTarget(detail); } catch { return auth.fail('Import rotation target unavailable', 409); }
     stagingRef = await stageImport(proposalId, auth.approverDid, detail, raw.secret);

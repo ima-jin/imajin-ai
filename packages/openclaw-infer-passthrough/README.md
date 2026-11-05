@@ -4,7 +4,7 @@ the agent's own `app+jwt` and its configured `x-acting-as` selector. Missing,
 invalid or shared-marker credentials return 401; there is no gateway-principal
 mint, re-mint, catalog cache or direct-key fallback for agent calls.
 The kernel alone verifies authority and resolves connector policy.
-See the canonical [headers, JWT and error contract](../../deploy/infer-passthrough/README.md#calling-agent-contract-3224).
+See the canonical [headers, JWT and error contract](../../deploy/infer-passthrough/README.md#calling-agent-contract).
 ## Org bots: Artifact proof (#3184)
 
 An **org bot = agent assigned to the org DID using the org's keys**. Artifact-Jin
@@ -556,6 +556,8 @@ Either supervisor works; use whichever the gateway host already runs its
 other services under (see `docs/ENVIRONMENTS.md`'s pm2 convention) — this
 proxy does not need its own daemon-management approach.
 
+Use `node --import tsx`: the tsx CLI relays process-group signals twice under contention (#3270).
+
 **pm2** (matches the host's existing `dev-*`/bare-name convention):
 
 ```js
@@ -563,8 +565,9 @@ proxy does not need its own daemon-management approach.
 {
   name: 'infer-passthrough', // 'dev-infer-passthrough' in dev
   cwd: '/path/to/imajin-ai',
-  script: 'node_modules/.bin/tsx',
-  args: 'packages/openclaw-infer-passthrough/src/server.ts',
+  script: 'packages/openclaw-infer-passthrough/src/server.ts',
+  interpreter: 'node',
+  node_args: '--import tsx',
   env_file: '/etc/imajin/infer-passthrough.env', // secrets live here, not inline — see step 2
   env: {
     INFER_PROXY_HOST: '127.0.0.1',
@@ -591,7 +594,7 @@ After=network-online.target
 [Service]
 Type=simple
 WorkingDirectory=/path/to/imajin-ai
-ExecStart=/usr/bin/node node_modules/.bin/tsx packages/openclaw-infer-passthrough/src/server.ts
+ExecStart=/usr/bin/env node --import tsx packages/openclaw-infer-passthrough/src/server.ts
 # OPENCLAW_APP_PRIVATE_KEY and OPENAI_DIRECT_API_KEY live in this file,
 # root-only-readable — never inline in the unit file itself:
 EnvironmentFile=/etc/imajin/infer-passthrough.env

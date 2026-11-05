@@ -11,6 +11,7 @@ import { render, renderHook, act, screen, cleanup, waitFor, fireEvent, within } 
 import { crypto as authCrypto, canonicalize } from '@imajin/auth';
 import { installIntervalSpy } from './panel-test-support';
 import { requestApprovalsRefresh } from '../approval-anchor';
+import { loadOperatorSigner } from './operator-signing-test-support';
 
 // `useSearchParams` (#2291's proposalId deep link) needs a Next router
 // context that does not exist outside the app runtime — stub it per-test,
@@ -42,6 +43,18 @@ interface ApprovalFixture {
 }
 
 describe('vault import approval renderer (#2260)', () => {
+  it('shows renewal as an owner-countersigned action on the existing Inbox rail', async () => {
+    installFetch([{ isOperator: false, approvals: [vaultApproval({
+      kind: 'vault:renew-org-held-key', summary: 'Renew organization key',
+      detail: { orgDid: 'did:imajin:artifact', provider: 'anthropic',
+        previousExpiresAt: '2026-01-01T00:00:00Z', expiresAt: '2027-01-01T00:00:00Z' },
+    })] }]);
+    render(<OperatorApprovalsPanel />);
+    expect(await screen.findByText(/Irreversible custody action/)).toBeDefined();
+    expect(screen.getByText('did:imajin:artifact')).toBeDefined();
+    expect(screen.getByText('2027-01-01T00:00:00Z')).toBeDefined();
+    expect(screen.getByRole('button', { name: 'Sign' })).toBeDefined();
+  });
   it('shows owner and consuming agent on the existing signing rail for an addressed nonoperator', async () => {
     installFetch([{ isOperator: false, approvals: [vaultApproval({
       kind: 'vault:import', summary: 'Import credential for an organization',
@@ -363,11 +376,6 @@ function installFetch(
 
 let scrollIntoViewDescriptor: PropertyDescriptor | undefined;
 let clipboardDescriptor: PropertyDescriptor | undefined;
-async function loadOperatorSigner() {
-  // Keep cold module loading outside findBy's DOM-update timeout; the
-  // decisions still exercise real Ed25519 signing and signature verification.
-  await Promise.all([import('@noble/ed25519'), import('@noble/hashes/sha2.js')]);
-}
 
 beforeEach(() => {
   vi.useRealTimers();
