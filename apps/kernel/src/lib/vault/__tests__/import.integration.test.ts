@@ -256,6 +256,15 @@ describe('vault import acceptance — real SQL, signatures, encryption and grant
     expect(await executeImportApproval(card)).toMatchObject({ ok: false });
     expect(await db.select().from(vaultDelegationGrants)).toEqual([]);
   });
+
+  it('keeps immutable deployment imports off generic plaintext fetch even if the purpose label changes', async () => {
+    const { grant, recipientDid } = await gatewayImport(ORG);
+    await db.update(vaultDelegationGrants).set({ purpose: 'other-purpose' }).where(eq(vaultDelegationGrants.id, grant.grantId));
+    h.identity = { id: recipientDid, scope: 'actor', subtype: 'agent' };
+    expect(await fetchGrantSecret({ grantId: grant.grantId, granteeDid: recipientDid })).toEqual({ status: 'not_grantee' });
+    expect((await fetchRoute(request({}, `https://kernel.test/api/vault/delegation/grants/${grant.grantId}/fetch`),
+      { params: Promise.resolve({ grantId: grant.grantId }) })).status).toBe(403);
+  });
   it('Cloudflare import forces node custody and issues only zone-scoped revocable operations', async () => {
     const secret = randomBytes(32).toString('hex');
     const upstream = vi.fn().mockResolvedValue(Response.json({ success: true, result: { id: ZONE, name: 'example.com' } }));

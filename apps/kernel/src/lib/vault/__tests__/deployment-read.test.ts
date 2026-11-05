@@ -85,6 +85,7 @@ async function call(action: 'list' | 'fetch' | 'ack', options: {
   const request = new Request(`https://kernel.test${path}`, {
     method, headers: { [HEADER]: options.header ?? signed.header }, body: body || undefined,
   });
+
   const response = await deploymentReadRoute(request, action, action === 'list' ? undefined : grantId);
   const wire = await response.json();
   const opened = response.ok ? openDeliveryResponse(wire, signed, signingPublicKey(kernel)) : wire;
@@ -92,6 +93,11 @@ async function call(action: 'list' | 'fetch' | 'ack', options: {
 }
 
 describe('gateway deployment-read route authority', () => {
+  it('refuses an acknowledgment replayed from an earlier fetch', async () => {
+    const body = JSON.stringify({ outcome: 'used', fetchedAt: new Date(0).toISOString() });
+    expect((await call('ack', { body })).response.status).toBe(403);
+    expect(h.ack).not.toHaveBeenCalled();
+  });
   it('discovers and fetches only the bound import, returns encrypted signed provenance and acknowledges', async () => {
     expect((await call('list')).opened).toMatchObject({ grants: [{ grantId }] });
     const result = await call('fetch');

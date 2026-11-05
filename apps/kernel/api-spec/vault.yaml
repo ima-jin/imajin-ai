@@ -147,7 +147,7 @@ paths:
       responses:
         "200": { description: Existing ordinary value response or encrypted gateway envelope; no-store }
         "401": { description: Authentication required }
-        "403": { description: Wrong principal/repository/recipient/purpose, expired/revoked or unavailable authority }
+        "403": { description: "Wrong principal/repository/recipient/purpose, expired/revoked or unavailable authority" }
         "404": { description: Ordinary grant absent or not granted to caller }
         "410": { description: Ordinary one-time grant already consumed }
   /api/vault/delegation/grants/{grantId}/ack:
@@ -180,6 +180,10 @@ paths:
               required: [outcome]
               properties:
                 outcome: { type: string, enum: [used, failed, discarded] }
+                fetchedAt:
+                  type: string
+                  format: date-time
+                  description: Required only for deployment-read; exactly the corresponding fetch timestamp.
       responses:
         "200": { description: Existing acknowledgment or encrypted gateway acknowledgment; no-store }
         "401": { description: Authentication required }
@@ -229,7 +233,7 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/SshCa" }
-        "400": { description: Invalid JSON, purpose or unexpected property }
+        "400": { description: "Invalid JSON, purpose or unexpected property" }
         "401": { description: Authentication required }
         "403": { description: Not the vault node or its delegate }
         "409": { description: Active CA already exists or unsupported custody }
@@ -268,7 +272,7 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/SshCa" }
-        "400": { description: Invalid JSON, purpose or unexpected property }
+        "400": { description: "Invalid JSON, purpose or unexpected property" }
         "401": { description: Authentication required }
         "403": { description: Not the vault node or its delegate }
         "404": { description: No active signer for this purpose }
@@ -310,7 +314,7 @@ paths:
                 properties:
                   caId: { type: string }
                   alreadyRevoked: { type: boolean }
-        "400": { description: Invalid JSON, purpose, CA id or unexpected property }
+        "400": { description: "Invalid JSON, purpose, CA id or unexpected property" }
         "401": { description: Authentication required }
         "403": { description: Not the vault node or its delegate }
         "404": { description: No CA with this id and purpose }
@@ -448,7 +452,7 @@ paths:
                       environment: { type: string }
                       runId: { type: string }
                       runAttempt: { type: string }
-                      jtiHash: { type: string, description: Issuer-domain-separated SHA256 of jti, pattern: "^[a-f0-9]{64}$" }
+                      jtiHash: { type: string, description: "Issuer-domain-separated SHA256 of jti", pattern: "^[a-f0-9]{64}$" }
                       expiresAt: { type: integer, description: Verified OIDC expiry in Unix seconds }
                   grantee: { type: string }
                   principal: { type: string }
@@ -458,10 +462,10 @@ paths:
                   validAfter: { type: integer, description: Unix seconds inclusive }
                   validBefore: { type: integer, description: Unix seconds exclusive }
                   publicKeyFingerprint: { type: string, description: OpenSSH SHA256 fingerprint of the caller public wire key }
-        "400": { description: Invalid public key, principal, TTL, job or unexpected option }
+        "400": { description: "Invalid public key, principal, TTL, job or unexpected option" }
         "401": { description: Authentication required }
         "403": { description: No matching live grant or active signer }
-        "429": { description: Grant has already issued 10 certificates in the last 60 seconds; signed authenticated refusal, no certificate }
+        "429": { description: "Grant has already issued 10 certificates in the last 60 seconds; signed authenticated refusal, no certificate" }
         "503": { description: Signing or signed audit unavailable; no certificate }
   /api/vault/ssh-ca/grants:
     post:
@@ -507,7 +511,7 @@ paths:
               properties:
                 purpose: { $ref: "#/components/schemas/SshCaPurpose" }
                 caId: { type: string }
-                grantee: { type: string, description: Credential DID, not the node custody identity }
+                grantee: { type: string, description: "Credential DID, not the node custody identity" }
                 repository: { type: string, description: Exact case-sensitive owner/repository for GitHub OIDC }
                 repositoryId: { type: string, pattern: "^[1-9][0-9]{0,19}$", description: Immutable GitHub repository_id }
                 repositoryOwnerId: { type: string, pattern: "^[1-9][0-9]{0,19}$", description: Immutable GitHub repository_owner_id }

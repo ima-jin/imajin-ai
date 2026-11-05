@@ -174,6 +174,7 @@ describe('root gateway deployment-read consumer', () => {
   it.each([
     { repository: 'ima-jin/other' }, { purpose: 'wrong' }, { recipientDid: 'did:imajin:wrong' },
     { expiresAt: new Date(0).toISOString() }, { expiresAt: 'invalid' }, { value: '' },
+    { fetchedAt: 'invalid' }, { value: 123 },
     { value: 'not\nallowed' }, { grantId: 'vdg_other' },
   ])('rejects invalid delivery receipt %j before replacing the file', async extra => {
     h.files.set(target, file(previous));

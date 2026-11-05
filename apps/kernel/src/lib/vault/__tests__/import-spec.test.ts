@@ -2,11 +2,15 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { parse } from 'yaml';
 import { describe, expect, it } from 'vitest';
+import SwaggerParser from '@apidevtools/swagger-parser';
 
 const spec = parse(readFileSync(resolve('apps/kernel/api-spec/vault.yaml'), 'utf8'));
 const path = spec.paths['/api/vault/import'];
 
 describe('vault import API contract (#2260)', () => {
+  it('validates the complete discoverable OpenAPI contract, including existing shared routes', async () => {
+    await expect(SwaggerParser.validate(resolve('apps/kernel/api-spec/vault.yaml'))).resolves.toMatchObject({ openapi: '3.1.0' });
+  });
   it('documents explicit owning identity, consumer, purpose and write-only input', () => {
     const body = path.post.requestBody.content['application/json'].schema;
     expect(body.required).toEqual(['ownerDid', 'secret']);
