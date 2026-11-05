@@ -284,6 +284,6 @@ describe('Webhook checkout.session.completed with .fair taxes[] (#2435)', () => 
 
     expect(inserts('feeLedger').find((c) => c.values.role === 'node')!.values.amountCents).toBe(300);
     expect(inserts('feeLedger').some((c) => c.values.role === 'tax')).toBe(false);
-    expect(inserts('transactions')).toHaveLength(0);
+    expect(inserts('transactions')).toHaveLength(1); // node wallet-effect claim, no tax row
   });
 });

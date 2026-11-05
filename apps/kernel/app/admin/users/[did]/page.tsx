@@ -121,7 +121,8 @@ export default async function AdminUserDetailPage({
   const transactions = await sql`
     SELECT id, type, service, amount, currency, from_did, to_did, status, created_at
     FROM pay.transactions
-    WHERE to_did = ${decodedDid} OR from_did = ${decodedDid}
+    WHERE (to_did = ${decodedDid} OR from_did = ${decodedDid})
+      AND source_kind <> 'fee'
     ORDER BY created_at DESC
     LIMIT 10
   `;
