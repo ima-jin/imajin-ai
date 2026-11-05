@@ -1,4 +1,5 @@
 import { db } from '@/src/db';
+import { forEachSequential } from '@/src/lib/async/sequential';
 import { CONNECTOR_REGISTRY, type ConnectorEntry } from '@/src/lib/kernel/connector-registry';
 import { listConnectorRegistrations } from '@/src/lib/kernel/connector-registry-store';
 import { ExternalMcpError } from '@/src/lib/kernel/external-mcp-policy';
@@ -89,9 +90,8 @@ export async function discoveryExternalConnection(
     const principal = caller.caller
       ? await resolveConnectionPrincipal(caller.caller, target.service ?? 'connections') : undefined;
     const orgContext = principal?.orgContext;
-    const authority: ConnectorAuthority = orgContext
-      ? orgContext.assignedAgentDid ? 'org-held' : 'member-grant'
-      : access.row.ownerDid === actorDid ? 'own-key' : 'delegated';
+    let authority: ConnectorAuthority = access.row.ownerDid === actorDid ? 'own-key' : 'delegated';
+    if (orgContext) authority = orgContext.assignedAgentDid ? 'org-held' : 'member-grant';
     const authorized = {
       ...row, ownerDid: access.row.ownerDid, configured: true, configurationStatus: 'configured' as const,
       authority,
@@ -154,9 +154,9 @@ async function httpRow(context: InferenceAuthContext, entry: ConnectorEntry, con
 }
 async function authorizedScopes(scopes: ConnectorEntry['scopes'], grant: (scope: string) => Promise<boolean>) {
   const allowed: string[] = [];
-  for (const scope of scopes) {
+  await forEachSequential(scopes, async scope => {
     if (await grant(scope.name)) allowed.push(scope.name);
-  }
+  });
   return allowed;
 }
 
@@ -176,13 +176,13 @@ async function upstreamRow(context: InferenceAuthContext & { appDid: string }, u
   const scopes = new Set(upstream.paths.flatMap(path => path.methods.map(method =>
     ['GET', 'HEAD'].includes(method) ? UPSTREAM_READ_SCOPE : UPSTREAM_WRITE_SCOPE)));
   const results: ConnectorDiagnostic[] = [];
-  for (const scope of scopes) {
-    if (!tokenAllows(context, scope)) continue;
+  await forEachSequential(scopes, async scope => {
+    if (!tokenAllows(context, scope)) return;
     results.push(await discoveryExternalConnection(context, {
       provider: upstreamProvider(context.appDid, upstream.id),
       binding: upstreamBinding(context.appDid, upstream), scope,
     }, 'http'));
-  }
+  });
   const usable = results.filter(row => row.usable);
   const selected = usable.at(0) ?? results.at(0);
   if (!selected) return deny(diagnostic(upstreamProvider(context.appDid, upstream.id), 'http', actor(context), false), 'tool_scope_required');
@@ -193,14 +193,15 @@ async function upstreamRows(context: InferenceAuthContext) {
   if (!context.appDid || !context.toolAuth?.serviceToken) return [];
   // appUpstreamRoute requires read scope before invokeAppUpstream checks read/write.
   if (!tokenAllows(context, UPSTREAM_READ_SCOPE)) return [];
+  const appDid = context.appDid;
   // Only the authenticated app's declared catalogue, never a principal's private upstream enumeration.
   try {
-    const app = await requireConnectionApp(db, context.appDid, UPSTREAM_READ_SCOPE, true);
+    const app = await requireConnectionApp(db, appDid, UPSTREAM_READ_SCOPE, true);
     const { upstreams } = parseUpstream(upstreamDeclarations, { upstreams: app.upstreams });
     const rows: ConnectorDiagnostic[] = [];
-    for (const upstream of upstreams) {
-      rows.push(await upstreamRow({ ...context, appDid: context.appDid }, upstream));
-    }
+    await forEachSequential(upstreams, async upstream => {
+      rows.push(await upstreamRow({ ...context, appDid }, upstream));
+    });
     return rows;
   } catch (error) {
     if (!(error instanceof ExternalMcpError) || error.status !== 403) throw error;
@@ -214,13 +215,15 @@ export async function listDiscoveryConnectorMetadata(context: InferenceAuthConte
   const registrations = await listConnectorRegistrations(actorDid);
   const brains = new Set<string>(listBrainConnectors());
   const rows: ConnectorDiagnostic[] = [];
-  for (const entry of CONNECTOR_REGISTRY) {
-    if (brains.has(entry.id)) continue;
+  await forEachSequential(CONNECTOR_REGISTRY, async entry => {
+    if (brains.has(entry.id)) return;
     const configured = registrations.some(row => row.provider === entry.id && row.status === 'active' && !row.revokedAt);
     rows.push(await safeHttpRow(context, entry, configured));
-  }
-  rows.push(await discoveryExternalConnection(context, POSTMAN_CONNECTION, 'mcp'));
-  rows.push(...await upstreamRows(context));
+  });
+  rows.push(
+    await discoveryExternalConnection(context, POSTMAN_CONNECTION, 'mcp'),
+    ...await upstreamRows(context),
+  );
   const known = new Set([...brains, ...rows.map(row => row.provider)]);
   for (const registration of registrations) {
     if (known.has(registration.provider) || registration.provider.startsWith('org-held-')

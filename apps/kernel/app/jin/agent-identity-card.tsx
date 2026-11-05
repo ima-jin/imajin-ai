@@ -24,6 +24,7 @@ function ConnectorRow({ connector, agentDid }: Readonly<{ connector: SelfDiscove
   const unavailable = connector.usable === false || !connector.configured;
   const grade = connector.configured ? 'From config' : 'Unverified';
   const configurationHidden = 'configurationStatus' in connector && connector.configurationStatus === 'not-disclosed';
+  const configuredLabel = connector.configured ? 'Yes' : 'No';
   const toolAuthorization = 'credentialStatus' in connector;
   const fix = connector.fix;
   return <li className={`space-y-2 rounded border p-3 ${unavailable ? 'border-red-800' : 'border-gray-800'}`}>
@@ -31,7 +32,7 @@ function ConnectorRow({ connector, agentDid }: Readonly<{ connector: SelfDiscove
     <dl className="space-y-1">
       <Detail label="Authority / scope" value={connector.authority ?? 'Unknown'} />
       <Detail label="Config owner / billed DID" value={ownerDid} />
-      <Detail label="Configured" value={configurationHidden ? 'Not disclosed' : connector.configured ? 'Yes' : 'No'} />
+      <Detail label="Configured" value={configurationHidden ? 'Not disclosed' : configuredLabel} />
       <Detail label="Grant state" value={connector.grantStatus} />
       <Detail label={toolAuthorization ? 'Tool authorization' : 'Live check'} value={usabilityLabel(connector.usable)} />
       {toolAuthorization && <Detail label="Credential / provider check" value="Not probed — authorization metadata only" />}
