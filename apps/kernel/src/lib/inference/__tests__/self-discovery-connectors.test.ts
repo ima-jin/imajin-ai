@@ -204,9 +204,9 @@ describe('read-only connector authority projection', () => {
         id: 'catalog', origin: 'https://api.example.test', credentialHeader: 'Authorization' as const,
         credentialPrefix: 'Bearer ' as const, paths: [{ path: '/items', methods: ['GET', 'POST'] as ('GET' | 'POST')[] }],
       };
-      if (mode === 'no-declared-method') upstream.paths[0].methods = ['POST'];
-      const scopes = mode === 'write' ? [UPSTREAM_WRITE_SCOPE]
-        : mode === 'both' ? [UPSTREAM_READ_SCOPE, UPSTREAM_WRITE_SCOPE] : [UPSTREAM_READ_SCOPE];
+      if (['write', 'no-declared-method'].includes(mode)) upstream.paths[0].methods = ['POST'];
+      const scopes = ['write', 'both'].includes(mode)
+        ? [UPSTREAM_READ_SCOPE, UPSTREAM_WRITE_SCOPE] : [UPSTREAM_READ_SCOPE];
       h.app.mockResolvedValue({ upstreams: [upstream] });
       const binding = upstreamBinding(appDid, upstream);
       h.access.mockImplementation(async (_db, _caller, target) => {
@@ -220,12 +220,34 @@ describe('read-only connector authority projection', () => {
       });
       const upstreamRow = rows.find(row => row.provider === upstreamProvider(appDid, upstream.id));
       expect(upstreamRow?.usable).toBe(!['revoked', 'changed-binding', 'no-declared-method'].includes(mode));
-      expect(upstreamRow?.authorizedScopes).toEqual(upstreamRow?.usable ? scopes : []);
+      const expectedScopes = mode === 'write' ? [UPSTREAM_WRITE_SCOPE] : scopes;
+      expect(upstreamRow?.authorizedScopes).toEqual(upstreamRow?.usable ? expectedScopes : []);
       expect(h.app).toHaveBeenCalledWith(expect.anything(), appDid, UPSTREAM_READ_SCOPE, true);
       expect(JSON.stringify(rows)).not.toContain(binding);
       expect(JSON.stringify(rows)).not.toContain(upstream.origin);
     },
   );
+
+  it('does not let write scope alone bypass the HTTP upstream route read-scope gate', async () => {
+    const rows = await listDiscoveryConnectorMetadata({
+      ...context, appDid: 'did:imajin:app', toolAuth: { scopes: [UPSTREAM_WRITE_SCOPE], serviceToken: true },
+    });
+    expect(h.app).not.toHaveBeenCalled();
+    expect(rows.some(row => row.provider.startsWith('app-upstream'))).toBe(false);
+  });
+
+  it('does not apply inferred acting selectors to an external service-token member connection', async () => {
+    h.access.mockResolvedValue({ row: { ownerDid: actor }, custodyId: randomUUID() });
+    const row = await discoveryExternalConnection({
+      ownerDid: org, caller: { actorDid: actor, actingAs: org }, appDid: 'did:imajin:app',
+      toolAuth: { scopes: [target.scope], serviceToken: true },
+    }, target, 'mcp');
+    expect(h.access.mock.calls[0][1]).toEqual({
+      memberDid: actor, appDid: 'did:imajin:app', serviceToken: true,
+    });
+    expect(h.principal).not.toHaveBeenCalled();
+    expect(row).toMatchObject({ ownerDid: actor, authority: 'own-key', usable: true });
+  });
 
   it('does not expose an unapproved app catalogue or turn a live denial into endpoint failure', async () => {
     h.app.mockRejectedValue(new ExternalMcpError(403, randomUUID()));

@@ -6,6 +6,7 @@ import { authorizeExternalMcpAccess } from '@/src/lib/kernel/external-mcp-author
 import { resolveConnectionPrincipal } from '@/src/lib/kernel/connection-principal';
 import {
   POSTMAN_CONNECTION, requireConnectionApp, type MemberConnectionTarget,
+  type ExternalMcpCaller,
 } from '@/src/lib/kernel/member-connection-gate';
 import {
   parseUpstream, upstreamDeclarations, upstreamBinding, upstreamProvider, UPSTREAM_READ_SCOPE, UPSTREAM_WRITE_SCOPE,
@@ -78,21 +79,15 @@ export async function discoveryExternalConnection(
   context: InferenceAuthContext, target: MemberConnectionTarget, family: ConnectorFamily,
 ) {
   const actorDid = actor(context);
-  const ownerDid = context.caller?.actingAs ?? context.caller?.actingFor ?? actorDid;
+  const caller = externalConnectionCaller(context, target);
+  const ownerDid = caller.caller?.actingAs ?? caller.caller?.actingFor ?? actorDid;
   const row = diagnostic(target.provider, family, ownerDid, false);
   row.configurationStatus = 'not-disclosed';
   if (!tokenAllows(context, target.scope)) return deny(row, 'tool_scope_required');
   try {
-    // requireAgentKey passes a verified ConnectionCaller, not an external-app consent envelope.
-    const caller = {
-      memberDid: actorDid, caller: context.caller,
-      ...(target.service === 'warp' ? {} : {
-        appDid: context.appDid, serviceToken: context.toolAuth?.serviceToken,
-      }),
-    };
     const access = await authorizeExternalMcpAccess(db, caller, target);
-    const principal = context.caller
-      ? await resolveConnectionPrincipal(context.caller, target.service ?? 'connections') : undefined;
+    const principal = caller.caller
+      ? await resolveConnectionPrincipal(caller.caller, target.service ?? 'connections') : undefined;
     const orgContext = principal?.orgContext;
     const authority: ConnectorAuthority = orgContext
       ? orgContext.assignedAgentDid ? 'org-held' : 'member-grant'
@@ -107,6 +102,15 @@ export async function discoveryExternalConnection(
     if (!(error instanceof ExternalMcpError) || error.status !== 403) throw error;
     return deny(row, error.code ?? 'tool_scope_required');
   }
+}
+function externalConnectionCaller(context: InferenceAuthContext, target: MemberConnectionTarget): ExternalMcpCaller {
+  const memberDid = actor(context);
+  // Exactly the envelope used by requireAgentKey, invocationCaller and appUpstreamRoute.
+  if (target.service === 'warp') return { memberDid, caller: context.caller };
+  return {
+    memberDid, appDid: context.appDid, serviceToken: context.toolAuth?.serviceToken,
+    ...(context.toolAuth?.serviceToken ? {} : { caller: context.caller }),
+  };
 }
 
 function connectionAuthority(context: InferenceAuthContext, ownerDid: string): ConnectorAuthority {
@@ -183,7 +187,8 @@ async function upstreamRow(context: InferenceAuthContext & { appDid: string }, u
 
 async function upstreamRows(context: InferenceAuthContext) {
   if (!context.appDid || !context.toolAuth?.serviceToken) return [];
-  if (![UPSTREAM_READ_SCOPE, UPSTREAM_WRITE_SCOPE].some(scope => tokenAllows(context, scope))) return [];
+  // appUpstreamRoute requires read scope before invokeAppUpstream checks read/write.
+  if (!tokenAllows(context, UPSTREAM_READ_SCOPE)) return [];
   // Only the authenticated app's declared catalogue, never a principal's private upstream enumeration.
   try {
     const app = await requireConnectionApp(db, context.appDid, UPSTREAM_READ_SCOPE, true);
