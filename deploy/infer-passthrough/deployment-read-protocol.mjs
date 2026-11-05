@@ -53,7 +53,7 @@ export function createDeliveryRequest(method, path, body, binding, key, now = Da
 export function verifyDeliveryRequest(header, method, path, body, binding, recipientPublicKey, now = Date.now()) {
   if (typeof header !== 'string' || header.length > 4096) throw new Error('Invalid delivery request');
   const claim = JSON.parse(Buffer.from(header, 'base64url').toString('utf8'));
-  if (!claim || claim.repository !== REPOSITORY || claim.repository !== binding.repository
+  if (claim?.repository !== REPOSITORY || claim.repository !== binding.repository
     || claim.ownerDid !== binding.ownerDid || claim.recipientDid !== binding.recipientDid
     || claim.purpose !== PURPOSE || !HEX.test(claim.nonce) || !HEX.test(claim.ephemeralKey)
     || !Number.isSafeInteger(claim.timestamp) || Math.abs(now - claim.timestamp) > MAX_AGE

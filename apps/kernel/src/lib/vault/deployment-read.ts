@@ -3,6 +3,7 @@ import { and, eq } from 'drizzle-orm';
 import { emitAttestation } from '@imajin/auth';
 import { db, operatorApprovals, type VaultDelegationGrant } from '@/src/db';
 import { computeApprovalContentHash } from '@/src/lib/notify/operator-approvals';
+import { forEachSequential } from '@/src/lib/async/sequential';
 import { ackGrant, fetchGrantSecret, getGrantById, listGrantsForGrantee } from './index';
 import { isDeploymentReadImportedKeyField, parseVaultFieldName } from './field-grammar';
 import { deploymentReadBinding, DEPLOYMENT_READ_PURPOSE, requireDeploymentReadBinding } from './deployment-read-binding';
@@ -70,13 +71,13 @@ function encrypted(value: unknown, claim: DeliveryClaim, expiresAt?: Date | null
 
 async function listDeliveryGrants(claim: DeliveryClaim) {
   const candidates = await listGrantsForGrantee({ granteeDid: claim.recipientDid, purpose: DEPLOYMENT_READ_PURPOSE });
-  const grants = [];
-  for (const candidate of candidates) {
+  const grants: Array<{ grantId: string; expiresAt: string; createdAt: string }> = [];
+  await forEachSequential(candidates, async candidate => {
     const grant = await getGrantById(candidate.grantId);
-    if (!grant || grant.status !== 'active' || !grant.expiresAt || grant.expiresAt.getTime() <= Date.now()) continue;
+    if (grant?.status !== 'active' || !grant.expiresAt || grant.expiresAt.getTime() <= Date.now()) return;
     await approvedBinding(grant);
     grants.push({ grantId: grant.id, expiresAt: grant.expiresAt.toISOString(), createdAt: grant.createdAt.toISOString() });
-  }
+  });
   return encrypted({ grants }, claim);
 }
 
