@@ -8,6 +8,12 @@ export function isFeeEventType(type: unknown): type is FeeEventType {
   return typeof type === 'string' && (FEE_EVENT_TYPES as readonly string[]).includes(type);
 }
 
+function feeStatus(role: unknown): FeeReceiptPayload['status'] {
+  if (role === 'tax') return 'held_in_trust';
+  if (role === 'seller' || role === 'processor') return 'paid_out';
+  return 'accrued';
+}
+
 const nonempty = (value: unknown): value is string => typeof value === 'string' && value.trim().length > 0;
 
 /** Fee receipts are platform facts, not self-asserted money from arbitrary loop publishers. */
@@ -22,9 +28,7 @@ export function validateFeeReceipt(type: FeeEventType, payload: Record<string, u
   if (payload.loopId !== feeCreditKey(identity) || payload.kind !== 'pay.fee' || payload.state !== 'recorded') return false;
   const adjustment = type === 'fee.rebate' ? 'processor_rebate' : 'processor_surcharge';
   if (type !== 'fee.record' && (payload.role !== adjustment || payload.sellerDid !== payload.recipientDid)) return false;
-  const status = payload.role === 'tax' ? 'held_in_trust'
-    : payload.role === 'seller' || payload.role === 'processor' ? 'paid_out' : 'accrued';
-  if (payload.status !== status) return false;
+  if (payload.status !== feeStatus(payload.role)) return false;
   if (payload.role !== 'tax') return payload.tax === undefined;
   return validTax(payload.tax);
 }

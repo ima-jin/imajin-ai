@@ -84,8 +84,7 @@ export async function ingestLoopEvent(request: LoopIngestRequest): Promise<Inges
     await bus.publish(type, {
       id: loopObservationId(request),
       issuer: publisherDid,
-      subject: isFeeEventType(type) ? String(sanitized.recipientDid) : sanitized.principal,
-      scope: isFeeEventType(type) ? 'pay' : 'loop',
+      ...receiptRouting(type, sanitized),
       signature,
       publisherDid,
       causeEventId: payload.causeEventId ?? null,
@@ -107,6 +106,11 @@ export async function ingestLoopEvent(request: LoopIngestRequest): Promise<Inges
 
   log.info({ type, loopId: sanitized.loopId, kind: sanitized.kind, principal: sanitized.principal }, 'loop event ingested');
   return { ok: true };
+}
+
+function receiptRouting(type: LoopIngestRequest['type'], payload: LoopIngestRequest['payload']) {
+  if (isFeeEventType(type)) return { subject: String(payload.recipientDid), scope: 'pay' };
+  return { subject: payload.principal, scope: 'loop' };
 }
 
 function warnUnauthorizedPublisher(publisherDid: string, principal: string): void {

@@ -21,6 +21,10 @@ export const SURFACE_EVENT_TYPES = ['surface.acquired', 'surface.released', 'sur
 export type SurfaceEventType = (typeof SURFACE_EVENT_TYPES)[number];
 export type LoopRailType = LoopLifecycleType | SurfaceEventType | StepEventType | FeeEventType;
 
+function isLoopRailType(value: unknown): value is LoopRailType {
+  return isLoopLifecycleType(value) || isSurfaceEventType(value) || isStepEventType(value) || isFeeEventType(value);
+}
+
 export function isSurfaceEventType(value: unknown): value is SurfaceEventType {
   return typeof value === 'string' && (SURFACE_EVENT_TYPES as readonly string[]).includes(value);
 }
@@ -212,7 +216,7 @@ export function parseLoopIngestRequest(raw: unknown): ParseResult<LoopIngestRequ
   }
   const { type, payload, publisherDid, signature } = raw as Record<string, unknown>;
 
-  if (!isLoopLifecycleType(type) && !isSurfaceEventType(type) && !isStepEventType(type) && !isFeeEventType(type)) {
+  if (!isLoopRailType(type)) {
     return { ok: false, error: `type must be one of ${[...LOOP_LIFECYCLE_TYPES, ...SURFACE_EVENT_TYPES, ...STEP_EVENT_TYPES, ...FEE_EVENT_TYPES].join(', ')}` };
   }
   if (!isDid(publisherDid)) {
