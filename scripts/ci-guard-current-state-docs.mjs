@@ -47,12 +47,14 @@ export const HISTORY_RECORDS = new Set([
 const DOC_EXTENSIONS = new Set(['.md', '.txt']);
 const HISTORY_HEADING = /\bv\d+\.\d+\.\d+\b|\b(?:addendum|delta)\b/i;
 const METHODS = new Set(['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS']);
+const POLICY_CLASSES = ['**irreversible**', '**value-moving**', '**reversible**'];
 const PATH_ROUTE = /^\/\S+(?:\s+[—–-]|\s*\||\s*$)/;
 
 function routeLine(line) {
-  // Rich policy matrices classify routes rather than generating a catalogue.
-  // Route catalogues with method/path/description columns remain checked.
-  if (line.trim().startsWith('|') && line.split('|').filter(cell => cell.trim()).length > 3) return false;
+  // Delegation policy matrices classify mutations, not generated catalogues.
+  // A wide table alone is not an exemption: require an explicit policy class.
+  if (line.trim().startsWith('|') && line.split('|').filter(cell => cell.trim()).length > 3
+    && POLICY_CLASSES.some(kind => line.includes(kind))) return false;
   const text = line.trim().replaceAll('`', '')
     .replaceAll(/^(?:[-*+]|\d+\.)\s+|\|\s*/g, '');
   const tokens = text.replaceAll(/[,|]/g, ' ').split(/\s+/);

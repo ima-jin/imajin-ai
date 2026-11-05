@@ -55,6 +55,7 @@ describe('current-state consumer documentation guard', () => {
     n => `- GET, OPTIONS /auth/api/${n} — source`,
     n => `GET /auth/api/${n}`,
     n => `| POST | /media/api/${n} | Description |`,
+    n => `| GET | /auth/api/${n} | route.ts | Generated description |`,
     n => `- \`GET\` \`/auth/api/${n}\``,
     n => `- /auth/api/${n} — source`,
     n => `1. DELETE https://node.example/auth/api/${n}`,
@@ -70,7 +71,7 @@ describe('current-state consumer documentation guard', () => {
     expect(scanDocument(`${routes(5)}\n\n${routes(5)}`)).toEqual([]);
     expect(scanDocument(`${routes(5)}\nIntegration explanation.\n${routes(5)}`)).toEqual([]);
     expect(scanDocument(`# Guide\r\n${routes(6).replaceAll('\n', '\r\n')}`)[0].line).toBe(2);
-    expect(scanDocument(routes(6, n => `| GET /api/${n} | owner | irreversible | reason |`))).toEqual([]);
+    expect(scanDocument(routes(6, n => `| GET /api/${n} | owner | **irreversible** | reason |`))).toEqual([]);
   });
 
   it.each(CONSUMER_FILES)('covers the explicit consumer path %s', file => {
