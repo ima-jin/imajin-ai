@@ -15,7 +15,7 @@ vi.mock('@metalabel/dfos-protocol/chain', () => ({
   decodeMultikey: mockDecodeMultikey,
 }));
 
-vi.mock('@metalabel/dfos-protocol/credentials', () => ({
+vi.mock('../legacy-auth-token', () => ({
   verifyAuthToken: mockVerifyAuthToken,
 }));
 

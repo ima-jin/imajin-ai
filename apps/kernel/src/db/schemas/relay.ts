@@ -77,6 +77,7 @@ export const relayPendingOperations = relaySchema.table('relay_pending_operation
   attempts: integer('attempts').default(0).notNull(),
   lastError: text('last_error'),
   status: text('status').default('pending').notNull(),
+  origin: text('origin').default('direct').notNull(),
 });
 
 export const relayPeers = relaySchema.table('relay_peers', {
@@ -112,6 +113,7 @@ export const relayOperationLog = relaySchema.table('relay_operation_log', {
   jwsToken: text('jws_token').notNull(),
   kind: text('kind').notNull(),
   chainId: text('chain_id').notNull(),
+  ingestedAt: text('ingested_at').default('').notNull(),
 }, (table) => ({
   cidIdx: uniqueIndex('uq_relay_operation_log_cid').on(table.cid),
 }));
@@ -121,6 +123,7 @@ export const relayRevocations = relaySchema.table('relay_revocations', {
   issuerDid: text('issuer_did').notNull(),
   credentialCid: text('credential_cid').notNull(),
   jwsToken: text('jws_token').notNull(),
+  signedCreatedAt: text('signed_created_at'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 }, (table) => ({
   pk: primaryKey({ columns: [table.issuerDid, table.credentialCid] }),
@@ -133,6 +136,9 @@ export const relayPublicCredentials = relaySchema.table('relay_public_credential
   att: jsonb('att').default([]),
   exp: bigint('exp', { mode: 'number' }),
   jwsToken: text('jws_token'),
+  signedCreatedAt: text('signed_created_at').default('').notNull(),
+  ingestedAt: text('ingested_at').default('').notNull(),
+  revokedBy: text('revoked_by'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 }, (table) => ({
   issuerDidIdx: index('idx_relay_public_credentials_issuer_did').on(table.issuerDid),

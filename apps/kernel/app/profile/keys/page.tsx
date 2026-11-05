@@ -191,12 +191,13 @@ export default function KeysPage() {
 
       const replaceCurrent = (keys: MultikeyEntry[]): MultikeyEntry[] =>
         keys.map((k) => ({
-          id: k.id,
+          id: k.publicKeyMultibase === localMultibase ? newKeypair.keyId : k.id,
           publicKeyMultibase: k.publicKeyMultibase === localMultibase ? newMultibase : k.publicKeyMultibase,
         }));
 
       const { log: newLog, operationCID } = await buildSignedUpdate({
         controllerPrivateKeyHex: kp.privateKey,
+        newKeyPrivateKeyHex: newKeypair.privateKeyHex,
         dfosDid: info.dfosDid,
         signingKeyId: controllerEntry.id,
         existingLog: info.log,

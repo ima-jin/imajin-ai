@@ -25,6 +25,32 @@ export function hexToBytes(hex: string): Uint8Array {
   return bytes;
 }
 
+async function rotationKeyProof(input: {
+  newKeyPrivateKeyHex: string;
+  dfosDid: string;
+  headCid: string;
+  newKeys: { authKeys: MultikeyEntry[]; assertKeys: MultikeyEntry[]; controllerKeys: MultikeyEntry[] };
+}): Promise<string> {
+  const { importEd25519Keypair, encodeEd25519Multikey } = await import('@metalabel/dfos-protocol');
+  const { signKeyProof, KEY_ADD_JWS_TYP } = await import('@metalabel/dfos-protocol/key-proof');
+  const privateKey = hexToBytes(input.newKeyPrivateKeyHex);
+  const { publicKey } = importEd25519Keypair(privateKey);
+  const publicKeyMultibase = encodeEd25519Multikey(publicKey);
+  const roles = [
+    ['auth', input.newKeys.authKeys],
+    ['assert', input.newKeys.assertKeys],
+    ['controller', input.newKeys.controllerKeys],
+  ] as const;
+  const roleSet = roles.filter(([, keys]) => keys.some((key) => key.publicKeyMultibase === publicKeyMultibase))
+    .map(([role]) => role).join(',');
+  if (!roleSet) throw new Error('Replacement key is not declared in any role');
+  const { proof } = await signKeyProof({
+    typ: KEY_ADD_JWS_TYP, nonce: crypto.randomUUID(), audience: input.dfosDid,
+    did: input.dfosDid, prevCID: input.headCid, roleSet, privateKey,
+  });
+  return proof;
+}
+
 export function bytesToHex(bytes: Uint8Array): string {
   return Array.from(bytes).map((b) => b.toString(16).padStart(2, '0')).join('');
 }
@@ -56,10 +82,10 @@ export async function verifyChainClient(log: string[]): Promise<VerifiedChainSta
 }
 
 /** Generate a brand-new Ed25519 keypair (hex-encoded) for a rotated/new device key. */
-export async function generateKeypair(): Promise<{ privateKeyHex: string; publicKeyHex: string }> {
-  const { createNewEd25519Keypair } = await import('@metalabel/dfos-protocol');
+export async function generateKeypair(): Promise<{ privateKeyHex: string; publicKeyHex: string; keyId: string }> {
+  const { createNewEd25519Keypair, generateId } = await import('@metalabel/dfos-protocol');
   const { privateKey, publicKey } = createNewEd25519Keypair();
-  return { privateKeyHex: bytesToHex(privateKey), publicKeyHex: bytesToHex(publicKey) };
+  return { privateKeyHex: bytesToHex(privateKey), publicKeyHex: bytesToHex(publicKey), keyId: generateId('key') };
 }
 
 /**
@@ -76,6 +102,8 @@ export async function buildSignedUpdate(input: {
   signingKeyId: string;
   existingLog: string[];
   headCid: string;
+  /** Locally generated replacement key; never sent to the server. */
+  newKeyPrivateKeyHex?: string;
   newKeys: {
     authKeys: MultikeyEntry[];
     assertKeys: MultikeyEntry[];
@@ -88,6 +116,9 @@ export async function buildSignedUpdate(input: {
   const toOperationKeys = (keys: MultikeyEntry[]) =>
     keys.map((k) => ({ id: k.id, type: 'Multikey' as const, publicKeyMultibase: k.publicKeyMultibase }));
 
+  const keyProofs = input.newKeyPrivateKeyHex
+    ? [await rotationKeyProof({ ...input, newKeyPrivateKeyHex: input.newKeyPrivateKeyHex })]
+    : undefined;
   const operation = {
     version: 1 as const,
     type: 'update' as const,
@@ -95,6 +126,7 @@ export async function buildSignedUpdate(input: {
     authKeys: toOperationKeys(input.newKeys.authKeys),
     assertKeys: toOperationKeys(input.newKeys.assertKeys),
     controllerKeys: toOperationKeys(input.newKeys.controllerKeys),
+    ...(keyProofs ? { keyProofs } : {}),
     createdAt: new Date().toISOString(),
   };
 

@@ -32,8 +32,8 @@ importers:
         specifier: workspace:*
         version: link:packages/auth
       '@metalabel/dfos-protocol':
-        specifier: ^0.13.5
-        version: 0.13.5
+        specifier: 0.55.0
+        version: 0.55.0(zod@4.6.7)
       '@noble/ed25519':
         specifier: ^2.3.0
         version: 2.3.0
@@ -186,7 +186,7 @@ importers:
         version: 5.9.3
       vitest:
         specifier: ^2.1.9
-        version: 2.1.9(@types/node@20.19.39)(jsdom@30.0.1(@noble/hashes@2.2.0))
+        version: 2.1.9(@types/node@20.19.39)(jsdom@30.0.1(@noble/hashes@2.4.0))
       yaml:
         specifier: ^2.8.3
         version: 2.8.3
@@ -260,11 +260,11 @@ importers:
         specifier: ^0.8.3
         version: 0.8.3
       '@metalabel/dfos-protocol':
-        specifier: ^0.13.5
-        version: 0.13.5
+        specifier: 0.55.0
+        version: 0.55.0(zod@4.6.7)
       '@metalabel/dfos-web-relay':
-        specifier: ^0.13.5
-        version: 0.13.5(@metalabel/dfos-protocol@0.13.5)
+        specifier: 0.55.0
+        version: 0.55.0(@metalabel/dfos-protocol@0.55.0(zod@4.6.7))(hono@4.12.25)
       '@noble/ciphers':
         specifier: ^1.2.1
         version: 1.3.0
@@ -610,7 +610,7 @@ importers:
         version: 5.9.3
       vitest:
         specifier: ^2.1.9
-        version: 2.1.9(@types/node@22.19.17)(jsdom@30.0.1(@noble/hashes@2.2.0))
+        version: 2.1.9(@types/node@22.19.17)(jsdom@30.0.1(@noble/hashes@2.4.0))
 
   packages/claw-provisioner:
     dependencies:
@@ -632,7 +632,7 @@ importers:
         version: 5.9.3
       vitest:
         specifier: ^2.1.9
-        version: 2.1.9(@types/node@22.19.17)(jsdom@30.0.1(@noble/hashes@2.2.0))
+        version: 2.1.9(@types/node@22.19.17)(jsdom@30.0.1(@noble/hashes@2.4.0))
 
   packages/config:
     dependencies:
@@ -678,8 +678,8 @@ importers:
         specifier: workspace:*
         version: link:../auth
       '@metalabel/dfos-protocol':
-        specifier: ^0.13.5
-        version: 0.13.5
+        specifier: 0.55.0
+        version: 0.55.0(zod@4.6.7)
       '@noble/curves':
         specifier: ^1.8.1
         version: 1.9.7
@@ -695,7 +695,7 @@ importers:
         version: 5.9.3
       vitest:
         specifier: ^1.0.0
-        version: 1.6.1(@types/node@22.19.17)(jsdom@30.0.1(@noble/hashes@2.2.0))
+        version: 1.6.1(@types/node@22.19.17)(jsdom@30.0.1(@noble/hashes@2.4.0))
 
   packages/email:
     dependencies:
@@ -953,7 +953,7 @@ importers:
         version: 5.9.3
       vitest:
         specifier: ^2.1.9
-        version: 2.1.9(@types/node@22.19.17)(jsdom@30.0.1(@noble/hashes@2.2.0))
+        version: 2.1.9(@types/node@22.19.17)(jsdom@30.0.1(@noble/hashes@2.4.0))
 
   packages/notify:
     dependencies:
@@ -1013,7 +1013,7 @@ importers:
         version: 5.9.3
       vitest:
         specifier: ^2.1.9
-        version: 2.1.9(@types/node@22.19.17)(jsdom@30.0.1(@noble/hashes@2.2.0))
+        version: 2.1.9(@types/node@22.19.17)(jsdom@30.0.1(@noble/hashes@2.4.0))
 
   packages/openclaw-reflex-guard:
     devDependencies:
@@ -1025,7 +1025,7 @@ importers:
         version: 5.9.3
       vitest:
         specifier: ^2.1.9
-        version: 2.1.9(@types/node@22.19.17)(jsdom@30.0.1(@noble/hashes@2.2.0))
+        version: 2.1.9(@types/node@22.19.17)(jsdom@30.0.1(@noble/hashes@2.4.0))
 
   packages/provision-bootstrap:
     dependencies:
@@ -1115,7 +1115,7 @@ importers:
         version: 5.9.3
       vitest:
         specifier: ^2.0.0
-        version: 2.1.9(@types/node@22.19.17)(jsdom@30.0.1(@noble/hashes@2.2.0))
+        version: 2.1.9(@types/node@22.19.17)(jsdom@30.0.1(@noble/hashes@2.4.0))
 
   packages/usage-emitter-claude-code:
     devDependencies:
@@ -2904,8 +2904,8 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@ipld/dag-cbor@10.0.1':
-    resolution: {integrity: sha512-nF07iiZPqduSXyMxc0jGANArRHFa9hjMQpQlgLOV2O/3xI1CNb5sXhvbmigbMiz5owSGi0Oq10VtauupMojuiw==}
+  '@ipld/dag-cbor@10.0.2':
+    resolution: {integrity: sha512-1eCD4YMTlkx5i36oQUmeAojLS/wu+XCd1Gs31BA0afk0TaVkhnyMofIAT/pi0wV3HS3/G7QSN/1NibhiksMyZQ==}
 
   '@ipld/dag-cbor@9.2.6':
     resolution: {integrity: sha512-vZGJ84Em2jCVAS7td5gc08YTVN8/s4bTQxg4pU77PAXDAR/yLYOthOvkCu01fdl1lrZwz47RdUterxdkrs3p5A==}
@@ -3218,13 +3218,16 @@ packages:
       react: '>= 18 || >= 19'
       react-dom: '>= 18 || >= 19'
 
-  '@metalabel/dfos-protocol@0.13.5':
-    resolution: {integrity: sha512-IDNom26XS3kRlM6KoRanm7dqWXJzpBoU9kdtWa8bwxtJ3u89bh9sbQFZQCLvGZT/avfOoCafS3h+ReR2Un+9RQ==}
-
-  '@metalabel/dfos-web-relay@0.13.5':
-    resolution: {integrity: sha512-Kszk93uNBFbYe7NX41UInFTIoCz1nOYB8Shd6SRBFJjBnVh29xpL3n1TlMMi4BcGFlNeHCzdn9AWTBXT4kKB+w==}
+  '@metalabel/dfos-protocol@0.55.0':
+    resolution: {integrity: sha512-kwomt8/5FBZf6CgR7JZ4bpqMZR75VjdIzLpJJGhtwh1GlkPN4K9ch8drgVh0ByPsnZQqInD+TOFQOiNWpe9Wpg==}
     peerDependencies:
-      '@metalabel/dfos-protocol': ^0.13.5
+      zod: ^4.6.7
+
+  '@metalabel/dfos-web-relay@0.55.0':
+    resolution: {integrity: sha512-I3djwyGAs1NdoDWy/4NJjrve3WqtUOvCtWW+SE2yUYldoY8mD0C3IJkXvmiM0ASzbEc8U5Mz8MvTt13Jy5BXuw==}
+    peerDependencies:
+      '@metalabel/dfos-protocol': ^0.55.0
+      hono: ^4.12.23
 
   '@napi-rs/wasm-runtime@0.2.12':
     resolution: {integrity: sha512-ZVWUcfwY4E/yPitQJl481FjFo3K22D6qF0DuFH6Y/nbnE11GY5uguDxZMGXPQ8WQ0128MXQD7TnfHyK4oWoIJQ==}
@@ -3294,8 +3297,8 @@ packages:
     resolution: {integrity: sha512-gbKGcRUYIjA3/zCCNaWDciTMFI0dCkvou3TL8Zmy5Nc7sJ47a0jtOeZoTaMxkuqRo9cRhjOdZJXegxYE5FN/xw==}
     engines: {node: ^14.21.3 || >=16}
 
-  '@noble/curves@2.2.0':
-    resolution: {integrity: sha512-T/BoHgFXirb0ENSPBquzX0rcjXeM6Lo892a2jlYJkqk83LqZx0l1Of7DzlKJ6jkpvMrkHSnAcgb5JegL8SeIkQ==}
+  '@noble/curves@2.4.0':
+    resolution: {integrity: sha512-P4/62zrgfH33CneE3Dn4WhJVA22YUU0eR51wKIan4NVRvwsA0YnPTwWGpNbpuacSujmSFLvyzpyuR30+fbq2Ew==}
     engines: {node: '>= 20.19.0'}
 
   '@noble/ed25519@2.3.0':
@@ -3310,6 +3313,10 @@ packages:
 
   '@noble/hashes@2.2.0':
     resolution: {integrity: sha512-IYqDGiTXab6FniAgnSdZwgWbomxpy9FtYvLKs7wCUs2a8RkITG+DFGO1DM9cr+E3/RgADRpFjrKVaJ1z6sjtEg==}
+    engines: {node: '>= 20.19.0'}
+
+  '@noble/hashes@2.4.0':
+    resolution: {integrity: sha512-X5XaVWZIBCT7HHZGm5I7ZQXDwLG+bGXuSrMQAW+7Zvl87h1kmc1ZB1VSRJcpUfoUrGQp4Fkoxm5kZ+Ms+aW+eA==}
     engines: {node: '>= 20.19.0'}
 
   '@nodelib/fs.scandir@2.1.5':
@@ -4862,8 +4869,8 @@ packages:
     resolution: {integrity: sha512-OwailRORD5pIyxaLKKVdGHQ2OXWmYW7YsjDXnl64cIwWdQiyXRffVFsL34JR5c+BEeeSOHADM3cy/QNERH1SUw==}
     hasBin: true
 
-  cborg@5.1.1:
-    resolution: {integrity: sha512-BDbSRIp6XrQXkTc7g+DN0RB9RrDPTUfals2ecWUlt3juPLjbAvy/V72mJcXY0Ehu0Dq/3WpNCOCT68HUTbW+lw==}
+  cborg@6.2.1:
+    resolution: {integrity: sha512-DwiF3Jd5RW6kJuTQMzQb/sdZD03utp15EcQNOMTvE/ZYCdDPzETsGOY5lj8imKxbsEuYvOzcMSiKLiT4C2/2Lw==}
     hasBin: true
 
   ccount@2.0.1:
@@ -6760,8 +6767,8 @@ packages:
   multiformats@13.4.2:
     resolution: {integrity: sha512-eh6eHCrRi1+POZ3dA+Dq1C6jhP1GNtr9CRINMb67OKzqW9I5DUuZM/3jLPlzhgpGeiNUlEGEbkCYChXMCc/8DQ==}
 
-  multiformats@14.0.0:
-    resolution: {integrity: sha512-iWK1RrAS58p2NDfeZFuSUSv3ZPewTIhsGbh/5NgeGGJwJmRljLxGtjRR3nkn+loG3zl+IrfR/W1590QnrSK+Gg==}
+  multiformats@14.0.5:
+    resolution: {integrity: sha512-vbIm83F2yZ1pWJGS0yl0ysracIvv56LtbrIyiIQHoLdYDJOMoLfVFsXhh9DUH4SFdkdkFhucyWniihsNzVEjkQ==}
 
   mz@2.7.0:
     resolution: {integrity: sha512-z81GNO7nnYMEhrGh9LeymoE4+Yr0Wn5McHIZMK5cfQCl+NDX08sCZgUc9/6MHni9IWuFLm1Z3HTCXu2z9fN62Q==}
@@ -10172,6 +10179,11 @@ snapshots:
       '@noble/hashes': 2.2.0
     optional: true
 
+  '@exodus/bytes@1.15.1(@noble/hashes@2.4.0)':
+    optionalDependencies:
+      '@noble/hashes': 2.4.0
+    optional: true
+
   '@floating-ui/core@1.7.5':
     dependencies:
       '@floating-ui/utils': 0.2.11
@@ -10321,10 +10333,10 @@ snapshots:
   '@img/sharp-win32-x64@0.35.5':
     optional: true
 
-  '@ipld/dag-cbor@10.0.1':
+  '@ipld/dag-cbor@10.0.2':
     dependencies:
-      cborg: 5.1.1
-      multiformats: 14.0.0
+      cborg: 6.2.1
+      multiformats: 14.0.5
 
   '@ipld/dag-cbor@9.2.6':
     dependencies:
@@ -10822,17 +10834,17 @@ snapshots:
       react: 18.3.1
       react-dom: 18.3.1(react@18.3.1)
 
-  '@metalabel/dfos-protocol@0.13.5':
+  '@metalabel/dfos-protocol@0.55.0(zod@4.6.7)':
     dependencies:
-      '@ipld/dag-cbor': 10.0.1
-      '@noble/curves': 2.2.0
-      '@noble/hashes': 2.2.0
-      multiformats: 14.0.0
+      '@ipld/dag-cbor': 10.0.2
+      '@noble/curves': 2.4.0
+      '@noble/hashes': 2.4.0
+      multiformats: 14.0.5
       zod: 4.6.7
 
-  '@metalabel/dfos-web-relay@0.13.5(@metalabel/dfos-protocol@0.13.5)':
+  '@metalabel/dfos-web-relay@0.55.0(@metalabel/dfos-protocol@0.55.0(zod@4.6.7))(hono@4.12.25)':
     dependencies:
-      '@metalabel/dfos-protocol': 0.13.5
+      '@metalabel/dfos-protocol': 0.55.0(zod@4.6.7)
       hono: 4.12.25
       zod: 4.6.7
 
@@ -10883,9 +10895,9 @@ snapshots:
     dependencies:
       '@noble/hashes': 1.8.0
 
-  '@noble/curves@2.2.0':
+  '@noble/curves@2.4.0':
     dependencies:
-      '@noble/hashes': 2.2.0
+      '@noble/hashes': 2.4.0
 
   '@noble/ed25519@2.3.0': {}
 
@@ -10894,6 +10906,8 @@ snapshots:
   '@noble/hashes@1.8.0': {}
 
   '@noble/hashes@2.2.0': {}
+
+  '@noble/hashes@2.4.0': {}
 
   '@nodelib/fs.scandir@2.1.5':
     dependencies:
@@ -12643,7 +12657,7 @@ snapshots:
 
   cborg@5.1.0: {}
 
-  cborg@5.1.1: {}
+  cborg@6.2.1: {}
 
   ccount@2.0.1: {}
 
@@ -12824,6 +12838,14 @@ snapshots:
     dependencies:
       whatwg-mimetype: 5.0.0
       whatwg-url: 16.0.1(@noble/hashes@2.2.0)
+    transitivePeerDependencies:
+      - '@noble/hashes'
+    optional: true
+
+  data-urls@7.0.0(@noble/hashes@2.4.0):
+    dependencies:
+      whatwg-mimetype: 5.0.0
+      whatwg-url: 16.0.1(@noble/hashes@2.4.0)
     transitivePeerDependencies:
       - '@noble/hashes'
     optional: true
@@ -14076,6 +14098,13 @@ snapshots:
       - '@noble/hashes'
     optional: true
 
+  html-encoding-sniffer@6.0.0(@noble/hashes@2.4.0):
+    dependencies:
+      '@exodus/bytes': 1.15.1(@noble/hashes@2.4.0)
+    transitivePeerDependencies:
+      - '@noble/hashes'
+    optional: true
+
   html-escaper@2.0.2: {}
 
   html-url-attributes@3.0.1: {}
@@ -14447,6 +14476,33 @@ snapshots:
       webidl-conversions: 8.0.1
       whatwg-mimetype: 5.0.0
       whatwg-url: 17.1.0(@noble/hashes@2.2.0)
+      xml-name-validator: 5.0.0
+    transitivePeerDependencies:
+      - '@noble/hashes'
+    optional: true
+
+  jsdom@30.0.1(@noble/hashes@2.4.0):
+    dependencies:
+      '@asamuzakjp/css-color': 6.0.5
+      '@asamuzakjp/dom-selector': 8.3.2
+      '@bramus/specificity': 2.4.2
+      '@csstools/css-syntax-patches-for-csstree': 1.1.7(css-tree@3.2.1)
+      '@exodus/bytes': 1.15.1(@noble/hashes@2.4.0)
+      css-tree: 3.2.1
+      data-urls: 7.0.0(@noble/hashes@2.4.0)
+      decimal.js: 10.6.0
+      html-encoding-sniffer: 6.0.0(@noble/hashes@2.4.0)
+      is-potential-custom-element-name: 1.0.1
+      lru-cache: 11.5.2
+      parse5: 8.0.1
+      saxes: 6.0.0
+      symbol-tree: 3.2.4
+      tough-cookie: 6.0.2
+      undici: 8.10.0
+      w3c-xmlserializer: 5.0.0
+      webidl-conversions: 8.0.1
+      whatwg-mimetype: 5.0.0
+      whatwg-url: 17.1.0(@noble/hashes@2.4.0)
       xml-name-validator: 5.0.0
     transitivePeerDependencies:
       - '@noble/hashes'
@@ -15178,7 +15234,7 @@ snapshots:
 
   multiformats@13.4.2: {}
 
-  multiformats@14.0.0: {}
+  multiformats@14.0.5: {}
 
   mz@2.7.0:
     dependencies:
@@ -17167,7 +17223,7 @@ snapshots:
       - supports-color
       - terser
 
-  vitest@1.6.1(@types/node@22.19.17)(jsdom@30.0.1(@noble/hashes@2.2.0)):
+  vitest@1.6.1(@types/node@22.19.17)(jsdom@30.0.1(@noble/hashes@2.4.0)):
     dependencies:
       '@vitest/expect': 1.6.1
       '@vitest/runner': 1.6.1
@@ -17191,7 +17247,7 @@ snapshots:
       why-is-node-running: 2.3.0
     optionalDependencies:
       '@types/node': 22.19.17
-      jsdom: 30.0.1(@noble/hashes@2.2.0)
+      jsdom: 30.0.1(@noble/hashes@2.4.0)
     transitivePeerDependencies:
       - less
       - lightningcss
@@ -17202,7 +17258,7 @@ snapshots:
       - supports-color
       - terser
 
-  vitest@2.1.9(@types/node@20.19.39)(jsdom@30.0.1(@noble/hashes@2.2.0)):
+  vitest@2.1.9(@types/node@20.19.39)(jsdom@30.0.1(@noble/hashes@2.4.0)):
     dependencies:
       '@vitest/expect': 2.1.9
       '@vitest/mocker': 2.1.9(vite@5.4.21(@types/node@24.12.4))
@@ -17226,7 +17282,7 @@ snapshots:
       why-is-node-running: 2.3.0
     optionalDependencies:
       '@types/node': 20.19.39
-      jsdom: 30.0.1(@noble/hashes@2.2.0)
+      jsdom: 30.0.1(@noble/hashes@2.4.0)
     transitivePeerDependencies:
       - less
       - lightningcss
@@ -17238,7 +17294,7 @@ snapshots:
       - supports-color
       - terser
 
-  vitest@2.1.9(@types/node@22.19.17)(jsdom@30.0.1(@noble/hashes@2.2.0)):
+  vitest@2.1.9(@types/node@22.19.17)(jsdom@30.0.1(@noble/hashes@2.4.0)):
     dependencies:
       '@vitest/expect': 2.1.9
       '@vitest/mocker': 2.1.9(vite@5.4.21(@types/node@24.12.4))
@@ -17262,7 +17318,7 @@ snapshots:
       why-is-node-running: 2.3.0
     optionalDependencies:
       '@types/node': 22.19.17
-      jsdom: 30.0.1(@noble/hashes@2.2.0)
+      jsdom: 30.0.1(@noble/hashes@2.4.0)
     transitivePeerDependencies:
       - less
       - lightningcss
@@ -17405,6 +17461,15 @@ snapshots:
       - '@noble/hashes'
     optional: true
 
+  whatwg-url@16.0.1(@noble/hashes@2.4.0):
+    dependencies:
+      '@exodus/bytes': 1.15.1(@noble/hashes@2.4.0)
+      tr46: 6.0.0
+      webidl-conversions: 8.0.1
+    transitivePeerDependencies:
+      - '@noble/hashes'
+    optional: true
+
   whatwg-url@17.1.0(@noble/hashes@1.8.0):
     dependencies:
       '@exodus/bytes': 1.15.1(@noble/hashes@1.8.0)
@@ -17416,6 +17481,15 @@ snapshots:
   whatwg-url@17.1.0(@noble/hashes@2.2.0):
     dependencies:
       '@exodus/bytes': 1.15.1(@noble/hashes@2.2.0)
+      tr46: 6.0.0
+      webidl-conversions: 8.0.1
+    transitivePeerDependencies:
+      - '@noble/hashes'
+    optional: true
+
+  whatwg-url@17.1.0(@noble/hashes@2.4.0):
+    dependencies:
+      '@exodus/bytes': 1.15.1(@noble/hashes@2.4.0)
       tr46: 6.0.0
       webidl-conversions: 8.0.1
     transitivePeerDependencies:
