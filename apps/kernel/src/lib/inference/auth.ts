@@ -7,6 +7,8 @@ export interface InferenceAuthContext {
   appDid?: string;
   orgContext?: VerifiedInferenceOrgContext;
   caller?: ConnectionCaller;
+  /** Verified credential ceiling; inference access is never a tool scope. */
+  toolAuth?: { scopes: readonly string[]; serviceToken: boolean };
 }
 export interface VerifiedInferenceOrgContext { memberDid: string; orgDid: string; assignedAgentDid?: string }
 
@@ -46,9 +48,16 @@ export type InferenceAuthResult =
 export async function resolveInferenceAuth(
   request: Request,
   scope: string = 'infer:provide',
+  includeToolAuthority = false,
 ): Promise<InferenceAuthResult> {
   const appResult = await requireAppAuth(withApiKeyBearerFallback(request), { scope, service: 'infer', allowMemberActAs: true });
-  if ('appAuth' in appResult) return resolveInferenceRouteContext({ app: appResult.appAuth });
+  if ('appAuth' in appResult) {
+    const result = resolveInferenceRouteContext({ app: appResult.appAuth });
+    if (result.ok && includeToolAuthority) result.context.toolAuth = {
+      scopes: [...appResult.appAuth.scopes], serviceToken: appResult.appAuth.isServiceToken === true,
+    };
+    return result;
+  }
 
   // A verified app denied scope or act-as must not degrade to a cookie session.
   const credentialHint = request.headers.get('x-api-key') || request.headers.get('x-app-did')

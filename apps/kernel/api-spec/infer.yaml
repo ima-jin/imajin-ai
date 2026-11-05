@@ -62,7 +62,7 @@ components:
         principalDid: { type: string, description: Verified acting principal, not the raw personal session DID. }
         cards:
           type: array
-          description: Bound serving agents; only this principal's inference relationship is visible.
+          description: Bound serving agents; only this principal's inference and authorized tool relationships are visible.
           items: { $ref: "#/components/schemas/SelfDiscovery" }
     SelfDiscoveryConnector:
       type: object
@@ -74,7 +74,7 @@ components:
         authority:
           type: [string, "null"]
           enum: [own-key, org-held, delegated, member-grant, null]
-          description: Pure mapping of inference route kind; null for metadata-only connectors.
+          description: Canonical route or tool authorization lane; null when authorization is denied or no call gate exists.
         kind: { type: string, enum: [own, A, B, C] }
         billedPrincipal:
           type: object
@@ -90,10 +90,22 @@ components:
           properties:
             id: { type: string }
             label: { type: string }
-        ownerDid: { type: string, description: Signer-owned metadata only; no unrelated principal's tool rows. }
+        ownerDid: { type: string, description: Credential owner selected by the tool call gate; denied selectors reveal no private installation metadata. }
+        configurationStatus:
+          type: string
+          enum: [configured, not-configured, not-disclosed]
+          description: Tool-row configuration disclosure. not-disclosed means configured=false is not evidence that a principal has no connection.
+        authorizedScopes:
+          type: array
+          items: { type: string }
+          description: Current tool scopes admitted by the credential ceiling and existing connector scope predicate.
+        credentialStatus:
+          type: string
+          const: not-probed
+          description: Tool rows never read vault entries or verify/decrypt credentials; upstream identity and validity are not observed.
         configured:
           type: boolean
-          description: Inference resolver loaded flag; for metadata-only connectors, active registry installation, not custody verification.
+          description: Inference resolver loaded flag; tool rows use authorized connection/custody metadata or signer-owned registry metadata. Consult configurationStatus before interpreting false.
         grantStatus:
           type: string
           enum: [granted, denied, not-required, not-evaluated]
@@ -107,7 +119,7 @@ components:
           items: { type: string }
         usable:
           type: [boolean, "null"]
-          description: Canonical inference route result; null means tool authority was not evaluated.
+          description: Canonical inference route result or tool authorization and custody-grant metadata result. For tools, true is not a live credential/upstream probe. Null means no known call gate was evaluated.
         selectors:
           type: object
           additionalProperties: false
@@ -121,7 +133,7 @@ components:
           properties:
             code:
               type: string
-              enum: [no_grant, no_model_selected, not_a_member, key_not_loaded, not_authorized, route_unavailable]
+              enum: [no_grant, no_model_selected, not_a_member, key_not_loaded, not_authorized, route_unavailable, tool_scope_required, agent_not_assigned, service_not_allowed, identity_inactive, org_membership_required, org_grant_required, connection_not_loaded, connection_suspended, credential_unavailable]
             message: { type: string }
         fix: { $ref: "#/components/schemas/DiscoveryFix" }
     UsableModelList:
@@ -219,10 +231,22 @@ paths:
         error shape, without a partial identity response.
         Every unusable inference row names an existing fixing control and the
         identity the operator should select on /jin before opening it.
-        MCP/HTTP rows are signer-owned configuration metadata only: authority
-        and usable are null and grantStatus is not-evaluated. Configuration
-        means an active registry installation, not verified tool permission.
-        Known unconfigured providers remain listed; unknown providers use http.
+        MCP/HTTP rows reuse the tool call authorization predicates. The verified
+        token's inference scope is never a tool grant. Tool scopes, assignment,
+        allowed services, member grants, suspension and custody-grant lifecycle
+        are evaluated without fetching, peeking, decrypting or unsealing a tool
+        credential. Authorized rows name the credential owner and authority lane.
+        authorizedScopes lists the admitted operations. credentialStatus is
+        not-probed: usable=true describes authorization metadata, not provider
+        availability, credential integrity or the external account identity.
+        configurationStatus=not-disclosed prevents denied tool authority from
+        becoming an oracle for a selected principal's private installations;
+        configured=false in that state does not mean no connection exists.
+        Each denial names an existing operator fixing control and acting DID.
+        App HTTP upstream rows are limited to the authenticated service app's
+        declared catalogue and exact current binding, never private enumeration.
+        Known unconfigured providers remain listed; unknown signer-owned providers
+        use http with usable=null and grantStatus=not-evaluated.
         No credentials, vault references or private exception details are returned.
       security:
         - appToken: []

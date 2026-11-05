@@ -71,14 +71,17 @@ vi.mock('@/src/lib/vault/vault-repository', () => ({
     },
   }),
 }));
-import { identities, identityMembers, attestations, channelLinks } from '@/src/db/schemas/auth';
+import { identities, identityMembers, attestations, channelLinks, delegationGrants } from '@/src/db/schemas/auth';
 import { registryApps } from '@/src/db/schemas/registry';
 import { connectors, orgConnectionSuspensions, orgConnectionEvents, orgConnectionMemberGrants } from '@/src/db/schemas/connectors';
 import { vaultDelegationGrants, vaultOwnerEnvelopes, vaultGrantRequests } from '@/src/db/schemas/vault';
 import { canonicalize, crypto, generateKeypair, requireAuth, requireAppAuth } from '@imajin/auth';
 import { _resetSealingCache, getNodeSigningIdentity } from '@/src/lib/vault/sealing';
 import { fetchGrantSecret, loadAndUnseal, loadAndUnsealByGrantee, listRenewableGrants, vaultService } from '@/src/lib/vault';
-import { connectExternalMcp, disconnectExternalMcp, invokeExternalMcp } from '../external-mcp';
+import { authorizeExternalMcp, connectExternalMcp, disconnectExternalMcp, invokeExternalMcp } from '../external-mcp';
+import { discoveryExternalConnection } from '@/src/lib/inference/self-discovery-connectors';
+import { requireAgentKey } from '@/src/lib/warp/connector';
+import type { InferenceAuthContext } from '@/src/lib/inference/auth';
 import { parseExternalMcpCall, POSTMAN_MCP_URL, EXTERNAL_MCP_SCOPE } from '../external-mcp-policy';
 import { GET, POST, DELETE, OPTIONS } from '@/app/connections/api/external-mcp/postman/route';
 import { POST as RPC, OPTIONS as RPC_OPTIONS } from '@/app/connections/api/external-mcp/postman/rpc/route';
@@ -100,7 +103,7 @@ import { authorizeOrgConnectionAdmin } from '../org-held-connection-policy';
 import { readOrgHeldStatus } from '../org-held-status';
 import { SESSION_COOKIE_NAME } from '@imajin/config';
 
-const tables = [identities, identityMembers, attestations, channelLinks, registryApps, connectors, orgConnectionSuspensions, orgConnectionEvents,
+const tables = [identities, identityMembers, delegationGrants, attestations, channelLinks, registryApps, connectors, orgConnectionSuspensions, orgConnectionEvents,
   vaultDelegationGrants, vaultOwnerEnvelopes, vaultGrantRequests, orgConnectionMemberGrants];
 const keys = generateKeypair();
 let client: PGlite;
@@ -839,6 +842,157 @@ describe('org-admin suspension (#3167)', () => {
     expect(memberships[0].removedAt).toBeNull();
     expect(requireAuth).toHaveBeenCalledWith(expect.anything(), { service: 'auth', sessionOnly: true });
   });
+});
+
+describe('read-only connector discovery matches actual call authorization (#3256)', () => {
+  const postman = { provider: 'external-mcp-postman', scope: EXTERNAL_MCP_SCOPE, service: 'connections' };
+  const warp = { provider: 'warp', scope: 'warp:dispatch', service: 'warp' };
+  const agentDid = () => `${member}agent`;
+
+  async function discover(context: InferenceAuthContext, target = postman, family: 'mcp' | 'http' = 'mcp') {
+    const before = await permanentState();
+    const blocked = () => { throw new Error('Discovery must not fetch, peek or unseal a credential'); };
+    const get = vi.spyOn(vaultService, 'get').mockImplementation(blocked);
+    const peek = vi.spyOn(vaultService, 'peek').mockImplementation(blocked);
+    try {
+      const row = await discoveryExternalConnection(context, target, family);
+      expect(get).not.toHaveBeenCalled();
+      expect(peek).not.toHaveBeenCalled();
+      expect(h.fetch).not.toHaveBeenCalled();
+      expect(h.upstream).not.toHaveBeenCalled();
+      expect(await permanentState()).toBe(before);
+      const serialized = JSON.stringify(row);
+      expect(serialized).not.toMatch(/sealedKeyField|custodyId|wrappedKey|wrappedNonce|ownerSignature|upstreamBinding/);
+      for (const value of h.secrets) expect(serialized).not.toContain(value);
+      h.outputs.push(row);
+      return row;
+    } finally { get.mockRestore(); peek.mockRestore(); }
+  }
+
+  async function assignAgent(principalDid: string, subtype = 'agent') {
+    await database.insert(identities).values({
+      id: agentDid(), publicKey: keys.publicKey, scope: 'actor', subtype,
+    });
+    await database.insert(identityMembers).values({
+      identityDid: principalDid, memberDid: agentDid(), role: 'agent',
+      allowedServices: ['connections', 'warp'],
+    });
+  }
+
+  it('distinguishes a configured personal MCP connection from revoked custody and agrees with the real gate', async () => {
+    await connect(false);
+    const context = { ownerDid: member, caller: { actorDid: member } };
+    expect(await discover(context)).toMatchObject({
+      configured: true, usable: true, ownerDid: member, authority: 'own-key', grantStatus: 'granted',
+    });
+    const admitted = await authorizeExternalMcp({ memberDid: member, caller: context.caller });
+    expect(admitted.ownerDid).toBe(member);
+    admitted.credential = '';
+    await database.update(vaultDelegationGrants).set({ status: 'revoked' })
+      .where(eq(vaultDelegationGrants.subject, member));
+    expect(await discover(context)).toMatchObject({
+      configured: true, usable: false, reason: { code: 'credential_unavailable' },
+      fix: { actingDid: member },
+    });
+    await expect(authorizeExternalMcp({ memberDid: member, caller: context.caller }))
+      .rejects.toMatchObject({ status: 403 });
+  });
+
+  it.each(['agent', 'presence'])('uses the assigned human keys for a %s MCP caller without a member grant', async subtype => {
+    await connect(false);
+    await assignAgent(member, subtype);
+    const caller = { actorDid: agentDid(), actingFor: member };
+    expect(await discover({ ownerDid: member, caller })).toMatchObject({
+      ownerDid: member, authority: 'delegated', configured: true, usable: true,
+    });
+    const admitted = await authorizeExternalMcp({ memberDid: agentDid(), caller });
+    expect(admitted.ownerDid).toBe(member);
+    admitted.credential = '';
+    await database.update(identityMembers).set({ allowedServices: ['infer'] })
+      .where(eq(identityMembers.memberDid, agentDid()));
+    expect(await discover({ ownerDid: member, caller })).toMatchObject({
+      usable: false, configurationStatus: 'not-disclosed', reason: { code: 'service_not_allowed' },
+      fix: { href: '/auth/agents', actingDid: member },
+    });
+    await expect(authorizeExternalMcp({ memberDid: agentDid(), caller })).rejects.toMatchObject({
+      status: 403, code: 'service_not_allowed',
+    });
+  });
+
+  it.each(['agent', 'presence'])('uses the assigned org HTTP keys for a %s without a member grant', async subtype => {
+    await asOrg();
+    expect((await orgRequest('POST', 'warp', orgKey())).status).toBe(201);
+    await assignAgent(org, subtype);
+    const caller = { actorDid: agentDid(), actingAs: org };
+    const context = { ownerDid: org, caller };
+    expect(await discover(context, warp, 'http')).toMatchObject({
+      ownerDid: org, authority: 'org-held', configured: true, usable: true,
+    });
+    // This is the actual HTTP/MCP Warp credential gate, not a duplicate test predicate.
+    expect(await requireAgentKey(org, caller)).toBe(h.secrets[0]);
+    await database.update(identityMembers).set({ removedAt: new Date() })
+      .where(eq(identityMembers.memberDid, agentDid()));
+    expect(await discover(context, warp, 'http')).toMatchObject({
+      usable: false, configurationStatus: 'not-disclosed', reason: { code: 'agent_not_assigned' },
+    });
+    await expect(requireAgentKey(org, caller)).rejects.toMatchObject({ status: 403, code: 'agent_not_assigned' });
+  });
+
+  it.each(['revoked-grant', 'removed-member', 'presence-member', 'suspended-org', 'expired-custody'])(
+    'member-grant HTTP discovery and the actual Warp gate both refuse %s', async boundary => {
+      await asOrg();
+      expect((await orgRequest('POST', 'warp', orgKey())).status).toBe(201);
+      await database.insert(orgConnectionMemberGrants).values({
+        id: `discovery-grant-${sequence}`, orgDid: org, memberDid: member, provider: 'warp',
+        connectionId: (await orgRows())[0].id, grantedByDid: member,
+      });
+      const caller = { actorDid: member, actingAs: org };
+      const context = { ownerDid: org, caller };
+      expect(await discover(context, warp, 'http')).toMatchObject({
+        configured: true, usable: true, ownerDid: org, authority: 'member-grant',
+      });
+      expect(await requireAgentKey(org, caller)).toBe(h.secrets[0]);
+      if (boundary === 'revoked-grant') await database.update(orgConnectionMemberGrants).set({ revokedAt: new Date() })
+        .where(eq(orgConnectionMemberGrants.memberDid, member));
+      if (boundary === 'removed-member') await database.update(identityMembers).set({ removedAt: new Date() })
+        .where(eq(identityMembers.memberDid, member));
+      if (boundary === 'presence-member') await database.update(identities).set({ subtype: 'presence' })
+        .where(eq(identities.id, member));
+      if (boundary === 'suspended-org') await database.update(identities).set({ suspendedAt: new Date() })
+        .where(eq(identities.id, org));
+      if (boundary === 'expired-custody') await database.update(vaultDelegationGrants).set({ expiresAt: new Date(0) })
+        .where(eq(vaultDelegationGrants.subject, org));
+      const row = await discover(context, warp, 'http');
+      expect(row.usable).toBe(false);
+      expect(row.fix).toMatchObject({ actingDid: org, href: expect.stringMatching(/^\/auth\//) });
+      await expect(requireAgentKey(org, caller)).rejects.toMatchObject({ status: 403 });
+    },
+  );
+
+  it.each(['missing-token-scope', 'missing-consent-scope', 'revoked-consent', 'missing-service-approval'])(
+    'a configured app MCP connection remains unusable for %s', async boundary => {
+      await connect(false);
+      await installApp();
+      const context: InferenceAuthContext = {
+        ownerDid: member, caller: { actorDid: member }, appDid,
+        toolAuth: { scopes: [EXTERNAL_MCP_SCOPE], serviceToken: true },
+      };
+      expect((await discover(context)).usable).toBe(true);
+      if (boundary === 'missing-token-scope') context.toolAuth!.scopes = ['infer:completions'];
+      if (boundary === 'missing-consent-scope') await database.update(channelLinks).set({ scopes: ['infer:completions'] })
+        .where(eq(channelLinks.did, member));
+      if (boundary === 'revoked-consent') await database.update(channelLinks).set({ revokedAt: new Date() })
+        .where(eq(channelLinks.did, member));
+      if (boundary === 'missing-service-approval') await database.update(registryApps).set({ approvedServiceScopes: ['infer:completions'] })
+        .where(eq(registryApps.appDid, appDid));
+      const row = await discover(context);
+      expect(row).toMatchObject({ usable: false, configurationStatus: 'not-disclosed' });
+      // Token-scope denial belongs to requireAppAuth; the other boundaries are the shared call gate.
+      if (boundary !== 'missing-token-scope') await expect(authorizeExternalMcp({
+        memberDid: member, caller: context.caller, appDid, serviceToken: true,
+      })).rejects.toMatchObject({ status: 403 });
+    },
+  );
 });
 
 const upstreamOrigin = 'https://external-api.example';

@@ -1530,19 +1530,12 @@ async function fetchActiveGrant(
   field: string,
   nodeDid: string,
 ): Promise<VaultDelegationGrant | null> {
+  const { activeVaultGrantWhere } = await import('./active-grant-policy');
   const rows = await db
     .select()
     .from(vaultDelegationGrants)
     .where(
-      and(
-        eq(vaultDelegationGrants.grantedTo, nodeDid),
-        eq(vaultDelegationGrants.field, field),
-        eq(vaultDelegationGrants.status, 'active'),
-        or(
-          isNull(vaultDelegationGrants.expiresAt),
-          gt(vaultDelegationGrants.expiresAt, new Date()),
-        ),
-      ),
+      activeVaultGrantWhere(field, nodeDid),
     )
     .limit(1);
   return rows[0] ?? null;

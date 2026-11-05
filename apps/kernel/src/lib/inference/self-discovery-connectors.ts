@@ -1,38 +1,205 @@
-import { CONNECTOR_REGISTRY } from '@/src/lib/kernel/connector-registry';
+import { db } from '@/src/db';
+import { CONNECTOR_REGISTRY, type ConnectorEntry } from '@/src/lib/kernel/connector-registry';
 import { listConnectorRegistrations } from '@/src/lib/kernel/connector-registry-store';
-import { POSTMAN_PROVIDER } from '@/src/lib/kernel/external-mcp-policy';
+import { ExternalMcpError } from '@/src/lib/kernel/external-mcp-policy';
+import { authorizeExternalMcpAccess } from '@/src/lib/kernel/external-mcp-authority';
+import { resolveConnectionPrincipal } from '@/src/lib/kernel/connection-principal';
+import {
+  POSTMAN_CONNECTION, requireConnectionApp, type MemberConnectionTarget,
+} from '@/src/lib/kernel/member-connection-gate';
+import {
+  parseUpstream, upstreamDeclarations, upstreamBinding, upstreamProvider, UPSTREAM_READ_SCOPE,
+} from '@/src/lib/kernel/app-upstream-policy';
+import { resolveActiveMcpGrant } from '@/src/lib/mcp/mcp-grant';
 import { listBrainConnectors } from './brain';
-import type { ConnectorFamily } from './self-discovery';
+import { httpConnectorAuthority, httpCredentialAuthorized } from './http-connector-authority';
+import type { InferenceAuthContext } from './auth';
+import type { ConnectorAuthority, ConnectorFamily } from './self-discovery';
 
-/** Metadata only: neither configuration nor an inference token proves tool authority. */
-export async function listDiscoveryConnectorMetadata(actorDid: string) {
-  // Only the signer's own rows. An infer grant must not reveal an assigned
-  // principal's unrelated private connector configuration.
+interface ConnectorDiagnostic {
+  provider: string;
+  family: ConnectorFamily;
+  configured: boolean;
+  configurationStatus: 'configured' | 'not-configured' | 'not-disclosed';
+  ownerDid: string;
+  authority: ConnectorAuthority | null;
+  grantStatus: 'granted' | 'denied' | 'not-evaluated';
+  usable: boolean | null;
+  usableModels: string[];
+  authorizedScopes: string[];
+  credentialStatus: 'not-probed';
+  reason?: { code: string; message: string };
+  fix?: { control: string; href: string; actingDid: string };
+}
+
+function actor(context: InferenceAuthContext) {
+  return context.caller?.actorDid ?? context.orgContext?.memberDid ?? context.ownerDid;
+}
+function tokenAllows(context: InferenceAuthContext, scope: string) {
+  return !context.appDid || context.toolAuth?.scopes.includes(scope) === true;
+}
+function diagnostic(provider: string, family: ConnectorFamily, ownerDid: string, configured: boolean): ConnectorDiagnostic {
+  return {
+    provider, family, ownerDid, configured,
+    configurationStatus: configured ? 'configured' : 'not-configured',
+    authority: null, grantStatus: 'denied', usable: false, usableModels: [], authorizedScopes: [],
+    credentialStatus: 'not-probed',
+  };
+}
+function deny(row: ConnectorDiagnostic, code: string) {
+  const controls: Record<string, { control: string; href: string }> = {
+    agent_not_assigned: { control: 'Agents → assignment and allowed services', href: '/auth/agents' },
+    service_not_allowed: { control: 'Agents → assignment and allowed services', href: '/auth/agents' },
+    org_membership_required: { control: 'Members', href: '/auth/members' },
+    org_grant_required: {
+      control: 'Org service keys → Member grants → Grant',
+      href: `/auth/connectors#org-connector-${encodeURIComponent(row.provider)}-grants`,
+    },
+    identity_inactive: { control: 'Identity and members → active standing', href: '/auth/members' },
+    connection_suspended: { control: 'Members → External connections → Resume service/connection', href: '/auth/members' },
+  };
+  return {
+    ...row, usable: false, grantStatus: 'denied' as const,
+    reason: { code, message: 'Tool authorization unavailable; use the indicated control to restore access.' },
+    fix: {
+      ...(controls[code] ?? {
+        control: 'Connector → credential and scope grants',
+        href: CONNECTOR_REGISTRY.some(entry => entry.id === row.provider)
+          ? `/auth/connectors/${encodeURIComponent(row.provider)}` : '/auth/connectors',
+      }),
+      actingDid: row.ownerDid,
+    },
+  };
+}
+
+/** The authorization result is not a claim about provider acceptance or ciphertext integrity. */
+export async function discoveryExternalConnection(
+  context: InferenceAuthContext, target: MemberConnectionTarget, family: ConnectorFamily,
+) {
+  const actorDid = actor(context);
+  const ownerDid = context.caller?.actingAs ?? context.caller?.actingFor ?? actorDid;
+  const row = diagnostic(target.provider, family, ownerDid, false);
+  row.configurationStatus = 'not-disclosed';
+  if (!tokenAllows(context, target.scope)) return deny(row, 'tool_scope_required');
+  try {
+    const access = await authorizeExternalMcpAccess(db, {
+      memberDid: actorDid, appDid: context.appDid, serviceToken: context.toolAuth?.serviceToken,
+      caller: context.caller,
+    }, target);
+    const principal = context.caller
+      ? await resolveConnectionPrincipal(context.caller, target.service ?? 'connections') : undefined;
+    const orgContext = principal?.orgContext;
+    const authority: ConnectorAuthority = orgContext
+      ? orgContext.assignedAgentDid ? 'org-held' : 'member-grant'
+      : access.row.ownerDid === actorDid ? 'own-key' : 'delegated';
+    const authorized = {
+      ...row, ownerDid: access.row.ownerDid, configured: true, configurationStatus: 'configured' as const,
+      authority,
+      grantStatus: 'granted' as const, usable: true, authorizedScopes: [target.scope],
+    };
+    return access.custodyId ? authorized : deny(authorized, 'credential_unavailable');
+  } catch (error) {
+    if (!(error instanceof ExternalMcpError) || error.status !== 403) throw error;
+    return deny(row, error.code ?? 'tool_scope_required');
+  }
+}
+
+function connectionAuthority(context: InferenceAuthContext, ownerDid: string): ConnectorAuthority {
+  if (ownerDid === actor(context)) return 'own-key';
+  if (!context.caller?.actingAs && context.caller?.actingFor === ownerDid) return 'delegated';
+  if (context.caller?.actingFor && context.caller.actingFor !== ownerDid) return 'member-grant';
+  // resolveConnectionPrincipal, not subtype or selectors, establishes this lane.
+  return 'org-held';
+}
+
+async function httpRow(context: InferenceAuthContext, entry: ConnectorEntry, configured: boolean) {
+  const actorDid = actor(context);
+  const row = diagnostic(entry.id, entry.id === 'mcp' ? 'mcp' : 'http', actorDid, configured);
+  const scopes = entry.scopes.filter(scope => tokenAllows(context, scope.name));
+  if (scopes.length === 0) return deny(row, 'tool_scope_required');
+  if (entry.id === 'warp' && context.caller) {
+    const principal = await resolveConnectionPrincipal(context.caller, 'warp');
+    if (principal.orgContext) return discoveryExternalConnection(context, {
+      provider: 'warp', scope: 'warp:dispatch', service: 'warp',
+    }, 'http');
+    row.ownerDid = principal.ownerDid;
+  }
+  const authority = entry.id === 'mcp' ? undefined : await httpConnectorAuthority(entry.id);
+  if (!authority && entry.id !== 'mcp') return {
+    ...row, grantStatus: 'not-evaluated' as const, usable: null,
+    fix: { control: 'Connectors → configuration and grants', href: '/auth/connectors', actingDid: actorDid },
+  };
+  row.authorizedScopes = await authorizedScopes(scopes, scope => entry.id === 'mcp'
+    ? resolveActiveMcpGrant(actorDid, scope, context.appDid)
+    : authority!.grant(row.ownerDid, scope));
+  if (row.authorizedScopes.length === 0) return deny(row, 'tool_scope_required');
+  row.authority = connectionAuthority(context, row.ownerDid);
+  row.grantStatus = 'granted';
+  if (authority && !await httpCredentialAuthorized(authority, row.ownerDid)) return deny(row, 'credential_unavailable');
+  // Live scope/custody metadata is authoritative; the installation registry is a shadow.
+  row.configured = true;
+  row.configurationStatus = 'configured';
+  row.usable = true;
+  return row;
+}
+async function authorizedScopes(scopes: ConnectorEntry['scopes'], grant: (scope: string) => Promise<boolean>) {
+  const allowed: string[] = [];
+  for (const scope of scopes) {
+    if (await grant(scope.name)) allowed.push(scope.name);
+  }
+  return allowed;
+}
+
+async function safeHttpRow(context: InferenceAuthContext, entry: ConnectorEntry, configured: boolean) {
+  try { return await httpRow(context, entry, configured); }
+  catch (error) {
+    if (!(error instanceof ExternalMcpError) || error.status !== 403) throw error;
+    const actorDid = actor(context);
+    const ownerDid = entry.id === 'warp' ? context.ownerDid : actorDid;
+    const row = diagnostic(entry.id, 'http', ownerDid, ownerDid === actorDid && configured);
+    if (ownerDid !== actorDid) row.configurationStatus = 'not-disclosed';
+    return deny(row, error.code ?? 'tool_scope_required');
+  }
+}
+
+async function upstreamRows(context: InferenceAuthContext) {
+  if (!context.appDid || !context.toolAuth?.serviceToken || !tokenAllows(context, UPSTREAM_READ_SCOPE)) return [];
+  // Only the authenticated app's declared catalogue, never a principal's private upstream enumeration.
+  const app = await requireConnectionApp(db, context.appDid, UPSTREAM_READ_SCOPE, true);
+  const { upstreams } = parseUpstream(upstreamDeclarations, { upstreams: app.upstreams });
+  const rows: ConnectorDiagnostic[] = [];
+  for (const upstream of upstreams) {
+    rows.push(await discoveryExternalConnection(context, {
+      provider: upstreamProvider(context.appDid, upstream.id),
+      binding: upstreamBinding(context.appDid, upstream), scope: UPSTREAM_READ_SCOPE,
+    }, 'http'));
+  }
+  return rows;
+}
+
+/** Never invokes a credential loader, vault get/peek, unseal, or provider request. */
+export async function listDiscoveryConnectorMetadata(context: InferenceAuthContext) {
+  const actorDid = actor(context);
   const registrations = await listConnectorRegistrations(actorDid);
   const brains = new Set<string>(listBrainConnectors());
-  const entries: { id: string; family: ConnectorFamily; href: string }[] = [
-    ...CONNECTOR_REGISTRY.filter(entry => !brains.has(entry.id)).map(entry => ({
-      id: entry.id, family: entry.id === 'mcp' ? 'mcp' as const : 'http' as const,
-      href: `/auth/connectors/${encodeURIComponent(entry.id)}`,
-    })),
-    { id: POSTMAN_PROVIDER, family: 'mcp' as const, href: '/auth/connectors' },
-  ];
-  const known = new Set(entries.map(entry => entry.id));
-  for (const row of registrations) {
-    if (brains.has(row.provider) || known.has(row.provider) || row.provider.startsWith('org-held-')
-      || row.provider.endsWith('-billing')) continue;
-    known.add(row.provider);
-    entries.push({ id: row.provider, family: 'http', href: '/auth/connectors' });
+  const rows: ConnectorDiagnostic[] = [];
+  for (const entry of CONNECTOR_REGISTRY) {
+    if (brains.has(entry.id)) continue;
+    const configured = registrations.some(row => row.provider === entry.id && row.status === 'active' && !row.revokedAt);
+    rows.push(await safeHttpRow(context, entry, configured));
   }
-  return entries.map(entry => ({
-    provider: entry.id,
-    family: entry.family,
-    configured: registrations.some(row => row.provider === entry.id && row.status === 'active' && !row.revokedAt),
-    ownerDid: actorDid,
-    authority: null,
-    grantStatus: 'not-evaluated' as const,
-    usable: null,
-    usableModels: [],
-    fix: { control: 'Connectors → configuration and grants', href: entry.href, actingDid: actorDid },
-  }));
+  rows.push(await discoveryExternalConnection(context, POSTMAN_CONNECTION, 'mcp'));
+  rows.push(...await upstreamRows(context));
+  const known = new Set([...brains, ...rows.map(row => row.provider)]);
+  for (const registration of registrations) {
+    if (known.has(registration.provider) || registration.provider.startsWith('org-held-')
+      || registration.provider.startsWith('app-upstream:') || registration.provider.endsWith('-billing')) continue;
+    known.add(registration.provider);
+    rows.push({
+      ...diagnostic(registration.provider, 'http', actorDid, registration.status === 'active' && !registration.revokedAt),
+      grantStatus: 'not-evaluated', usable: null,
+      fix: { control: 'Connectors → configuration and grants', href: '/auth/connectors', actingDid: actorDid },
+    });
+  }
+  return rows;
 }

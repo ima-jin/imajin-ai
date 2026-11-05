@@ -87,8 +87,8 @@ describe('GET /infer/v1/self', () => {
     expect(body.identity).toEqual({ did: actor, handle: 'artifact-jin', kind: 'agent', tier: 'established', actAs: actingAsOrg ? org : null });
     expect(body.connectors[0]).toMatchObject({ authority: actingAsOrg ? 'org-held' : 'own-key', usableModels: ['model-one'] });
     expect(h.identity).toHaveBeenCalledWith(actor);
-    expect(h.metadata).toHaveBeenCalledWith(actor);
-    expect(h.auth).toHaveBeenCalledWith(expect.anything(), 'infer:completions');
+    expect(h.metadata).toHaveBeenCalledWith(context);
+    expect(h.auth).toHaveBeenCalledWith(expect.anything(), 'infer:completions', true);
     expect(h.routes).toHaveBeenCalledWith(context, { model: 'model-one' });
     expect(h.models).toHaveBeenCalledWith(context);
   });
@@ -162,7 +162,7 @@ describe('GET /infer/v1/self', () => {
     expect(JSON.stringify(body)).not.toContain('other-human');
     expect(h.serving).toHaveBeenCalledWith(principalDid);
     expect(h.grants).toHaveBeenCalledWith(principalDid);
-    expect(h.metadata).not.toHaveBeenCalled();
+    expect(h.metadata).toHaveBeenCalled();
     expect(h.auth).not.toHaveBeenCalled();
   });
   it('retains red operator rows on a known unavailable credential without changing self failure semantics', async () => {

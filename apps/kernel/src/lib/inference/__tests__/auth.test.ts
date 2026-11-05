@@ -31,6 +31,23 @@ beforeEach(() => {
 });
 
 describe('resolveInferenceAuth — x-api-key bearer fallback (#1959)', () => {
+  it.each([false, true])('self discovery preserves only verified token scopes (service token: %s)', async serviceToken => {
+    const scopes = ['infer:completions', 'warp:dispatch'];
+    mockRequireAppAuth.mockResolvedValueOnce({
+      appAuth: { appDid: APP_DID, userDid: OWNER_DID, scopes, isServiceToken: serviceToken },
+    });
+    const result = await resolveInferenceAuth(makeRequest({
+      'x-acting-as': 'did:imajin:unverified', 'x-scopes': 'connectors:mcp:read',
+    }), 'infer:completions', true);
+    expect(result).toMatchObject({
+      ok: true, context: { ownerDid: OWNER_DID, toolAuth: { scopes, serviceToken } },
+    });
+    if (result.ok) {
+      expect(result.context.caller?.actingAs).toBeUndefined();
+      expect(result.context.toolAuth?.scopes).not.toBe(scopes);
+      expect(result.context.toolAuth?.scopes).not.toContain('connectors:mcp:read');
+    }
+  });
   it('refuses a rejected app credential even when a valid personal session is available', async () => {
     mockRequireAppAuth.mockResolvedValueOnce({ error: 'Invalid app token', status: 401, notAppToken: false });
     mockRequireAuth.mockResolvedValueOnce({ identity: { id: OWNER_DID } });

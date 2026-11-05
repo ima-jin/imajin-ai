@@ -39,7 +39,7 @@ export async function requireConnectionApp(tx: Pick<ConnectionTransaction, 'sele
   if (serviceToken && !app.approvedServiceScopes.includes(scope)) throw connectionUnavailable();
   return app;
 }
-async function authorizeCaller(tx: ConnectionTransaction, caller: ExternalMcpCaller, scope: string) {
+async function authorizeCaller(tx: Pick<ConnectionTransaction, 'select'>, caller: ExternalMcpCaller, scope: string) {
   if (!caller.appDid) return;
   await requireConnectionApp(tx, caller.appDid, scope, caller.serviceToken === true);
   const [grant] = await tx.select({ scopes: channelLinks.scopes }).from(channelLinks).where(and(
@@ -55,7 +55,7 @@ async function authorizeCaller(tx: ConnectionTransaction, caller: ExternalMcpCal
  * Call under the member custody snapshot lock, before any credential unseal.
  */
 export async function authorizeMemberConnection(
-  tx: ConnectionTransaction, caller: ExternalMcpCaller, target: MemberConnectionTarget = POSTMAN_CONNECTION,
+  tx: Pick<ConnectionTransaction, 'select'>, caller: ExternalMcpCaller, target: MemberConnectionTarget = POSTMAN_CONNECTION,
 ): Promise<ConnectorRow> {
   await authorizeCaller(tx, caller, target.scope);
   const principal = caller.caller
