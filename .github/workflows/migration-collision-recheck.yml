@@ -1,1 +1,38 @@
 name: Migration collision recheck
+
+on:
+  push:
+    branches: [main]
+    paths: ['migrations/**']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: read
+  checks: write
+
+# Serialize snapshots so an older main scan cannot finish after a newer one.
+concurrency:
+  group: migration-collision-recheck
+  cancel-in-progress: false
+
+jobs:
+  recheck:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Recheck open PR migrations against main
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7
+        with:
+          script: |
+            const { recheckOpenPulls } = await import(
+              `${process.env.GITHUB_WORKSPACE}/scripts/migration-collision-recheck.mjs`
+            );
+            await recheckOpenPulls({ github, context, core });
