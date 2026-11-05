@@ -5,6 +5,10 @@ After=network-online.target
 
 [Service]
 Type=oneshot
+RuntimeDirectory=imajin-infer-passthrough-credential
+RuntimeDirectoryMode=0700
+RuntimeDirectoryPreserve=yes
+LimitCORE=0
 Environment=PATH=/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 EnvironmentFile=-/etc/imajin/infer-passthrough-update.env
 LoadCredential=github-token:/etc/imajin/infer-passthrough-github-token

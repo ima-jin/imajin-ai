@@ -324,7 +324,7 @@ class BootstrapTests(unittest.TestCase):
             with self.assertRaises(subprocess.CalledProcessError):
                 bootstrap.main()
             self.assertEqual(self.trace[-1], ("flock", "--exclusive",
-                                            "/run/lock/infer-passthrough-deployment-read.lock",
+                                            "/run/imajin-infer-passthrough-credential/delivery.lock",
                                             "node", str(bundle / "production-deployment.mjs"), "a" * 40))
             for node, pnpm in (("v20.0.0", "9.15.0"), ("v24.0.0", "10.0.0")):
                 self.node_version, self.pnpm_version = node, pnpm

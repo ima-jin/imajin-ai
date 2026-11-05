@@ -129,7 +129,9 @@ describe('root gateway deployment-read consumer', () => {
     expect([...h.files.keys()].some(path => path.endsWith('.pending'))).toBe(false);
     expect(fetch.mock.calls[2][0]).toContain('/ack');
     expect(JSON.stringify(fetch.mock.calls)).not.toContain(fixture);
-    expect(JSON.stringify([process.argv, process.env, console.error.mock.calls])).not.toContain(fixture);
+    expect(process.argv.some(value => value.includes(fixture))).toBe(false);
+    expect(Object.values(process.env).some(value => value?.includes(fixture))).toBe(false);
+    expect(JSON.stringify(console.error.mock.calls)).not.toContain(fixture);
   });
 
   it.each(['write', 'fsync', 'rename'])('preserves the previous file when %s fails', async operation => {

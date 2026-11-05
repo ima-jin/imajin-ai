@@ -211,7 +211,7 @@ def prerequisites():
     sha = (BUNDLE / "release.sha").read_text().strip()
     if not re.fullmatch(r"[a-f0-9]{40}", sha):
         raise ValueError("Invalid trusted bundle SHA")
-    run("flock", "--exclusive", "/run/lock/infer-passthrough-deployment-read.lock",
+    run("flock", "--exclusive", "/run/imajin-infer-passthrough-credential/delivery.lock",
         "node", str(BUNDLE / "production-deployment.mjs"), sha)
 
 

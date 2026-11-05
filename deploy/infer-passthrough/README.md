@@ -360,8 +360,12 @@ ephemeral private key. TLS redirects, arbitrary origins and oversized replies
 are refused; no response or upstream exception is logged.
 
 The trusted service, bootstrap and updater serialize delivery with the same
-OS-released `flock` at `/run/lock/infer-passthrough-deployment-read.lock`, so a
-failed concurrent delivery cannot restore bytes over a successful rotation.
+OS-released `flock` at
+`/run/imajin-infer-passthrough-credential/delivery.lock`. Systemd creates its
+root-owned 0700 runtime directory for all three consumers, preserves it between
+invocations, and recreates it after reboot. No shared writable lock directory
+is trusted. A failed concurrent delivery cannot restore bytes over a successful
+rotation. Every credential-consuming host unit disables core dumps.
 The root consumer writes a unique exclusive 0600 temp file beside
 `/etc/imajin/infer-passthrough-github-token`, sets root:root ownership, fsyncs,
 atomically renames and fsyncs the directory, then acknowledges the fetch through

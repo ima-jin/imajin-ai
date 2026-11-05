@@ -50,7 +50,7 @@ beforeEach(() => {
   // Redirect only the fixed host env path; never read or modify host configuration.
   writeFileSync(fixtureUpdater, readFileSync(updater, 'utf8')
     .replaceAll('/etc/imajin/infer-passthrough.env', envFile)
-    .replaceAll('/run/lock/infer-passthrough-deployment-read.lock', join(dir, 'deployment-read.lock')));
+    .replaceAll('/run/imajin-infer-passthrough-credential/delivery.lock', join(dir, 'deployment-read.lock')));
   env = {
     ...process.env,
     PATH: `${join(dir, 'bin')}:${process.env.PATH}`,

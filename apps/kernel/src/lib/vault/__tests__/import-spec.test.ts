@@ -37,8 +37,15 @@ describe('vault import API contract (#2260)', () => {
     expect(unit).toContain('Group=root');
     expect(unit).toContain('UMask=0077');
     expect(unit).not.toMatch(/EnvironmentFile|GITHUB_TOKEN|GH_TOKEN/);
-    expect(unit).toContain('flock --exclusive /run/lock/infer-passthrough-deployment-read.lock');
-    expect(readFileSync(resolve(directory, 'update.sh'), 'utf8')).toContain('flock --exclusive /run/lock/infer-passthrough-deployment-read.lock');
+    expect(unit).toContain('flock --exclusive /run/imajin-infer-passthrough-credential/delivery.lock');
+    expect(readFileSync(resolve(directory, 'update.sh'), 'utf8')).toContain('flock --exclusive /run/imajin-infer-passthrough-credential/delivery.lock');
+    for (const name of ['infer-passthrough-deployment-read.service', 'infer-passthrough-bootstrap.service', 'infer-passthrough-update.service']) {
+      const source = readFileSync(resolve(directory, name), 'utf8');
+      expect(source).toContain('RuntimeDirectory=imajin-infer-passthrough-credential');
+      expect(source).toContain('RuntimeDirectoryMode=0700');
+      expect(source).toContain('RuntimeDirectoryPreserve=yes');
+      expect(source).toContain('LimitCORE=0');
+    }
   });
 
   it('returns metadata-only pending approval and documents the countersigned execution path', () => {
