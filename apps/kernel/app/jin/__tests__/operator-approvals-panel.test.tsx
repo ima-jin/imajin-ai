@@ -7,11 +7,11 @@
  * per-source renderer registry (default vs. skill-workshop).
  */
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
-import { webcrypto } from 'node:crypto';
 import { render, renderHook, act, screen, cleanup, waitFor, fireEvent, within } from '@testing-library/react';
 import { crypto as authCrypto, canonicalize } from '@imajin/auth';
 import { installIntervalSpy } from './panel-test-support';
 import { requestApprovalsRefresh } from '../approval-anchor';
+import { loadOperatorSigner } from './operator-signing-test-support';
 
 // `useSearchParams` (#2291's proposalId deep link) needs a Next router
 // context that does not exist outside the app runtime — stub it per-test,
@@ -376,16 +376,6 @@ function installFetch(
 
 let scrollIntoViewDescriptor: PropertyDescriptor | undefined;
 let clipboardDescriptor: PropertyDescriptor | undefined;
-async function loadOperatorSigner() {
-  // jsdom omits subtle and its VM byte arrays fail native WebCrypto's realm check.
-  vi.stubGlobal('crypto', {
-    subtle: { digest: (algorithm: string, bytes: Uint8Array) => webcrypto.subtle.digest(algorithm, Buffer.from(bytes)) },
-    getRandomValues: webcrypto.getRandomValues.bind(webcrypto),
-  });
-  // Keep cold module loading outside findBy's DOM-update timeout; the
-  // decisions still exercise real Ed25519 signing and signature verification.
-  await Promise.all([import('@noble/ed25519'), import('@noble/hashes/sha2.js')]);
-}
 
 beforeEach(() => {
   vi.useRealTimers();
