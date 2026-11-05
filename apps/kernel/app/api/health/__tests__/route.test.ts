@@ -34,7 +34,9 @@ function waitForAbort(_url: string, options: RequestInit): Promise<Response> {
 // connection; the default resolves "caught up" so it never accidentally
 // trips the degraded assertions below. hasPendingMigrations is left real
 // (via importOriginal) since it's pure logic with no DB dependency.
-const { checkAppMigrationsMock } = vi.hoisted(() => ({ checkAppMigrationsMock: vi.fn() }));
+const { checkAppMigrationsMock, checkDatabaseLivenessMock } = vi.hoisted(() => ({
+  checkAppMigrationsMock: vi.fn(), checkDatabaseLivenessMock: vi.fn(),
+}));
 
 // #2412: the route reports vault status via getVaultHealth(); mocked so these
 // tests never touch the real filesystem/home directory. Defaults to a healthy
@@ -53,7 +55,7 @@ const HEALTHY_VAULT = {
 
 vi.mock('@imajin/db', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@imajin/db')>();
-  return { ...actual, checkAppMigrations: checkAppMigrationsMock };
+  return { ...actual, checkAppMigrations: checkAppMigrationsMock, checkDatabaseLiveness: checkDatabaseLivenessMock };
 });
 
 // Warm the route module's cold transitive import (config, db, vault) in a hook
@@ -78,6 +80,7 @@ beforeEach(() => {
 
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(null, { status: 200 })));
   checkAppMigrationsMock.mockReset().mockResolvedValue(CAUGHT_UP);
+  checkDatabaseLivenessMock.mockReset().mockResolvedValue(true);
   getVaultHealthMock.mockReset().mockResolvedValue(HEALTHY_VAULT);
 });
 
@@ -88,12 +91,22 @@ afterEach(() => {
 });
 
 describe('GET /api/health', () => {
-  it('answers liveness without database, vault, registry or HTTP dependencies', async () => {
+  it('returns 503 to the watchdog when the shared DB pool fails its bound', async () => {
+    checkDatabaseLivenessMock.mockResolvedValue(false);
+    const { GET } = await import('../route');
+    const response = await GET(new Request('http://localhost:7000/api/health?liveness=1'));
+    expect(response.status).toBe(503);
+    expect(await response.json()).toEqual({ status: 'unavailable', database: false });
+    expect(fetch).not.toHaveBeenCalled();
+    expect(registryWhere).not.toHaveBeenCalled();
+  });
+  it('answers liveness with a DB check but without vault, registry or HTTP fan-out', async () => {
     registryWhere.mockRejectedValue(new Error('database unavailable'));
     const { GET } = await import('../route');
     const response = await GET(new Request('http://localhost:7000/api/health?liveness=1'));
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ status: 'alive' });
+    expect(await response.json()).toEqual({ status: 'alive', database: true });
+    expect(checkDatabaseLivenessMock).toHaveBeenCalledOnce();
     expect(registryWhere).not.toHaveBeenCalled();
     expect(fetch).not.toHaveBeenCalled();
     expect(checkAppMigrationsMock).not.toHaveBeenCalled();

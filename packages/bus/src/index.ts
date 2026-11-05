@@ -48,6 +48,8 @@ export type { ChainObservation, ChainObserver } from './chain-observer';
 export { publishAppEvent, APP_EVENT_REACTORS, APP_EVENT_SCOPE } from './publish-app-event';
 export type { AppEventInput, AppEventResult } from './publish-app-event';
 export { broker } from './broker';
+export { registerConsentNotificationPreparer } from './reactors/consent-request-notify';
+export type { ConsentNotification, PreparedConsentNotification } from './reactors/consent-request-notify';
 export { registerReactor, getReactor } from './registry';
 export { registerSettleExecutor, getSettleExecutor } from './reactors/settle';
 export type { SettleExecutor, SettleExecutorParams, SettleExecutorResult } from './reactors/settle';

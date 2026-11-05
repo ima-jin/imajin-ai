@@ -1,5 +1,6 @@
 /** The command transport never consults register_also, subscriptions, or user payload DIDs. */
 const SESSION_COMMAND_PATH = '/chat/api/internal/session-command';
+const { internalFetch } = require('../../../../../packages/auth/src/internal-fetch.cjs');
 const MAX_BODY_BYTES = 32 * 1024;
 
 function sendOwnSessionCommand(didSockets, socketMeta, targetDid, command) {
@@ -62,9 +63,9 @@ async function forwardSessionEvent(meta, frame) {
   if (Buffer.byteLength(JSON.stringify(frame)) > 24 * 1024) return;
   const port = process.env.PORT || '3000';
   try {
-    await fetch(`http://localhost:${port}/jin/api/internal/session-events`, {
+    await internalFetch(`http://localhost:${port}/jin/api/internal/session-events`, {
       method: 'POST', headers: { 'Content-Type': 'application/json', 'x-internal-key': key },
-      body: JSON.stringify({ socketDid: meta.did, frame }), signal: AbortSignal.timeout(5000),
+      body: JSON.stringify({ socketDid: meta.did, frame }),
     });
   } catch {
     // Never reflect private signed payloads or provider errors onto the socket.

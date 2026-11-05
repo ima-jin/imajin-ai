@@ -18,7 +18,7 @@ vi.mock('@imajin/logger', () => ({
   createLogger: () => ({ error: vi.fn(), info: vi.fn(), warn: vi.fn(), debug: vi.fn() }),
 }));
 
-import { sendConsentRequestNotification } from '../src/reactors/consent-request-notify';
+import { sendConsentRequestNotification, registerConsentNotificationPreparer } from '../src/reactors/consent-request-notify';
 import type { BrokerRequest } from '../src/types';
 
 const OWNER = 'did:imajin:88kPzzzzzzzzzzzzzzzzzzzzzzzzzzzzNWXU';
@@ -46,17 +46,24 @@ let fetchMock: ReturnType<typeof vi.fn>;
 
 beforeEach(() => {
   vi.clearAllMocks();
-  vi.stubEnv('NOTIFY_SERVICE_URL', 'http://notify.test');
   mockSql.mockImplementation((strings: TemplateStringsArray) =>
     Promise.resolve(strings.join('').includes('pg_try_advisory_xact_lock') ? [{ acquired: true }] : []));
   mockBegin.mockImplementation(async (callback: (tx: typeof mockSql) => Promise<void>) => callback(mockSql));
   fetchMock = vi.fn().mockResolvedValue({ ok: true });
-  vi.stubGlobal('fetch', fetchMock);
+  registerConsentNotificationPreparer(async notification => ({
+    persist: async () => undefined,
+    deliver: async () => {
+      const result = await fetchMock('in-process-delivery', { body: JSON.stringify(notification) });
+      if (!result.ok) throw new Error('delivery unavailable');
+    },
+  }));
+  vi.stubGlobal('fetch', vi.fn(() => { throw new Error('Self HTTP is forbidden'); }));
 });
 
 afterEach(() => {
   vi.unstubAllGlobals();
   vi.unstubAllEnvs();
+  registerConsentNotificationPreparer(undefined);
 });
 
 describe('sendConsentRequestNotification — acting delegate (#2366)', () => {
@@ -84,6 +91,7 @@ describe('sendConsentRequestNotification — acting delegate (#2366)', () => {
   it('still sends nothing for a non-no_consent rejection', async () => {
     await sendConsentRequestNotification(makeRequest({ appDid: ACTING_APP }), 'purpose_mismatch');
     expect(fetchMock).not.toHaveBeenCalled();
+    expect(fetch).not.toHaveBeenCalled();
   });
 
   it('still sends nothing for preview or shadow requests', async () => {
@@ -132,11 +140,12 @@ describe('pending consent request dedupe (#3081)', () => {
   });
   it('notifies only once while simultaneous loads race an in-flight delivery', async () => {
     let locked = false;
+    let persisted = false;
     mockBegin.mockImplementation(async (callback: (tx: typeof mockSql) => Promise<void>) => {
       let ownsLock = false;
       try {
         return await callback(vi.fn(async (strings: TemplateStringsArray) => {
-          if (!strings.join('').includes('pg_try_advisory_xact_lock')) return [];
+          if (!strings.join('').includes('pg_try_advisory_xact_lock')) return persisted ? [{ id: 'persisted' }] : [];
           const acquired = !locked;
           ownsLock = acquired;
           locked = true;
@@ -148,7 +157,12 @@ describe('pending consent request dedupe (#3081)', () => {
     });
     let completeDelivery!: () => void;
     const delivery = new Promise<void>(resolve => { completeDelivery = resolve; });
+    registerConsentNotificationPreparer(async notification => ({
+      persist: async () => { persisted = true; },
+      deliver: async () => { await fetchMock('in-process-delivery', { body: JSON.stringify(notification) }); },
+    }));
     fetchMock.mockImplementation(async () => {
+      expect(locked).toBe(false);
       await delivery;
       return { ok: true };
     });
@@ -193,8 +207,8 @@ describe('pending consent request dedupe (#3081)', () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
-  it('does no database work when notify is not configured', async () => {
-    vi.stubEnv('NOTIFY_SERVICE_URL', '');
+  it('does no database or HTTP work when the in-process preparer is not registered', async () => {
+    registerConsentNotificationPreparer(undefined);
     await sendConsentRequestNotification(makeRequest(), 'no_consent');
     expect(mockBegin).not.toHaveBeenCalled();
     expect(fetchMock).not.toHaveBeenCalled();
