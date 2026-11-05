@@ -3,6 +3,7 @@ import { requireAuth } from '@imajin/auth';
 import { corsHeaders } from './cors';
 import { externalConnectionBody } from './external-mcp-route';
 import { ExternalMcpError } from './external-mcp-policy';
+import { isAgentCapableSubtype } from './connection-principal-policy';
 import { loadOrgHeldConnection, readOrgHeldConnections, revokeOrgHeldConnection } from './org-held-connection';
 
 export async function orgHeldConnectionRoute(request: NextRequest, provider?: string) {
@@ -11,7 +12,7 @@ export async function orgHeldConnectionRoute(request: NextRequest, provider?: st
     const auth = await requireAuth(request, { sessionOnly: true, service: 'connections' });
     if ('error' in auth) throw new ExternalMcpError(auth.status, 'Organization admin session required');
     const identity = auth.identity;
-    if (!identity.actingAs || identity.actingFor || identity.subtype === 'agent'
+    if (!identity.actingAs || identity.actingFor || isAgentCapableSubtype(identity.subtype)
       || !['owner', 'admin'].includes(identity.actingAsRole ?? '')) {
       throw new ExternalMcpError(403, 'Organization admin act-as required');
     }

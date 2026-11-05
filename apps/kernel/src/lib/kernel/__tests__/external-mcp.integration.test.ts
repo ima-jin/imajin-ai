@@ -96,6 +96,8 @@ import { GET as MEMBER_GRANTS, POST as GRANT_MEMBER, DELETE as REVOKE_MEMBER, OP
 import { requireOrgConnectionMemberGrant, listOrgConnectionMemberGrants, revokeRemovedMemberOrgGrants } from '../org-connection-member-grants';
 import { orgConnectionMemberGrantRoute } from '../org-connection-member-grant-route';
 import { GET as READ_MEMBER_STATUS, OPTIONS as STATUS_OPTIONS } from '@/app/connections/api/org-held/status/route';
+import { authorizeOrgConnectionAdmin } from '../org-held-connection-policy';
+import { readOrgHeldStatus } from '../org-held-status';
 import { SESSION_COOKIE_NAME } from '@imajin/config';
 
 const tables = [identities, identityMembers, attestations, channelLinks, registryApps, connectors, orgConnectionSuspensions, orgConnectionEvents,
@@ -210,6 +212,46 @@ describe('member-readable org-held status without custody or grant authority', (
   it('redacts unexpected auth/store errors', async () => {
     vi.mocked(requireAuth).mockRejectedValueOnce(new Error('Synthetic internal failure'));
     expect(await memberStatus()).toMatchObject({ status: 503, body: { error: 'Organization key status unavailable' } });
+  });
+});
+describe('agent-capable subtypes cannot enter human member/admin paths', () => {
+  it.each(['agent', 'presence'])('org-held-connection-policy refuses a live %s admin despite human session claims', async subtype => {
+    await asOrg();
+    await database.update(identities).set({ subtype }).where(eq(identities.id, member));
+    const before = await permanentState();
+    await expect(database.transaction(tx => authorizeOrgConnectionAdmin(tx, { orgDid: org, actorDid: member })))
+      .rejects.toMatchObject({ status: 403, message: 'Active organization owner or admin required' });
+    expect(await permanentState()).toBe(before);
+    expect(h.fetch).not.toHaveBeenCalled();
+  });
+  it.each(['agent', 'presence'])('org-held-connection-route refuses a %s admin session before store access', async subtype => {
+    await asOrg();
+    h.identity.subtype = subtype;
+    const before = await permanentState();
+    const transactions = h.transactionsStarted;
+    const result = await call(ORG_LIST);
+    expect(result).toMatchObject({ status: 403, body: { error: 'Organization admin act-as required' } });
+    expect(h.transactionsStarted).toBe(transactions);
+    expect(await permanentState()).toBe(before);
+    expect(h.fetch).not.toHaveBeenCalled();
+  });
+  it.each(['agent', 'presence'])('org-held-status refuses a live %s member despite human session claims', async subtype => {
+    await asOrg('member');
+    await database.update(identities).set({ subtype }).where(eq(identities.id, member));
+    const before = await permanentState();
+    await expect(readOrgHeldStatus({ orgDid: org, actorDid: member }))
+      .rejects.toMatchObject({ status: 403, message: 'Active organization membership required' });
+    expect(await permanentState()).toBe(before);
+    expect(h.fetch).not.toHaveBeenCalled();
+  });
+  it.each(['agent', 'presence'])('external-mcp-route refuses a personal %s session before store access', async subtype => {
+    h.identity.subtype = subtype;
+    const before = await permanentState();
+    const transactions = h.transactionsStarted;
+    expect(await call(GET)).toMatchObject({ status: 403, body: { error: 'Personal member session required' } });
+    expect(h.transactionsStarted).toBe(transactions);
+    expect(await permanentState()).toBe(before);
+    expect(h.fetch).not.toHaveBeenCalled();
   });
 });
 async function permanentState() {
@@ -1220,6 +1262,37 @@ describe('org-held member grants: durable lifecycle and live metadata contract',
       expect(h.vault).toEqual(vaultBefore);
       expect(await database.select().from(vaultDelegationGrants)).toEqual(custodyBefore);
     } finally { read.mockRestore(); }
+  });
+
+  it.each(['human', 'device', 'agent', 'presence'])('member-grant route keeps %s session eligibility explicit', async subtype => {
+    await prepare();
+    h.identity.subtype = subtype;
+    const before = await permanentState();
+    const transactions = h.transactionsStarted;
+    const response = await grantRequest('GET');
+    if (subtype === 'human' || subtype === 'device') {
+      expect(response).toMatchObject({ status: 200, body: { grants: [] } });
+    } else {
+      expect(response).toMatchObject({ status: 403, body: { error: 'Organization admin act-as required' } });
+      expect(h.transactionsStarted).toBe(transactions);
+    }
+    expect(await permanentState()).toBe(before);
+  });
+
+  it.each(['human', 'device', 'agent', 'presence'])('member-grant policy keeps %s grantee eligibility explicit', async subtype => {
+    await prepare();
+    expect((await grantRequest()).status).toBe(200);
+    await database.update(identities).set({ subtype }).where(eq(identities.id, grantee()));
+    const before = await permanentState();
+    if (subtype === 'human' || subtype === 'device') {
+      expect((await grantRequest()).status).toBe(200);
+      expect(await requireOrgConnectionMemberGrant(context())).toMatchObject({ memberDid: grantee() });
+    } else {
+      expect((await grantRequest()).status).toBe(403);
+      await expect(requireOrgConnectionMemberGrant(context()))
+        .rejects.toMatchObject({ status: 403, code: 'org_membership_required' });
+    }
+    expect(await permanentState()).toBe(before);
   });
 
   async function prepareTwoGrants() {

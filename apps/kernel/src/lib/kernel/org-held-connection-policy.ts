@@ -2,6 +2,7 @@ import { and, eq, isNull } from 'drizzle-orm';
 import { identities, identityMembers } from '@/src/db';
 import type { ConnectionTransaction } from './member-connection-gate';
 import { ExternalMcpError } from './external-mcp-policy';
+import { isAgentCapableSubtype } from './connection-principal-policy';
 
 export const ORG_HELD_PREFIX = 'org-held-';
 export const orgHeldProvider = (provider: string) => `${ORG_HELD_PREFIX}${provider}`;
@@ -18,7 +19,7 @@ export async function authorizeOrgConnectionAdmin(
     isNull(identityMembers.removedAt),
   )).for('share');
   if (!org || !['business', 'community', 'family'].includes(org.scope) || org.suspendedAt
-    || person?.scope !== 'actor' || person.subtype === 'agent' || person.suspendedAt
+    || person?.scope !== 'actor' || isAgentCapableSubtype(person.subtype) || person.suspendedAt
     || !membership || !['owner', 'admin'].includes(membership.role)
     || (membership.allowedServices !== null && !membership.allowedServices.includes('connections'))) {
     throw new ExternalMcpError(403, 'Active organization owner or admin required');

@@ -1,6 +1,7 @@
 import { and, eq, isNotNull, isNull, like } from 'drizzle-orm';
 import { db, connectors, identities, identityMembers } from '@/src/db';
 import { ExternalMcpError } from './external-mcp-policy';
+import { isAgentCapableSubtype } from './connection-principal-policy';
 import { ORG_HELD_PREFIX, type OrgConnectionActor } from './org-held-connection-policy';
 
 /** Membership permits metadata only. It does not create a custody or member grant. */
@@ -16,7 +17,7 @@ export function readOrgHeldStatus(actor: OrgConnectionActor) {
         isNull(identityMembers.removedAt),
       )).for('share');
     if (!org || !['business', 'community', 'family'].includes(org.scope) || org.suspendedAt
-      || person?.scope !== 'actor' || person.subtype === 'agent' || person.suspendedAt || !membership) {
+      || person?.scope !== 'actor' || isAgentCapableSubtype(person.subtype) || person.suspendedAt || !membership) {
       throw new ExternalMcpError(403, 'Active organization membership required');
     }
     const rows = await tx.select({ provider: connectors.provider, loadedAt: connectors.loadedAt })

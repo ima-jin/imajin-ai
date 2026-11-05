@@ -497,6 +497,76 @@ describe.each(['agent', 'presence'])('route discovery ≡ chat/completions for %
   });
 });
 
+describe('presence sessions through completions with real assignment and member-grant SQL', () => {
+  beforeEach(async () => {
+    await database.update(identities).set({ subtype: 'presence' }).where(eq(identities.id, AGENT));
+  });
+  function presenceSession(actingAs?: string) {
+    h.session.mockResolvedValue({ identity: {
+      id: AGENT, scope: 'actor', subtype: 'presence', actingFor: MEMBER, actingAs,
+    } });
+    return new NextRequest('https://kernel.test/infer/v1/chat/completions', {
+      method: 'POST',
+      body: JSON.stringify({ model: actingAs ? 'claude-test' : 'personal-model', messages: [{ role: 'user', content: 'fixture' }] }),
+    });
+  }
+  async function grantOrgMember() {
+    await database.insert(orgConnectionMemberGrants).values({
+      id: 'presence-member-grant', orgDid: ORG, memberDid: MEMBER, connectionId: 'org-connection',
+      provider: 'anthropic', grantedByDid: MEMBER, grantedAt: new Date(),
+    });
+  }
+  it.each([undefined, ORG])('allows an assigned presence acting for a human with actingAs=%s and rechecks removal', async actingAs => {
+    await database.insert(identityMembers).values({
+      identityDid: MEMBER, memberDid: AGENT, role: 'agent', allowedServices: ['infer'],
+    });
+    if (actingAs) await grantOrgMember();
+    const response = await completions(presenceSession(actingAs));
+    expect(response.status).toBe(200);
+    expect(h.complete).toHaveBeenCalledWith(expect.objectContaining({
+      credentialDid: actingAs ?? MEMBER, actorDid: AGENT,
+    }), expect.anything(), expect.anything());
+    expect(h.fallback).not.toHaveBeenCalled();
+    if (actingAs) {
+      expect(h.personal).not.toHaveBeenCalled();
+      expect(h.get).toHaveBeenCalledWith(FIELD);
+    } else {
+      expect(h.personal.mock.calls).toEqual([[MEMBER]]);
+      expect(h.get).not.toHaveBeenCalled();
+    }
+    await assertPrivate(response);
+    await database.update(identityMembers).set({ removedAt: new Date() }).where(eq(identityMembers.memberDid, AGENT));
+    vi.clearAllMocks();
+    const denied = await completions(presenceSession(actingAs));
+    expect(denied.status).toBe(403);
+    expect(await denied.json()).toEqual({ error: 'Agent is not assigned to this identity or service' });
+    expect(h.complete).not.toHaveBeenCalled();
+    expect(h.personal).not.toHaveBeenCalled();
+    expect(h.get).not.toHaveBeenCalled();
+    expect(h.fallback).not.toHaveBeenCalled();
+  });
+  it.each([undefined, ORG])('refuses an unassigned presence with actingAs=%s even with a human member grant', async actingAs => {
+    await grantOrgMember();
+    const response = await completions(presenceSession(actingAs));
+    expect(response.status).toBe(403);
+    expect(await response.json()).toEqual({ error: 'Agent is not assigned to this identity or service' });
+    expect(h.complete).not.toHaveBeenCalled();
+    expect(h.personal).not.toHaveBeenCalled();
+    expect(h.get).not.toHaveBeenCalled();
+    expect(h.fallback).not.toHaveBeenCalled();
+  });
+  it('requires the human member grant separately from the presence assignment', async () => {
+    await database.insert(identityMembers).values({ identityDid: MEMBER, memberDid: AGENT, role: 'agent' });
+    const response = await completions(presenceSession(ORG));
+    expect(response.status).toBe(403);
+    expect((await response.json()).error).toContain('/auth/connectors');
+    expect(h.complete).not.toHaveBeenCalled();
+    expect(h.get).not.toHaveBeenCalled();
+    expect(h.personal).not.toHaveBeenCalled();
+    expect(h.fallback).not.toHaveBeenCalled();
+  });
+});
+
 describe('assigned agents use only the assigned DID keys, without member-grant rows', () => {
   async function assign(principal = ORG, allowedServices: string[] | null = null) {
     await database.insert(identityMembers).values({
