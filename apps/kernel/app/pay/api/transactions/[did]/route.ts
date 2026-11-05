@@ -8,7 +8,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { db, transactions } from '@/src/db';
-import { eq, and, desc, or } from 'drizzle-orm';
+import { eq, ne, and, desc, or } from 'drizzle-orm';
 import { requireAuth, requireAppAuth, resolveActingDid } from '@imajin/auth';
 import { corsHeaders } from '@/src/lib/kernel/cors';
 import { createLogger } from '@imajin/logger';
@@ -67,6 +67,7 @@ export async function GET(request: NextRequest, props: { params: Promise<{ did: 
 
     // Build query
     const conditions = [
+      ne(transactions.sourceKind, 'fee'),
       or(
         eq(transactions.fromDid, did),
         eq(transactions.toDid, did)

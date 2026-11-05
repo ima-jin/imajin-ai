@@ -1,541 +1,105 @@
-# Deploy posture — current state and target (#2060)
-
-Repo-only investigation. No server access was used or attempted — every claim below is either a
-citation to a file in this repo or explicitly marked as unverifiable from the repo alone.
-
-## Release delta — v0.8.30 source, 2026-11-02
-
-Ryan's 2026-11-01 ruling is **v0.8.30, patch**, not v0.9.0. `release.yml` remains
-`workflow_dispatch` only, with `bump: patch` as default. The source delta from
-v0.8.29 through `2342115f5` is PR #3205, PR #3207, PR #3200 and PR #3201,
-followed by this docs sweep. The release still requires Ryan to merge the release
-PR and separately approve the `production` environment; this document is not
-evidence that either has happened.
-
-Apply pending `0230_org_connection_member_grants.sql` through the normal kernel
-migration runner. It adds grant/revocation provenance and indexes, not key
-material; the [baseline cut is unchanged](../../migrations/BASELINE.md).
-Human org-admin sessions with `connections` service access can list, grant and
-revoke through `/connections/api/org-held/{provider}/grants`. Membership removal
-revokes that member's grants atomically. This is authority metadata only:
-runtime org-key injection (#3202/#3203) remains v0.9.0 work.
-
-The agent's own signed read at
-`POST /auth/api/grants/received/operator-approvals` exposes effective lease expiry
-without operator credentials or another agent's grants. No migration is required
-for this endpoint. See the [kernel delta](../../apps/kernel/README.md#pre-cut-delta-for-v0830)
-and its linked API/auth contracts.
-
-Trusted fork Sonar now runs after CI using reviewed main workflow/helper code.
-Exact-head `sonarcloud/trusted` and Sonar total 0 are separate acceptance evidence;
-workflow edits need post-merge verification. Main-push runs have no open PR by
-design; normal main analysis stays in CI and the fork follow-up skips that event.
-
-**Known production risk, not fixed in this release:** #3206's `prod-jin` hang
-recurred on 2026-11-02 while pm2 reported `online`. If it recurs after deploy,
-an operator may still need a manual restart using the existing runbook.
-No server operation, restart or code fix is performed by this sweep.
-
-## Release delta — v0.8.29 source, 2026-10-30
-
-Apply pending `0228`–`0229` through the normal kernel migration runner; the
-[baseline cut is unchanged](../../migrations/BASELINE.md).
-No ledger normalization or production migration is performed by this docs sweep.
-New connector revocation and org-held custody require separately reviewed operator
-action, not just a kernel deploy.
-
-Org admins can suspend, resume and remove members' org-tagged external connections;
-membership removal cascades to suspend all tagged connections with signed events.
-Org-held connector credentials are sealed under the org DID and never returned in
-value form. Both are admin-session, auth-scoped operations on `/connections/api`.
-The credential-free source tests do not prove live runner setup or org admin workflow.
-
-The inference-passthrough gateway host now bootstraps through a push workflow with
-no interactive console sudo step. Operator verification of the restricted runner
-group, reviewed bundle and authorized kernel credential delivery remain post-merge
-steps. See the [release delta](../../apps/kernel/README.md#pre-cut-delta-for-v0829).
-
-## Release delta — v0.8.28 source, 2026-10-29
-
-Apply pending `0222`–`0227` through the normal kernel migration runner; the
-[baseline cut is unchanged](../../migrations/BASELINE.md#v0828-post-cut-additions-2026-10-29-source-check).
-No ledger normalization or production migration is performed by this docs sweep.
-New sign-in callback handlers and bounded bootstrap retry require separately
-reviewed standalone SDK adoption, not just a kernel deploy.
-
-The [SSH deploy runbook](../deploy/vault-ssh-deploy.md) now requires immutable
-repository/owner IDs on GitHub grants (legacy grants fail closed until re-granted),
-optional exact workflow refs, and durable OIDC replay protection. The operator
-must provision the dedicated no-swap label and fail-closed startup orphan sweep.
-The credential-free dry run does not prove that live runner setup.
-
-Billing admin-key sealing plus explicit `:billing` consent is an operator action,
-separate from inference. Gateway loop registration still needs an exact-principal
-`loops:publish` grant; reduced warning volume is not successful authorization.
-Real-account connector checks, live session outcomes and the Warp incurred
-warning-free observation window remain post-deploy checks, not evidence supplied
-by source tests. See the [release delta](../../apps/kernel/README.md#pre-cut-delta-for-v0828).
-
-## Release delta — v0.8.27 source, 2026-10-25
-
-The historical investigations/decisions below retain their dates. New reusable
-automation is not a replacement of the kernel deploy pipeline:
-
-- [Vault SSH deploy](../deploy/vault-ssh-deploy.md), `.github/actions/vault-ssh-deploy`,
-  uses a per-job throwaway key and `/api/vault/ssh-ca/sign`. Verified GitHub OIDC
-  binds an exact repository/environment; host CA/principal policy, pinned host
-  keys, protected environments and non-swappable tmpfs remain prerequisites.
-  The credential-free `vault-ssh-dry-run.yml` is not production rollout evidence.
-- [Inference updater](../../deploy/infer-passthrough/README.md) is pull-based
-  systemd deployment. Release reachability alone is insufficient: exact-SHA
-  successful production evidence and mint-backed candidate/live health gate
-  promotion, with rollback. Installation remains an explicit operator step.
-- [Corpus owner migration](../../apps/corpus/README.md) is separately authorized:
-  registry owner-DID resolution, live owner-issued grants and owner OAuth refs
-  replace caller/source-hash indexing and node GitHub token fallbacks. Deploy
-  the resolver before the daemon; stop writers/back up before the signed migration.
-- `0221_vault_ssh_scope.sql` stays above the fixed baseline cut; historical
-  migration/ledger rows are not rewritten.
-
-## 1. How code reaches dev and prod today
-
-Both pipelines share one shape — `pull latest → sync pm2 config → install → build changed → migrate →
-reap orphan ports → restart` — but differ in trigger and gate.
-
-**Dev** (`.github/workflows/deploy-dev.yml`): triggered by `workflow_run` on CI completing
-successfully on `main` (`deploy-dev.yml:4-7`). No human step. Runs on `[self-hosted, imajin]`
-(`deploy-dev.yml:21`), `git reset --hard origin/main` (`deploy-dev.yml:37`), syncs
-`deploy/ecosystem.dev.config.js` → `~/dev/ecosystem.config.js` (`deploy-dev.yml:44`), installs deps
-with `--ignore-scripts` + a targeted `better-sqlite3` rebuild (`deploy-dev.yml:48-56`), runs
-`./scripts/build-changed.sh` (`deploy-dev.yml:59`), runs `node scripts/migrate.mjs` unconditionally
-against whatever `DATABASE_URL` the box resolves (`deploy-dev.yml:62`), reaps orphan ports
-(`deploy-dev.yml:65`), then `pm2 restart` on every `dev-*` process (`deploy-dev.yml:67-76`). **Dev
-already auto-deploys on every merge to `main`** — one of the issue's proposed postures already
-exists, just undocumented outside this workflow file.
-
-**Prod** (`.github/workflows/deploy-prod.yml`): triggered by a `v*` tag push or manual
-`workflow_dispatch` (`deploy-prod.yml:3-11`), gated by the GitHub Environment `production`'s required
-reviewer (`deploy-prod.yml:13-15,24`) — a human approves the run before any step executes, but the
-step sequence itself is identical in shape to dev: pull, sync `ecosystem.prod.config.js`, install,
-`build-changed.sh`, `migrate.mjs`, `reap-orphans.sh prod`, then a **`prod-jin`-specific**
-`pm2 startOrRestart <file> --only prod-jin --update-env` before the rest are restarted by name
-(`deploy-prod.yml:74-102`, rationale for the `prod-jin` special case in the inline comment and
-`deploy/README.md:39-77` — a name-based `pm2 restart` silently drops `--env-file`, which caused
-`AUTH_PRIVATE_KEY` to fall out from under prod once already, #1520).
-
-**Tags are cut, not typed.** `AGENTS.md`'s "Deploy guardrails" section and `release.yml` describe the
-only sanctioned path: `gh workflow run release.yml -f bump=patch|minor` bumps every workspace
-`package.json` in lockstep (`scripts/bump-workspace-version.mjs`) and opens a `release: vX.Y.Z` PR
-(`release.yml:72-155`); merging it (`tag-release.yml`, triggered on push to `main`) tags the merge
-commit and dispatches `deploy-prod.yml` against that tag (`tag-release.yml:80-124`) — which still
-waits on the same `production` environment reviewer. Nothing in the chain bypasses branch protection
-or that gate. The same `tag-release.yml` run also publishes every publishable package to npmjs at the
-release version automatically (#2578; the `publish-npm` job calls `publish-packages.yml` — see
-`docs/npm-publishing.md`); it runs independently of the `production` approval and never touches it.
-
-**Human steps, named:** (1) deciding to dispatch `release.yml` and picking `patch` vs `minor`; (2)
-reviewing/merging the release PR; (3) approving the `production` environment's pending deployment in
-`deploy-prod.yml`. Everything else — build, migrate, restart, both envs' pm2 sync — is scripted.
-Env vars are added by hand-editing `.env.local` on the box (`docs/ENVIRONMENTS.md:104-244`); there is
-no deploy-time step that provisions a new var, only `scripts/check-env.ts` refusing to build if one
-required by `.env.example` is missing (`docs/ENVIRONMENTS.md:126-137`, invoked from
-`scripts/build.sh:62-84`).
-
-## 2. What's machine-checkable now vs asserted
-
-**Build stamp in the running system — partially checked.** Every app's `GET /api/health` returns
-`version` (from `NEXT_PUBLIC_VERSION`, tag-derived) and `build` (`NEXT_PUBLIC_BUILD_HASH`, short git
-SHA) — e.g. `apps/kernel/app/api/health/route.ts:90-96`,
-formerly `apps/market/app/api/health/route.ts:4-10`. Both are stamped at build time by
-`scripts/build.sh:104-124` from `git describe`/`git rev-parse` on the checked-out ref. A human asking
-"what SHA is this service running" gets a real answer from a `GET`, not an `ssh` — issue item 1 is
-already true for build identity. **Migration head — now checked (#2384).** Every app's own
-`GET /api/health` reports a `migrations: { migrationHead, appliedCount, pendingCount }` block sourced
-from its own DB connection only (`@imajin/db`'s `getMigrationStatus`, see
-`packages/db/src/migration-status.ts`), and kernel's aggregating `/api/health`
-(`apps/kernel/app/api/health/route.ts`) relays each service's block verbatim and marks the aggregate
-`degraded` when any service reports `pendingCount > 0` — so "is the live DB caught up" is now a `GET`
-away, not an `ssh + psql` session.
-
-**Migrations applied — deploy log plus current health.** `scripts/migrate.mjs`
-runs in both deploy workflows and fails the job if a migration errors. The
-Actions log records that deployment's execution; the per-app `migrations` health
-block introduced in #2384 reports current head/pending state as described above.
-Neither proves compatibility with code being rolled back; inspect the actual schema contract.
-
-**Services restarted — asserted, and now enforced (#2382, fixed).** `build.sh` restarts each
-succeeded app individually and collects `RESTART_FAILED` (`scripts/build.sh:294-354`), logged to
-`.build-report` and the job log. A failed restart now fails the deploy job too: `build.sh`'s exit
-code folds in `RESTART_FAILED` as a distinct, documented exit code `2` (see
-`deploy/README.md`'s "`scripts/build.sh` exit codes" section), separate from exit `1` for
-`FAILED`/`PORT_REAP_FAILED`. Before this fix, a service that failed to restart could leave a green
-Actions run — see `scripts/build-restart-failed.test.sh` for regression coverage.
-
-**Rollback — now defined, still not machine-checked.** `docs/ops/ROLLBACK.md` (#2385) is the runbook:
-redeploy the last good tag with `gh workflow run deploy-prod.yml -f ref=<tag>`, migrations stay
-forward-only. Nothing verifies a rollback automatically — no check compares the tag prod is serving
-to the tag that was intended. The other committed "rollback" text, `deploy/README.md:111-117`, is an
-emergency manual restart for the #1520 env-file failure mode specifically, not a bad-deploy rollback.
-
-**Drift, main vs deployed — not machine-checked at all today.** Nothing polls dev/prod `/health` and
-compares to `origin/main`'s SHA. The issue's own root-cause story (prod running a commit from a day
-before `main`) would still go undetected today; only the build-stamp half of the fix (above) exists.
-
-## 3. Drift risks visible in the repo
-
-**Version source-of-truth conflict — fixed by #2352 (merged 2026-09-25).** Until this merged,
-`scripts/bump-workspace-version.mjs` read the **root `package.json`'s own version** as the bump base,
-not the latest tag. That left `package.json` at `0.8.2` while three hot-fix tags (`v0.8.3`–`v0.8.5`)
-had already been pushed by hand — the next `release.yml bump=patch` dispatch would have recomputed
-`0.8.3` and collided with the already-tagged `v0.8.3` (the exact failure #2349 reported, run
-36031435178). #2352 fixed it two ways: `resolveBaseVersion()` in `scripts/bump-workspace-version.mjs`
-(lines 109-125) now derives the bump base from `latestTagVersion()` — the latest reachable `vX.Y.Z`
-tag, via the new shared helper `scripts/lib/git-version.mjs:53-66` — falling back to `package.json`
-only when no tag exists yet; and the new `scripts/ci-guard-version-tag-sync.mjs` (wired into `ci.yml`'s
-"CI Guards" job) now fails CI whenever `package.json`'s version is behind the latest tag, so this
-specific drift can't reaccumulate silently. Root `package.json` is `0.8.5` as of this branch's rebase
-(`package.json:3`), matching the latest tag `v0.8.5` — confirmed via
-`git tag --list 'v*' --sort=-v:refname`. This is a different mechanism from the earlier-merged
-`scripts/lib/build-version.sh` (#2285/#2287), which only ever fixed what the *build footer* displays
-(`scripts/build.sh:104-124`) — that fix never touched what `release.yml` computes as the *next*
-version, which is the bug #2349/#2352 actually addressed.
-
-**Migration numbering collisions — a recurring pattern, not a one-off.** `scripts/check-migrations.sh`
-hard-fails on a duplicate number (`check-migrations.sh:59-68`) and runs both in `ci.yml`'s
-"Check Migrations" job (required, per `.github/required-checks.json:18-24`) and in
-`check-migrations.yml` on every push to `main`. Despite that, this repo's history shows **at least
-eight** post-hoc renumbering fixes for exactly this collision: `4c894012` (0133/0134), `87021dc6`
-(0137), `bbac5218` (0141), `c942f21f` (0145), `32a12aa7`/`2ac072a7`/`29b91690` (0152→0153→0156), and
-**twice in the same week** around 2026-09-23 at `0158` — `4301183c` renumbered a
-`registry.apps.redirect_uris` migration `0158→0159` to avoid colliding with #2331's
-`0158_notify_templates.sql`, and separately `f601b34d` renamed `0161_push_subscriptions` to `0162`
-after `0158_push_subscriptions.sql` (added by the phone-push PR, commit `a3515c61`) collided with the
-already-landed `0158_notify_templates.sql`. The guard is real and does fail the build — but only
-**after** the collision has already landed on `main` (or when a PR's own CI happens to run against a
-freshly-updated base). Two PRs branched from the same `main` tip each pick the next free number
-independently, both pass CI against their own stale base, and the second one to merge is what actually
-introduces the collision — caught by `check-migrations.yml`'s `push: branches: [main]` trigger, but
-only after the fact, requiring a follow-up fix commit each time. (Repo access alone can't confirm
-whether GitHub's branch-protection ruleset requires branches to be "up to date" before merge for this
-repo — `gh api repos/.../branches/main/protection` returns `403` for this token, per the same
-limitation `scripts/ci-guard-required-contexts.mjs`'s header comment describes. Given eight+ real
-collisions, whatever the setting is, it isn't preventing this class of race today.)
-
-**Documented, self-acknowledged drift in the prod pm2 config.** `deploy/README.md:119-139` states
-outright that `ecosystem.prod.config.js` does not match what actually runs prod: `prod-auth`,
-`prod-registry`, `prod-connections`, `prod-pay`, `prod-profile`, `prod-chat`, `prod-media` are listed
-as separate pm2 processes but are actually compiled into the single `prod-jin` process, and
-`prod-scorecard` runs in prod with no corresponding entry reconciled elsewhere. This is exactly the
-"asserted, not observed" failure mode the issue is about, admitted in-repo rather than hidden.
-
-**A dead cross-reference (corrected by the 2026-10-25 sweep).** `docs/ENVIRONMENTS.md`
-now links `deploy/README.md` and this posture document instead of `../DEPLOYMENT.md`;
-that file was deliberately deleted
-(`3a79c11a chore: remove stale DEPLOYMENT.md and PATTERNS.md — covered by DEVELOPER.md and
-ENVIRONMENTS.md`). Low-stakes, but it's a doc telling a reader (or an agent) to go read a file that no
-longer exists.
-
-**Env vars referenced by deploy workflows but not documented — checked, not found live today.** The
-issue's original example (`PROFILE_INTERNAL_API_KEY`, `REGISTRY_SERVICE_URL` needing `/registry`) is
-now documented in every consuming app's `.env.example` (`apps/kernel/.env.example:140`,
-formerly `apps/events/.env.example:81-82` and `apps/learn/.env.example:48-49`; `REGISTRY_SERVICE_URL` present with
-the `/registry` suffix in the former `apps/events/.env.example:28`,
-`apps/kernel/.env.example:211`, formerly `apps/learn/.env.example:21` and `apps/market/.env.example:21`) — this
-specific instance from the "why now" section has since been fixed. It's evidence the underlying
-gap (a var lands in a PR body / chat and only gets into `.env.example` as a follow-up) is real, not
-that it's currently unresolved.
-
-**No down-migration for schema changes — by ruling, not by omission.** `scripts/migrate.mjs` only
-ever applies forward (`migrate.mjs:128-175`); there is no down-migration mechanism and none is
-planned (ruled a on the card below). A bad migration's only recovery is a hand-written corrective
-forward migration. Rolling the *code* back is now written down (`docs/ops/ROLLBACK.md`), but it
-leaves the schema ahead of the code, which is only safe while migrations stay additive — hence the
-drop-lag rule in `docs/MIGRATIONS.md`.
-
-## 4. Target posture — a checklist an agent can execute unaided
-
-This is the direct input to epic #2370 gate 5 ("Deploy target"), which explicitly depends on this
-issue defining what "deployed to dev" means machine-checkably. Each item below states what it needs on
-the server side even though that can't be verified from the repo.
-
-**4.1 — What "deployed to dev" must mean, machine-checkably**
-1. `GET /api/health` on the app's routed URL returns a `build` field equal to the SHA the deploy
-   workflow just checked out — this mechanism already exists (`scripts/build.sh:104-124`, §2 above)
-   and just needs to be the asserted contract, not an implementation detail.
-2. **Implemented (#2384).** `GET /api/health` additionally reports migration state via a
-   `migrations: { migrationHead, appliedCount, pendingCount }` block, sourced only from the app's own
-   DB connection (never another service's — no cross-DB reads) so a caller can tell "this app's
-   schema is caught up" without `psql`. The machine-checkable claim this gives deploy verification:
-   **deploy verify = every app's migration head equals the tag's expected head.** Kernel's aggregator
-   relays every service's block verbatim and flips the aggregate `status` to `degraded` when any
-   service reports `pendingCount > 0`.
-3. The evidence line epic #2370 already specifies — `ev: repo=… registered=y schema=… deploy=<run>
-   health=<version>` — should read `health=<version>+<build>` sourced from #1 directly, not
-   transcribed by hand from a log.
-4. A restart failure must fail the deploy job. **Fixed (#2382):** `build.sh`'s exit code now folds
-   in `RESTART_FAILED` as its own exit code `2` (§2, `deploy/README.md`) — "workflow run succeeded"
-   can now be trusted not to hide a dirty restart. Requires: none — this was a same-repo script fix,
-   not a server dependency.
-
-**4.2 — Template-level `deploy-dev.yml` shape (for `imajin-app-template`, feeding #2370's per-app
-loop)**
-`imajin-app-template/.github/workflows/` today has only `ci.yml` and `sonarcloud.yml` — no deploy
-workflow exists yet, confirming gate 5 is genuinely open, not just undocumented. Proposed shape,
-mirroring this repo's `deploy-dev.yml` but scoped to one app:
-- Trigger: `workflow_run` on the template's own CI, `branches: [main]` — same pattern as
-  `deploy-dev.yml:4-7`.
-- Steps: pull latest, run **that app's own** `migrate.mjs --owner <app>` (per #1991's per-owner mode,
-  `migrations/OWNERSHIP.md:273-309`) rather than the unified root runner — an app deployed from the
-  template should never be able to touch another app's schema, even accidentally.
-- Requires on the server (unverifiable from repo alone): a Caddy path route for `<dev-domain>/<app>`
-  through the kernel front door (per #2370's "Deploy target" gate wording), a pm2 process slot in
-  `deploy/ecosystem.dev.config.js`-equivalent for the new app (this repo's ecosystem file is a
-  version-controlled source of truth per `deploy/README.md:1-37`; the template needs the same pattern
-  rather than a hand-edited live file), and a DB role scoped to the app's own schema (created at
-  provisioning time per #1991/#2370's "Schema" gate — kernel never learns the app's tables).
-- Health gate: the workflow's last step should curl the new URL's `/api/health` and fail the run if
-  `build` doesn't match the SHA just deployed — turning "deployed" into a verified assertion inside
-  the same workflow run, not a separate manual smoke test.
-
-**4.3 — What stays human**
-- Prod tag gate: unchanged. `release.yml` → reviewed PR → `tag-release.yml` → `deploy-prod.yml`'s
-  `production` environment required reviewer (`deploy-prod.yml:13-15,24`). Nothing above proposes
-  touching this; #2370 itself scopes prod deploy out ("Prod deploy (stays tag + human gate)").
-- Choosing `minor` vs `patch` on release dispatch (`release.yml:14-24`) — a judgment call, not a fact
-  to assert.
-- Approving a *repo-provisioning* action for a brand-new app (new GitHub repo, new DB role/schema) —
-  #2370's own gates 1–2 already flag this as needing either elevated bot permissions or a kernel-side
-  `apps.provision` route; out of scope here beyond noting the dependency.
-
-**4.4 — Fold in already-in-flight fixes**
-- Tag-is-truth for the release bump was merged in #2352 — the `0.8.2`-vs-`v0.8.5` drift described in
-  §3 is resolved on `main`. No follow-up needed here; noted so this checklist doesn't re-propose it.
-- Consider promoting the migration-numbering collision from "caught after merge" to "caught before
-  merge": e.g. a periodic/scheduled re-run of `check-migrations.sh` against `main`'s current tip that
-  pages instead of waiting for the next PR's `push` trigger to notice, or a bot that renumbers/rebases
-  a PR's new migration file against `main`'s current max at merge time. Both are process changes, not
-  server changes, and don't require an ops ruling — flagged here as follow-up, not a DECISION card.
-
-## 5. links is external now (#1986 phase 2)
-
-`apps/links` was removed from this repo entirely — it now lives and is built,
-tested, and deployed from its own repo, [ima-jin/links](https://github.com/ima-jin/links)
-(phase 1 merged first, this repo's kernel-side prune is phase 2). Nothing in
-§1's pipeline shape changes: `deploy-dev.yml`/`deploy-prod.yml` never targeted
-`ima-jin/links` and don't need to — that repo owns its own CI/CD now. What
-does change here:
-
-- `deploy/ecosystem.{dev,prod}.config.js` no longer list a `links`/`prod-links`
-  entry (removed in this PR). The pm2 process that serves it on this same host
-  is now the operator's responsibility to point at a `ima-jin/links` checkout
-  instead of `~/{dev,prod}/imajin-ai/apps/links`.
-- Caddy is unchanged — `jin.imajin.ai/links` still reverse-proxies to the same
-  port (3102 dev / 7102 prod); only what's running behind that port changes.
-- `deploy-prod.yml`'s "Restart prod services" step restarts every `prod-*` pm2
-  process by name, discovered dynamically via `pm2 jlist` (not read from the
-  ecosystem file) — so if the operator keeps naming the standalone process
-  `prod-links`, this repo's kernel deploys will keep bouncing it too, even
-  though this repo no longer builds or migrates it. See the decision below.
-- This repo's per-owner migration ownership map (`migrations/OWNERSHIP.md`,
-  `migrations/ownership.json`) already scoped `links.*` tables to the `links`
-  owner; no migration files moved (see `migrations/BASELINE.md`'s "Per-app
-  migration directories" section — still deferred, unrelated to this prune).
-
-## 6. learn is external now (#2503)
-
-`apps/learn` was removed from this repo entirely, pruned as soon as its
-standalone **dev** cutover held (Ryan's 2026-10-09 ruling: prune each app's
-kernel copy once its dev cutover holds, don't wait for prod; the app has a prod
-gap until its prod cutover is accepted). It lives and is built, tested, and
-deployed from its own repo, [ima-jin/learn](https://github.com/ima-jin/learn),
-against the registered-app contract. What changes here:
-
-- `deploy/ecosystem.{dev,prod}.config.js` no longer list `dev-learn`/`prod-learn`.
-  The operator's pm2 entries point at `ima-jin/learn` checkouts instead of
-  `~/{dev,prod}/imajin-ai/apps/learn`.
-- Caddy and ports are unchanged (`jin.imajin.ai/learn`, 3103 dev / 7103 prod).
-- `deploy-prod.yml` / `deploy-dev.yml` restart every `prod-*` / `dev-*` process by
-  name via `pm2 jlist`, so a standalone process still named `prod-learn` is bounced
-  by kernel deploys even though this repo no longer builds or migrates it — the same
-  open question as §5's `prod-links` decision; nothing new is needed to answer it.
-- The `learn` Postgres schema and its tables are untouched; learn-owned migrations
-  stay in `migrations/` with owner `learn`.
-- `scripts/provision-service-bootstrap.mjs --all` discovers services from
-  `apps/*/.env.example`, so it no longer mints a learn bootstrap identity: the
-  standalone app claims its own.
-- The kernel pay webhook notifies learn over HTTP when a paid course enrollment is paid
-  (`notifyLearnService` in `apps/kernel/src/lib/pay/webhook-handlers.ts`, reading
-  `LEARN_SERVICE_URL` and `LEARN_WEBHOOK_SECRET`; ima-jin/learn#13).
-  `LEARN_WEBHOOK_SECRET` must equal learn's existing `WEBHOOK_SECRET`.
-  **Leave both env vars in place** until
-  [learn#15](https://github.com/ima-jin/learn/issues/15) merges and deploys.
-  The kernel now also sends a detached signature, but standalone learn does not
-  verify it yet: it remains Bearer-only until learn#15 ships.
-  `kernel-webhook-legacy.ts` sends that Bearer only while the kernel var is set,
-  so unsetting it early makes paid enrollment callbacks return 401.
-  A learn outage is logged and never fails the Stripe ack.
-
-## 7. coffee is external now (#2500)
-
-`apps/coffee` was removed from this repo entirely, after `links` (§5). It lives
-and is built, tested, and deployed from its own repo,
-[ima-jin/coffee](https://github.com/ima-jin/coffee), against the registered-app
-contract (scoped app tokens, published `@ima-jin/*` SDK, public kernel API). What
-changes here:
-
-- `deploy/ecosystem.{dev,prod}.config.js` no longer list `dev-coffee`/`prod-coffee`.
-  The operator's pm2 entries now point at `~/dev/coffee` / `~/prod/coffee`
-  (`ima-jin/coffee` checkouts) instead of `~/{dev,prod}/imajin-ai/apps/coffee`.
-- Caddy and ports are unchanged (`jin.imajin.ai/coffee`, 3100 dev / 7100 prod).
-- `deploy-prod.yml` / `deploy-dev.yml` restart every `prod-*` / `dev-*` process by
-  name via `pm2 jlist`, so a standalone process still named `prod-coffee` is bounced
-  by kernel deploys even though this repo no longer builds or migrates it — the same
-  open question as §5's `prod-links` decision; nothing new is needed to answer it.
-- Per the 2026-10-09 ruling (each app's kernel copy is pruned once its standalone
-  DEV cutover holds), prod has no in-repo coffee process from this change on, until
-  coffee's prod cutover is accepted. That prod gap is deliberate.
-- The `coffee` Postgres schema and its tables are untouched. See
-  `migrations/BASELINE.md` ("#2500 — coffee per-table ownership decision").
-- The kernel pay webhook still notifies coffee over HTTP (`COFFEE_SERVICE_URL`).
-  Standalone coffee remains Bearer-only until
-  [coffee#13](https://github.com/ima-jin/coffee/issues/13) merges and deploys.
-  **Keep `COFFEE_SERVICE_URL` and `COFFEE_WEBHOOK_SECRET` set** until coffee#13
-  ships; the secret must continue to match coffee's existing `WEBHOOK_SECRET`.
-  The detached kernel signature is additive. `kernel-webhook-legacy.ts` only
-  attaches the Bearer while the kernel var is set, so removing it before
-  coffee's migration deploys breaks payment callbacks with 401.
-- `scripts/provision-service-bootstrap.mjs --all` discovers services from
-  `apps/*/.env.example`, so it no longer mints a coffee bootstrap identity: the
-  standalone app claims its own (`ima-jin/coffee` `docs/REGISTRATION.md`).
-
-## 8. market is external now (#2512)
-
-`apps/market` was removed from this repo entirely, after `links` (§5), `learn`
-(§6) and `coffee` (§7). It lives and is built, tested, and deployed from its own
-repo, [ima-jin/market](https://github.com/ima-jin/market), against the
-registered-app contract (scoped app tokens, published `@ima-jin/*` SDK, public
-kernel API). What changes here:
-
-- `deploy/ecosystem.{dev,prod}.config.js` no longer list `dev-market`/`prod-market`.
-  The operator's pm2 entries now point at `ima-jin/market` checkouts instead of
-  `~/{dev,prod}/imajin-ai/apps/market`.
-- Caddy and ports are unchanged (`jin.imajin.ai/market`, 3104 dev / 7104 prod).
-- `deploy-prod.yml` / `deploy-dev.yml` restart every `prod-*` / `dev-*` process by
-  name via `pm2 jlist`, so a standalone process still named `prod-market` is bounced
-  by kernel deploys even though this repo no longer builds or migrates it — the same
-  open question as §5's `prod-links` decision; nothing new is needed to answer it.
-- Per the 2026-10-09 ruling (each app's kernel copy is pruned once its standalone
-  DEV cutover holds), prod has no in-repo market process from this change on, until
-  market's prod cutover is accepted. That prod gap is deliberate.
-- The `market` Postgres schema and its tables are untouched. See
-  `migrations/BASELINE.md` ("#2512 — market per-table ownership decision").
-- The kernel pay webhook still notifies market over HTTP (`notifyMarketService` in
-  `apps/kernel/src/lib/pay/webhook-handlers.ts`, reading `MARKET_SERVICE_URL`
-  and `MARKET_WEBHOOK_SECRET`). **Leave both env vars in place** until
-  [market#15](https://github.com/ima-jin/market/issues/15) merges and deploys;
-  the secret must continue to match market's existing `WEBHOOK_SECRET`.
-  The standalone app will verify via `verifyKernelWebhook` once market#15
-  lands and is deployed; until then it is Bearer-only. The kernel's detached
-  signature is additive, and `kernel-webhook-legacy.ts` sends the required
-  Bearer only while the kernel var is set. Market settles its own purchases.
-- `scripts/provision-service-bootstrap.mjs --all` discovers services from
-  `apps/*/.env.example`, so it no longer mints a market bootstrap identity: the
-  standalone app claims its own (`ima-jin/market` `docs/REGISTRATION.md`).
-
-## 9. dykil is external now (#2523)
-
-`apps/dykil` was removed from this repo entirely, after `links` (§5), `learn` (§6),
-`coffee` (§7) and `market` (§8). It lives and is built, tested, and deployed from
-its own repo, [ima-jin/dykil](https://github.com/ima-jin/dykil), against the
-registered-app contract (scoped app tokens, published `@ima-jin/*` SDK, public
-kernel API). What changes here:
-
-- `deploy/ecosystem.{dev,prod}.config.js` no longer list `dev-dykil`/`prod-dykil`.
-  The operator's pm2 entries now point at `~/dev/dykil` / `~/prod/dykil`
-  (`ima-jin/dykil` checkouts) instead of `~/{dev,prod}/imajin-ai/apps/dykil`.
-- Caddy and ports are unchanged (`jin.imajin.ai/dykil`, 3101 dev / 7101 prod).
-- `deploy-prod.yml` / `deploy-dev.yml` restart every `prod-*` / `dev-*` process by
-  name via `pm2 jlist`, so a standalone process still named `prod-dykil` is bounced
-  by kernel deploys even though this repo no longer builds or migrates it — the same
-  open question as §5's `prod-links` decision; nothing new is needed to answer it.
-- The `dykil` Postgres schema and its tables are untouched. See
-  `migrations/BASELINE.md` ("#2523 — dykil per-table ownership decision").
-- `scripts/provision-service-bootstrap.mjs --all` discovers services from
-  `apps/*/.env.example`, so it no longer mints a dykil bootstrap identity: the
-  standalone app claims its own (`ima-jin/dykil` `docs/REGISTRATION.md`).
-
-## 10. Standalone events cutover completed; source pruned (#2517)
-
-[`ima-jin/events`](https://github.com/ima-jin/events) owns the app, including its
-signed callback/contact integration, setup, build and deploy. The former #2798
-monorepo receiver and events#38 prerequisite were cutover-era concerns, not
-reasons to keep source here: #2529 standalone dev was signed off on
-2026-10-16 02:33Z; standalone prod has run from `~/prod/events` since
-2026-10-16 22:44Z, per the latest Jin comment on #2517. This source prune does
-not claim #2516 step 8 buy/refund acceptance is complete.
-
-- #2804/#2806 already released `dev-events`/`prod-events` ecosystem ownership.
-  The standalone pm2 definitions use `~/dev/events` / `~/prod/events`.
-- Ports **3006/7006**, health **`/events/api/health`** and the Caddy **`/events`
-  prefix** are unchanged. Kernel local setup/check-env no longer manages events.
-- Public kernel surfaces consumed by the standalone app remain available.
-  All migration files, ownership metadata, existing tables and data are unchanged;
-  #1991/#2844 ownership work and the #2525 squash remain separate.
-
-## 11. events cutover ruling and rollback
-
-On 2026-10-20, #2516 closed under the
-[operator ruling](https://github.com/ima-jin/imajin-ai/issues/2516#issuecomment-6294184437).
-Future-event buy/QR smoke is #2989. The former source-prune guard requiring
-step 8 before a release is superseded; the kernel-copy rollback is retired.
-The #2784 split-window instructions remain historical. Future events deploys
-and rollback use its owned repo and prior deployment ref, not the pruned copy.
-The ordinary release PR and production approval gates remain unchanged.
-
-**Rollback:** an operator uses reviewed code and a matching build/dependency set
-through the standard approved workflow, verifies cwd/listener/prefixed health
-and pm2 persistence, and never runs a frozen `.next` against drifting dependencies.
-No schema/data rollback or live server work occurs in this source prune.
-See [deploy/README.md](../../deploy/README.md#events-is-external-now-2517).
-
-## Decisions for Ryan
-
-DECISION · Migration collision prevention · Should merging a PR that adds a new migration file
-auto-rebase its number against `main`'s current max, or should branch protection require an
-up-to-date branch before merge? · a) bot auto-renumbers on merge b) require strict up-to-date-before-
-merge (may already be set — repo token can't read branch protection to confirm) c) leave the
-post-hoc `check-migrations.yml` catch as-is · rec: b — cheapest change, and the eight-plus historical
-collisions read as "it isn't set or isn't effective," worth confirming directly rather than adding a
-new bot.
-
-DECISION · Migration-head visibility in `/health` · Should the per-owner migration-head field (§4.1
-item 2) live on every app's own `/api/health`, or only on kernel's aggregating `/api/health` (which
-already polls every other service, `apps/kernel/app/api/health/route.ts:20-38,84-96`)? · a) every
-app's own route reports its own migration head b) kernel's aggregator also queries each app's DB
-directly for migration head c) kernel's aggregator calls each app's own `/health` (option a) and
-relays it · rec: c — keeps each app the source of truth for its own schema state (matches #1991's
-per-owner boundary) while still giving one aggregate view. · **Ruled: c (2026-09-25), implemented in
-#2384** — every app's own `/api/health` reports its own `migrations` block; kernel's aggregator
-calls each service's `/health` and relays that block verbatim, never reading another app's DB.
-
-DECISION · Prod rollback runbook · Should a documented rollback be "redeploy the previous tag via
-`gh workflow run deploy-prod.yml -f ref=<previous-tag>`" (already technically possible per
-`deploy-prod.yml:6-11`, just unwritten), or something with an explicit down-migration story? ·
-a) document the redeploy-previous-tag path only, migrations stay forward-only b) require every new
-migration to ship a paired down-script c) defer — no rollback runbook until a real incident forces
-the question · rec: a — matches how this repo already treats migrations (idempotent, forward-only,
-per `docs/MIGRATIONS.md:51-56`) and costs only documentation, not new tooling.
-**Ruled 2026-09-25: a.** Written up in `docs/ops/ROLLBACK.md` (#2385).
-
-DECISION · `prod-links`/`dev-links` pm2 naming post-extraction (#1986 phase 2) · Now that `links`
-is built and deployed by its own repo, should the operator keep naming its standalone pm2 process
-`prod-links`/`dev-links` (this repo's `deploy-prod.yml`/`deploy-dev.yml` restart every `prod-*`/
-`dev-*` process found via `pm2 jlist`, by name, regardless of the ecosystem file — so a kernel-only
-deploy would keep bouncing it too), or rename it (e.g. `links` / `links-standalone`) so this repo's
-deploys stop touching a process it no longer builds or migrates? · a) keep the `prod-links`/
-`dev-links` names — harmless extra restart, and it's a fast Next.js app b) rename it out of the
-`prod-*`/`dev-*` sweep so this repo's deploys are fully hands-off for links c) give `ima-jin/links`
-its own `deploy-prod.yml`/`deploy-dev.yml` that manages its own pm2 process by name explicitly,
-independent of this repo's sweep entirely · rec: c — matches the actual ownership split (this repo
-no longer owns links' build/migrate/restart at all) and avoids two unrelated deploy pipelines
-racing to restart the same process.
+# Deploy posture
+
+This document describes the repository's deployment contracts. Workflow source proves the configured sequence, not that a host has run it. Use the Actions run, serving build, migration status and service health as evidence of a particular deployment.
+
+## Development and production
+
+Development deployment follows successful CI on main through [deploy-dev.yml](../../.github/workflows/deploy-dev.yml). Production deployment accepts the release tag or an explicitly selected ref through [deploy-prod.yml](../../.github/workflows/deploy-prod.yml), with the required `production` environment reviewer. Concurrency serializes each environment's deploys without cancelling an active restart.
+
+The release path is **dispatch Release → review and merge its PR → automatic tag and deployment dispatch → production approval**. The Release workflow chooses the bump from the latest release tag and changes workspace manifests in lockstep. Feature changes do not edit manifest versions. Do not create tags by hand or deploy with a manual production `git pull`.
+
+`scripts/lib/git-version.mjs` supplies the shared Git tag lookup for the release bump base, falling back to the manifest only when no release tag exists.
+
+The tag workflow also publishes eligible packages independently of the production approval and records release close-out. Publication does not prove production deployment. See [npm publishing](../npm-publishing.md).
+
+## Workflow ordering
+
+Both environment workflows follow this order:
+
+1. Fetch the intended source and synchronize the tracked ecosystem configuration to the environment's live config path.
+2. Install dependencies without lifecycle scripts, then explicitly rebuild the required native SQLite dependency.
+3. Check that the vault path used for provisioning matches the kernel process's path.
+4. Build workspace packages needed by provisioning.
+5. Apply kernel-owned migrations before provisioning imports the current schema.
+6. Provision service bootstrap identities using the kernel environment file and selected ecosystem configuration.
+7. Snapshot intentionally stopped processes before a build can restart anything.
+8. Build affected ecosystem-owned workspace apps through `build-changed.sh`.
+9. Reap orphan listeners, reconcile ecosystem-owned process definitions and restart other selected processes by name.
+10. Persist PM2 state, assert listener ownership, install the PM2 health schedule and run post-deploy health checks.
+
+The production kernel is reconciled from the ecosystem file explicitly. Restarting only by name can reuse a stale executable or lose required Node arguments. `pm2-reconcile.sh` replaces stale invocation definitions and restarts matching ones; reconcile failures fail deployment.
+
+Intentionally stopped apps remain stopped under the shared deployment selector, except the explicitly deployed production kernel. Portless cron workers have their own inclusion policy. Extracted apps are not rebuilt or migrated by this repository; a standalone process retaining an environment-prefixed name can still be selected for a name-based restart.
+
+## What deployment evidence means
+
+The build process derives the displayed release identity from Git and stamps a build hash. Compare the routed health response to the intended source; a successful source build is not evidence that the public listener serves it.
+
+Each service reports migration state from its own database connection. The kernel aggregator relays those blocks and degrades when a service reports pending migrations; it does not inspect another app's database directly. Migration head, applied count and pending count are schema evidence, not proof that rollback code remains compatible.
+
+Migration failure, build failure, listener reaping failure and restart failure are deployment failures. The build report distinguishes restart failure from compilation/port-reaping failures. Use the [deployment runbook](../../deploy/README.md) for exit-code interpretation.
+
+PM2 `online` proves a process exists, not that HTTP responds. Kernel process-liveness checks avoid DB, vault and sibling fan-out. Aggregate readiness answers a different question and must not trigger kernel restart merely because a sibling is unhealthy. The [liveness watchdog](../../deploy/README.md#http-liveness-watchdog) documents bounded checks, persistent cooldown/outbox, node-operator attribution and explicit installation. Its source and stub tests do not establish installation on a host.
+
+`scripts/ci-guard-required-contexts.mjs` verifies that declared required CI jobs exist. Live branch-protection checks require suitable ruleset-read authority; an advisory check without that authority is not proof of the live setting. Rebase a migration-bearing branch against current main before readiness and resolve numbering collisions without rewriting applied history.
+
+## Configuration and credentials
+
+The tracked [development](../../deploy/ecosystem.dev.config.js) and [production](../../deploy/ecosystem.prod.config.js) ecosystem files own in-repo process definitions. [Environment configuration](../ENVIRONMENTS.md) documents ports, domains and variable ownership. Compare live process definitions safely rather than assuming the tracked file is a deployment inventory.
+
+PM2 process dumps contain full environments and secrets. The workflows use a protected temporary file for the vault consistency check and emit only the selected safe diagnostic. Do not print environment files, full process dumps, cookies or credential values into logs.
+
+Service bootstrap must target the same vault file the kernel reads. App-secret declaration sync does not generate values, activate a grant or restart an app. Operator-supplied credentials require masked entry and a separate countersignature; app runtime adoption needs the documented pre-import vault boot boundary. See the [author](../app-self-secrets-author.md) and [operator](../app-self-secrets-operator.md) guides.
+
+Billing/admin credentials and inference credentials are distinct grants. Loading one does not authorize the other. Loop publication also requires the exact principal's live grant; a reduction in warning volume is not proof of authority.
+
+### Postal domain administration
+
+Org mail-domain provisioning is optional and operator-owned; the [mail-domain guide](../guide/domain-ownership.md#mail-domains) describes setup. No deployment step provisions these node-level settings:
+
+- `POSTAL_ADMIN_URL` is the HTTPS origin of the Postal domain-admin API, configured in the kernel's `.env.local`.
+- `POSTAL_ORGANIZATION` is this node's one pre-existing Postal organization permalink, configured in the kernel's `.env.local`.
+- `POSTAL_ADMIN_TOKEN` is sealed as an exact node-scoped vault field through the existing node vault tooling and read with `loadAndUnseal` at request time; it has no environment fallback or auto-generation, and a missing or invalid value fails closed.
+
+Both environment variables are optional in `.env.example`, so `check-env` does not detect missing setup; the mail-domains panel reports it. Nothing contacts or deploys the Postal host at build time.
+
+## Independently owned apps
+
+Coffee, dykil, events, learn, links and market own their source, registration, setup and deployment. Use their owned repository runbooks rather than removed workspace targets. Public routing prefixes and port assignments are in [environment configuration](../ENVIRONMENTS.md).
+
+Do not restore a removed kernel app copy as rollback. Deploy the app's reviewed prior ref with matching build and dependencies, verify its working directory, listener and prefixed health, and persist its process definition. Source extraction is not proof of an app's import or end-to-end acceptance.
+
+App tables and recorded migration history remain intact. The kernel migration runner owns kernel schemas; each standalone app owns its current schema contract and migrations. Do not drop application schemas or normalize historical ledger rows during a deployment.
+
+Payment callbacks to standalone apps have compatibility configuration. Keep a configured legacy bearer and matching receiver secret until that receiver's signed-webhook deployment is independently verified. The kernel's additive signature alone does not establish receiver support. Use each app's runbook for callback adoption; do not infer completion from absence of source in this repository.
+
+- Keep `COFFEE_SERVICE_URL` and `COFFEE_WEBHOOK_SECRET` set while coffee uses its legacy Bearer.
+- Keep `LEARN_SERVICE_URL` and `LEARN_WEBHOOK_SECRET` set while learn uses its legacy Bearer.
+- Keep `MARKET_SERVICE_URL` and `MARKET_WEBHOOK_SECRET` set while market uses its legacy Bearer.
+
+Each kernel secret must match the receiver's `WEBHOOK_SECRET`.
+`kernel-webhook-legacy.ts` attaches the Bearer only while that secret is set;
+the detached signature is additive. Remove compatibility configuration only
+after that receiver's signed verification is deployed and verified.
+
+## Corpus and inference hosts
+
+Corpus production is assigned to a separate host in the recorded configuration. Configure `CORPUS_SERVICE_URL` for its actual address; localhost is correct only when the daemon is colocated. GitHub partitions require registry-resolved source owners, live owner-issued grants and that owner's selected OAuth connector. Membership or a local CLI login is not consent.
+
+Deploy the owner resolver before the daemon. A separately authorized owner migration requires backups and stopped writers, preserves rows and original signatures, and is not an automatic deploy step. The [corpus runbook](../../apps/corpus/README.md) owns that procedure.
+
+The [inference updater](../../deploy/infer-passthrough/README.md) is separate systemd automation. Before staging a release it checks main ancestry and successful production deployment evidence for the exact SHA. Candidate, live and rollback health use the explicitly declared host auth mode. Source presence is not host installation, and liveness alone does not prove an agent completion.
+
+The [vault SSH action](../deploy/vault-ssh-deploy.md) requires a repository/environment-bound grant, verified GitHub OIDC, host CA/principal configuration, pinned public host keys and non-swappable ephemeral key storage. Credential-free dry runs validate the contract, not a live target or runner's trust configuration.
+
+## Rollback and recovery
+
+Use [the rollback runbook](ROLLBACK.md) to redeploy the reviewed prior ref through the existing approved production workflow. Migration history remains forward-only. Code rollback is safe only if its schema contract is compatible with the already-applied migrations; otherwise use reviewed corrective forward migration or backup recovery.
+
+The [baseline manifest](../../migrations/kernel-baseline.json) fixes the historical cut and checksums. Existing complete databases adopt the baseline without DDL; fresh databases initialize it before pending root migrations. A deployment does not authorize regeneration of that cut, force-adoption, checksum replacement, row deletion or production reinitialization. Follow the [baseline runbook](../../migrations/BASELINE.md).
+
+## Verification boundaries
+
+Serving health/build evidence, a migration report and workflow success answer different questions. None alone proves an application's user flow, a provider account's grants, a runner's host trust or a real-data restore. Record the exact ref and relevant evidence without credential values.
+
+Workflow changes that run privileged follow-ups from reviewed main cannot prove their own post-merge path from a PR. For fork Sonar, verify the trusted exact-head status and actual Sonar issue count separately from a compatibility skip. See [contributor guidance](../../README.md#sonarcloud-on-fork-prs).

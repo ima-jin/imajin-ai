@@ -1,5 +1,4 @@
 import { afterEach, expect, it, vi } from 'vitest';
-import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { parse } from 'yaml';
 import { ATTESTATION_TYPES, MECHANICAL_ATTESTATION_TYPES } from '@imajin/auth';
@@ -35,9 +34,8 @@ it('publishes the member grant lifecycle with provenance-only responses and no r
   expect(item.post.description).toContain('A human member needs this active per-member grant');
   expect(item.post.description).toContain('allowed_services and revocation are checked per call');
   expect(item.post.description).toContain('/auth/connectors');
-  for (const file of ['llms.txt', 'llms-full.txt']) {
-    expect(readFileSync(resolve(kernelRoot, 'public', file), 'utf8')).toContain(`/connections${path}`);
-  }
+  expect(spec.servers[0].variables.service.default).toBe('connections');
+  expect(item.get.responses['200'].description).toContain('Active provenance only');
 });
 it('serves org-held lifecycle contracts with write-only input and metadata-only responses', async () => {
   vi.spyOn(process, 'cwd').mockReturnValue(kernelRoot);
@@ -65,11 +63,8 @@ it('serves org-held lifecycle contracts with write-only input and metadata-only 
   expect(item.delete.security).toEqual([{ cookieAuth: [] }]);
   expect(ATTESTATION_TYPES).toContain('connector.org-held');
   expect(MECHANICAL_ATTESTATION_TYPES).toContain('connector.org-held');
-  for (const file of ['llms.txt', 'llms-full.txt']) {
-    const text = readFileSync(resolve(kernelRoot, 'public', file), 'utf8');
-    expect(text).toContain('/connections/api/org-held/{provider}');
-    expect(text).toContain('including for the loading admin');
-  }
+  expect(item.get.summary).toContain('including for the loading admin');
+  expect(item.post.description).toContain('Generic vault fetch/export/renewal cannot disclose the value');
 });
 it('discovers the member-held external MCP routes through the existing connections spec', async () => {
   vi.spyOn(process, 'cwd').mockReturnValue(kernelRoot);
@@ -82,9 +77,7 @@ it('discovers the member-held external MCP routes through the existing connectio
   const connection = spec.paths[routes[0]];
   for (const method of ['get', 'post', 'delete']) expect(connection[method].security).toEqual([{ cookieAuth: [] }]);
   expect(connection.post.requestBody.content['application/json'].schema.properties.secret.writeOnly).toBe(true);
-  for (const file of ['llms.txt', 'llms-full.txt']) {
-    expect(readFileSync(resolve(kernelRoot, 'public', file), 'utf8')).toContain('/connections/api/external-mcp/postman/rpc');
-  }
+  expect(spec.paths[routes[1]].post.operationId).toBe('invokeExternalMcpPostman');
 });
 it('discovers all app upstream routes and documents separate read/write authority', async () => {
   vi.spyOn(process, 'cwd').mockReturnValue(kernelRoot);
@@ -92,9 +85,6 @@ it('discovers all app upstream routes and documents separate read/write authorit
   for (const route of ['/api/upstreams', '/api/upstreams/connection', '/api/upstreams/call']) {
     expect(spec.paths[route]).toBeDefined();
     expect(listApiSpecs().find(item => item.service === 'connections')?.paths).toContain(route);
-    for (const file of ['llms.txt', 'llms-full.txt']) {
-      expect(readFileSync(resolve(kernelRoot, 'public', file), 'utf8')).toContain(`/connections${route}`);
-    }
   }
   expect(spec.paths['/api/upstreams/call'].post.description).toContain('connectors:upstream:write');
   expect(spec.paths['/api/upstreams/connection'].post.requestBody.content['application/json'].schema.properties.secret.writeOnly).toBe(true);
@@ -107,13 +97,9 @@ it('discovers all app upstream routes and documents separate read/write authorit
   expect(spec.components.schemas.AppUpstreamConnection.required).toContain('permissions');
   expect(spec.components.schemas.AppUpstreamConnection.properties.permissions.items.example).toBe('GET /me');
   expect(spec.paths['/api/upstreams/call'].post.description).toContain('Successful calls are recorded');
-  for (const file of ['llms.txt', 'llms-full.txt']) {
-    const text = readFileSync(resolve(kernelRoot, 'public', file), 'utf8');
-    expect(text).toContain('Successful calls are');
-    expect(text).toContain('refusals write nothing permanent');
-    expect(text).toContain('permissions such as ["GET /me"]');
-    expect(text).not.toContain('call attempt is signed');
-  }
+  expect(spec.paths['/api/upstreams/call'].post.description).toContain('refusals write nothing permanent');
+  expect(spec.paths['/api/upstreams/connection'].post.description).toContain('permissions list such as ["GET /me"]');
+  expect(spec.paths['/api/upstreams/call'].post.description).not.toContain('call attempt is signed');
 });
 it('registers explicit app consent without self-grantable service authority and mechanical audit types', () => {
   expect(scopeEntry('connectors:mcp:read')?.connector).toBeNull();

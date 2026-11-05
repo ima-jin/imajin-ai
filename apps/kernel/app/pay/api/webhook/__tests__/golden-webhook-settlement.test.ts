@@ -64,7 +64,7 @@ vi.mock('@/src/db', async () => {
   const { select, update, insert } = createMockDb(state, limitResultFor);
 
   return {
-    db: { select, update, insert },
+    db: { select, update, insert, transaction: (cb: (tx: unknown) => Promise<unknown>) => cb({ select, update, insert }) },
     transactions,
     feeLedger,
     balances,

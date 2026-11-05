@@ -18,7 +18,7 @@ describe('principal migration runbook (#3041)', () => {
       'update.sh --check',
     ]) expect(runbook).toContain(contract);
     const operator = runbook.slice(runbook.indexOf('**(b) Agent-native'));
-    const plugin = operator.indexOf('deploy plugin PR #151');
+    const plugin = operator.indexOf("Deploy the plugin's per-agent credential transport");
     const declaration = operator.indexOf('Set the explicit line `INFER_PROXY_AUTH_MODE=agent`');
     const reinstall = operator.indexOf('Reinstall **both checker + update.sh**');
     const promote = operator.indexOf('Only then let the tag promote');
@@ -44,7 +44,7 @@ describe('principal migration runbook (#3041)', () => {
     for (const contract of [
       'Authorization: Bearer', 'x-api-key', 'x-acting-as', 'app+jwt', 'azp', 'sub',
       'invalid_agent_credential', '401', '403', '502', 'INFER_PROXY_AUTH_MODE=host-static',
-      '#3182', 'No running host',
+      "principal relationship and allowed-service checks", 'No running host',
     ]) expect(runbook).toContain(contract);
   });
   it('installs tracked units/helpers from an approved release and follows the production gate (#3082)', () => {
@@ -61,8 +61,9 @@ describe('principal migration runbook (#3041)', () => {
     expect(runbook).toContain('infer-passthrough-deployment-read.service');
     expect(runbook).toContain('no GitHub credential env fallback');
     expect(runbook).not.toContain('TODO #3190');
+    expect(runbook).toContain('Credential delivery is a prerequisite');
     expect(runbook).toContain('production-deployment.mjs');
-    expect(runbook).toContain('Keep the existing unit as-is until this change lands');
+    expect(runbook).toContain('Keep the existing unit as-is until the reviewed replacement completes');
     expect(runbook).not.toContain('independent of the production');
     expect(updaterUnit).toContain('LoadCredential=github-token:/etc/imajin/infer-passthrough-github-token');
     expect(updaterUnit).not.toMatch(/GRANT_ID|ATTESTATION_ID|GH_TOKEN=|GITHUB_TOKEN=/);

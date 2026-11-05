@@ -47,7 +47,7 @@ vi.mock('@imajin/config', async original => ({
   ...await original<typeof import('@imajin/config')>(), rateLimit: () => ({ limited: false }), getClientIP: () => '127.0.0.1',
 }));
 
-import { delegationGrants, identities, identityMembers } from '@/src/db/schemas/auth';
+import { channelLinks, delegationGrants, identities, identityMembers } from '@/src/db/schemas/auth';
 import { connectors, orgConnectionMemberGrants, orgConnectionSuspensions } from '@/src/db/schemas/connectors';
 import { vaultDelegationGrants } from '@/src/db/schemas/vault';
 import { provideInternalApiKey, provideSessionResolver } from '@imajin/auth';
@@ -79,7 +79,7 @@ const ORG = 'did:imajin:artifact';
 const APP = 'did:imajin:app';
 const AGENT = 'did:imajin:agent';
 const FIELD = `${EXTERNAL_MCP_NAMESPACE}:org-fixture:${ORG}`;
-const tables = [identities, identityMembers, delegationGrants, connectors, orgConnectionMemberGrants, orgConnectionSuspensions, vaultDelegationGrants];
+const tables = [identities, identityMembers, delegationGrants, channelLinks, connectors, orgConnectionMemberGrants, orgConnectionSuspensions, vaultDelegationGrants];
 let client: PGlite;
 let database: ReturnType<typeof drizzle>;
 let upstreamCalls = 0;
@@ -308,6 +308,11 @@ describe('self-discovery with real app auth, assignment and grant SQL (#3250)', 
     expect(body.identity).toMatchObject({ did: AGENT, kind: 'agent', actAs: null });
     expect(body.connectors.find((row: { kind?: string; provider: string }) => row.kind === 'B' && row.provider === 'anthropic'))
       .toMatchObject({ authority: 'delegated', billedPrincipal: { did: MEMBER }, usable: true });
+    // The token includes warp:dispatch, but no actual tool manifest grants it.
+    expect(body.connectors.find((row: { provider: string }) => row.provider === 'warp')).toMatchObject({
+      ownerDid: MEMBER, usable: false, grantStatus: 'denied', configurationStatus: 'not-disclosed',
+      fix: { href: '/auth/connectors/warp', actingDid: MEMBER },
+    });
   });
   it('rechecks the member grant after revocation and names the exact existing control', async () => {
     await database.insert(identityMembers).values({ identityDid: MEMBER, memberDid: AGENT, role: 'agent' });
@@ -497,6 +502,76 @@ describe.each(['agent', 'presence'])('route discovery ≡ chat/completions for %
   });
 });
 
+describe('presence sessions through completions with real assignment and member-grant SQL', () => {
+  beforeEach(async () => {
+    await database.update(identities).set({ subtype: 'presence' }).where(eq(identities.id, AGENT));
+  });
+  function presenceSession(actingAs?: string) {
+    h.session.mockResolvedValue({ identity: {
+      id: AGENT, scope: 'actor', subtype: 'presence', actingFor: MEMBER, actingAs,
+    } });
+    return new NextRequest('https://kernel.test/infer/v1/chat/completions', {
+      method: 'POST',
+      body: JSON.stringify({ model: actingAs ? 'claude-test' : 'personal-model', messages: [{ role: 'user', content: 'fixture' }] }),
+    });
+  }
+  async function grantOrgMember() {
+    await database.insert(orgConnectionMemberGrants).values({
+      id: 'presence-member-grant', orgDid: ORG, memberDid: MEMBER, connectionId: 'org-connection',
+      provider: 'anthropic', grantedByDid: MEMBER, grantedAt: new Date(),
+    });
+  }
+  it.each([undefined, ORG])('allows an assigned presence acting for a human with actingAs=%s and rechecks removal', async actingAs => {
+    await database.insert(identityMembers).values({
+      identityDid: MEMBER, memberDid: AGENT, role: 'agent', allowedServices: ['infer'],
+    });
+    if (actingAs) await grantOrgMember();
+    const response = await completions(presenceSession(actingAs));
+    expect(response.status).toBe(200);
+    expect(h.complete).toHaveBeenCalledWith(expect.objectContaining({
+      credentialDid: actingAs ?? MEMBER, actorDid: AGENT,
+    }), expect.anything(), expect.anything());
+    expect(h.fallback).not.toHaveBeenCalled();
+    if (actingAs) {
+      expect(h.personal).not.toHaveBeenCalled();
+      expect(h.get).toHaveBeenCalledWith(FIELD);
+    } else {
+      expect(h.personal.mock.calls).toEqual([[MEMBER]]);
+      expect(h.get).not.toHaveBeenCalled();
+    }
+    await assertPrivate(response);
+    await database.update(identityMembers).set({ removedAt: new Date() }).where(eq(identityMembers.memberDid, AGENT));
+    vi.clearAllMocks();
+    const denied = await completions(presenceSession(actingAs));
+    expect(denied.status).toBe(403);
+    expect(await denied.json()).toEqual({ error: 'Agent is not assigned to this identity or service' });
+    expect(h.complete).not.toHaveBeenCalled();
+    expect(h.personal).not.toHaveBeenCalled();
+    expect(h.get).not.toHaveBeenCalled();
+    expect(h.fallback).not.toHaveBeenCalled();
+  });
+  it.each([undefined, ORG])('refuses an unassigned presence with actingAs=%s even with a human member grant', async actingAs => {
+    await grantOrgMember();
+    const response = await completions(presenceSession(actingAs));
+    expect(response.status).toBe(403);
+    expect(await response.json()).toEqual({ error: 'Agent is not assigned to this identity or service' });
+    expect(h.complete).not.toHaveBeenCalled();
+    expect(h.personal).not.toHaveBeenCalled();
+    expect(h.get).not.toHaveBeenCalled();
+    expect(h.fallback).not.toHaveBeenCalled();
+  });
+  it('requires the human member grant separately from the presence assignment', async () => {
+    await database.insert(identityMembers).values({ identityDid: MEMBER, memberDid: AGENT, role: 'agent' });
+    const response = await completions(presenceSession(ORG));
+    expect(response.status).toBe(403);
+    expect((await response.json()).error).toContain('/auth/connectors');
+    expect(h.complete).not.toHaveBeenCalled();
+    expect(h.get).not.toHaveBeenCalled();
+    expect(h.personal).not.toHaveBeenCalled();
+    expect(h.fallback).not.toHaveBeenCalled();
+  });
+});
+
 describe('assigned agents use only the assigned DID keys, without member-grant rows', () => {
   async function assign(principal = ORG, allowedServices: string[] | null = null) {
     await database.insert(identityMembers).values({
@@ -650,7 +725,7 @@ afterEach(() => {
   vi.unstubAllEnvs();
 });
 beforeEach(async () => {
-  await client.exec('TRUNCATE auth.identities, auth.identity_members, auth.delegation_grants, kernel.connectors, kernel.org_connection_member_grants, kernel.org_connection_suspensions, kernel.vault_delegation_grants');
+  await client.exec('TRUNCATE auth.identities, auth.identity_members, auth.delegation_grants, auth.channel_links, kernel.connectors, kernel.org_connection_member_grants, kernel.org_connection_suspensions, kernel.vault_delegation_grants');
   vi.clearAllMocks();
   h.key = randomUUID();
   upstreamCalls = 0;

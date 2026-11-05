@@ -8,7 +8,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { db, transactions } from '@/src/db';
-import { eq, and, sql } from 'drizzle-orm';
+import { eq, ne, and, sql } from 'drizzle-orm';
 import { resolveEffectiveDid } from '@imajin/auth';
 import { corsHeaders } from '@/src/lib/kernel/cors';
 import { createLogger } from '@imajin/logger';
@@ -51,6 +51,7 @@ export async function GET(request: NextRequest, props: { params: Promise<{ did: 
       .where(
         and(
           eq(transactions.toDid, did),
+          ne(transactions.sourceKind, 'fee'),
           eq(transactions.status, 'completed')
         )
       )
@@ -67,6 +68,7 @@ export async function GET(request: NextRequest, props: { params: Promise<{ did: 
       .where(
         and(
           eq(transactions.fromDid, did),
+          ne(transactions.sourceKind, 'fee'),
           eq(transactions.status, 'completed')
         )
       )

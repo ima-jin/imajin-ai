@@ -8,8 +8,7 @@
  * that are reused from the route or tested in isolation are exported.
  */
 
-import { db, feeLedger, balanceRollups, transactions } from '@/src/db';
-import { sql } from 'drizzle-orm';
+import { db, feeLedger, transactions } from '@/src/db';
 import { externalRefColumns, whereExternalRef } from '@/src/lib/pay/external-ref';
 import { generateId } from '@/src/lib/kernel/id';
 import { createLogger } from '@imajin/logger';
@@ -18,6 +17,7 @@ import { processorFeeCents } from '@imajin/fair';
 import { fetchActualFee } from './providers/stripe-webhook';
 import { verifySettlementSignature } from './settle-core';
 import { MJN, MJNX, creditUnit } from './ledger';
+import { applyFeeCredit } from './fee-credits';
 import { forEachSequential } from '@/src/lib/async/sequential';
 import type { StripeCheckoutSessionLike } from './webhook-event-shapes';
 import { kernelWebhookUrl, postKernelWebhook } from '@/src/lib/auth/kernel-webhook';
@@ -172,7 +172,10 @@ async function applyFeeRebate({
 
   // #2016: a processing-fee rebate credits MJNx (the emitted, in-platform
   // unit) — it is not a fresh fiat receipt.
-  await creditUnit(db, sellerDid, MJNX, (diffCents / 100).toFixed(8), { currency });
+  await applyFeeCredit({
+    transactionId: tx.id, service: tx.service, role: 'processor_rebate',
+    recipientDid: sellerDid, unit: MJNX, amountCents: diffCents, currency,
+  });
 
   log.info(
     { transactionId: tx.id, sellerDid, rebateCents: diffCents, estimatedFeeCents, actualFeeCents },
@@ -200,7 +203,10 @@ async function applyFeeSurcharge({
   });
 
   // #2016: mirrors applyFeeRebate — the surcharge debits the same MJNx row.
-  await creditUnit(db, sellerDid, MJNX, (-diffCents / 100).toFixed(8), { currency });
+  await applyFeeCredit({
+    transactionId: tx.id, service: tx.service, role: 'processor_surcharge',
+    recipientDid: sellerDid, unit: MJNX, amountCents: -diffCents, currency,
+  });
 
   log.info(
     { transactionId: tx.id, sellerDid, surchargeCents: diffCents, estimatedFeeCents, actualFeeCents },
@@ -311,7 +317,7 @@ export async function processChainDistribution({
   // Sequential on purpose: ledger writes — each recipient's fee row, publish and
   // balance/rollup update land in chain order, and the first failure stops every
   // later recipient.
-  await forEachSequential(chain, async (entry) => {
+  await forEachSequential(chain, async (entry, chainIndex) => {
     const amountCents = Math.round(basisCents * entry.share);
     if (amountCents <= 0) return;
 
@@ -340,8 +346,10 @@ export async function processChainDistribution({
 
     // Seller's payout goes directly to their Stripe — skip balance bookkeeping.
     if (recipientDid !== 'unresolved' && !isSeller) {
-      await updateRecipientBalance({ recipientDid, isBuyerCredit, amountCents, currency });
-      await updateDailyRollup({ tx, recipientDid, amountCents });
+      await applyFeeCredit({
+        transactionId: tx.id, service: tx.service, role: entry.role, recipientDid,
+        unit: isBuyerCredit ? MJNX : MJN, amountCents, currency, chainIndex, rollup: true,
+      });
     }
   });
 
@@ -435,63 +443,6 @@ async function recordTaxTrustLiabilities({
       payload: { transactionId: tx.id, recipientDid: tax.collectorDid, role: 'tax', amountCents: tax.amount, currency },
     }).catch((err) => log.error({ err: String(err) }, 'fee.record publish error'));
   }
-}
-
-interface UpdateRecipientBalanceParams {
-  recipientDid: string;
-  isBuyerCredit: boolean;
-  amountCents: number;
-  currency: string;
-}
-
-async function updateRecipientBalance({
-  recipientDid,
-  isBuyerCredit,
-  amountCents,
-  currency,
-}: UpdateRecipientBalanceParams): Promise<void> {
-  const amountStr = (amountCents / 100).toFixed(8);
-
-  if (isBuyerCredit) {
-    // #2016: buyer credit → MJNx (the emitted, in-platform, non-withdrawable
-    // unit — this WAS a "virtual MJN token" bucket, now the correctly
-    // labelled MJNx row).
-    await creditUnit(db, recipientDid, MJNX, amountStr, { currency });
-  } else {
-    // Fee beneficiary (protocol, node, scope) → MJN (real Stripe money held
-    // in the Imajin account).
-    await creditUnit(db, recipientDid, MJN, amountStr, { currency });
-  }
-}
-
-interface UpdateDailyRollupParams {
-  tx: TxRow;
-  recipientDid: string;
-  amountCents: number;
-}
-
-async function updateDailyRollup({ tx, recipientDid, amountCents }: UpdateDailyRollupParams): Promise<void> {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const amountStr = (amountCents / 100).toFixed(8);
-
-  await db
-    .insert(balanceRollups)
-    .values({
-      did: recipientDid,
-      date: today,
-      service: tx.service || 'unknown',
-      earned: amountStr,
-      spent: '0',
-      txCount: 1,
-    })
-    .onConflictDoUpdate({
-      target: [balanceRollups.did, balanceRollups.date, balanceRollups.service],
-      set: {
-        earned: sql`${balanceRollups.earned} + ${amountStr}`,
-        txCount: sql`${balanceRollups.txCount} + 1`,
-      },
-    });
 }
 
 // ---------------------------------------------------------------------------

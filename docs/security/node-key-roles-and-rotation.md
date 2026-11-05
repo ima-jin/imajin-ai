@@ -703,8 +703,11 @@ file: ``- `path` — role``.
 - `apps/kernel/src/lib/cloudflare/zone-grants.ts` — D2 (public node consumer identifier comparison for metadata-only zone grant discovery; never unseals or signs)
 - `apps/kernel/src/lib/vault/cloudflare-import.ts` — D2 (checks node-only token custody against exact verified zone ownership)
 - `apps/kernel/src/lib/vault/group-key.ts` — D2/D3/S3 (explicit node-key configuration gate; countersigned group-to-node custody, wrapped-key revoke and transactional signed audit)
+- `apps/kernel/src/lib/vault/org-held-renewal.ts` — D2/D3/S3 (human owner/admin countersigned expiry re-signing of existing org-held custody; checks current node/owner X25519 public bindings, never unwraps or re-seals; node-root rotation refuses old grants rather than migrating or exporting material)
 - `apps/kernel/src/lib/vault/bank-details.ts` — D2/D3/S3/S6 (explicit node-key presence gate; field sealing via existing custody helpers, signed private documents and retained revocation; no generic export or renewal)
 - `apps/kernel/src/lib/kernel/external-mcp.ts` — D2/D3/S3 (member-subject, kernel-only credential custody and signed lifecycle/call receipts; external-mcp-key fields are excluded from generic fetch, renewal and rotation handoff; after node-root rotation the member must reconnect from their original provider account, never export the key)
+- `apps/kernel/src/lib/kernel/external-mcp-authority.ts` — D2 (public node grantee DID comparison in the shared read-only MCP/HTTP authorization decision; reads grant metadata only, never vault entries or signing/unseal keys; node-root rotation fails closed until custody is restored through the existing connection controls)
+- `apps/kernel/src/lib/inference/http-connector-authority.ts` — D2 (public node grantee DID for read-only HTTP custody-grant metadata; reuses connector scope predicates, never reads credential bytes or signs; node-root rotation requires the corresponding connector grants to be restored through their existing controls)
 - `apps/kernel/src/lib/kernel/org-held-connection.ts` — D2/D3/S3 (org-subject, kernel-only static-secret custody with actor-attributed lifecycle receipts; private fields never enter generic fetch, renewal or rotation export; after node-root rotation an org admin must load again from the original provider account, never export the key)
 - `apps/kernel/src/lib/inference/org-held-brain.ts` — D2/D3 (live member-grant-gated org Anthropic custody; checks node signing identity and unseals only in-process with the node X25519 key; after node-root rotation the org admin must reload through the existing org-held connection rail, never export the key)
 - `apps/kernel/src/lib/vault/internal-secret.ts` — D2
@@ -734,6 +737,7 @@ file: ``- `path` — role``.
 - `apps/kernel/app/profile/api/contact/verify-email/route.ts` — D4
 - `apps/kernel/app/profile/api/contact/verify-email/confirm/route.ts` — D4
 - `scripts/provision-service-bootstrap.mjs` — ops
+- `scripts/backfill-agent-apps.ts` — ops/S3/S4 (operator-only agent app registration and server-witnessed self-context consent; reads the current node key in-process, never loads agent keys or re-signs existing grants; historical proofs need the same node-key rotation history as other registry/consent records)
 - `scripts/grant-attestation-internal-api-key.ts` — ops
 - `scripts/lib/attestation-internal-api-key-grant.ts` — ops
 - `scripts/lib/cron-secret-grant.ts` — ops

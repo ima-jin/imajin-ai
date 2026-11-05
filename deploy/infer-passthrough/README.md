@@ -1,8 +1,8 @@
-# Release deployment for infer-passthrough (#3041, #3082)
-Release interlock #3230: agent-mode promotion requires an explicitly declared host auth mode after plugin PR #151 is deployed.
-SIGTERM/SIGINT stops accepting requests, drains active responses, then exits 0; `INFER_PROXY_SHUTDOWN_GRACE_MS` defaults to 5000 ms (positive integer, hard cap 8000 ms; invalid values use the default), after which remaining connections/calls are cut. A second signal exits immediately. Live restart proof follows the production release (#3249).
+# Inference passthrough deployment
+Agent-mode promotion requires an explicitly declared host auth mode after the plugin's per-agent credential transport is deployed.
+SIGTERM/SIGINT stops accepting requests, drains active responses, then exits 0; `INFER_PROXY_SHUTDOWN_GRACE_MS` defaults to 5000 ms (positive integer, hard cap 8000 ms; invalid values use the default), after which remaining connections/calls are cut. A second signal exits immediately. Verify live restart behavior after the production-approved deployment.
 
-## Calling-agent contract (#3224)
+## Calling-agent contract
 
 The default mode is `INFER_PROXY_AUTH_MODE=agent` (also when unset).
 Every inference call carries the calling agent's **own** kernel-minted credential,
@@ -30,7 +30,7 @@ uses a direct provider key, even during a kernel outage.
   The existing kernel contract also carries `iss`, `aud` (normally `imajin:apps`
   for inference, the MCP resource audience for MCP), space-delimited `scope`,
   and `attestationId`. It is **not** a session JWT, `session-app+jwt`,
-  `app-service+jwt`, or a new token scheme. The plugin obtains/refreshes it
+  `app-service+jwt`, or a different token scheme. The plugin obtains/refreshes it
   using the existing app-token flow; no key belongs in provider config.
 - The sidecar checks shape/expiry only; it does not trust decoded claims as
   authorization. The kernel checks the signature, issuer, audience and scopes,
@@ -56,9 +56,9 @@ kernel; agent calls never consult the host principal's catalog cache.
   under the gateway identity; the plugin must refresh its own JWT.
 - Kernel **403** (including membership, scopes or required member grant) and
   other non-401 HTTP responses, including 5xx: status and body forwarded.
-  A header selects, never authorizes. **On current main an org's own agent
-  can still receive 403 until #3182 lands.** This PR changes no kernel
-  key-resolution or org-grant policy and does not work around that refusal.
+  A header selects, never authorizes. Assigned agents use the kernel's live
+  principal relationship and allowed-service checks; human member-grant policy
+  remains distinct. The sidecar does not work around a refusal.
 - Network failure or time-to-first-byte timeout: **502**, `upstream_unavailable`
   or `upstream_timeout`; no direct-provider/shared-key fallback.
 - Unknown HTTP endpoint/method: **404**. Credentials and keys are never included
@@ -70,8 +70,8 @@ prove a caller's grant or completion. The deployment checker accepts this payloa
 only with an explicitly declared `agent` mode from the host env file (see the
 release gate below); undeclared mode still requires route mint evidence.
 Do not treat liveness as per-agent readiness or bypass that gate during rollout.
-Live Artifact-Jin → @artifact attribution proof belongs on plugin sibling
-ima-jin/openclaw-imajin-plugin#150 after both implementations ship.
+Verify a real agent completion and its principal attribution independently;
+source tests and liveness do not establish that proof.
 
 ### Explicit non-agent host compatibility
 
@@ -89,10 +89,10 @@ credentials. Provider-only optional route entries need no principal in agent mod
 The shipped env example's historical app/principal fields are host-only; for
 agent rollout explicitly set `INFER_PROXY_AUTH_MODE=agent`, remove provider marker auth,
 and have the plugin attach the per-agent JWT and configured selector on each call.
-No running host is changed by this PR. All host changes described here are
+No running host is changed by reading this runbook. All host changes described here are
 operator instructions for a reviewed release, not actions performed in this run.
 
-## v0.8.31 release gate (#3230)
+## Declared-mode release gate
 
 The **server default** is agent, but the **deployment gate default** is deliberately
 undeclared and route-gated. `update.sh` reads only anchored
@@ -113,8 +113,8 @@ also refuses the update.
   `--check` probes. Redirects are refused; startup/network failures are retried
   without exposing details.
 
-**Operator precondition before cutting v0.8.31: pick one and record which.**
-These are post-PR operator steps, not actions performed by this PR:
+**Operator precondition before promotion: pick one and record which.**
+These are operator steps, not automatic changes made by the source tree:
 
 **(a) Legacy bridge:** add `INFER_PROXY_AUTH_MODE=host-static` to
 `/etc/imajin/infer-passthrough.env` before the tag. The candidate serves mint-backed
@@ -124,8 +124,7 @@ principal. This bridge does not meet "agent signs as itself everywhere".
 
 **(b) Agent-native, in this exact order:**
 
-1. Merge and **deploy plugin PR #151** (the implementation for plugin issue #150)
-   to the gateway first: imajin-openai/imajin-xai must send each calling agent's
+1. **Deploy the plugin's per-agent credential transport** to the gateway first: imajin-openai/imajin-xai must send each calling agent's
    own app+jwt and configured x-acting-as, not the shared static key.
 2. Set the explicit line `INFER_PROXY_AUTH_MODE=agent` in
    `/etc/imajin/infer-passthrough.env`. Removing the host-static line is **not**
@@ -145,9 +144,9 @@ After either option, verify `journalctl -u infer-passthrough-update` shows
 Liveness alone is not this completion proof; record the chosen option and evidence.
 
 ## Legacy host-static release deployment
-Gateway bootstrap migration is tracked in #3185; no live host is changed by this PR.
-Thereafter the timer fetches release tags and `origin/main` every two minutes.
-It selects the highest eligible stable `vX.Y.Z` (not a prerelease), without a
+Gateway bootstrap is an operator-authorized operation, not an automatic host change.
+The installed timer fetches release tags and `origin/main` every two minutes.
+It selects the highest eligible stable release tag, excluding prereleases, without a
 recurring hand step. **The updater follows the production gate**: a tag alone is
 not permission to run code with production app credentials. No tags or deployments
 are created here, and Ryan's existing `production` approval gate is not bypassed.
@@ -176,7 +175,7 @@ dependencies. Install/build and the proxy run as `imajin`, **not root**. Root on
 orchestrates worktrees, the atomic `current` symlink and systemd.
 
 Before touching the live service, a transient `infer-passthrough-candidate` unit
-runs the new code on **127.0.0.1:8788**, using the same restricted EnvironmentFile.
+runs the candidate code on **127.0.0.1:8788**, using the same restricted EnvironmentFile.
 With undeclared or host-static mode, the candidate's `/health` must mint (or cache
 a valid token) for **every configured route**, except the explicitly reported
 unregistered MCP audience. Break-glass cannot satisfy this probe. With explicitly
@@ -199,9 +198,8 @@ failures and all openai/anthropic failures still gate promotion.
 
 ## One-time installation / migration
 
-Keep the existing unit as-is until this change lands and its release completes
-the existing `production` approval gate. No gateway changes are performed by this
-PR. Subsequent migration is pushed via the **Bootstrap inference gateway**
+Keep the existing unit as-is until the reviewed replacement completes
+the existing `production` approval gate. Migration is pushed via the **Bootstrap inference gateway**
 workflow (`infer-passthrough-bootstrap.yml`), not an interactive sudo session.
 The workflow has `permissions: {}` and only starts a fixed root-owned systemd
 entry point on the dedicated `infer-passthrough-gateway` host runner. The runner
@@ -235,8 +233,8 @@ first step also compares `github.ref` and `github.workflow_ref` (passed through
 workflow. This is a **second layer only**: a branch copy could remove that step,
 so it cannot replace the runner-group restriction.
 
-The operator runs these **read-only** verification calls once; this PR does not
-run them or claim the group exists. Replace `<id>` with the group's numeric ID:
+The operator runs these **read-only** verification calls before dispatch;
+source tests do not claim the group exists. Replace `<id>` with the group's numeric ID:
 
 ```bash
 gh api orgs/ima-jin/actions/runner-groups
@@ -305,10 +303,18 @@ using the **unit's PATH**, including Ubuntu's `/usr/sbin/runuser`:
 env PATH=/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin sh -c 'command -v node pnpm python3 git systemd-run runuser flock'
 ```
 
-Discovery: `/vault/api/spec` (source `apps/kernel/api-spec/vault.yaml`), not
+**Credential delivery is a prerequisite.** Discovery:
+[`/vault/api/spec`](https://jin.imajin.ai/vault/api/spec) (source
+`apps/kernel/api-spec/vault.yaml`), not
 `/spec`. The consumer composes `POST /api/vault/import` with the existing
 delegation list/fetch/ack endpoints. There is no new fetch surface, SSH channel,
 or parallel secret store.
+
+Arrange the authorized delivery and rotation path below before bootstrap.
+**Do not paste, export, copy
+from Actions, or manually write a GitHub token as a workaround.** The bootstrap
+fails closed before host mutation if that credential is absent, empty, not
+root-owned, or not mode 0600. This runbook does not establish that delivery is installed.
 
 The operator imports the credential **only through the paste-once vault form on
 /jin**. Select the authorized owner (personal or acting-as organization),
@@ -429,12 +435,12 @@ No live host operation or production proof is performed by these tests.
 The operator checklist before dispatch is: manually verify/install the reviewed
 bundle and narrow root grant; verify the **Org settings → Actions → Runner groups**
 boundary and all three read-only checks above (repo-only, exact selected main
-workflow, no public/fork PR jobs, gateway in no other group); then arrange #3190
+workflow, no public/fork PR jobs, gateway in no other group); then arrange authorized
 credential delivery. Neither that group nor a bootstrapped host is claimed here.
-These prerequisites must all be available before claiming #3171 is verified. After release, the operator
-only dispatches the gated workflow and verifies WorkingDirectory, absent routes,
-`/healthz`, active timer, and a no-op second invocation. Tracker #3171 and
-operator consent #3172 remain pending their post-release host proofs. Missing grants require consent, not
+These prerequisites must all be available before claiming the host is verified. The operator
+dispatches the gated workflow and verifies WorkingDirectory, absent routes,
+`/healthz`, active timer, and a no-op second invocation. Record host and
+operator-consent proofs separately from source test results. Missing grants require consent, not
 host file edits; an unregistered MCP audience requires registration, not consent.
 
 ## Release check and diagnosis

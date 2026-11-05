@@ -30,7 +30,7 @@ export async function GET(request: NextRequest) {
       if (agents !== '1') return NextResponse.json({ error: 'agents must be 1' }, { status: 400, headers });
       return await operatorCards(request, headers);
     }
-    const auth = await resolveInferenceAuth(request, 'infer:completions');
+    const auth = await resolveInferenceAuth(request, 'infer:completions', true);
     if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status, headers });
     const card = await readSelfDiscoveryCard(auth.context);
     if (!card) return NextResponse.json({ error: 'Identity not found' }, { status: 404, headers });

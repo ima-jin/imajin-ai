@@ -6,6 +6,9 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
+const { authorizeAgentApp } = vi.hoisted(() => ({ authorizeAgentApp: vi.fn() }));
+vi.mock('../agent-app', () => ({ authorizeAgentApp }));
+
 const { mockDbSelect, mockTxInsertValues, mockTransaction, pushSelectResult, resetSelectQueue } = vi.hoisted(() => {
   let queue: unknown[][] = [];
   const pushSelectResult = (rows: unknown[]) => queue.push(rows);
@@ -159,6 +162,10 @@ describe('mintAgentIdentity', () => {
     expect(result.did).toBe('did:imajin:pub-hex');
     expect(result.handle).toBe('travel-agent');
     expect(result.displayName).toBe('Travel Agent');
+    expect(authorizeAgentApp).toHaveBeenCalledWith({
+      agentDid: result.did, publicKey: 'pub-hex', privateKey: 'priv-hex',
+      ownerDid: ACTING_DID, name: 'Travel Agent',
+    }, expect.any(Object));
     expect(result.keypair).toEqual({ privateKey: 'priv-hex', publicKey: 'pub-hex' });
     expect(typeof result.createdAt).toBe('string');
 
@@ -209,6 +216,15 @@ describe('mintAgentIdentity', () => {
       identityDid: ACTING_DID, memberDid: result.did, role: 'agent',
       addedBy: ACTING_DID, addedVia: 'agent',
     });
+  });
+
+  it('propagates self-grant failure out of the identity transaction', async () => {
+    pushSelectResult([]);
+    pushSelectResult([{ scope: 'actor' }]);
+    authorizeAgentApp.mockRejectedValueOnce(new Error('grant unavailable'));
+    await expect(mintAgentIdentity({ handle: 'atomic-agent', actingDid: ACTING_DID }))
+      .rejects.toThrow('grant unavailable');
+    expect(mockTxInsertValues).toHaveBeenCalledTimes(1);
   });
 
   it('fails closed without minting when the serving identity is absent from storage', async () => {

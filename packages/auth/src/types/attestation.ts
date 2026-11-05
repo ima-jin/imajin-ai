@@ -231,6 +231,7 @@ export const ATTESTATION_TYPES = [
   // minted key's grant is revoked. See ATTESTATION_TYPES above.
   'vault.key.minted',
   'vault.key.imported',
+  'vault.key.renewed',
   'vault.key.revoked',
   // Recipient-bound gateway delivery provenance; never a bilateral claim.
   'vault.deployment-read.fetched',
@@ -416,6 +417,7 @@ export const MECHANICAL_ATTESTATION_TYPES = [
   'vault.key.minted',
   'vault.key.imported',
   'vault.key.revoked',
+  'vault.key.renewed',
   'vault.deployment-read.fetched',
   'vault.deployment-read.acked',
   // #2251 — minted mechanically by the kernel node key on every reach
