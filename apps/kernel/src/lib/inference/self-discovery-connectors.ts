@@ -129,6 +129,10 @@ async function httpRow(context: InferenceAuthContext, entry: ConnectorEntry, con
       provider: 'warp', scope: 'warp:dispatch', service: 'warp',
     }, 'http');
     row.ownerDid = principal.ownerDid;
+    if (row.ownerDid !== actorDid) {
+      row.configured = false;
+      row.configurationStatus = 'not-disclosed';
+    }
   }
   const authority = entry.id === 'mcp' ? undefined : await httpConnectorAuthority(entry.id);
   if (!authority && entry.id !== 'mcp') return {
