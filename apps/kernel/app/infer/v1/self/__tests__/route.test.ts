@@ -155,7 +155,9 @@ describe('GET /infer/v1/self', () => {
     expect(body.cards[0]).toMatchObject({
       name: 'Artifact-Jin', identity: { did: actor, actAs: actingAsOrg ? org : null },
       connectors: [{ authority: actingAsOrg ? 'org-held' : 'delegated', usable: false,
-        fix: { actingDid: principalDid, href: actingAsOrg ? '/auth/connectors' : '/auth/connectors/anthropic' } }],
+        fix: { actingDid: principalDid, href: actingAsOrg
+          ? `/jin/vault/renew?orgDid=${encodeURIComponent(org)}&provider=anthropic`
+          : '/auth/connectors/anthropic' } }],
     });
     expect(body.cards[0].connectors).toHaveLength(1);
     expect(JSON.stringify(body)).not.toContain('other-client');

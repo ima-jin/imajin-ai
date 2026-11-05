@@ -33,6 +33,11 @@ export interface DelegationRouteEntry {
 }
 
 export const DELEGATION_ROUTES = {
+  "kernel.vault.org-held.renew": {
+    class: "irreversible", action: "renew", app: "kernel", method: "POST",
+    path: "/api/vault/org-held/renew",
+    why: "extends private organization key custody only through a human owner/admin countersigned approval",
+  },
   "kernel.mail.domain.provision": {
     class: "irreversible", action: "provision", app: "kernel", method: "POST",
     path: "/jin/api/orgs/[ownerDid]/mail-domains",
