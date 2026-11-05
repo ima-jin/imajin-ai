@@ -2,10 +2,12 @@ import { NextResponse } from 'next/server';
 import { requireAuth, authErrorResponse } from '@imajin/auth';
 import { createLogger } from '@imajin/logger';
 import { fetchGrantSecret, getGrantById, type GrantFetchOutcome } from '@/src/lib/vault';
-import { isAppSelfSecretField, isCloudflareImportedKeyField, isPrivateCustodyField } from '@/src/lib/vault/field-grammar';
+import { isAppSelfSecretField, isCloudflareImportedKeyField, isDeploymentReadImportedKeyField, isPrivateCustodyField } from '@/src/lib/vault/field-grammar';
 import { toVaultErrorResponse } from '@/src/lib/vault/errors';
 import { GRANT_NOT_FOUND_STATUS, GRANT_NOT_FOUND_ERROR, publishVaultDelegationAudit } from '@/src/lib/vault/route-helpers';
 import { isCloudflarePurpose } from '@/src/lib/cloudflare/contract';
+import { deploymentReadRoute, isDeploymentReadRequest } from '@/src/lib/vault/deployment-read-route';
+import { DEPLOYMENT_READ_PURPOSE } from '@/src/lib/vault/deployment-read-binding';
 
 const log = createLogger('kernel');
 
@@ -78,6 +80,7 @@ function auditFetch(params: {
  */
 export async function POST(request: Request, props: { params: Promise<{ grantId: string }> }) {
   const { grantId } = await props.params;
+  if (isDeploymentReadRequest(request)) return deploymentReadRoute(request, 'fetch', grantId);
 
   const authResult = await requireAuth(request);
   if ('error' in authResult) {
@@ -96,6 +99,7 @@ export async function POST(request: Request, props: { params: Promise<{ grantId:
       });
     }
     if (grant && (isAppSelfSecretField(grant.field) || isPrivateCustodyField(grant.field)
+      || grant.purpose === DEPLOYMENT_READ_PURPOSE || isDeploymentReadImportedKeyField(grant.field)
       || isCloudflarePurpose(grant.purpose) || isCloudflareImportedKeyField(grant.field))) {
       return NextResponse.json({ error: 'Unable to fetch this grant' }, {
         status: 403, headers: { 'Cache-Control': 'no-store' },

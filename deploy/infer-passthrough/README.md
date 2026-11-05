@@ -268,10 +268,11 @@ same SHA again before migration. Do not use these commands on unreviewed code.
 ```bash
 install -d -o root -g root -m 0755 /usr/local/libexec/infer-passthrough
 install -o root -g root -m 0755 deploy/infer-passthrough/bootstrap.sh deploy/infer-passthrough/update.sh /usr/local/libexec/infer-passthrough/
-install -o root -g root -m 0644 deploy/infer-passthrough/bootstrap.py deploy/infer-passthrough/check-health.mjs deploy/infer-passthrough/production-deployment.mjs deploy/infer-passthrough/*.service deploy/infer-passthrough/*.timer /usr/local/libexec/infer-passthrough/
+install -o root -g root -m 0644 deploy/infer-passthrough/bootstrap.py deploy/infer-passthrough/check-health.mjs deploy/infer-passthrough/production-deployment.mjs deploy/infer-passthrough/deployment-read.mjs deploy/infer-passthrough/deployment-read-protocol.mjs deploy/infer-passthrough/*.service deploy/infer-passthrough/*.timer /usr/local/libexec/infer-passthrough/
 git rev-parse HEAD > /usr/local/libexec/infer-passthrough/release.sha
 chmod 0644 /usr/local/libexec/infer-passthrough/release.sha
 install -o root -g root -m 0644 deploy/infer-passthrough/infer-passthrough-bootstrap.service /etc/systemd/system/
+install -o root -g root -m 0644 deploy/infer-passthrough/infer-passthrough-deployment-read.service /etc/systemd/system/
 systemctl daemon-reload
 ```
 
@@ -281,6 +282,7 @@ Install this exact sudoers rule with `visudo -f
 
 ```sudoers
 gateway-runner ALL=(root) NOPASSWD: /usr/bin/systemctl start infer-passthrough-bootstrap.service
+gateway-runner ALL=(root) NOPASSWD: /usr/bin/systemctl start infer-passthrough-deployment-read.service
 ```
 
 No wildcards or caller-supplied arguments are permitted. Only this entry point
@@ -290,7 +292,7 @@ A failed bootstrap retains backups, restores the old unit/drop-ins/env/routes
 and prior link, and permits retry without manual cleanup. Power loss/SIGKILL
 cannot run rollback: inspect retained `bootstrap-*` backups before retrying.
 
-### Prerequisites and credential blocker
+### Prerequisites and kernel deployment-read delivery
 
 Linux/systemd, Python 3, git, Node **22 or 24**, and pnpm **9** are required.
 The bootstrap confirms versions; it does not install packages or run dependency
@@ -301,22 +303,102 @@ using the **unit's PATH**, including Ubuntu's `/usr/sbin/runuser`:
 env PATH=/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin sh -c 'command -v node pnpm python3 git systemd-run runuser flock'
 ```
 
-**Credential delivery is a prerequisite.** The [vault spec](https://jin.imajin.ai/vault/api/spec)
-describes custody and SSH signing, but does not establish an installed
-repository-credential-to-gateway systemd delivery or rotation consumer.
-Arrange the authorized delivery and rotation path before bootstrap. **Do not paste, export, copy
+**Credential delivery is a prerequisite.** Discovery:
+[`/vault/api/spec`](https://jin.imajin.ai/vault/api/spec) (source
+`apps/kernel/api-spec/vault.yaml`), not
+`/spec`. The consumer composes `POST /api/vault/import` with the existing
+delegation list/fetch/ack endpoints. There is no new fetch surface, SSH channel,
+or parallel secret store.
+
+Arrange the authorized delivery and rotation path below before bootstrap.
+**Do not paste, export, copy
 from Actions, or manually write a GitHub token as a workaround.** The bootstrap
 fails closed before host mutation if that credential is absent, empty, not
 root-owned, or not mode 0600. This runbook does not establish that delivery is installed.
 
-The kernel consumer must provision
-`/etc/imajin/infer-passthrough-github-token`. Both bootstrap and updater use
-`LoadCredential=github-token:...`; the existing production-deployment helper
-reads the value in process memory from systemd's credential directory. Require
+The operator imports the credential **only through the paste-once vault form on
+/jin**. Select the authorized owner (personal or acting-as organization),
+consumer = the gateway recipient DID, purpose =
+`infer-passthrough/github-deploy-read`, and a future expiry. The server binds the
+repository to `ima-jin/imajin-ai` in the human-countersigned proposal. Require
 **Deployments: read**, **Contents: read** and metadata only, **no write**,
 Actions-write or administration permission. No token belongs in argv, env files,
 units, logs, workflow secrets, issues or PR text. This repo is public: bare git
 fetch needs no token; only the deployment API consumes the restricted credential.
+The operator verifies fine-grained GitHub permissions at issuance; vault scope
+cannot reduce an overprivileged provider token. Rotation uses the existing
+import card's `replacesField` path, never an extra active credential.
+
+The trusted host bundle has public policy in root-owned, non-group/world-writable
+`/etc/imajin/infer-passthrough-deployment-read.json`: `kernelOrigin` (HTTPS origin
+only), `kernelPublicKey` (pinned Ed25519 hex public key), `repository`
+(`ima-jin/imajin-ai`), `ownerDid`, and `recipientDid`. Kernel public policy is
+`INFER_DEPLOY_READ_OWNER_DID`, `INFER_DEPLOY_READ_RECIPIENT_DID`, and
+`INFER_DEPLOY_READ_RECIPIENT_PUBLIC_KEY`. The recipient DID is derived from its
+registered public key using the existing `did:imajin:<first-16-hex>` convention.
+Missing policy fails closed; no owner or recipient defaults exist.
+
+The consumer reuses the gateway's **existing** `OPENCLAW_APP_PRIVATE_KEY`
+signing identity. It captures the fixed service's `systemctl show Environment`
+in memory, then applies the existing root:root 0600
+`/etc/imajin/infer-passthrough.env` overrides, matching bootstrap migration
+precedence. Neither value is printed, passed in argv, or exported to the
+consumer's environment. Only the existing hex signing-seed assignment is parsed;
+configuration is never shell-sourced. The derived public DID must match the
+pinned recipient policy. Missing/malformed identity fails closed, not by minting
+a new identity or requesting a manually populated secret file.
+
+This reuses an existing narrow gateway identity, not a GitHub credential or an
+operator/broad agent token. There is **no GitHub credential env fallback**:
+deployment-read bytes come only from the approved vault import and restricted
+delivery channel. Identity custody stays on the existing vault/provision/seal
+rail; never generate a seed in a shell, print it, or transfer it over SSH.
+No new identity store or SSH CA/service-at-boot custody is introduced.
+
+After the existing `production` environment approval and exact-main workflow
+guard, the dedicated gateway runner starts the fixed
+`infer-passthrough-deployment-read.service`, then bootstrap. Both services use
+only their explicit `sudo -n systemctl start ...` grants; neither checks out or
+executes a caller's code as root. A later approved dispatch re-delivers/rotates
+without interactive sudo, a copied grant ID, or a service restart.
+
+Delivery discovers the recipient's exact-purpose grant, signs each request
+with its own DID, and accepts only kernel-signed encrypted responses. The
+shared `deployment-read-protocol.mjs` specifies canonical signed bytes:
+domain-separated method/path/query/body hash, repository, owner, recipient,
+purpose, random nonce, timestamp and fresh X25519 ephemeral public key. Requests
+expire after 60 seconds. Replies are AES-256-GCM encrypted under a
+domain-separated X25519/HKDF-SHA256 key and Ed25519 signed by the pinned kernel.
+Replaying a captured signature cannot decrypt a response without the original
+ephemeral private key. TLS redirects, arbitrary origins and oversized replies
+are refused; no response or upstream exception is logged.
+
+The trusted service, bootstrap and updater serialize delivery with the same
+OS-released `flock` at
+`/run/imajin-infer-passthrough-credential/delivery.lock`. Systemd creates its
+root-owned 0700 runtime directory for all three consumers, preserves it between
+invocations, and recreates it after reboot. No shared writable lock directory
+is trusted. A failed concurrent delivery cannot restore bytes over a successful
+rotation. Every credential-consuming host unit disables core dumps.
+The root consumer writes a unique exclusive 0600 temp file beside
+`/etc/imajin/infer-passthrough-github-token`, sets root:root ownership, fsyncs,
+atomically renames and fsyncs the directory, then acknowledges the fetch through
+the existing ack route. On ordinary write/ack failure it restores the previous
+bytes from memory (or removes a failed first install); no plaintext backup is
+kept. Power loss may leave a restricted temp file or an installed but unacked
+file; re-delivery is safe. The import timeline retains the unmatched-fetch alert
+until ack succeeds. Persisted metadata-only fetched/acked attestations and signed
+response envelopes provide provenance; no database history is deleted.
+
+Both bootstrap and updater retain `LoadCredential=github-token:...`. Delivery
+must precede bootstrap because systemd loads credentials before starting it.
+Absent/empty/unsafe credentials still fail closed. The production-deployment
+helper additionally refreshes the vault authority on **every** deployment check
+and uses the fresh value in process memory, never a stale systemd snapshot:
+expired/revoked authority or unavailable vault means no deployment lookup or
+promotion, even if an older credential file remains. There is no env/file
+fallback, manual/interim token input, SSH copy or Actions-secret workaround.
+No live host operation or production proof is performed by these tests.
 
 ### What the pushed bootstrap does
 

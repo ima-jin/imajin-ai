@@ -62,7 +62,7 @@ for value in "${tags[@]}"; do
       log "refusing $value: tag commit is not on origin/main; current release unchanged"
       continue
     fi
-    if node "$script_dir/production-deployment.mjs" "$sha"; then
+    if flock --exclusive /run/imajin-infer-passthrough-credential/delivery.lock node "$script_dir/production-deployment.mjs" "$sha"; then
       log "approved $value ($sha): on main with successful production deployment"
     else
       gate_status=$?

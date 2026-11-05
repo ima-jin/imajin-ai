@@ -50,6 +50,16 @@ overlap by both kid and public key, and accepts currently published non-expired
 keys during grace and binds each delivery to its recipient app DID. Unlike corpus's boot reconciliation, apps do not need a restart
 or a key-file/env edit during an overlapping rotation. See `kernel-webhooks.md`.
 
+Gateway deployment-read delivery (#3190) uses S5 for the short-lived,
+recipient/purpose/repository-bound encrypted response witness and S3 for
+persisted fetched/acked provenance. `vault/deployment-read.ts` reuses D2/D3
+through the existing imported-secret grant fetch. The gateway verifies a pinned
+kernel public key; node-root rotation fails closed until the reviewed public
+trust configuration follows that rotation. Imported deployment credentials
+remain excluded from the legacy plaintext sweep and must retain their
+human-authorized import custody. The gateway's existing app signing identity is
+independent of the node root and is not a new node-key consumer.
+
 S3 also covers DNS domain evidence (#2902):
 `apps/kernel/src/lib/domains/signing.ts` verifies the configured node DID's
 registered public key before using `AUTH_PRIVATE_KEY` for DNS verification
@@ -687,6 +697,7 @@ file: ``- `path` — role``.
 - `apps/kernel/src/lib/vault/mint-authority.ts` — D2
 - `apps/kernel/src/lib/vault/import-authority.ts` — D2 (node identity comparison only; real human/group ownership remains independently checked)
 - `apps/kernel/src/lib/vault/import.ts` — D2/S3 (v2 static-secret custody and node-attested, human-countersigned import/rotation)
+- `apps/kernel/src/lib/vault/deployment-read.ts` — D2/S5/S3 (existing imported grant custody; recipient/repository/purpose-bound encrypted response witness and fetched/acked provenance; gateway pins the public witness and fails closed across unconfigured node-root rotation)
 - `apps/kernel/app/api/vault/import/route.ts` — D2 (pins Cloudflare credential consumer to this kernel node; never releases token material)
 - `apps/kernel/src/lib/cloudflare/authority.ts` — D2 (node consumer identifier for verified-domain credential resolution; edge authority remains owner-granted)
 - `apps/kernel/src/lib/cloudflare/zone-grants.ts` — D2 (public node consumer identifier comparison for metadata-only zone grant discovery; never unseals or signs)

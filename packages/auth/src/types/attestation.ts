@@ -233,6 +233,9 @@ export const ATTESTATION_TYPES = [
   'vault.key.imported',
   'vault.key.renewed',
   'vault.key.revoked',
+  // Recipient-bound gateway delivery provenance; never a bilateral claim.
+  'vault.deployment-read.fetched',
+  'vault.deployment-read.acked',
   // #2251 — per-principal agent-reach exchange. Minted mechanically (kernel
   // node key) on every reach attempt, answered or denied: binds the foreign
   // agent DID, the foreign-principal stub DID it declared `onBehalfOf`, the
@@ -415,6 +418,8 @@ export const MECHANICAL_ATTESTATION_TYPES = [
   'vault.key.imported',
   'vault.key.revoked',
   'vault.key.renewed',
+  'vault.deployment-read.fetched',
+  'vault.deployment-read.acked',
   // #2251 — minted mechanically by the kernel node key on every reach
   // attempt (answered or denied). See ATTESTATION_TYPES above.
   'agent.reach',

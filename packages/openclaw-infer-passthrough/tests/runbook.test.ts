@@ -57,6 +57,10 @@ describe('principal migration runbook (#3041)', () => {
     expect(runbook).toContain('Deployments: read');
     expect(runbook).toContain('no write');
     expect(runbook).toContain('bootstrap.sh');
+    expect(runbook).toContain('infer-passthrough/github-deploy-read');
+    expect(runbook).toContain('infer-passthrough-deployment-read.service');
+    expect(runbook).toContain('no GitHub credential env fallback');
+    expect(runbook).not.toContain('TODO #3190');
     expect(runbook).toContain('Credential delivery is a prerequisite');
     expect(runbook).toContain('production-deployment.mjs');
     expect(runbook).toContain('Keep the existing unit as-is until the reviewed replacement completes');

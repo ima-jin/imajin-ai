@@ -27,5 +27,7 @@ jobs:
             printf 'Refusing bootstrap outside the selected main workflow\n' >&2
             exit 1
           fi
+      - name: Deliver kernel-authorized deployment credential
+        run: sudo -n /usr/bin/systemctl start infer-passthrough-deployment-read.service
       - name: Run trusted bootstrap
         run: sudo -n /usr/bin/systemctl start infer-passthrough-bootstrap.service
