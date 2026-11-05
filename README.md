@@ -49,7 +49,12 @@ not a guarantee that every concrete use case is implemented.
   call as the calling agent (no shared fallback), and its health gate needs a declared
   `INFER_PROXY_AUTH_MODE=agent` ([updater](deploy/infer-passthrough/README.md)).
 - See per-caller inference routes and manage org-held keys and member grants on
-  `/auth/connectors`; members read org key status as metadata only.
+  `/auth/connectors`; members read org key status as metadata only. Org owners/admins
+  renew an org-held key's expiry from `/jin/vault/renew` through countersigned approval.
+- Let an agent discover its own identity, usable models, inference routes and read-only
+  MCP/HTTP connector authority (`GET /infer/v1/self`); operators see the same cards on `/jin`.
+- Send mail as an org's verified custom domain through the node's Postal server, set up
+  under **Organization settings** on `/jin` ([guide](docs/guide/domain-ownership.md#mail-domains)).
 
 Current chat uses **TLS in transit and plaintext at rest** on the hosting node;
 push previews include the first 200 characters. MLS with mandatory hybrid

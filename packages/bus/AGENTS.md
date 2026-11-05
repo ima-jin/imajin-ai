@@ -32,6 +32,8 @@ await sql`
 - `src/config.ts` — reads `kernel.bus_chain_configs`
 - `src/reactors/audit.ts` — writes `kernel.broker_audit_log`
 - `src/reactors/supply-recorder.ts` — writes `kernel.supply_lots` / `kernel.supply_stages`
+- `src/reactors/loop-projection.ts` — writes `kernel.loops` / `kernel.loop_events`, including the signed receipt columns
+- `src/reactors/usage-projection.ts` — writes the `usage.incurred` row from a signed `usage.incurred` receipt (`ON CONFLICT (id) DO NOTHING`)
 
 ## Testing reactors that use `getClient()`
 

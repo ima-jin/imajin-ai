@@ -141,6 +141,19 @@ no deploy-time step that provisions a new var, only `scripts/check-env.ts` refus
 required by `.env.example` is missing (`docs/ENVIRONMENTS.md:126-137`, invoked from
 `scripts/build.sh:62-84`).
 
+**Postal domain admin (optional, operator-owned).** Org mail-domain provisioning
+([guide](../guide/domain-ownership.md#mail-domains)) needs three node-level
+settings, none of which any deploy step provisions: `POSTAL_ADMIN_URL` (HTTPS
+origin of the Postal domain-admin API) and `POSTAL_ORGANIZATION` (the one
+pre-existing Postal organization permalink for this node) in the kernel's
+`.env.local`, plus `POSTAL_ADMIN_TOKEN` sealed as an exact node-scoped vault
+field through the existing node vault tooling. The token is read with
+`loadAndUnseal` at request time; there is no env fallback and no
+auto-generation, and a missing or invalid value fails closed. Both env vars are
+optional in `.env.example`, so `check-env` does not catch a missing setup; the
+mail-domains panel reports it instead. Nothing contacts or deploys the Postal
+host at build time.
+
 ## 2. What's machine-checkable now vs asserted
 
 **Build stamp in the running system — partially checked.** Every app's `GET /api/health` returns
