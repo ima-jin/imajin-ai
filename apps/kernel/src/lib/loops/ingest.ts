@@ -31,6 +31,7 @@ import { canonicalize } from '@imajin/auth';
 import { projectSurfaceLease, loopObservationId, type SurfaceConflict } from './surface-lease';
 import { signSurfaceConflict } from './surface-conflict';
 import { isStepEventType, validateStepPayload } from './step-types';
+import { isFeeEventType, validateFeeReceipt } from '../pay/fee-receipt-payload';
 
 const log = createLogger('kernel:loops');
 
@@ -83,8 +84,8 @@ export async function ingestLoopEvent(request: LoopIngestRequest): Promise<Inges
     await bus.publish(type, {
       id: loopObservationId(request),
       issuer: publisherDid,
-      subject: sanitized.principal,
-      scope: 'loop',
+      subject: isFeeEventType(type) ? String(sanitized.recipientDid) : sanitized.principal,
+      scope: isFeeEventType(type) ? 'pay' : 'loop',
       signature,
       publisherDid,
       causeEventId: payload.causeEventId ?? null,
@@ -118,6 +119,9 @@ function warnUnauthorizedPublisher(publisherDid: string, principal: string): voi
 function validateLoopFacts(request: LoopIngestRequest):
   { ok: true; payload: LoopIngestRequest['payload'] } | { ok: false; error: string; status: number } {
   const { type, payload, publisherDid } = request;
+  if (isFeeEventType(type) && !validateFeeReceipt(type, payload, publisherDid)) {
+    return { ok: false, error: 'Invalid platform fee receipt', status: 400 };
+  }
   const cause = parseCauseEventId(payload.causeEventId);
   if (!cause.ok) return { ok: false, error: cause.error, status: 400 };
   if (isStepEventType(type) && !validateStepPayload(type, payload, publisherDid)) {

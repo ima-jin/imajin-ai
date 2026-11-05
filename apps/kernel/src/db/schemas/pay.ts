@@ -146,6 +146,7 @@ export const connectedAccounts = paySchema.table('connected_accounts', {
  */
 export const feeLedger = paySchema.table('fee_ledger', {
   id: text('id').primaryKey(),
+  receiptId: text('receipt_id'),
   transactionId: text('transaction_id').notNull(),
   recipientDid: text('recipient_did').notNull(),
   role: text('role').notNull(),
@@ -155,6 +156,7 @@ export const feeLedger = paySchema.table('fee_ledger', {
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 }, (table) => ({
   txIdx: index('idx_fee_ledger_tx').on(table.transactionId),
+  receiptIdx: uniqueIndex('uniq_fee_ledger_receipt').on(table.receiptId),
   recipientIdx: index('idx_fee_ledger_recipient').on(table.recipientDid, table.status),
 }));
 

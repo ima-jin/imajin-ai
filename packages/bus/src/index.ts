@@ -67,6 +67,7 @@ export { mutualReachConsentReactor } from './reactors/mutual-reach-consent';
 export { intersectionScopeReactor } from './reactors/intersection-scope';
 export type {
   BusEvent,
+  FeeReceiptPayload,
   BusEventMap,
   BusEventType,
   ReactorConfig,

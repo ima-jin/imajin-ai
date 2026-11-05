@@ -1,3 +1,6 @@
+vi.mock('@/src/lib/pay/fee-receipts', async () => ({
+  publishFeeReceipt: (await import('@/src/lib/pay/__tests__/fee-receipt-fixture')).fixturePublishFeeReceipt,
+}));
 /**
  * End-to-end (route-level) tests for the Stripe webhook's
  * `checkout.session.completed` settlement of a generic checkout whose `.fair`

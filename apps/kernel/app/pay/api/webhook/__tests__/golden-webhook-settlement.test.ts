@@ -19,6 +19,9 @@
  * to the pre-refactor baseline.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+vi.mock('@/src/lib/pay/fee-receipts', async () => ({
+  publishFeeReceipt: (await import('@/src/lib/pay/__tests__/fee-receipt-fixture')).fixturePublishFeeReceipt,
+}));
 
 interface TxFixture {
   id: string;

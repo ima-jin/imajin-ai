@@ -4,6 +4,29 @@ export interface ReceiptSignature {
   sig: string;
 }
 
+/** Signed platform fee fact; the loop receipt is the source, not the fee row. */
+export interface FeeReceiptPayload extends LoopEventPayload {
+  output?: never;
+  transactionId: string;
+  recipientDid: string;
+  role: string;
+  amountCents: number;
+  currency: string;
+  stripeEventId: string;
+  status: 'paid_out' | 'accrued' | 'held_in_trust';
+  chainIndex?: number;
+  sellerDid?: string;
+  tax?: {
+    jurisdiction: string;
+    kind: string;
+    rateBps: number;
+    remitTo: string;
+    registrationNumber: string;
+    service: string;
+    buyerDid: string | null;
+  };
+}
+
 export interface BusEvent {
   id?: string;               // stable signed-ingest observation id, when supplied
   type: string;              // 'ticket.purchased', 'newsletter.sent', etc.
