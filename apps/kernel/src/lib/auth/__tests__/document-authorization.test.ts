@@ -9,6 +9,19 @@ const request = new Request('http://localhost');
 beforeEach(() => vi.clearAllMocks());
 
 describe('canonical document authority', () => {
+  it.each([{}, { actingAs: 'did:imajin:org', actingAsRole: 'admin' }])(
+    'refuses agents and presences for reads and writes in context %j',
+    async (context) => {
+      for (const subtype of ['agent', 'presence']) {
+        for (const write of [false, true]) {
+          mocks.auth.mockResolvedValue({ identity: { id: 'did:imajin:caller', subtype, ...context } });
+          const result = await requireDocumentActor(request, { write }) as Response;
+          expect(result.status).toBe(403);
+          expect(await result.json()).toEqual({ error: 'Human document authority required' });
+        }
+      }
+    },
+  );
   it('always requires the auth service and an actual session', async () => {
     mocks.auth.mockResolvedValue({ identity: { id: 'did:imajin:human' } });
     expect(await requireDocumentActor(request, { write: true })).toEqual({
