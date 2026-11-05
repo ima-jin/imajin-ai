@@ -120,6 +120,8 @@ export async function updateIdentityChain(input: {
   existingLog: string[];
   /** Current head CID (previousOperationCID for the update) */
   headCid: string;
+  /** Candidate-key possession envelopes bound to this DID, head and roles. */
+  keyProofs?: string[];
   /** New key configuration — full replacement */
   newKeys: {
     authKeys: Array<{ id: string; publicKeyHex: string }>;
@@ -145,6 +147,7 @@ export async function updateIdentityChain(input: {
     authKeys: toMultikey(input.newKeys.authKeys),
     assertKeys: toMultikey(input.newKeys.assertKeys),
     controllerKeys: toMultikey(input.newKeys.controllerKeys),
+    ...(input.keyProofs ? { keyProofs: input.keyProofs } : {}),
     createdAt: new Date().toISOString(),
   };
 

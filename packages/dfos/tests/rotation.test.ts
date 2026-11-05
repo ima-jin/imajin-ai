@@ -3,6 +3,15 @@ import { createIdentityChain, updateIdentityChain, verifyChain } from '../src/br
 import { encodeEd25519Multikey } from '@metalabel/dfos-protocol';
 import { bytesToHex, hexToBytes } from '@imajin/auth';
 import { ed25519 } from '@noble/curves/ed25519';
+import { KEY_ADD_JWS_TYP, signKeyProof } from '@metalabel/dfos-protocol/key-proof';
+
+async function possessionProof(privateKeyHex: string, did: string, prevCID: string, roleSet = 'auth') {
+  const { proof } = await signKeyProof({
+    typ: KEY_ADD_JWS_TYP, nonce: crypto.randomUUID(), audience: did, did, prevCID, roleSet,
+    privateKey: hexToBytes(privateKeyHex),
+  });
+  return proof;
+}
 
 /** Generate a random Ed25519 keypair as hex strings */
 function generateKeypair() {
@@ -39,6 +48,7 @@ describe('key rotation via updateIdentityChain', () => {
       signingKeyId: k1KeyId,
       existingLog: genesis.log,
       headCid: genesis.operationCID,
+      keyProofs: [await possessionProof(k2.privateKeyHex, genesis.did, genesis.operationCID, 'auth,assert,controller')],
       newKeys: {
         authKeys: [{ id: k2KeyId, publicKeyHex: k2.publicKeyHex }],
         assertKeys: [{ id: k2KeyId, publicKeyHex: k2.publicKeyHex }],
@@ -77,6 +87,7 @@ describe('key rotation via updateIdentityChain', () => {
       signingKeyId: k1KeyId,
       existingLog: genesis.log,
       headCid: genesis.operationCID,
+      keyProofs: [await possessionProof(k2.privateKeyHex, genesis.did, genesis.operationCID, 'auth,assert,controller')],
       newKeys: {
         authKeys: [{ id: 'key_k2', publicKeyHex: k2.publicKeyHex }],
         assertKeys: [{ id: 'key_k2', publicKeyHex: k2.publicKeyHex }],
@@ -127,6 +138,7 @@ describe('role separation', () => {
       signingKeyId: k1KeyId,
       existingLog: genesis.log,
       headCid: genesis.operationCID,
+      keyProofs: [await possessionProof(k2.privateKeyHex, genesis.did, genesis.operationCID)],
       newKeys: {
         authKeys: [
           { id: k1KeyId, publicKeyHex: k1.publicKeyHex },
@@ -156,6 +168,7 @@ describe('role separation', () => {
       signingKeyId: k1KeyId,
       existingLog: genesis.log,
       headCid: genesis.operationCID,
+      keyProofs: [await possessionProof(k2.privateKeyHex, genesis.did, genesis.operationCID)],
       newKeys: {
         authKeys: [
           { id: k1KeyId, publicKeyHex: k1.publicKeyHex },
@@ -174,6 +187,7 @@ describe('role separation', () => {
       signingKeyId: k1KeyId,
       existingLog: update1.log,
       headCid: update1.operationCID,
+      keyProofs: [await possessionProof(k3.privateKeyHex, genesis.did, update1.operationCID)],
       newKeys: {
         authKeys: [
           { id: k1KeyId, publicKeyHex: k1.publicKeyHex },

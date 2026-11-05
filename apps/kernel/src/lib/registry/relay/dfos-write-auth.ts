@@ -15,7 +15,7 @@
  */
 import { decodeJwsUnsafe } from '@metalabel/dfos-protocol/crypto';
 import { decodeMultikey } from '@metalabel/dfos-protocol/chain';
-import { verifyAuthToken } from '@metalabel/dfos-protocol/credentials';
+import { verifyAuthToken } from './legacy-auth-token';
 import { createLogger } from '@imajin/logger';
 import { isRelayPeerAttested } from './peer-attestations';
 
