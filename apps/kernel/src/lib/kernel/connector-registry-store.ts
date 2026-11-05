@@ -63,6 +63,8 @@ export interface ConnectorRegistration {
    * Omitted for connectors that seal nothing (the native MCP connector).
    */
   sealedKeyField?: string;
+  /** Verified human loading an org key, supplied only by the authenticated seal route. */
+  orgSealProvenance?: { loadedByDid: string; loadedAt: Date };
 }
 
 /**
@@ -118,6 +120,7 @@ export async function recordConnectorRegistration(reg: ConnectorRegistration, sl
         createdAt: now,
         updatedAt: now,
         revokedAt: null,
+        ...reg.orgSealProvenance,
       })
       .onConflictDoUpdate({
         target: [connectors.ownerDid, connectors.provider, connectors.slot],
@@ -130,6 +133,7 @@ export async function recordConnectorRegistration(reg: ConnectorRegistration, sl
           status: 'active',
           updatedAt: now,
           revokedAt: null,
+          ...reg.orgSealProvenance,
         },
         setWhere: ne(connectors.status, 'removed'),
       });

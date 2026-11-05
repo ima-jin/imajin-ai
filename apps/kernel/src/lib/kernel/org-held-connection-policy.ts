@@ -5,7 +5,11 @@ import { ExternalMcpError } from './external-mcp-policy';
 import { isAgentCapableSubtype } from './connection-principal-policy';
 
 export const ORG_HELD_PREFIX = 'org-held-';
-export const orgHeldProvider = (provider: string) => `${ORG_HELD_PREFIX}${provider}`;
+/** Anthropic is sealed by /jin under its ordinary provider; ownership selects the org. */
+// Follow-up: ownership (owner_did scope), not a provider prefix, decides org-held-ness.
+export const orgHeldProvider = (provider: string) => provider === 'anthropic' ? provider : `${ORG_HELD_PREFIX}${provider}`;
+export const isOrgSealedAnthropicField = (ownerDid: string, field: string | null) =>
+  field === `anthropic-api-key:${ownerDid}`;
 export interface OrgConnectionActor { orgDid: string; actorDid: string }
 
 /** The org lock serializes grant changes with canonical membership removal. */
