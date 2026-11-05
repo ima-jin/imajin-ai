@@ -41,7 +41,8 @@
 
 import { registerReactor, publish, type BusEvent, type ReactorHandler } from '@imajin/bus';
 import { createLogger } from '@imajin/logger';
-import { db, transactions, feeLedger } from '@/src/db';
+import { db, transactions } from '@/src/db';
+import { publishFeeReceipt } from './fee-receipts';
 import { externalRefColumns, whereExternalRef } from '@/src/lib/pay/external-ref';
 import { generateId } from '@/src/lib/kernel/id';
 import { toRailEvent } from '@/src/lib/pay/providers/stripe-webhook';
@@ -341,7 +342,7 @@ async function handlePaymentFailed(event: RailEvent) {
   }
 }
 
-async function handleCheckoutCompleted(event: RailEvent) {
+async function handleCheckoutCompleted(event: RailEvent, stripeEvent: unknown) {
   const session = event.raw as unknown as StripeCheckoutSessionLike;
   // Node-owned topups settle only from the node connector's PaymentIntent.
   // During rollout the old platform endpoint may see the same account's event.
@@ -366,10 +367,19 @@ async function handleCheckoutCompleted(event: RailEvent) {
 
   log.info({ id: session.id, customerEmail: session.customer_email, amountTotal: session.amount_total, metadata: session.metadata }, 'Checkout completed');
 
-  await db.update(transactions).set({ status: 'completed' }).where(whereExternalRef(session.id));
-
   const [tx] = await db.select().from(transactions).where(whereExternalRef(session.id)).limit(1);
-  await processFairManifest(session, tx as (TxRow & { fairManifest?: unknown }) | undefined);
+  const delivery = stripeEvent as { id?: string; created?: number };
+  await processFairManifest(session, tx ? {
+    ...tx,
+    feeContext: {
+      stripeEventId: delivery.id ?? '',
+      stripeEventAt: typeof delivery.created === 'number' ? new Date(delivery.created * 1000).toISOString() : '',
+    },
+  } as TxRow & { fairManifest?: unknown } : undefined);
+
+  // Fee receipts/projections and idempotent wallet effects must finish before
+  // the durable completed marker can make a Stripe retry skip this checkout.
+  await db.update(transactions).set({ status: 'completed' }).where(whereExternalRef(session.id));
 
   if (session.metadata?.service === 'topup') {
     await handleTopupCheckout(session);
@@ -440,12 +450,10 @@ async function processFairManifest(
 
   const actualFeeCents = await fetchActualStripeFee(session, tx.id);
   const estimatedFeeCents = calculateEstimatedFee(manifest, totalAmountCents);
-  const processingFeeCents = actualFeeCents ?? estimatedFeeCents;
+  const processingFeeCents = await recordProcessingFee(tx, actualFeeCents ?? estimatedFeeCents, currency);
 
-  await recordProcessingFee(tx, processingFeeCents, currency);
-
-  if (actualFeeCents !== null && actualFeeCents !== estimatedFeeCents) {
-    await reconcileStripeFee({ tx, manifest, actualFeeCents, estimatedFeeCents, currency });
+  if (processingFeeCents !== estimatedFeeCents) {
+    await reconcileStripeFee({ tx, manifest, actualFeeCents: processingFeeCents, estimatedFeeCents, currency });
   }
 
   // #2435: `totalAmountCents` is the gross Stripe charge (tax included). The
@@ -462,24 +470,17 @@ async function processFairManifest(
   });
 }
 
-/** Insert the Stripe processor fee-ledger row and fire its bus event. */
-async function recordProcessingFee(tx: TxRow, amountCents: number, currency: string): Promise<void> {
-  await db.insert(feeLedger).values({
-    id: generateId('fl'),
+/** The same awaited receipt path as every other checkout fee. */
+async function recordProcessingFee(tx: TxRow, amountCents: number, currency: string): Promise<number> {
+  const receipt = await publishFeeReceipt('fee.record', {
     transactionId: tx.id,
     recipientDid: 'stripe:processor',
     role: 'processor',
     amountCents,
     currency,
     status: 'paid_out',
-  });
-
-  publish('fee.record', {
-    issuer: process.env.PLATFORM_DID || 'system',
-    subject: 'stripe:processor',
-    scope: 'pay',
-    payload: { transactionId: tx.id, recipientDid: 'stripe:processor', role: 'processor', amountCents, currency },
-  }).catch((err) => log.error({ err: String(err) }, 'fee.record publish error'));
+  }, tx.feeContext);
+  return receipt.amountCents;
 }
 /**
  * Notify coffee service about payment completion or failure.

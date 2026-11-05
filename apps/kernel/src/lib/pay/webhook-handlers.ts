@@ -1,5 +1,5 @@
 /**
- * Webhook handler helpers — kernel pay domain
+ * Stripe webhook handler helpers — kernel pay domain
  *
  * Extracted from apps/kernel/app/pay/api/webhook/route.ts to bring
  * handleCheckoutCompleted's cognitive complexity (S3776) below 15.
@@ -8,7 +8,7 @@
  * that are reused from the route or tested in isolation are exported.
  */
 
-import { db, feeLedger, transactions } from '@/src/db';
+import { db, transactions } from '@/src/db';
 import { externalRefColumns, whereExternalRef } from '@/src/lib/pay/external-ref';
 import { generateId } from '@/src/lib/kernel/id';
 import { createLogger } from '@imajin/logger';
@@ -18,6 +18,7 @@ import { fetchActualFee } from './providers/stripe-webhook';
 import { verifySettlementSignature } from './settle-core';
 import { MJN, MJNX, creditUnit } from './ledger';
 import { applyFeeCredit } from './fee-credits';
+import { publishFeeReceipt, type FeeReceiptContext } from './fee-receipts';
 import { forEachSequential } from '@/src/lib/async/sequential';
 import type { StripeCheckoutSessionLike } from './webhook-event-shapes';
 import { kernelWebhookUrl, postKernelWebhook } from '@/src/lib/auth/kernel-webhook';
@@ -63,6 +64,7 @@ export function sumTaxCents(taxes: FairManifestTax[] | undefined): number {
 export interface TxRow {
   id: string;
   service?: string | null;
+  feeContext?: FeeReceiptContext;
 }
 
 // ---------------------------------------------------------------------------
@@ -160,64 +162,52 @@ interface FeeAdjustmentParams {
 async function applyFeeRebate({
   tx, sellerDid, diffCents, estimatedFeeCents, actualFeeCents, currency,
 }: FeeAdjustmentParams): Promise<void> {
-  await db.insert(feeLedger).values({
-    id: generateId('fl'),
+  const receipt = await publishFeeReceipt('fee.rebate', {
     transactionId: tx.id,
     recipientDid: sellerDid,
+    sellerDid,
     role: 'processor_rebate',
     amountCents: diffCents,
     currency,
     status: 'accrued',
-  });
+  }, tx.feeContext);
 
   // #2016: a processing-fee rebate credits MJNx (the emitted, in-platform
   // unit) — it is not a fresh fiat receipt.
   await applyFeeCredit({
     transactionId: tx.id, service: tx.service, role: 'processor_rebate',
-    recipientDid: sellerDid, unit: MJNX, amountCents: diffCents, currency,
+    recipientDid: sellerDid, unit: MJNX, amountCents: receipt.amountCents, currency: receipt.currency,
   });
 
   log.info(
     { transactionId: tx.id, sellerDid, rebateCents: diffCents, estimatedFeeCents, actualFeeCents },
     '[webhook] Processing fee rebate → MJNx',
   );
-  publish('fee.rebate', {
-    issuer: process.env.PLATFORM_DID || 'system',
-    subject: sellerDid,
-    scope: 'pay',
-    payload: { transactionId: tx.id, sellerDid, amountCents: diffCents, currency },
-  }).catch((err) => log.error({ err: String(err) }, 'fee.rebate publish error'));
 }
 
 async function applyFeeSurcharge({
   tx, sellerDid, diffCents, estimatedFeeCents, actualFeeCents, currency,
 }: FeeAdjustmentParams): Promise<void> {
-  await db.insert(feeLedger).values({
-    id: generateId('fl'),
+  const receipt = await publishFeeReceipt('fee.surcharge', {
     transactionId: tx.id,
     recipientDid: sellerDid,
+    sellerDid,
     role: 'processor_surcharge',
     amountCents: diffCents,
     currency,
     status: 'accrued',
-  });
+  }, tx.feeContext);
 
   // #2016: mirrors applyFeeRebate — the surcharge debits the same MJNx row.
   await applyFeeCredit({
     transactionId: tx.id, service: tx.service, role: 'processor_surcharge',
-    recipientDid: sellerDid, unit: MJNX, amountCents: -diffCents, currency,
+    recipientDid: sellerDid, unit: MJNX, amountCents: -receipt.amountCents, currency: receipt.currency,
   });
 
   log.info(
     { transactionId: tx.id, sellerDid, surchargeCents: diffCents, estimatedFeeCents, actualFeeCents },
     '[webhook] Processing fee surcharge → MJNx debit',
   );
-  publish('fee.surcharge', {
-    issuer: process.env.PLATFORM_DID || 'system',
-    subject: sellerDid,
-    scope: 'pay',
-    payload: { transactionId: tx.id, sellerDid, amountCents: diffCents, currency },
-  }).catch((err) => log.error({ err: String(err) }, 'fee.surcharge publish error'));
 }
 
 // ---------------------------------------------------------------------------
@@ -327,28 +317,22 @@ export async function processChainDistribution({
     const isBuyerCredit = entry.role === 'buyer_credit';
     const status = isSeller ? 'paid_out' : 'accrued';
 
-    await db.insert(feeLedger).values({
-      id: generateId('fl'),
+    const receipt = await publishFeeReceipt('fee.record', {
       transactionId: tx.id,
       recipientDid,
       role: entry.role,
       amountCents,
       currency,
       status,
-    });
-
-    publish('fee.record', {
-      issuer: process.env.PLATFORM_DID || 'system',
-      subject: recipientDid,
-      scope: 'pay',
-      payload: { transactionId: tx.id, recipientDid, role: entry.role, amountCents, currency },
-    }).catch((err) => log.error({ err: String(err) }, 'fee.record publish error'));
+      chainIndex,
+    }, tx.feeContext);
 
     // Seller's payout goes directly to their Stripe — skip balance bookkeeping.
     if (recipientDid !== 'unresolved' && !isSeller) {
       await applyFeeCredit({
         transactionId: tx.id, service: tx.service, role: entry.role, recipientDid,
-        unit: isBuyerCredit ? MJNX : MJN, amountCents, currency, chainIndex, rollup: true,
+        unit: isBuyerCredit ? MJNX : MJN, amountCents: receipt.amountCents,
+        currency: receipt.currency, chainIndex, rollup: true,
       });
     }
   });
@@ -385,64 +369,18 @@ async function recordTaxTrustLiabilities({
   currency,
   buyerDid,
 }: RecordTaxTrustLiabilitiesParams): Promise<void> {
-  const bookable = taxes.filter((tax) => tax.amount > 0);
-  if (bookable.length === 0) return;
-
-  const feeLedgerRows = bookable.map((tax) => ({
-    id: generateId('fl'),
-    transactionId: tx.id,
-    recipientDid: tax.collectorDid,
-    role: 'tax',
-    amountCents: tax.amount,
-    currency,
-    status: 'held_in_trust',
-  }));
-
-  const transactionRows = bookable.map((tax) => ({
-    id: generateId('tx'),
-    service: tx.service || 'unknown',
-    type: 'tax',
-    fromDid: buyerDid,
-    toDid: tax.collectorDid,
-    amount: (tax.amount / 100).toFixed(2),
-    currency,
-    unit: MJN,
-    sourceKind: 'receipt',
-    status: 'completed',
-    source: 'external',
-    metadata: {
-      role: 'tax',
-      tax: true,
-      jurisdiction: tax.jurisdiction,
-      kind: tax.kind,
-      rateBps: tax.rateBps,
-      remitTo: tax.remitTo,
-      registrationNumber: tax.registrationNumber,
-      trustLiability: true,
-      remitted: null,
-      funded: true,
-      funded_provider: 'stripe',
-      balance_skipped: true,
-      reason: 'externally_funded_seller',
-      checkoutTransactionId: tx.id,
-    },
-  }));
-
-  // One transaction: a tax fee-ledger row can never land without its
-  // `transactions` twin (or the reverse).
-  await db.transaction(async (dbTx) => {
-    await dbTx.insert(feeLedger).values(feeLedgerRows);
-    await dbTx.insert(transactions).values(transactionRows);
+  await forEachSequential(taxes, async (tax, chainIndex) => {
+    if (tax.amount <= 0) return;
+    await publishFeeReceipt('fee.record', {
+      transactionId: tx.id, recipientDid: tax.collectorDid, role: 'tax',
+      amountCents: tax.amount, currency, status: 'held_in_trust', chainIndex,
+      tax: {
+        jurisdiction: tax.jurisdiction, kind: tax.kind, rateBps: tax.rateBps,
+        remitTo: tax.remitTo, registrationNumber: tax.registrationNumber,
+        service: tx.service || 'unknown', buyerDid,
+      },
+    }, tx.feeContext);
   });
-
-  for (const tax of bookable) {
-    publish('fee.record', {
-      issuer: process.env.PLATFORM_DID || 'system',
-      subject: tax.collectorDid,
-      scope: 'pay',
-      payload: { transactionId: tx.id, recipientDid: tax.collectorDid, role: 'tax', amountCents: tax.amount, currency },
-    }).catch((err) => log.error({ err: String(err) }, 'fee.record publish error'));
-  }
 }
 
 // ---------------------------------------------------------------------------

@@ -3,22 +3,10 @@ import { createLogger } from '@imajin/logger';
 import { db, transactions, balanceRollups } from '@/src/db';
 import { generateId } from '@/src/lib/kernel/id';
 import { creditUnit, type Unit } from './ledger';
+import { feeCreditKey, type FeeCreditIdentity } from './fee-credit-key';
+export { feeCreditKey } from './fee-credit-key';
 
 const log = createLogger('pay:fee');
-
-interface FeeCreditIdentity {
-  transactionId: string;
-  role: string;
-  recipientDid: string;
-  /** Absolute manifest position: caller-supplied chains may repeat a role/DID. */
-  chainIndex?: number;
-}
-
-/** Payment/manifest identity only: shared by webhook retries and fee receipt replay. */
-export function feeCreditKey({ transactionId, role, recipientDid, chainIndex }: FeeCreditIdentity): string {
-  const key = `fee:${transactionId}:${role}:${recipientDid}`;
-  return chainIndex === undefined ? key : `${key}:${chainIndex}`;
-}
 
 interface FeeCreditParams extends FeeCreditIdentity {
   service?: string | null;

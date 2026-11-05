@@ -8,6 +8,9 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+vi.mock('../fee-receipts', async () => ({
+  publishFeeReceipt: (await import('./fee-receipt-fixture')).fixturePublishFeeReceipt,
+}));
 
 // ---------------------------------------------------------------------------
 // Shared mock wiring (must be hoisted so vi.mock factories can reference them)
@@ -428,15 +431,15 @@ describe('processChainDistribution with taxes[] (#2435)', () => {
     expect(mocks.insertMock).toHaveBeenCalledTimes(2);
   });
 
-  it('books every row of a multi-tax manifest (GST + PST) in one transaction with two multi-row inserts', async () => {
+  it('books every tax receipt atomically with its own transaction twin', async () => {
     const gst = taxRow({ jurisdiction: 'CA-BC', kind: 'GST', rateBps: 500, amount: 500, remitTo: 'did:imajin:authority:ca-cra' });
     const pst = taxRow({ jurisdiction: 'CA-BC', kind: 'PST', rateBps: 700, amount: 700, remitTo: 'did:imajin:authority:ca-bc' });
     await processChainDistribution({
       tx, totalAmountCents: 11200, currency, buyerDid: 'did:imajin:buyer', chain: [], taxes: [gst, pst],
     });
 
-    expect(mocks.transactionMock).toHaveBeenCalledTimes(1);
-    expect(mocks.insertMock).toHaveBeenCalledTimes(2); // one feeLedger insert + one transactions insert
+    expect(mocks.transactionMock).toHaveBeenCalledTimes(2);
+    expect(mocks.insertMock).toHaveBeenCalledTimes(4); // fee + twin, once per receipt
     expect(feeLedgerRows()).toEqual([
       expect.objectContaining({ role: 'tax', amountCents: 500, status: 'held_in_trust' }),
       expect.objectContaining({ role: 'tax', amountCents: 700, status: 'held_in_trust' }),

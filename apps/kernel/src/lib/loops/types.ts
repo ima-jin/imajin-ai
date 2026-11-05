@@ -13,12 +13,17 @@ import { SIGNED_MESSAGE_MAX_AGE, FUTURE_TOLERANCE } from '@imajin/auth';
 import type { LoopOutput } from '@imajin/bus';
 import { isBoundedLoopJson, isLoopOutput, isWithinLoopMetadataBudget } from './output-validation';
 import { isStepEventType, STEP_EVENT_TYPES, validateStepPayload, type StepEventType } from './step-types';
+import { FEE_EVENT_TYPES, isFeeEventType, validateFeeReceipt, type FeeEventType } from '../pay/fee-receipt-payload';
 
 export const LOOP_LIFECYCLE_TYPES = ['loop.started', 'loop.progress', 'loop.blocked', 'loop.finished'] as const;
 export type LoopLifecycleType = (typeof LOOP_LIFECYCLE_TYPES)[number];
 export const SURFACE_EVENT_TYPES = ['surface.acquired', 'surface.released', 'surface.conflicted'] as const;
 export type SurfaceEventType = (typeof SURFACE_EVENT_TYPES)[number];
-export type LoopRailType = LoopLifecycleType | SurfaceEventType | StepEventType;
+export type LoopRailType = LoopLifecycleType | SurfaceEventType | StepEventType | FeeEventType;
+
+function isLoopRailType(value: unknown): value is LoopRailType {
+  return isLoopLifecycleType(value) || isSurfaceEventType(value) || isStepEventType(value) || isFeeEventType(value);
+}
 
 export function isSurfaceEventType(value: unknown): value is SurfaceEventType {
   return typeof value === 'string' && (SURFACE_EVENT_TYPES as readonly string[]).includes(value);
@@ -211,8 +216,8 @@ export function parseLoopIngestRequest(raw: unknown): ParseResult<LoopIngestRequ
   }
   const { type, payload, publisherDid, signature } = raw as Record<string, unknown>;
 
-  if (!isLoopLifecycleType(type) && !isSurfaceEventType(type) && !isStepEventType(type)) {
-    return { ok: false, error: `type must be one of ${[...LOOP_LIFECYCLE_TYPES, ...SURFACE_EVENT_TYPES, ...STEP_EVENT_TYPES].join(', ')}` };
+  if (!isLoopRailType(type)) {
+    return { ok: false, error: `type must be one of ${[...LOOP_LIFECYCLE_TYPES, ...SURFACE_EVENT_TYPES, ...STEP_EVENT_TYPES, ...FEE_EVENT_TYPES].join(', ')}` };
   }
   if (!isDid(publisherDid)) {
     return { ok: false, error: 'publisherDid must be a DID string' };
@@ -220,6 +225,9 @@ export function parseLoopIngestRequest(raw: unknown): ParseResult<LoopIngestRequ
 
   const envelopeResult = parseEnvelope(payload);
   if (!envelopeResult.ok) return envelopeResult;
+  if (isFeeEventType(type) && !validateFeeReceipt(type, envelopeResult.value, publisherDid)) {
+    return { ok: false, error: 'Invalid platform fee receipt' };
+  }
   if (isStepEventType(type) && !validateStepPayload(type, envelopeResult.value, publisherDid)) {
     return { ok: false, error: 'Invalid step observation; zones and exited state are derived' };
   }

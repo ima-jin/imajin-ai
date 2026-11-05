@@ -3,6 +3,9 @@ import { eq } from 'drizzle-orm';
 import { createFeeCreditHarness, feeMigration } from './fee-credit-harness';
 import { forEachSequential } from '@/src/lib/async/sequential';
 import type { Unit } from '../ledger';
+vi.mock('../fee-receipts', async () => ({
+  publishFeeReceipt: (await import('./fee-receipt-fixture')).fixturePublishFeeReceipt,
+}));
 
 const state = vi.hoisted(() => ({
   db: undefined as unknown as Awaited<ReturnType<typeof createFeeCreditHarness>>['db'],
@@ -28,6 +31,7 @@ beforeAll(async () => {
   harness = await createFeeCreditHarness();
   state.db = harness.db;
   await harness.client.exec(feeMigration);
+  await harness.client.exec('ALTER TABLE pay.fee_ledger ADD COLUMN receipt_id text UNIQUE');
 }, 30_000);
 afterAll(async () => { await harness?.client.close(); });
 

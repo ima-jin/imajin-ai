@@ -31,6 +31,7 @@ import { canonicalize } from '@imajin/auth';
 import { projectSurfaceLease, loopObservationId, type SurfaceConflict } from './surface-lease';
 import { signSurfaceConflict } from './surface-conflict';
 import { isStepEventType, validateStepPayload } from './step-types';
+import { isFeeEventType, validateFeeReceipt } from '../pay/fee-receipt-payload';
 
 const log = createLogger('kernel:loops');
 
@@ -83,8 +84,7 @@ export async function ingestLoopEvent(request: LoopIngestRequest): Promise<Inges
     await bus.publish(type, {
       id: loopObservationId(request),
       issuer: publisherDid,
-      subject: sanitized.principal,
-      scope: 'loop',
+      ...receiptRouting(type, sanitized),
       signature,
       publisherDid,
       causeEventId: payload.causeEventId ?? null,
@@ -108,6 +108,11 @@ export async function ingestLoopEvent(request: LoopIngestRequest): Promise<Inges
   return { ok: true };
 }
 
+function receiptRouting(type: LoopIngestRequest['type'], payload: LoopIngestRequest['payload']) {
+  if (isFeeEventType(type)) return { subject: String(payload.recipientDid), scope: 'pay' };
+  return { subject: payload.principal, scope: 'loop' };
+}
+
 function warnUnauthorizedPublisher(publisherDid: string, principal: string): void {
   const warningKey = `loops:publisher-unauthorized:${JSON.stringify([publisherDid, principal])}`;
   if (!rateLimit(warningKey, 1, 60 * 60 * 1000).limited) {
@@ -118,6 +123,9 @@ function warnUnauthorizedPublisher(publisherDid: string, principal: string): voi
 function validateLoopFacts(request: LoopIngestRequest):
   { ok: true; payload: LoopIngestRequest['payload'] } | { ok: false; error: string; status: number } {
   const { type, payload, publisherDid } = request;
+  if (isFeeEventType(type) && !validateFeeReceipt(type, payload, publisherDid)) {
+    return { ok: false, error: 'Invalid platform fee receipt', status: 400 };
+  }
   const cause = parseCauseEventId(payload.causeEventId);
   if (!cause.ok) return { ok: false, error: cause.error, status: 400 };
   if (isStepEventType(type) && !validateStepPayload(type, payload, publisherDid)) {

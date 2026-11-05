@@ -29,11 +29,11 @@ const event = {
   } as BusEventMap['loop.progress'],
 };
 
-function chain(type = 'loop-projection', awaited = true) {
+function chain(type = 'loop-projection', awaited = true, propagateError = false) {
   getChainConfig.mockResolvedValue({
     eventType: 'loop.progress', scope: 'loop', source: 'test',
     reactors: [
-      { type, enabled: true, await: awaited, config: {} },
+      { type, enabled: true, await: awaited, propagateError, config: {} },
       { type: 'emit', enabled: true, await: true, config: {} },
     ],
   });
@@ -47,6 +47,20 @@ beforeEach(() => {
 });
 
 describe('publish loop persistence contract', () => {
+  it('propagates an opted-in awaited ledger failure without running subsequent reactors', async () => {
+    chain('fee-ledger', true, true);
+    const error = new Error('ledger persistence failed');
+    handler.mockRejectedValue(error);
+    await expect(publish('loop.progress', event)).rejects.toBe(error);
+    expect(emitHandler).not.toHaveBeenCalled();
+  });
+
+  it('does not make an opted-in unawaited step block publication', async () => {
+    chain('fee-ledger', false, true);
+    handler.mockRejectedValue(new Error('unawaited failure'));
+    await expect(publish('loop.progress', event)).resolves.toEqual({});
+    expect(emitHandler).toHaveBeenCalledOnce();
+  });
   it.each([new LoopOwnershipConflictError(), new Error('database unavailable')])(
     'rejects on awaited projection error %s without running subsequent reactors',
     async (error) => {
