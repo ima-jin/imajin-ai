@@ -138,7 +138,7 @@ do not automatically retry value-moving writes after an ambiguous response.
 the HTTP kernel environment. No kernel request path opts out. The migration
 runner `scripts/migrate.mjs` uses its own direct postgres client, not the shared
 runtime client, and therefore deliberately retains migration-specific policy.
-The companion `0236_database_runtime_bounds.sql` is idempotent `SELECT 1`:
+The companion `0237_database_runtime_bounds.sql` is idempotent `SELECT 1`:
 no role/database-wide timeout is changed and no rows are rewritten/deleted.
 
 Local-only real PostgreSQL repro: start a disposable Postgres with a loopback
