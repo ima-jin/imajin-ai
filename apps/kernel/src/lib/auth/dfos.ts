@@ -9,6 +9,8 @@ import { getNodeDid } from '@/src/lib/kernel/node-identity';
 import { createLogger } from '@imajin/logger';
 import { forEachSequential } from '@/src/lib/async/sequential';
 import { registryServiceUrl, hasRegistryServiceUrl } from '@imajin/config';
+import { deferAfterCommit } from '@imajin/db';
+import { internalFetch } from '../../../../../packages/auth/src/internal-fetch.cjs';
 
 const log = createLogger('kernel');
 
@@ -16,22 +18,23 @@ const log = createLogger('kernel');
  * Ingest a DFOS chain log into the relay.
  * Submits all JWS tokens to the registry's /relay/operations endpoint
  * (#2061 — URL resolved via the shared registryServiceUrl() helper).
- * Non-fatal — returns false on any error.
+ * Inside a DB transaction, true means queued for post-commit delivery.
+ * Outside one, returns the bounded delivery result; false on transport error.
  */
 export async function ingestToRelay(chainLog: string[]): Promise<boolean> {
+  if (deferAfterCommit(() => ingestToRelay(chainLog))) return true;
   if (!hasRegistryServiceUrl()) {
     log.warn({}, 'REGISTRY_SERVICE_URL not set — skipping relay ingest');
     return false;
   }
   try {
-    const res = await fetch(`${registryServiceUrl()}/relay/operations`, {
+    const res = await internalFetch(`${registryServiceUrl()}/relay/operations`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ operations: chainLog }),
     });
     if (!res.ok) {
-      const text = await res.text().catch(() => '');
-      log.error({ status: res.status, text }, 'relay ingest failed');
+      log.error({ status: res.status }, 'relay ingest failed');
       return false;
     }
     return true;
@@ -48,7 +51,7 @@ export async function ingestToRelay(chainLog: string[]): Promise<boolean> {
 export async function checkRelayChain(dfosDid: string): Promise<boolean> {
   if (!hasRegistryServiceUrl()) return false;
   try {
-    const res = await fetch(
+    const res = await internalFetch(
       `${registryServiceUrl()}/relay/identities/${encodeURIComponent(dfosDid)}`
     );
     return res.ok;

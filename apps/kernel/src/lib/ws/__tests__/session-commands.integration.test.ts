@@ -5,6 +5,7 @@ import type { AddressInfo } from 'node:net';
 import type { WebSocket as Socket } from 'ws';
 const { WebSocket } = require('ws');
 const { setupWebSocket, setupBroadcastRoute } = require('../../../../ws-server');
+const { provideWsRuntime } = require('../runtime');
 const networkFetch = globalThis.fetch;
 const agent = 'did:imajin:agent';
 const principal = 'did:imajin:principal';
@@ -21,8 +22,7 @@ async function localApi(url: string, init?: RequestInit): Promise<Response> {
   const body = init?.body ? JSON.parse(String(init.body)) : {};
   calls.push({ path, body });
   if (path.endsWith('/session')) {
-    const cookie = (init?.headers as Record<string, string>).Cookie;
-    return Response.json({ did: cookie.split('=').slice(1).join('=') });
+    throw new Error('Session HTTP self-route is blocked');
   }
   if (path.endsWith('/verify-delegation')) return Response.json({ allowed: true });
   if (path.endsWith('/backlog')) return Response.json({ frames: [], truncated: false });
@@ -50,6 +50,11 @@ beforeEach(async () => {
   clients = []; calls = [];
   vi.stubEnv('AUTH_INTERNAL_API_KEY', internalKey); vi.stubEnv('IMAJIN_ENV', 'prod');
   vi.stubGlobal('fetch', vi.fn(localApi));
+  provideWsRuntime({
+    session: async (token: string) => token,
+    token: async () => null,
+    lastSeen: async (did: string) => { calls.push({ path: '/profile/api/presence/update', body: { did } }); },
+  });
   vi.spyOn(console, 'log').mockImplementation(() => {});
   const interval = globalThis.setInterval;
   vi.spyOn(globalThis, 'setInterval').mockImplementation((...args: Parameters<typeof setInterval>) => {
@@ -68,6 +73,7 @@ afterEach(async () => {
   await new Promise<void>(resolve => server.close(() => resolve()));
   await vi.waitFor(() => expect(calls.filter(call => call.path === '/profile/api/presence/update')).toHaveLength(new Set(clients.map(client => client.did)).size));
   vi.unstubAllGlobals(); vi.unstubAllEnvs(); vi.restoreAllMocks();
+  provideWsRuntime(undefined);
 });
 describe('real ws-server session command rail', () => {
   it('sends full command to only one own agent connection, never principal or register_also delegate', async () => {

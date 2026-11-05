@@ -10,7 +10,7 @@ import { registryAppBaseUrl } from '@/src/lib/apps/public-url';
 // never by reading another service's DB directly. Kernel doesn't use
 // createAppHealthHandler itself since its own route also aggregates other
 // services, but shares the pieces that do.
-import { checkAppMigrations, hasPendingMigrations, type MigrationStatus } from '@imajin/db';
+import { checkAppMigrations, checkDatabaseLiveness, hasPendingMigrations, type MigrationStatus } from '@imajin/db';
 // #2412: the vault file is per-environment state that can silently go missing
 // (a wrong VAULT_PATH once left prod with every sealed secret unresolved while
 // this endpoint reported green). Surfaces path / entry count / last-load time
@@ -101,10 +101,13 @@ function isVaultDegraded(vault: VaultHealth): boolean {
 }
 
 export async function GET(request: Request) {
-  // Process liveness is not aggregate dependency readiness. In particular,
-  // never make a local watchdog wait for this route's own HTTP fan-out.
+  // Test this process's actual pool without registry/vault/HTTP fan-out.
   if (request && new URL(request.url).searchParams.get('liveness') === '1') {
-    return NextResponse.json({ status: 'alive' });
+    const database = await checkDatabaseLiveness();
+    return NextResponse.json(
+      { status: database ? 'alive' : 'unavailable', database },
+      { status: database ? 200 : 503 },
+    );
   }
   let services: OperationalApp[];
   try {
