@@ -10,6 +10,8 @@ import { NextRequest } from 'next/server';
 import { canonicalize, crypto, provideInternalApiKey, requireAuth, validateActingAs } from '@imajin/auth';
 import * as schema from '@/src/db/schemas/auth';
 import * as vaultSchema from '@/src/db/schemas/vault';
+import * as registrySchema from '@/src/db/schemas/registry';
+import * as oauthSchema from '@/src/db/schemas/oauth';
 import { didFromPublicKey } from '../crypto';
 
 const fixture = vi.hoisted(() => ({ db: null as unknown, nodeDid: vi.fn() }));
@@ -18,6 +20,7 @@ vi.mock('@/src/db', async () => ({
   ...await import('@/src/db/schemas/vault'),
   ...await import('@/src/db/schemas/registry'),
   ...await import('@/src/db/schemas/media'),
+  ...await import('@/src/db/schemas/oauth'),
   get db() { return fixture.db; },
 }));
 vi.mock('@/src/lib/kernel/node-identity', () => ({ getNodeDid: fixture.nodeDid }));
@@ -38,6 +41,11 @@ import { resolveAgentAuthority } from '../agent-authority';
 import { revokeGrant } from '../grants';
 import { authorizeEvidencePublisher } from '@/src/lib/turn-evidence/authorize-publisher';
 import { getInternalSecret } from '@/src/lib/vault/internal-secret';
+import { mintAgentIdentity } from '../agent-identity';
+import { backfillAgentApps, AGENT_APP_SCOPES, AGENT_CALLBACK_URL } from '../agent-app';
+import { POST as mintToken } from '@/app/auth/api/apps/token/route';
+import { verifyAppToken } from '../jwt';
+import { listRegisteredApps } from '@/src/lib/apps/registered-apps';
 
 vi.setConfig({ testTimeout: 30_000, hookTimeout: 30_000 });
 
@@ -54,6 +62,8 @@ const authTables = [
   schema.identities, schema.identityMembers, schema.attestations, schema.agentProvisions,
   schema.delegationGrants, schema.delegationGrantCapabilities, schema.delegationGrantEvents,
   schema.challenges, schema.agentKnocks,
+  schema.channelLinks, oauthSchema.appAuthorizationUsage, oauthSchema.oauthRefreshTokens,
+  registrySchema.registryApps, registrySchema.systemEvents, registrySchema.appLogs,
 ];
 
 /** Derive columns/defaults from production, including any new grant outbox column. */
@@ -114,7 +124,7 @@ async function upstream(input: string | URL | Request, init?: RequestInit): Prom
 beforeAll(async () => {
   await pg.waitReady;
   fixture.db = database;
-  await pg.exec('CREATE SCHEMA auth; CREATE SCHEMA kernel;');
+  await pg.exec('CREATE SCHEMA auth; CREATE SCHEMA kernel; CREATE SCHEMA registry;');
   for (const table of [...authTables, vaultSchema.internalSecretProvisions, vaultSchema.vaultDelegationGrants, vaultSchema.vaultOwnerEnvelopes]) {
     await pg.exec(createTable(table));
   }
@@ -122,6 +132,9 @@ beforeAll(async () => {
     CREATE UNIQUE INDEX uniq_provision ON kernel.internal_secret_provisions (owner_did, purpose);
     CREATE UNIQUE INDEX uniq_vwe ON kernel.vault_owner_envelopes (field, key_id);
     CREATE UNIQUE INDEX uniq_vault_delegation_active ON kernel.vault_delegation_grants (subject, granted_to, field, key_id) WHERE status = 'active';
+    CREATE UNIQUE INDEX uniq_channel_links_pair ON auth.channel_links (channel, channel_uid, app_did);
+    CREATE TABLE kernel.app_provisions (app_did text, created_at timestamptz);
+    CREATE TABLE kernel.app_signing_key_claims (app_did text, created_at timestamptz, claimed_at timestamptz);
   `);
   vi.stubEnv('AUTH_PRIVATE_KEY', nodeKeys.privateKey);
   vi.stubEnv('VAULT_PATH', join(await mkdtemp(join(tmpdir(), 'org-provision-')), 'vault.json'));
@@ -133,7 +146,11 @@ beforeAll(async () => {
 });
 
 beforeEach(async () => {
-  await pg.exec(`TRUNCATE ${authTables.map(table => `"auth"."${getTableConfig(table).name}"`).join(', ')} CASCADE`);
+  await pg.exec(`TRUNCATE ${authTables.map(table => {
+    const config = getTableConfig(table);
+    return `"${config.schema}"."${config.name}"`;
+  }).join(', ')} CASCADE`);
+  vi.stubEnv('AUTH_PRIVATE_KEY', nodeKeys.privateKey);
   await database.insert(schema.identities).values([
     { id: HUMAN, scope: 'actor', subtype: 'human', publicKey: crypto.generateKeypair().publicKey },
     { id: ORG, scope: 'business', publicKey: crypto.generateKeypair().publicKey },
@@ -243,7 +260,7 @@ describe('real organization provisioning (#3001 ruling a)', () => {
     expect(grant).toMatchObject({ id: grantId, delegatorDid: ORG, agentDid });
     const [event] = await database.select().from(schema.delegationGrantEvents);
     expect(event).toMatchObject({ grantId, actorDid: HUMAN, event: 'issued' });
-    const [audit] = await database.select().from(schema.attestations);
+    const [audit] = await database.select().from(schema.attestations).where(eq(schema.attestations.type, 'delegation.grant.issued'));
     expect(audit).toMatchObject({
       issuerDid: NODE, subjectDid: ORG, type: 'delegation.grant.issued',
       payload: { grantId, delegatorDid: ORG, actorDid: HUMAN, event: 'issued' },
@@ -316,5 +333,146 @@ describe('real organization provisioning (#3001 ruling a)', () => {
       expect.objectContaining({ identity_did: HUMAN, member_did: row.agentDid, role: 'agent' }),
     ]));
     expect(await membershipsFor(row.agentDid)).toHaveLength(2);
+  });
+});
+
+async function appToken(agent: { did: string; keypair: { privateKey: string } }, overrides = {}) {
+  const nonce = crypto.generateKeypair().publicKey;
+  const timestamp = new Date().toISOString();
+  const signature = crypto.signSync(`${agent.did}:${agent.did}:${nonce}:${timestamp}`, agent.keypair.privateKey);
+  // JWT uses PKCS#8; attestation signing uses the same node key's raw seed.
+  vi.stubEnv('AUTH_PRIVATE_KEY', `302e020100300506032b657004220420${nodeKeys.privateKey}`);
+  return mintToken(request('apps/token', { body: {
+    appDid: agent.did, principalDid: agent.did, nonce, timestamp, signature, ...overrides,
+  } }));
+}
+
+async function mintRegisteredAgent(org = false) {
+  if (!org) {
+    const response = await createAgent(request('agents', { body: { handle: 'personal-token-agent' } }));
+    expect(response.status).toBe(201);
+    return response.json();
+  }
+  await database.insert(schema.agentProvisions).values({
+    id: 'app-test-provision', servingDid: ORG, delegatorDid: ORG,
+    handle: 'org-token-agent', displayName: 'Org token agent', harness: 'openclaw',
+    placement: 'local', scopes: [], model: {},
+  });
+  return mintAgentIdentity({ handle: 'org-token-agent', actingDid: ORG, provisionId: 'app-test-provision' });
+}
+
+describe('agent app registration and token mint (#3294)', () => {
+  it.each([false, true])('mints a real scoped JWT immediately, with owner-correct provenance (org=%s)', async org => {
+    const agent = await mintRegisteredAgent(org);
+    const [app] = await database.select().from(registrySchema.registryApps);
+    expect(app).toMatchObject({
+      appDid: agent.did, publicKey: agent.keypair.publicKey, ownerDid: org ? ORG : HUMAN,
+      visibility: 'internal', signInAudience: 'members', requestedScopes: AGENT_APP_SCOPES,
+      callbackUrl: AGENT_CALLBACK_URL, redirectUris: [AGENT_CALLBACK_URL],
+      allowedRedirectHosts: [new URL(AGENT_CALLBACK_URL).origin],
+    });
+    const [grant] = await database.select().from(schema.attestations).where(eq(schema.attestations.type, 'app.authorized'));
+    expect(grant).toMatchObject({
+      issuerDid: agent.did, subjectDid: agent.did, delegatorDid: org ? ORG : HUMAN,
+      payload: { scopes: AGENT_APP_SCOPES, delegatorDid: org ? ORG : HUMAN },
+    });
+    expect(crypto.verifySync(grant.signature, canonicalize({
+      subject_did: grant.subjectDid, type: grant.type, context_id: grant.contextId,
+      context_type: grant.contextType, payload: grant.payload, issued_at: grant.issuedAt.getTime(),
+    }), agent.keypair.publicKey)).toBe(true);
+    const response = await appToken(agent);
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(await verifyAppToken(body.token)).toMatchObject({
+      sub: agent.did, azp: agent.did, scope: AGENT_APP_SCOPES.join(' '), attestationId: grant.id,
+    });
+    expect(body.scopes).toEqual(['infer:completions', 'infer:usage-read']);
+    const card = (await listRegisteredApps()).find(row => row.appDid === agent.did);
+    expect(card).toMatchObject({ status: 'active', liveConsents: 1, consentingPrincipals: 1 });
+  });
+
+  it.each([
+    ['invalid signature', { signature: '00'.repeat(64) }, 401],
+    ['ungranted scope', { scope: 'wallet:write' }, 403],
+    ['wrong principal', { principalDid: HUMAN }, 401],
+  ] as const)('refuses %s', async (_label, overrides, status) => {
+    const agent = await mintRegisteredAgent();
+    expect((await appToken(agent, overrides)).status).toBe(status);
+  });
+
+  it('does not mint from a revoked self-grant', async () => {
+    const agent = await mintRegisteredAgent();
+    await database.update(schema.attestations).set({ revokedAt: new Date() })
+      .where(eq(schema.attestations.type, 'app.authorized'));
+    const response = await appToken(agent);
+    expect(response.status).toBe(403);
+    expect(await response.json()).toMatchObject({ code: 'no_live_grant' });
+  });
+
+  it('rolls back identity, app, grant, and projection when self-grant persistence fails', async () => {
+    await pg.exec("ALTER TABLE auth.attestations ADD CONSTRAINT injected_app_failure CHECK (type <> 'app.authorized')");
+    try {
+      const response = await createAgent(request('agents', { body: { handle: 'rollback-agent' } }));
+      expect(response.status).toBe(500);
+      expect(await database.select().from(registrySchema.registryApps)).toEqual([]);
+      expect(await database.select().from(schema.attestations)).toEqual([]);
+      expect(await database.select().from(schema.channelLinks)).toEqual([]);
+      expect(await database.select().from(schema.identities).where(eq(schema.identities.handle, 'rollback-agent'))).toEqual([]);
+    } finally {
+      await pg.exec('ALTER TABLE auth.attestations DROP CONSTRAINT injected_app_failure');
+    }
+  });
+
+  it.each([false, true])('backfills twice without duplicates and preserves ownership (org=%s)', async org => {
+    const keys = crypto.generateKeypair();
+    const did = didFromPublicKey(keys.publicKey);
+    await database.insert(schema.identities).values({
+      id: did, publicKey: keys.publicKey, scope: 'actor', subtype: 'agent', handle: 'historical-agent',
+    });
+    if (org) {
+      await database.insert(schema.agentProvisions).values({
+        id: 'historical-provision', agentDid: did, servingDid: ORG, delegatorDid: ORG,
+        handle: 'historical-agent', displayName: 'Historical', harness: 'openclaw', placement: 'local', scopes: [], model: {},
+      });
+    } else {
+      await database.insert(schema.identityMembers).values({ identityDid: did, memberDid: HUMAN, role: 'owner' });
+    }
+    expect(await backfillAgentApps(nodeKeys.privateKey)).toContainEqual({ agentDid: did, status: 'registered' });
+    const before = await database.select().from(schema.attestations);
+    expect(await backfillAgentApps(nodeKeys.privateKey)).toContainEqual({
+      agentDid: did, status: 'skipped', reason: 'already-registered',
+    });
+    expect(await database.select().from(schema.attestations)).toEqual(before);
+    expect(await database.select().from(registrySchema.registryApps)).toEqual([
+      expect.objectContaining({ appDid: did, ownerDid: org ? ORG : HUMAN }),
+    ]);
+    expect((await appToken({ did, keypair: keys })).status).toBe(200);
+  });
+
+  it('preserves hand registration and plugin self-grant without mutating scopes or projection', async () => {
+    const agent = await mintRegisteredAgent();
+    await database.update(registrySchema.registryApps).set({ name: 'Hand registration', callbackUrl: 'https://manual.invalid/cb' });
+    await database.update(schema.attestations).set({ payload: { scopes: ['profile:read'], plugin: true } })
+      .where(eq(schema.attestations.type, 'app.authorized'));
+    const before = {
+      apps: await database.select().from(registrySchema.registryApps),
+      grants: await database.select().from(schema.attestations),
+      links: await database.select().from(schema.channelLinks),
+    };
+    await backfillAgentApps(nodeKeys.privateKey);
+    expect(await database.select().from(registrySchema.registryApps)).toEqual(before.apps);
+    expect(await database.select().from(schema.attestations)).toEqual(before.grants);
+    expect(await database.select().from(schema.channelLinks)).toEqual(before.links);
+    expect(before.apps[0].appDid).toBe(agent.did);
+  });
+
+  it('skips an ownerless historical agent instead of attributing it to the operator', async () => {
+    const keys = crypto.generateKeypair();
+    const agentDid = didFromPublicKey(keys.publicKey);
+    await database.insert(schema.identities).values({ id: agentDid, publicKey: keys.publicKey, scope: 'actor', subtype: 'agent' });
+    expect(await backfillAgentApps(nodeKeys.privateKey)).toEqual([
+      { agentDid, status: 'skipped', reason: 'ambiguous-or-missing-owner' },
+    ]);
+    expect(await database.select().from(registrySchema.registryApps)).toEqual([]);
   });
 });
