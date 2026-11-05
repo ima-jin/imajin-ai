@@ -97,17 +97,17 @@ describe('fee wallet effects through webhook helpers', () => {
     credit.mockRestore();
     expect(await balance('did:imajin:chain-node', 'MJN')).toBe('7.00000000');
     expect(await balance('did:imajin:chain-buyer', 'MJNx')).toBe('3.00000000');
-    for (const [did, earned, index, role] of [
+    await forEachSequential([
       ['did:imajin:chain-node', '7.00000000', 1, 'node'],
       ['did:imajin:chain-buyer', '3.00000000', 2, 'buyer_credit'],
-    ] as const) {
+    ] as const, async ([did, earned, index, role]) => {
       const rows = await state.db.select().from(transactions).where(eq(transactions.toDid, did));
       expect(rows).toHaveLength(1);
       expect(rows[0].idempotencyKey).toBe(feeCreditKey({ transactionId: tx.id, role, recipientDid: did, chainIndex: index }));
       expect(await state.db.select().from(balanceRollups).where(eq(balanceRollups.did, did))).toEqual([
         expect.objectContaining({ earned, spent: '0.00000000', txCount: 1 }),
       ]);
-    }
+    });
   });
 
   it('keeps both repeated role/DID entries using their absolute manifest indexes', async () => {
@@ -138,11 +138,11 @@ describe('fee wallet effects through webhook helpers', () => {
         { did: 'BUYER_PLACEHOLDER', role: 'buyer_credit', share: 0.1 },
       ],
     }));
-    for (const did of ['did:imajin:skip-seller', 'unresolved']) {
+    await forEachSequential(['did:imajin:skip-seller', 'unresolved'], async (did) => {
       expect(await state.db.select().from(transactions).where(eq(transactions.toDid, did))).toEqual([]);
       expect(await state.db.select().from(balances).where(eq(balances.did, did))).toEqual([]);
       expect(await state.db.select().from(balanceRollups).where(eq(balanceRollups.did, did))).toEqual([]);
-    }
+    });
   });
 });
 
@@ -210,6 +210,26 @@ describe('real transaction atomicity', () => {
 });
 
 describe('fee provenance migration', () => {
+  it('widens the real baseline CHECK without changing or removing existing transactions', async () => {
+    const original = await createFeeCreditHarness();
+    const row = {
+      id: 'tx_existing', service: 'market', type: 'sale',
+      toDid: 'did:imajin:migration', amount: '10', sourceKind: 'receipt',
+    };
+    try {
+      await original.db.insert(transactions).values(row);
+      await expect(original.db.insert(transactions).values({ ...row, id: 'tx_fee', sourceKind: 'fee' })).rejects.toThrow();
+      const before = await original.db.select().from(transactions);
+      await original.client.exec(feeMigration);
+      await original.client.exec(feeMigration);
+      expect(await original.db.select().from(transactions)).toEqual(before);
+      await original.db.insert(transactions).values({ ...row, id: 'tx_fee', sourceKind: 'fee' });
+      expect(await original.db.select().from(transactions)).toHaveLength(2);
+    } finally {
+      await original.client.close();
+    }
+  });
+
   it('can be applied twice, preserves every prior kind, allows fee and still rejects unknown provenance', async () => {
     await harness.client.exec(feeMigration);
     await forEachSequential(['receipt', 'emission', 'transfer', 'fee'], async (sourceKind) => {
