@@ -1,6 +1,6 @@
 import { and, eq, sql } from 'drizzle-orm';
 import { canonicalize, crypto as authCrypto, verifySync } from '@imajin/auth';
-import { db, attestations, connectors, operatorApprovals, vaultDelegationGrants } from '@/src/db';
+import { db, attestations, connectors, operatorApprovals, vaultDelegationGrants, type VaultDelegationGrant } from '@/src/db';
 import { prepareMechanicalAttestation } from '@/src/lib/auth/emit-mechanical-attestation';
 import { authorizeOrgConnectionAdmin, orgHeldProvider, type OrgConnectionActor } from '@/src/lib/kernel/org-held-connection-policy';
 import { getConnector } from '@/src/lib/kernel/connector-registry';
@@ -64,6 +64,18 @@ async function lockOrg(tx: Transaction, actor: OrgConnectionActor) {
   if (!process.env.AUTH_PRIVATE_KEY || isVaultTier1() || !await isImportHuman(actor.actorDid, tx)) throw new Error(FAILURE);
 }
 
+function requireRenewableGrant(grant: VaultDelegationGrant | undefined, input: OrgHeldRenewalInput) {
+  const node = getNodeSigningIdentity();
+  // Never revive revoked/swept custody or change consumers. Renew before erasure.
+  if (!grant?.expiresAt || grant.revokedAt || !futureDate(input.expiresAt) || Date.parse(input.expiresAt) <= grant.expiresAt.getTime()
+    || grant.oneTime || grant.purpose !== `connectors:org-held:${input.provider}`
+    || !grant.wrappedKey || !grant.wrappedNonce
+    || grant.ownerEdPub !== node.senderPubkey || grant.recipientXPub !== getNodeXPublicKey()
+    || grant.ownerXPub !== getOwnerXPublicKey()
+    || !verifySync(grant.ownerSignature, canonicalizeGrantPayload(grant), node.senderPubkey)) throw new Error(FAILURE);
+  return grant;
+}
+
 /** Resolves the existing grant under the same lock as load/replace, revoke and inference. */
 async function renewalTarget(tx: Transaction, input: OrgHeldRenewalInput) {
   const [connection] = await tx.select().from(connectors).where(and(
@@ -74,17 +86,11 @@ async function renewalTarget(tx: Transaction, input: OrgHeldRenewalInput) {
     || connection.orgSuspendedAt || connection.revokedAt
     || (connection.expiresAt && connection.expiresAt <= new Date())) throw new Error(FAILURE);
   const node = getNodeSigningIdentity();
-  const [grant] = await tx.select().from(vaultDelegationGrants).where(and(
+  const [current] = await tx.select().from(vaultDelegationGrants).where(and(
     eq(vaultDelegationGrants.field, connection.sealedKeyField), eq(vaultDelegationGrants.subject, input.orgDid),
     eq(vaultDelegationGrants.grantedTo, node.senderDid), eq(vaultDelegationGrants.status, 'active'),
   )).for('update');
-  // Never revive a revoked/swept grant or change consumers. Renew before the expiry sweep erases it.
-  if (!grant?.expiresAt || Date.parse(input.expiresAt) <= grant.expiresAt.getTime()
-    || grant.oneTime || grant.purpose !== `connectors:org-held:${input.provider}`
-    || !grant.wrappedKey || !grant.wrappedNonce
-    || grant.ownerEdPub !== node.senderPubkey || grant.recipientXPub !== getNodeXPublicKey()
-    || grant.ownerXPub !== getOwnerXPublicKey()
-    || !verifySync(grant.ownerSignature, canonicalizeGrantPayload(grant), node.senderPubkey)) throw new Error(FAILURE);
+  const grant = requireRenewableGrant(current, input);
   const entry = await vaultService.get(connection.sealedKeyField);
   if (!entry || entry.deleted || entry.custodyScheme !== 'delegation-grant'
     || entry.senderPubkey !== node.senderPubkey || entry.keyId !== grant.keyId) throw new Error(FAILURE);

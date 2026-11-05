@@ -34,10 +34,10 @@ vi.mock('../vault-repository', () => ({
   }),
 }));
 
-import { canonicalize, crypto, generateKeypair, requireAdmin } from '@imajin/auth';
+import { canonicalize, crypto, generateKeypair, requireAdmin, requireAuth } from '@imajin/auth';
 import { pushWebNotificationToOperator } from '@/src/lib/notify/web-push';
 import { identities, identityMembers, attestations } from '@/src/db/schemas/auth';
-import { connectors } from '@/src/db/schemas/connectors';
+import { connectors, orgConnectionMemberGrants, orgConnectionSuspensions } from '@/src/db/schemas/connectors';
 import { vaultDelegationGrants, vaultOwnerEnvelopes } from '@/src/db/schemas/vault';
 import { operatorApprovals } from '@/src/db/schemas/operator-approvals';
 import { POST } from '@/app/api/vault/org-held/renew/route';
@@ -45,13 +45,15 @@ import { POST as delegationGrant } from '@/app/api/vault/delegation/grant/route'
 import { executeVaultApproval } from '../approvals-execution';
 import { executeOrgHeldRenewal, readOrgHeldRenewalInput } from '../org-held-renewal';
 import { decideOperatorApproval } from '@/src/lib/notify/operator-approvals-service';
-import { sealAndGrantStaticSecret, canonicalizeGrantPayload, _applyDelegationGrant, vaultService } from '../index';
-import { getNodeSigningIdentity, getNodeXPrivateKey, _resetSealingCache } from '../sealing';
+import { sealAndGrantStaticSecret, canonicalizeGrantPayload, vaultService } from '../index';
+import { getNodeSigningIdentity, _resetSealingCache } from '../sealing';
+import { resolveOrgHeldBrain } from '@/src/lib/inference/org-held-brain';
 import { DELEGATION_ROUTES } from '@imajin/auth/delegation-policy';
 
 const keys = generateKeypair();
 const nodeKeys = generateKeypair();
-const tables = [identities, identityMembers, attestations, connectors, vaultDelegationGrants, vaultOwnerEnvelopes, operatorApprovals];
+const tables = [identities, identityMembers, attestations, connectors, orgConnectionMemberGrants, orgConnectionSuspensions,
+  vaultDelegationGrants, vaultOwnerEnvelopes, operatorApprovals];
 let client: PGlite;
 let database: ReturnType<typeof drizzle>;
 let sequence = 0;
@@ -66,7 +68,7 @@ function tableSql(table: PgTable) {
   const config = getTableConfig(table);
   const columns = config.columns.map(column => {
     let fallback = '';
-    if (['created_at', 'updated_at', 'issued_at'].includes(column.name)) fallback = ' DEFAULT now()';
+    if (['created_at', 'updated_at', 'issued_at', 'granted_at'].includes(column.name)) fallback = ' DEFAULT now()';
     else if (typeof column.default === 'string') fallback = ` DEFAULT '${column.default}'`;
     else if (typeof column.default === 'boolean') fallback = ` DEFAULT ${column.default}`;
     else if (column.getSQLType() === 'jsonb' && column.default !== undefined) fallback = " DEFAULT '[]'::jsonb";
@@ -120,6 +122,10 @@ beforeEach(async () => {
     id: `conn_${sequence}`, ownerDid: org, provider: 'org-held-anthropic', channel: 'anthropic',
     connectorDid: node.senderDid, sealedKeyField: field, loadedByDid: human, loadedAt: new Date(),
   });
+  await database.insert(orgConnectionMemberGrants).values({
+    id: `member_grant_${sequence}`, orgDid: org, memberDid: human, connectionId: `conn_${sequence}`,
+    provider: 'anthropic', grantedByDid: human,
+  });
 });
 afterEach(async () => {
   expect(JSON.stringify([outputs, h.log.mock.calls, h.publish.mock.calls, h.vault])).not.toContain(value);
@@ -162,6 +168,16 @@ async function noChange(card: Awaited<ReturnType<typeof approve>>) {
   expect(h.vault).toEqual(entry);
   expect(await database.select().from(attestations).where(eq(attestations.subjectDid, org))).toEqual([]);
 }
+async function changeConnectionState(state: string) {
+  const changes: Record<string, Partial<typeof connectors.$inferInsert>> = {
+    'foreign-field': { sealedKeyField: 'vault-group-key:other' },
+    'connection-off': { status: 'revoked' },
+    'connection-suspended': { orgSuspendedAt: new Date() },
+    'connection-expired': { expiresAt: new Date(0) },
+  };
+  if (changes[state]) await database.update(connectors).set(changes[state]).where(eq(connectors.ownerDid, org));
+  if (state === 'entry-missing') vi.spyOn(vaultService, 'get').mockResolvedValue(undefined);
+}
 
 describe('private-custody org-held renewal acceptance', () => {
   it.each([false, true])('owner proposes in personal / acting-as-org=%s; signature extends custody without touching material', async actingAs => {
@@ -173,6 +189,10 @@ describe('private-custody org-held renewal acceptance', () => {
     expect(await grant()).toEqual(before);
     expect(card.operatorDid).toBe(human);
     expect(card.detail?.orgDid).toBe(org);
+    expect(requireAuth).toHaveBeenCalledWith(expect.any(NextRequest), { sessionOnly: true, service: 'connections' });
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(oldExpiry.getTime() + 1000);
+    await expect(resolveOrgHeldBrain({ orgDid: org, memberDid: human })).rejects.toMatchObject({ code: 'credential_unavailable' });
+    clock.mockRestore();
     const get = vi.spyOn(vaultService, 'set');
     expect(await executeVaultApproval(card)).toEqual({ ok: true });
     const renewed = await grant();
@@ -183,9 +203,9 @@ describe('private-custody org-held renewal acceptance', () => {
     expect(await database.select().from(vaultOwnerEnvelopes).where(eq(vaultOwnerEnvelopes.field, field))).toEqual(envelope);
     vi.spyOn(Date, 'now').mockReturnValue(oldExpiry.getTime() + 1000);
     expect(renewed.expiresAt!.getTime()).toBeGreaterThan(Date.now());
-    const plaintext = await _applyDelegationGrant(await vaultService.get(field) as NonNullable<Awaited<ReturnType<typeof vaultService.get>>>,
-      renewed, getNodeXPrivateKey(), nodeKeys.publicKey);
-    expect(digest(plaintext)).toBe(digest(value));
+    const brain = await resolveOrgHeldBrain({ orgDid: org, memberDid: human });
+    expect(digest(brain.apiKey)).toBe(digest(value));
+    expect(brain.credentialDid).toBe(org);
     const [audit] = await database.select().from(attestations).where(eq(attestations.subjectDid, org));
     expect(audit).toMatchObject({ type: 'vault.key.renewed', contextId: card.proposalId, attestationStatus: null });
     expect(audit.payload).toMatchObject({ orgDid: org, authorizedBy: { operatorDid: human } });
@@ -220,13 +240,15 @@ describe('private-custody org-held renewal acceptance', () => {
     await database.update(identities).set({ subtype }).where(eq(identities.id, human));
     expect((await propose()).status).toBe(403);
   });
-  it.each(['member', 'removed', 'restricted', 'suspended', 'presence', 'no-key', 'tier1'])('rechecks %s at execution', async boundary => {
+  it.each(['member', 'removed', 'restricted', 'suspended', 'presence', 'no-key', 'tier1', 'human-suspended', 'key-changed'])('rechecks %s at execution', async boundary => {
     const card = await approve();
     if (boundary === 'member') await database.update(identityMembers).set({ role: 'member' }).where(eq(identityMembers.identityDid, org));
     if (boundary === 'removed') await database.update(identityMembers).set({ removedAt: new Date() }).where(eq(identityMembers.identityDid, org));
     if (boundary === 'restricted') await database.update(identityMembers).set({ allowedServices: ['pay'] }).where(eq(identityMembers.identityDid, org));
     if (boundary === 'suspended') await database.update(identities).set({ suspendedAt: new Date() }).where(eq(identities.id, org));
     if (boundary === 'presence') await database.update(identities).set({ subtype: 'presence' }).where(eq(identities.id, human));
+    if (boundary === 'human-suspended') await database.update(identities).set({ suspendedAt: new Date() }).where(eq(identities.id, human));
+    if (boundary === 'key-changed') await database.update(identities).set({ publicKey: generateKeypair().publicKey }).where(eq(identities.id, human));
     if (boundary === 'no-key') vi.stubEnv('AUTH_PRIVATE_KEY', '');
     if (boundary === 'tier1') { vi.stubEnv('VAULT_OWNER_X_PUB', keys.publicKey); vi.stubEnv('VAULT_OWNER_ED_PUB', keys.publicKey); }
     await noChange(card);
@@ -253,29 +275,47 @@ describe('private-custody org-held renewal acceptance', () => {
     expect(readOrgHeldRenewalInput({ orgDid: org, provider: 1, expiresAt: later() })).toBeNull();
     expect(DELEGATION_ROUTES['kernel.vault.org-held.renew'].class).toBe('irreversible');
   });
-  it.each(['revoked', 'erased', 'one-time', 'purpose', 'foreign-signer', 'bad-signature', 'no-expiry', 'shorter', 'foreign-field', 'connection-off'])(
+  it('rejects malformed JSON before staging a proposal', async () => {
+    const response = await POST(new NextRequest('https://kernel.test/api/vault/org-held/renew', { method: 'POST', body: '{' }));
+    expect(response.status).toBe(400);
+  });
+  it.each(['revoked', 'revoked-at', 'erased', 'one-time', 'purpose', 'foreign-signer', 'bad-signature', 'owner-x', 'recipient-x',
+    'no-expiry', 'shorter', 'foreign-field', 'connection-off', 'connection-suspended', 'connection-expired', 'entry-missing'])(
     'refuses %s custody state without mutation', async failure => {
       const before = await grant();
       const changes: Record<string, unknown> = {};
       if (failure === 'revoked') changes.status = 'revoked';
+      if (failure === 'revoked-at') changes.revokedAt = new Date();
       if (failure === 'erased') { changes.wrappedKey = ''; changes.wrappedNonce = ''; }
       if (failure === 'one-time') changes.oneTime = true;
       if (failure === 'purpose') changes.purpose = 'other';
       if (failure === 'foreign-signer') changes.ownerEdPub = keys.publicKey;
       if (failure === 'bad-signature') changes.ownerSignature = '00'.repeat(64);
+      if (failure === 'owner-x') changes.ownerXPub = keys.publicKey;
+      if (failure === 'recipient-x') changes.recipientXPub = keys.publicKey;
       if (failure === 'no-expiry') changes.expiresAt = null;
       if (failure === 'shorter') changes.expiresAt = new Date(Date.now() + 2 * 86400_000);
       if (Object.keys(changes).length) await database.update(vaultDelegationGrants).set(changes).where(eq(vaultDelegationGrants.id, before.id));
-      if (failure === 'foreign-field') await database.update(connectors).set({ sealedKeyField: 'vault-group-key:other' }).where(eq(connectors.ownerDid, org));
-      if (failure === 'connection-off') await database.update(connectors).set({ status: 'revoked' }).where(eq(connectors.ownerDid, org));
+      await changeConnectionState(failure);
       const snapshot = await grant();
       expect((await propose()).status).toBe(409);
       expect(await grant()).toEqual(snapshot);
     });
-  it.each(['detail', 'signature', 'stored-proposal', 'replaced-entry', 'swept'])('refuses %s drift after signing', async change => {
+  it.each(['detail', 'signature', 'stored-proposal', 'replaced-entry', 'swept', 'extra-detail', 'missing-detail',
+    'bad-detail', 'past-expiry', 'wrong-kind', 'wrong-source', 'wrong-status', 'wrong-decider', 'wire-hash', 'no-signature'])('refuses %s drift after signing', async change => {
     const card = await approve();
     if (change === 'detail') card.detail!.expiresAt = new Date(Date.now() + 2 * 86400_000).toISOString();
     if (change === 'signature') card.decision!.operatorSignature!.sig = '00'.repeat(64);
+    if (change === 'extra-detail') card.detail!.consumerDid = human;
+    if (change === 'missing-detail') card.detail = null;
+    if (change === 'bad-detail') card.detail!.grantId = 123;
+    if (change === 'past-expiry') card.detail!.expiresAt = new Date(0).toISOString();
+    if (change === 'wrong-kind') card.kind = 'vault:grant';
+    if (change === 'wrong-source') card.source = 'other';
+    if (change === 'wrong-status') card.status = 'denied';
+    if (change === 'wrong-decider') card.decision!.decidedBy = org;
+    if (change === 'wire-hash') card.decision!.contentHash = 'sha256:' + '00'.repeat(32);
+    if (change === 'no-signature') delete card.decision!.operatorSignature;
     if (change === 'stored-proposal') await database.update(operatorApprovals).set({ summary: 'Changed' }).where(eq(operatorApprovals.proposalId, card.proposalId));
     if (change === 'replaced-entry') await sealAndGrantStaticSecret(field, randomBytes(32).toString('hex'), {
       principalDid: org, granteeDid: getNodeSigningIdentity().senderDid, purpose: 'connectors:org-held:anthropic', expiresAt: oldExpiry,
