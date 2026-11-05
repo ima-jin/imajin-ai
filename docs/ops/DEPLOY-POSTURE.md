@@ -8,6 +8,8 @@ Development deployment follows successful CI on main through [deploy-dev.yml](..
 
 The release path is **dispatch Release → review and merge its PR → automatic tag and deployment dispatch → production approval**. The Release workflow chooses the bump from the latest release tag and changes workspace manifests in lockstep. Feature changes do not edit manifest versions. Do not create tags by hand or deploy with a manual production `git pull`.
 
+Release branch pushes and PR creation use a GitHub App installation token, scoped to `imajin-ai` with **Contents: Read & write** and **Pull requests: Read & write** only. Ryan provisions the App and the Actions variable `RELEASE_APP_ID` and Actions secret `RELEASE_APP_PRIVATE_KEY` in the GitHub UI. Missing configuration fails before branching. Keep **Allow GitHub Actions to create and approve pull requests OFF**. The app bot opens the PR automatically and CI starts on `pull_request`; no manual PR or CI dispatch, PAT or bypass actor is needed. Ryan's review and the production approval remain unchanged. See [release setup and verification](../npm-publishing.md#cutting-a-release-tag-is-truth--2285).
+
 `scripts/lib/git-version.mjs` supplies the shared Git tag lookup for the release bump base, falling back to the manifest only when no release tag exists.
 
 The tag workflow also publishes eligible packages independently of the production approval and records release close-out. Publication does not prove production deployment. See [npm publishing](../npm-publishing.md).
