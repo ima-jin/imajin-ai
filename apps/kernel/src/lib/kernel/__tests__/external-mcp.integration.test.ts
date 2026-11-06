@@ -1193,7 +1193,7 @@ describe('read-only connector discovery matches actual call authorization (#3256
         .where(eq(vaultDelegationGrants.id, sealed.grantId!));
       const caller = { actorDid: agentDid(), actingAs: org };
       expect(await discover({ ownerDid: org, caller }, warp, 'http')).toMatchObject({ usable: boundary === 'valid' });
-      if (boundary === 'valid') expect(await requireAgentKey(org, caller) === input.secret).toBe(true);
+      if (boundary === 'valid') expect(await requireAgentKey(org, caller)).toBe(input.secret);
       else await expect(requireAgentKey(org, caller)).rejects.toMatchObject({ status: 403 });
     },
   );
