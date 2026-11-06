@@ -1,4 +1,4 @@
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 import { db, connectors, vaultDelegationGrants } from '@/src/db';
 import { _applyDelegationGrant, vaultService } from '@/src/lib/vault';
 import { isExternalMcpField } from '@/src/lib/vault/field-grammar';
@@ -35,7 +35,7 @@ export function resolveOrgHeldBrain(context: VerifiedInferenceOrgContext, modelI
         || !(isExternalMcpField(row.sealedKeyField) || isOrgSealedAnthropicField(orgDid, row.sealedKeyField))) throw missingConnection(orgDid);
       const node = getNodeSigningIdentity();
       const [custody] = await tx.select().from(vaultDelegationGrants).where(and(
-        eq(vaultDelegationGrants.field, row.sealedKeyField), eq(vaultDelegationGrants.subject, orgDid),
+        eq(vaultDelegationGrants.field, row.sealedKeyField), inArray(vaultDelegationGrants.subject, [orgDid, node.senderDid]),
         eq(vaultDelegationGrants.grantedTo, node.senderDid), eq(vaultDelegationGrants.status, 'active'),
       )).limit(1).for('update');
       if (!custody || !isLiveConnection(custody) || custody.oneTime) throw unavailable();
