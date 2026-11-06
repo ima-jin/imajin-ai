@@ -72,19 +72,21 @@ import { POST as verifyToken } from '@/app/auth/api/apps/token/verify/route';
 import { GET as usableModels } from '@/app/infer/v1/models/usable/route';
 import { POST as messages } from '@/app/infer/v1/messages/route';
 import { POST as internalAttestation } from '@/app/auth/api/attestations/internal/route';
-import { hasOrgConnectionProvenance } from '@/src/lib/kernel/member-connection-gate';
+import { POST as sealOrgToken } from '@/app/anthropic/api/token/route';
+import { POST as sealOrgCard } from '@/app/connections/api/org-held/[provider]/route';
+import { authorizeMemberConnection, hasOrgConnectionProvenance } from '@/src/lib/kernel/member-connection-gate';
 import { resolveBrain } from '../brain';
 import { usageIncurred } from '@/src/db/schemas/usage';
 import { transactions, balanceRollups } from '@/src/db/schemas/pay';
 import { prepareMechanicalAttestation } from '@/src/lib/auth/emit-mechanical-attestation';
 import { revokeVaultDelegationGrantsForConnector } from '@/src/lib/vault';
+import { isExternalMcpField } from '@/src/lib/vault/field-grammar';
 import { changeOrgConnection } from '@/src/lib/kernel/org-connection-admin';
-import { changeOrgConnectionMemberGrant } from '@/src/lib/kernel/org-connection-member-grants';
 import { requireOrgConnectionMemberGrant } from '@/src/lib/kernel/org-connection-member-grants';
 import { registerReactor } from '../../../../../../packages/bus/src/registry';
 import { attestationReactor } from '../../../../../../packages/bus/src/reactors/attestation';
 import { setVaultInternalApiKey } from '../../../../../../packages/auth/tests/support/internal-post-test-env';
-import { seedOrgWithAssignedBot, seedRegisteredActor } from './seed-org-with-assigned-bot';
+import { orgSealWriters, seedMemberGrant, seedOrgWithAssignedBot, seedRegisteredActor, seedRequest } from './seed-org-with-assigned-bot';
 
 vi.setConfig({ testTimeout: 30_000, hookTimeout: 60_000 });
 let client: PGlite;
@@ -175,7 +177,7 @@ afterAll(async () => {
   _resetSealingCache();
 });
 
-async function scenario(seal: Parameters<typeof seedOrgWithAssignedBot>[0]['seal'] = 'authenticated-org-route') {
+async function scenario(seal: Parameters<typeof seedOrgWithAssignedBot>[0]['seal'] = 'token-route-as-org') {
   return seedOrgWithAssignedBot({ seal, authenticate: identity => { h.identity = identity; } });
 }
 type Scenario = Awaited<ReturnType<typeof scenario>>;
@@ -211,6 +213,37 @@ async function deniedOnBoth(seed: Scenario, status: number, error: string, actor
   expect(h.upstreamCalls).toBe(calls);
   expect(await database.select().from(usageIncurred)).toEqual(usage);
 }
+function connectionGate(seed: Scenario, actorDid: string, provider = 'anthropic') {
+  return authorizeMemberConnection(database, {
+    memberDid: actorDid, caller: { actorDid, actingAs: seed.orgDid },
+  }, { provider, scope: 'infer:completions', service: 'infer' });
+}
+async function allowedOnBoth(seed: Scenario, actorDid: string) {
+  // Direct humans retain member attribution; autonomous assigned bots bill the
+  // org as principal. Both carry org provenance in the signed receipt.
+  const principalDid = actorDid === seed.botDid ? seed.orgDid : actorDid;
+  const discovery = await discover(seed, actorDid);
+  expect(discovery.status).toBe(200);
+  expect(await discovery.json()).toMatchObject({ data: [expect.objectContaining({
+    id: 'claude-scenario', imajin: expect.objectContaining({ credentialDid: seed.orgDid }),
+  })] });
+  expect((await infer(seed, actorDid)).status).toBe(200);
+  const [usage] = await database.select().from(usageIncurred).where(eq(usageIncurred.principalDid, principalDid));
+  expect(usage).toMatchObject({ agentDid: actorDid, principalDid,
+    provider: 'anthropic', model: 'claude-scenario', tokensIn: 3, tokensOut: 2 });
+  await vi.waitFor(async () => {
+    const [receipt] = await database.select().from(attestations).where(and(
+      eq(attestations.type, 'usage.incurred'), eq(attestations.contextId, usage.id),
+    ));
+    expect(receipt).toMatchObject({ issuerDid: h.nodeDid, subjectDid: principalDid,
+      payload: expect.objectContaining({ agentDid: actorDid, actingFor: principalDid, usageId: usage.id,
+        metadata: expect.objectContaining({ orgDid: seed.orgDid }) }) });
+    expect(crypto.verifySync(receipt.signature, canonicalize({
+      subject_did: receipt.subjectDid, type: receipt.type, context_id: receipt.contextId,
+      context_type: receipt.contextType, payload: receipt.payload, issued_at: receipt.issuedAt.getTime(),
+    }), getNodeSigningIdentity().senderPubkey)).toBe(true);
+  });
+}
 /** Adversarial corruption is a state change with signed history, not fixture insertion. */
 async function corrupt(seed: Scenario, target: 'connector' | 'custody', changes: Record<string, unknown>) {
   const evidence = await prepareMechanicalAttestation({
@@ -225,60 +258,51 @@ async function corrupt(seed: Scenario, target: 'connector' | 'custody', changes:
 }
 
 describe('assigned org-bot discovery seeded by real writers (#3335, #3342)', () => {
-  it('refuses the legacy node-self-granted row and directs an admin to re-seal without backfilling provenance', async () => {
-    const seed = await scenario('legacy-token-paste');
-    const [connection] = await database.select().from(connectors).where(eq(connectors.ownerDid, seed.orgDid));
+  it.each(orgSealWriters)('%s: discovers, infers and verifies the node receipt, or refuses missing provenance', async writer => {
+    const seed = await scenario(writer);
+    const row = await connection(seed);
     const [custody] = await database.select().from(vaultDelegationGrants).where(eq(vaultDelegationGrants.field, seed.field));
-    expect(connection).toMatchObject({
+    expect(row).toMatchObject({
+      ownerDid: seed.orgDid,
       provider: 'anthropic', slot: 'primary', status: 'active', sealedKeyField: seed.field, orgContextDid: null,
     });
-    expect(custody).toMatchObject({ subject: h.nodeDid, grantedTo: h.nodeDid, status: 'active', oneTime: false });
-    expect(hasOrgConnectionProvenance(connection)).toBe(false);
-    await deniedOnBoth(seed, 403, 're-seal through the org connectors page');
-    expect(await database.select().from(connectors).where(eq(connectors.ownerDid, seed.orgDid))).toEqual([connection]);
-    await expect(requireOrgConnectionMemberGrant({
-      memberDid: seed.humanDid, orgDid: seed.orgDid, actingDid: seed.orgDid, provider: 'anthropic',
-    })).rejects.toMatchObject({ status: 403, code: 'connection_not_loaded',
-      message: expect.stringContaining('re-seal through the org connectors page') });
-  });
-
-  it('records the current authenticated org-route writer shape without hand-written fixture rows', async () => {
-    const seed = await scenario('authenticated-org-route');
-    const [connection] = await database.select().from(connectors).where(eq(connectors.ownerDid, seed.orgDid));
-    const [custody] = await database.select().from(vaultDelegationGrants).where(eq(vaultDelegationGrants.field, seed.field));
-    expect(connection).toMatchObject({ loadedByDid: seed.humanDid, loadedAt: expect.any(Date) });
+    if (writer === 'legacy-token-paste') {
+      expect(seed.field).toBe(`anthropic-api-key:${seed.orgDid}`);
+      expect(custody).toMatchObject({ subject: h.nodeDid, grantedTo: h.nodeDid, status: 'active', oneTime: false });
+      expect(hasOrgConnectionProvenance(row)).toBe(false);
+      await deniedOnBoth(seed, 403, 're-seal through the org connectors page');
+      expect(await connection(seed)).toEqual(row);
+      await expect(connectionGate(seed, seed.botDid)).rejects.toMatchObject({
+        status: 403, code: 'connection_not_loaded',
+        message: expect.stringContaining('re-seal through the org connectors page'),
+      });
+      await expect(requireOrgConnectionMemberGrant({
+        memberDid: seed.humanDid, orgDid: seed.orgDid, actingDid: seed.orgDid, provider: 'anthropic',
+      })).rejects.toMatchObject({ status: 403, code: 'connection_not_loaded',
+        message: expect.stringContaining('re-seal through the org connectors page') });
+      return;
+    }
+    if (writer === 'org-held-card') {
+      expect(isExternalMcpField(seed.field)).toBe(true);
+      expect(seed.field).toContain(':org_');
+      expect(seed.field.endsWith(`:${seed.orgDid}`)).toBe(true);
+    } else expect(seed.field).toBe(`anthropic-api-key:${seed.orgDid}`);
+    expect(row).toMatchObject({ loadedByDid: seed.humanDid, loadedAt: expect.any(Date) });
     expect(custody).toMatchObject({ subject: seed.orgDid, grantedTo: h.nodeDid, status: 'active', oneTime: false });
     const response = await discover(seed);
     expect(response.status, JSON.stringify(await response.clone().json())).toBe(200);
     expect(await response.json()).toMatchObject({ data: [expect.objectContaining({
       id: 'claude-scenario', imajin: expect.objectContaining({ credentialDid: seed.orgDid }),
     })] });
-    expect(await database.select().from(orgConnectionMemberGrants)).toEqual([]);
-  });
-
-  it('resolves the org brain and writes a real signed usage receipt with the agent actor and org bill', async () => {
-    const seed = await scenario();
+    expect(await database.select().from(orgConnectionMemberGrants)
+      .where(eq(orgConnectionMemberGrants.orgDid, seed.orgDid))).toEqual([]);
     const brain = await resolveBrain({ caller: { actorDid: seed.botDid, actingAs: seed.orgDid } }, {
       connectors: ['anthropic'], model: 'claude-scenario',
     });
     expect(createHash('sha256').update(brain.apiKey).digest('hex')).toBe(seed.credentialHash);
     expect(brain).toMatchObject({ actorDid: seed.botDid, credentialDid: seed.orgDid, provider: 'anthropic',
       orgUsage: { orgDid: seed.orgDid, memberDid: seed.orgDid, connectionId: (await connection(seed)).id } });
-    expect((await infer(seed)).status).toBe(200);
-    const [usage] = await database.select().from(usageIncurred).where(eq(usageIncurred.principalDid, seed.orgDid));
-    expect(usage).toMatchObject({ agentDid: seed.botDid, provider: 'anthropic', model: 'claude-scenario', tokensIn: 3, tokensOut: 2 });
-    await vi.waitFor(async () => {
-      const [receipt] = await database.select().from(attestations).where(and(
-        eq(attestations.type, 'usage.incurred'), eq(attestations.contextId, usage.id),
-      ));
-      expect(receipt).toMatchObject({ issuerDid: h.nodeDid, subjectDid: seed.orgDid,
-        payload: expect.objectContaining({ agentDid: seed.botDid, actingFor: seed.orgDid, usageId: usage.id,
-          metadata: expect.objectContaining({ orgDid: seed.orgDid }) }) });
-      expect(crypto.verifySync(receipt.signature, canonicalize({
-        subject_did: receipt.subjectDid, type: receipt.type, context_id: receipt.contextId,
-        context_type: receipt.contextType, payload: receipt.payload, issued_at: receipt.issuedAt.getTime(),
-      }), getNodeSigningIdentity().senderPubkey)).toBe(true);
-    });
+    await allowedOnBoth(seed, seed.botDid);
   });
 
   it('refuses an unassigned agent before custody or upstream access', async () => {
@@ -327,15 +351,86 @@ describe('assigned org-bot discovery seeded by real writers (#3335, #3342)', () 
     await deniedOnBoth(seed, 403, 'Not authorized to act as this group', outsider.did);
   });
 
-  it('requires a specific human member grant and refuses it immediately after real revocation', async () => {
-    const seed = await scenario();
-    await deniedOnBoth(seed, 403, 'Active org-connection member grant required', seed.humanDid);
-    const actor = { orgDid: seed.orgDid, actorDid: seed.humanDid };
-    const input = { memberDid: seed.humanDid, reason: 'Scenario per-member authorization' };
-    await changeOrgConnectionMemberGrant(actor, 'anthropic', input, 'grant');
-    expect((await discover(seed, seed.humanDid)).status).toBe(200);
-    await changeOrgConnectionMemberGrant(actor, 'anthropic', input, 'revoke');
-    await deniedOnBoth(seed, 403, 'Active org-connection member grant required', seed.humanDid);
+  it.each([
+    { caller: 'assigned bot', grant: 'none', allowed: true },
+    { caller: 'unassigned bot', grant: 'none', allowed: false, code: 'agent_not_assigned' },
+    { caller: 'human member', grant: 'active', allowed: true },
+    { caller: 'human member', grant: 'none', allowed: false, code: 'org_grant_required' },
+    { caller: 'human member', grant: 'revoked', allowed: false, code: 'org_grant_required' },
+  ])('org-held-card: $caller × $grant grant (allowed=$allowed)', async row => {
+    const seed = await scenario('org-held-card');
+    const actorDid = row.caller === 'unassigned bot' ? (await seedRegisteredActor('agent')).did
+      : row.caller === 'human member' ? seed.humanDid : seed.botDid;
+    if (row.grant !== 'none') expect(await seedMemberGrant(seed, 'grant')).toMatchObject({ changed: true });
+    if (row.grant === 'revoked') {
+      expect((await discover(seed, actorDid)).status).toBe(200);
+      expect(await seedMemberGrant(seed, 'revoke')).toMatchObject({ changed: true });
+      const [grant] = await database.select().from(orgConnectionMemberGrants)
+        .where(eq(orgConnectionMemberGrants.orgDid, seed.orgDid));
+      expect(grant).toMatchObject({ revokedAt: expect.any(Date), revokedByDid: seed.humanDid,
+        revocationReason: 'Scenario per-member authorization' });
+      const [event] = await database.select().from(orgConnectionEvents).where(and(
+        eq(orgConnectionEvents.orgDid, seed.orgDid), eq(orgConnectionEvents.action, 'grant-revoked'),
+      ));
+      expect(event).toMatchObject({ attestationId: expect.any(String) });
+      expect(await database.select().from(attestations).where(eq(attestations.id, event.attestationId))).toHaveLength(1);
+    }
+    if (row.allowed) {
+      expect(await connectionGate(seed, actorDid)).toMatchObject({ ownerDid: seed.orgDid });
+      await allowedOnBoth(seed, actorDid);
+    } else {
+      await expect(connectionGate(seed, actorDid)).rejects.toMatchObject({ status: 403, code: row.code,
+        message: expect.stringContaining(row.code === 'agent_not_assigned'
+          ? 'Agent is not assigned' : 'Active org-connection member grant required') });
+      await deniedOnBoth(seed, 403, row.code === 'agent_not_assigned'
+        ? 'Not authorized to act as this group' : 'Active org-connection member grant required', actorDid);
+    }
+  });
+
+  it('seals the Warp card with org provenance and node custody, without treating Warp as an inference model', async () => {
+    const seed = await seedOrgWithAssignedBot({
+      seal: 'org-held-card', cardProvider: 'warp', authenticate: identity => { h.identity = identity; },
+    });
+    expect(await connection(seed)).toMatchObject({ ownerDid: seed.orgDid, provider: 'org-held-warp',
+      loadedByDid: seed.humanDid, loadedAt: expect.any(Date), sealedKeyField: seed.field });
+    expect(isExternalMcpField(seed.field)).toBe(true);
+    const [custody] = await database.select().from(vaultDelegationGrants).where(eq(vaultDelegationGrants.field, seed.field));
+    expect(custody).toMatchObject({ subject: seed.orgDid, grantedTo: h.nodeDid, status: 'active', oneTime: false });
+    expect(await connectionGate(seed, seed.botDid, 'warp')).toMatchObject({ ownerDid: seed.orgDid });
+    await expect(connectionGate(seed, seed.humanDid, 'warp')).rejects.toMatchObject({
+      status: 403, code: 'org_grant_required', message: expect.stringContaining('Active org-connection member grant required'),
+    });
+    await seedMemberGrant(seed, 'grant', 'warp');
+    expect(await connectionGate(seed, seed.humanDid, 'warp')).toMatchObject({ ownerDid: seed.orgDid });
+    await seedMemberGrant(seed, 'revoke', 'warp');
+    await expect(connectionGate(seed, seed.humanDid, 'warp')).rejects.toMatchObject({
+      status: 403, code: 'org_grant_required', message: expect.stringContaining('Active org-connection member grant required'),
+    });
+    const outsider = await seedRegisteredActor('agent');
+    await expect(connectionGate(seed, outsider.did, 'warp')).rejects.toMatchObject({
+      status: 403, code: 'agent_not_assigned', message: expect.stringContaining('Agent is not assigned'),
+    });
+  });
+
+  it.each(['token-route-as-org', 'org-held-card'])('%s does not infer org ownership from a personal session', async writer => {
+    const human = await seedRegisteredActor('human');
+    h.identity = { id: human.did, scope: 'actor', subtype: 'human' };
+    const credential = randomUUID();
+    const response = writer === 'org-held-card'
+      ? await sealOrgCard(seedRequest('/connections/api/org-held/anthropic', { secret: credential }),
+        { params: Promise.resolve({ provider: 'anthropic' }) })
+      : await sealOrgToken(seedRequest('/anthropic/api/token', { token: credential }));
+    const rows = await database.select().from(connectors).where(eq(connectors.ownerDid, human.did));
+    if (writer === 'org-held-card') {
+      expect(response.status).toBe(403);
+      expect(await response.json()).toEqual({ error: 'Organization admin act-as required' });
+      expect(rows).toEqual([]);
+    } else {
+      expect(response.status).toBe(201);
+      expect(rows).toEqual([expect.objectContaining({
+        ownerDid: human.did, sealedKeyField: `anthropic-api-key:${human.did}`, loadedByDid: null, loadedAt: null,
+      })]);
+    }
   });
 
   it.each(['loadedByDid', 'loadedAt'] as const)('refuses missing %s without weakening the provenance boundary', async field => {
