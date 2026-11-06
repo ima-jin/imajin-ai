@@ -1,4 +1,4 @@
-import { and, eq } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
 import { vaultDelegationGrants } from '@/src/db';
 import { isExternalMcpField } from '@/src/lib/vault/field-grammar';
 import { getNodeSigningIdentity } from '@/src/lib/vault/sealing';
@@ -18,7 +18,7 @@ export async function authorizeExternalMcpAccess(
     expiresAt: vaultDelegationGrants.expiresAt, revokedAt: vaultDelegationGrants.revokedAt,
     oneTime: vaultDelegationGrants.oneTime,
   }).from(vaultDelegationGrants).where(and(
-    eq(vaultDelegationGrants.field, row.sealedKeyField), eq(vaultDelegationGrants.subject, row.ownerDid),
+    eq(vaultDelegationGrants.field, row.sealedKeyField), inArray(vaultDelegationGrants.subject, [row.ownerDid, getNodeSigningIdentity().senderDid]),
     eq(vaultDelegationGrants.grantedTo, getNodeSigningIdentity().senderDid),
     eq(vaultDelegationGrants.status, 'active'),
   )).limit(1);
