@@ -39,6 +39,8 @@ import { ConnectionSlots, slotRoute, useConnectionSlot, useRefreshConnections } 
 import { GoogleSetupChecklist } from './GoogleSetupChecklist';
 import { GitHubSetupChecklist, GitHubOrgAccessNote } from './GitHubSetupChecklist';
 import { BillingCredentialSection } from './BillingCredentialSection';
+import { ConnectorModeContext, ORG_PROVIDER_PARITY_URL, ProviderSectionNotice, sectionHeaders, useConnectorMode, useProviderSection, type ConnectorMode } from './ConnectorMode';
+import { OrgCredentialSection } from './OrgCredentialSection';
 import type { GoogleSetupView } from '@/src/lib/google/setup-content';
 
 // ── Types ─────────────────────────────────────────────────────
@@ -167,6 +169,7 @@ async function postScopeToggle(
   currentActiveScopes: string[],
   scopeName: string,
   enable: boolean,
+  orgDid: string | null,
 ): Promise<string[]> {
   const next = new Set(currentActiveScopes);
   if (enable) next.add(scopeName);
@@ -174,7 +177,7 @@ async function postScopeToggle(
 
   const r = await fetch(statusEndpoint, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: sectionHeaders(orgDid),
     body: JSON.stringify({ scopes: [...next] }),
   });
   // Read body once regardless of status — needed for both the error message and
@@ -214,6 +217,7 @@ function useScopeToggle<T extends { activeScopes: string[] }>(
   statusEndpoint: string | null | undefined,
   getActiveScopes: () => string[],
   setStatus: Dispatch<SetStateAction<T | null>>,
+  orgDid: string | null = null,
 ) {
   const [grantingScope, setGrantingScope] = useState<string | null>(null);
   const [grantError, setGrantError] = useState<string | null>(null);
@@ -222,7 +226,7 @@ function useScopeToggle<T extends { activeScopes: string[] }>(
     setGrantingScope(scopeName);
     setGrantError(null);
     try {
-      const newScopes = await postScopeToggle(statusEndpoint!, getActiveScopes(), scopeName, enable);
+      const newScopes = await postScopeToggle(statusEndpoint!, getActiveScopes(), scopeName, enable, orgDid);
       setStatus((prev) => (prev ? { ...prev, activeScopes: newScopes } : prev));
     } catch (err: unknown) {
       setGrantError(String(err));
@@ -441,10 +445,11 @@ function ScopeGrantSection({ entry, activeSet, stepNumber, grantingScope, grantE
  * `baseUrl`, #1957) only unlocked after a manual reload. Never called on a
  * failed save: `error` above is the only signal for that case.
  */
-function ConnectorSettingsSection({ settings, stepNumber, onSaved }: Readonly<{
+function ConnectorSettingsSection({ settings, stepNumber, onSaved, provider }: Readonly<{
   settings: ConnectorSettingsUi;
   stepNumber: string | number;
   onSaved?: () => void;
+  provider: string;
 }>) {
   // Draft values keyed by field key. Empty string means "no value set".
   const [values, setValues] = useState<Record<string, string>>({});
@@ -454,12 +459,14 @@ function ConnectorSettingsSection({ settings, stepNumber, onSaved }: Readonly<{
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const { route, fields } = settings;
+  const { fields } = settings;
+  const { route, disabled, note, orgDid, followUp, showControls } = useProviderSection(provider, 'settings', settings.route);
 
   const load = useCallback(async () => {
+    if (disabled) { setLoading(false); return; }
     setLoading(true);
     try {
-      const r = await fetch(route);
+      const r = await fetch(route, { headers: sectionHeaders(orgDid), cache: 'no-store' });
       if (!r.ok) throw new Error(`${r.status} ${r.statusText}`);
       const data = await r.json() as Record<string, unknown>;
       const next: Record<string, string> = {};
@@ -475,7 +482,7 @@ function ConnectorSettingsSection({ settings, stepNumber, onSaved }: Readonly<{
     } finally {
       setLoading(false);
     }
-  }, [route, fields]);
+  }, [route, fields, disabled, orgDid]);
 
   useEffect(() => { void load(); }, [load]);
 
@@ -484,13 +491,14 @@ function ConnectorSettingsSection({ settings, stepNumber, onSaved }: Readonly<{
    * of the empty string, so "select all, delete, save" does what it looks like.
    */
   async function save(key: string) {
+    if (disabled) return;
     const value = (values[key] ?? '').trim();
     setBusyKey(key);
     setError(null);
     try {
       const r = await fetch(route, {
         method: value.length === 0 ? 'DELETE' : 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: sectionHeaders(orgDid),
         ...(value.length === 0 ? {} : { body: JSON.stringify({ [key]: value }) }),
       });
       if (!r.ok) {
@@ -522,9 +530,10 @@ function ConnectorSettingsSection({ settings, stepNumber, onSaved }: Readonly<{
 
       {loading && <p className="text-gray-500 text-xs">Loading settings…</p>}
       {error && <p className="text-red-400 text-xs mb-2">{error}</p>}
+      <ProviderSectionNotice note={note} followUp={followUp} />
 
       {!loading && (
-        <div className="space-y-4">
+        <fieldset disabled={disabled} className="space-y-4">
           {fields.map((field) => {
             const value = values[field.key] ?? '';
             const dirty = value.trim() !== (saved[field.key] ?? '');
@@ -544,18 +553,18 @@ function ConnectorSettingsSection({ settings, stepNumber, onSaved }: Readonly<{
                   className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-amber-500/50 font-mono"
                 />
                 <p className="text-xs text-gray-700">{field.hint}</p>
-                <button
+                {showControls && <button
                   type="button"
                   onClick={() => { void save(field.key); }}
                   disabled={busyKey !== null || !dirty}
                   className="px-4 py-1.5 bg-white/10 hover:bg-white/20 disabled:opacity-40 text-gray-200 text-sm rounded-lg transition"
                 >
                   {busyKey === field.key ? 'Saving…' : 'Save'}
-                </button>
+                </button>}
               </div>
             );
           })}
-        </div>
+        </fieldset>
       )}
     </div>
   );
@@ -578,10 +587,12 @@ interface ModelOption {
  * provider call using the owner's own sealed key (`GET modelsRoute`), not a
  * static field the card already knows how to render as a text input.
  */
-function ModelPickerSection({ route, stepNumber }: Readonly<{
+function ModelPickerSection({ route: personalRoute, stepNumber, provider }: Readonly<{
   route: string;
   stepNumber: string | number;
+  provider: string;
 }>) {
+  const { route, disabled, note, orgDid, followUp, showControls } = useProviderSection(provider, 'models', personalRoute);
   const [models, setModels] = useState<ModelOption[]>([]);
   const [selected, setSelected] = useState('');
   const [loading, setLoading] = useState(true);
@@ -589,10 +600,11 @@ function ModelPickerSection({ route, stepNumber }: Readonly<{
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
+    if (disabled) { setLoading(false); return; }
     setLoading(true);
     setError(null);
     try {
-      const r = await fetch(route);
+      const r = await fetch(route, { headers: sectionHeaders(orgDid), cache: 'no-store' });
       if (!r.ok) {
         const data = await r.json().catch(() => ({})) as { error?: string };
         throw new Error(data.error ?? `${r.status} ${r.statusText}`);
@@ -605,18 +617,19 @@ function ModelPickerSection({ route, stepNumber }: Readonly<{
     } finally {
       setLoading(false);
     }
-  }, [route]);
+  }, [route, disabled, orgDid]);
 
   useEffect(() => { void load(); }, [load]);
 
   async function handleSelect(modelId: string) {
+    if (disabled) return;
     setSelected(modelId);
     setSaving(true);
     setError(null);
     try {
       const r = await fetch(route, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: sectionHeaders(orgDid),
         body: JSON.stringify({ modelId }),
       });
       if (!r.ok) {
@@ -642,11 +655,13 @@ function ModelPickerSection({ route, stepNumber }: Readonly<{
       </h3>
       {loading && <p className="text-gray-500 text-xs">Loading models…</p>}
       {error && <p className="text-red-400 text-xs mb-2">{error}</p>}
-      {!loading && !error && (
+      <ProviderSectionNotice note={note} followUp={followUp} />
+      {!loading && (
         <select
+          aria-label="Default model"
           value={selected}
           onChange={(e) => { void handleSelect(e.target.value); }}
-          disabled={saving || models.length === 0}
+          disabled={disabled || saving || !!error || models.length === 0}
           className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500/50"
         >
           <option value="" disabled>Choose a model…</option>
@@ -655,9 +670,11 @@ function ModelPickerSection({ route, stepNumber }: Readonly<{
           ))}
         </select>
       )}
-      {!loading && !error && models.length === 0 && (
+      {!disabled && !loading && !error && models.length === 0 && (
         <p className="text-xs text-gray-600 mt-2">No models available for this key yet.</p>
       )}
+      {showControls && <button type="button" disabled={disabled || loading || saving} onClick={() => { void load(); }}
+        className="mt-2 text-xs text-gray-400 disabled:opacity-50">Test connection / refresh models</button>}
     </div>
   );
 }
@@ -1500,68 +1517,20 @@ function credentialReadiness(entry: ConnectorEntry, status: CredentialPasteStatu
   const requiredScope = ui.webhookSetup ? `${entry.channel}:events` : undefined;
   const scopesReady = requiredScope ? activeSet.has(requiredScope) : activeSet.size > 0;
   const credentialsReady = sealed && !additionalMissing && (!ui.webhookSetup || webhookReady);
-  return { activeSet, sealed, additionalMissing, requiredScope, scopesReady, credentialsReady };
+  return { activeSet, sealed, additionalMissing, requiredScope, scopesReady, credentialsReady, ready: credentialsReady && scopesReady };
 }
 
-function CredentialPasteConnectorCard({ entry }: Readonly<{ entry: ConnectorEntry }>) {
-  const [status, setStatus] = useState<CredentialPasteStatus | null>(null);
-  const [statusLoading, setStatusLoading] = useState(true);
-  const [statusError, setStatusError] = useState<string | null>(null);
-
+function PersonalCredentialSection({ entry, sealed, additionalMissing, onSaved }: Readonly<{
+  entry: ConnectorEntry; sealed: boolean; additionalMissing: boolean; onSaved: () => void;
+}>) {
+  const ui = credentialCopy(entry);
+  const additionalField = ui.additionalField;
   // Credential paste state
   const [credentialInput, setCredentialInput] = useState('');
   const [additionalInput, setAdditionalInput] = useState('');
   const [sealing, setSealing] = useState(false);
   const [sealError, setSealError] = useState<string | null>(null);
   const [showCredentialInput, setShowCredentialInput] = useState(false);
-  const [webhookReady, setWebhookReady] = useState(false);
-  const [billingReady, setBillingReady] = useState(false);
-
-  const ui = credentialCopy(entry);
-  const additionalField = ui.additionalField;
-
-  const fetchStatus = useCallback(async () => {
-    setStatusLoading(true);
-    setStatusError(null);
-    try {
-      const r = await fetch(entry.statusEndpoint!);
-      if (!r.ok) throw new Error(`${r.status} ${r.statusText}`);
-      setStatus(await r.json() as CredentialPasteStatus);
-    } catch (err: unknown) {
-      setStatusError(String(err));
-    } finally {
-      setStatusLoading(false);
-    }
-  }, [entry.statusEndpoint]);
-
-  const refreshStatus = useCallback(async () => {
-    try {
-      const r = await fetch(entry.statusEndpoint!);
-      if (!r.ok) return;
-      setStatus(await r.json() as CredentialPasteStatus);
-      setStatusError(null);
-    } catch { /* non-fatal */ }
-  }, [entry.statusEndpoint]);
-
-  useEffect(() => { fetchStatus(); }, [fetchStatus]);
-
-  const { disconnecting, disconnectError, handleDisconnect } = useDisconnect(
-    entry.disconnectRoute,
-    disconnectConfirmMessage(entry, ui.label),
-    () => { void fetchStatus(); },
-    disconnectMethod(entry),
-  );
-
-  // Scope grant state
-  const { grantingScope, grantError, handleToggleScope } = useScopeToggle(
-    entry.statusEndpoint,
-    () => status?.activeScopes ?? [],
-    setStatus,
-  );
-
-  const { activeSet, sealed, additionalMissing, requiredScope, scopesReady, credentialsReady } =
-    credentialReadiness(entry, status, webhookReady);
-  const ready = credentialsReady && scopesReady;
   const sealActionLabel = sealed ? 'Replace' : 'Seal';
   const credentialLabel = additionalField ? `${entry.name} keys` : ui.label;
   const sealButtonLabel = sealing ? 'Sealing…' : `${sealActionLabel} ${credentialLabel}`;
@@ -1589,7 +1558,7 @@ function CredentialPasteConnectorCard({ entry }: Readonly<{ entry: ConnectorEntr
       setCredentialInput('');
       setAdditionalInput('');
       setShowCredentialInput(false);
-      void refreshStatus();
+      onSaved();
     } catch (err: unknown) {
       setSealError(String(err));
     } finally {
@@ -1598,37 +1567,7 @@ function CredentialPasteConnectorCard({ entry }: Readonly<{ entry: ConnectorEntr
   }
 
   return (
-    <div className="bg-white/5 border border-white/10 rounded-xl p-4 sm:p-6">
-      {/* Header */}
-      <div className="flex flex-wrap items-start justify-between gap-3 mb-6">
-        <div className="flex items-center gap-3">
-          <span className="text-3xl">{entry.icon}</span>
-          <div>
-            <h2 className="text-lg font-semibold text-white">{entry.name}</h2>
-            <p className="text-sm text-gray-400">{entry.description}</p>
-          </div>
-        </div>
-        <ConnectorStatusBadge
-          loading={statusLoading}
-          error={!!statusError}
-          ready={ready}
-          pending={status?.credentialPending}
-          incomplete={!!requiredScope && credentialsReady && !scopesReady}
-        />
-      </div>
-
-      {statusLoading && <p className="text-gray-500 text-sm">Loading status…</p>}
-      {statusError && <p className="text-red-400 text-sm">Could not load status: {statusError}</p>}
-
-      {!statusLoading && !statusError && status && (
-        <div className="space-y-6">
-
-          {requiredScope && !scopesReady && (
-            <WebhookConsentNotice scope={requiredScope} credentialsReady={credentialsReady} />
-          )}
-
-          {/* ── Step 1: the credential ── */}
-          <div>
+<div>
             {additionalMissing && (
               <output className="block text-amber-400 text-sm mb-3">{additionalField?.missingLabel}. Seal both keys below to enable card payments.</output>
             )}
@@ -1699,14 +1638,16 @@ function CredentialPasteConnectorCard({ entry }: Readonly<{ entry: ConnectorEntr
               </div>
             )}
           </div>
+  );
+}
 
-          {/*
-            ── Step 2 (optional): non-secret settings ──
-            Present only for connectors that declare `settings` (#1632), which
-            shifts scope grants to step 3 for those and leaves it at 2 otherwise.
-          */}
+function ProviderConfigurationSections({ entry, sealed, onSaved, onBillingReady }: Readonly<{
+  entry: ConnectorEntry; sealed: boolean; onSaved: () => void; onBillingReady: (ready: boolean) => void;
+}>) {
+  const mode = useConnectorMode();
+  return <>
           {entry.settings && (
-            <ConnectorSettingsSection settings={entry.settings} stepNumber={2} onSaved={refreshStatus} />
+            <ConnectorSettingsSection provider={entry.id} settings={entry.settings} stepNumber={2} onSaved={onSaved} />
           )}
 
           {/*
@@ -1714,20 +1655,158 @@ function CredentialPasteConnectorCard({ entry }: Readonly<{ entry: ConnectorEntr
             Only once the credential is sealed — the route needs the owner's
             own key to ask the provider which models it can use.
           */}
-          {entry.modelsRoute && sealed && (
-            <ModelPickerSection
+          {entry.modelsRoute && (sealed || mode.kind === 'org') && (
+            <ModelPickerSection key={String(sealed)}
+              provider={entry.id}
               route={entry.modelsRoute}
               stepNumber={entry.settings ? 3 : 2}
             />
           )}
 
           {entry.billingCredential && (
-            <BillingCredentialSection credential={entry.billingCredential} onReady={setBillingReady} />
+            <BillingCredentialSection provider={entry.id} credential={entry.billingCredential} onReady={onBillingReady} />
           )}
+          {!entry.modelsRoute && (
+            <section aria-label="Connection test" className="space-y-2">
+              <h3 className="text-sm text-white">Connection test</h3>
+              {(mode.kind === 'personal' || mode.canManage) && <button type="button" disabled className="text-xs text-gray-500">Test connection</button>}
+              <ProviderSectionNotice note="No read-only provider probe is configured for this connector; loaded status is not a provider test."
+                followUp={ORG_PROVIDER_PARITY_URL} />
+            </section>
+          )}
+  </>;
+}
+
+function OrgProviderCredentialSetup({ entry, canManage }: Readonly<{ entry: ConnectorEntry; canManage: boolean }>) {
+  const ui = credentialCopy(entry);
+  const additionalField = ui.additionalField;
+  if (!additionalField && !ui.webhookSetup && !['gcp', 'local'].includes(entry.id)) return null;
+  return (
+    <fieldset disabled aria-label="Provider credential setup" className="space-y-2">
+              <legend className="text-sm text-white">Provider credential setup</legend>
+              <p className="text-xs text-gray-400">{ui.hint}</p>
+              {canManage && additionalField && <CredentialPasswordInput label={additionalField.label} value="" onChange={() => {}} placeholder={additionalField.placeholder} />}
+              {ui.webhookSetup && <p className="text-xs text-gray-400">Webhook URL, events and signing-secret setup require provider-specific org custody.</p>}
+              <ProviderSectionNotice note="Disabled: this opaque org service key does not configure these fields."
+                followUp={ORG_PROVIDER_PARITY_URL} />
+            </fieldset>
+  );
+}
+
+function CredentialPasteConnectorCard({ entry }: Readonly<{ entry: ConnectorEntry }>) {
+  const mode = useConnectorMode();
+  const orgMode = mode.kind === 'org' ? mode : null;
+  const scopeAccess = useProviderSection(entry.id, 'scopes', entry.statusEndpoint ?? '');
+  const [orgReady, setOrgReady] = useState(!!orgMode?.initial && !orgMode.statusUnavailable);
+  const [status, setStatus] = useState<CredentialPasteStatus | null>(orgMode ? { manifestAssetId: null, activeScopes: [], validScopes: [] } : null);
+  const [statusLoading, setStatusLoading] = useState(!orgMode);
+  const [statusError, setStatusError] = useState<string | null>(null);
+
+  const [webhookReady, setWebhookReady] = useState(false);
+  const [billingReady, setBillingReady] = useState(false);
+
+  const ui = credentialCopy(entry);
+
+  const fetchStatus = useCallback(async () => {
+    setStatusLoading(scopeAccess.orgDid === null);
+    setStatusError(null);
+    try {
+      if (scopeAccess.disabled) {
+        setStatus({ manifestAssetId: null, activeScopes: [], validScopes: [] });
+        return;
+      }
+      const r = await fetch(scopeAccess.route, { headers: sectionHeaders(scopeAccess.orgDid), cache: 'no-store' });
+      if (!r.ok) throw new Error(`${r.status} ${r.statusText}`);
+      setStatus(await r.json() as CredentialPasteStatus);
+    } catch (err: unknown) {
+      setStatusError(String(err));
+    } finally {
+      setStatusLoading(false);
+    }
+  }, [scopeAccess.route, scopeAccess.disabled, scopeAccess.orgDid]);
+
+  const refreshStatus = useCallback(async () => {
+    try {
+      if (scopeAccess.disabled) {
+        setStatus({ manifestAssetId: null, activeScopes: [], validScopes: [] });
+        return;
+      }
+      const r = await fetch(scopeAccess.route, { headers: sectionHeaders(scopeAccess.orgDid), cache: 'no-store' });
+      if (!r.ok) return;
+      setStatus(await r.json() as CredentialPasteStatus);
+      setStatusError(null);
+    } catch { /* non-fatal */ }
+  }, [scopeAccess.route, scopeAccess.disabled, scopeAccess.orgDid]);
+
+  useEffect(() => { fetchStatus(); }, [fetchStatus]);
+
+  const { disconnecting, disconnectError, handleDisconnect } = useDisconnect(
+    entry.disconnectRoute,
+    disconnectConfirmMessage(entry, ui.label),
+    () => { void fetchStatus(); },
+    disconnectMethod(entry),
+  );
+
+  // Scope grant state
+  const { grantingScope, grantError, handleToggleScope } = useScopeToggle(
+    scopeAccess.route,
+    () => status?.activeScopes ?? [],
+    setStatus,
+    scopeAccess.orgDid,
+  );
+
+  const { activeSet, sealed: personalSealed, additionalMissing, requiredScope, scopesReady, credentialsReady, ready: personalReady } =
+    credentialReadiness(entry, status, webhookReady);
+  const sealed = orgMode ? orgReady : personalSealed;
+  const ready = orgMode ? orgReady : personalReady;
+
+  return (
+    <article aria-label={orgMode ? `${entry.name} org service key` : `${entry.name} connector`}
+      className="bg-white/5 border border-white/10 rounded-xl p-4 sm:p-6">
+      {/* Header */}
+      <div className="flex flex-wrap items-start justify-between gap-3 mb-6">
+        <div className="flex items-center gap-3">
+          <span className="text-3xl">{entry.icon}</span>
+          <div>
+            <h2 className="text-lg font-semibold text-white">{entry.name}</h2>
+            <p className="text-sm text-gray-400">{entry.description}</p>
+          </div>
+        </div>
+        <ConnectorStatusBadge
+          loading={statusLoading}
+          error={!!statusError}
+          ready={ready}
+          pending={status?.credentialPending}
+          incomplete={!!requiredScope && credentialsReady && !scopesReady}
+        />
+      </div>
+
+      {statusLoading && <p className="text-gray-500 text-sm">Loading status…</p>}
+      {statusError && <p className="text-red-400 text-sm">Could not load status: {statusError}</p>}
+
+      {!statusLoading && (!statusError || orgMode) && status && (
+        <div className="space-y-6">
+
+          {!orgMode && requiredScope && !scopesReady && (
+            <WebhookConsentNotice scope={requiredScope} credentialsReady={credentialsReady} />
+          )}
+
+          {/* ── Step 1: the credential ── */}
+          {orgMode ? <OrgCredentialSection entry={entry} mode={orgMode} onReady={setOrgReady} /> : <PersonalCredentialSection entry={entry} sealed={sealed} additionalMissing={additionalMissing} onSaved={refreshStatus} />}
+
+          {/*
+            ── Step 2 (optional): non-secret settings ──
+            Present only for connectors that declare `settings` (#1632), which
+            shifts scope grants to step 3 for those and leaves it at 2 otherwise.
+          */}
+          <ProviderConfigurationSections entry={entry} sealed={sealed} onSaved={refreshStatus} onBillingReady={setBillingReady} />
           {/* ── Scope grants ── */}
-          {ui.webhookSetup && sealed && !additionalMissing && entry.tokenRoute && (
+          {!orgMode && ui.webhookSetup && sealed && !additionalMissing && entry.tokenRoute && (
             <WebhookSecretSetup route={entry.tokenRoute} onSaved={() => { void refreshStatus(); }} onReady={setWebhookReady} />
           )}
+          {orgMode && <OrgProviderCredentialSetup entry={entry} canManage={orgMode.canManage} />}
+          <fieldset disabled={scopeAccess.disabled}>
+          <ProviderSectionNotice note={scopeAccess.note} followUp={scopeAccess.followUp} />
           <ScopeGrantSection
             entry={entry}
             activeSet={activeSet}
@@ -1738,8 +1817,10 @@ function CredentialPasteConnectorCard({ entry }: Readonly<{ entry: ConnectorEntr
             credentialReadyScopes={entry.billingCredential ? new Map([[entry.billingCredential.scope, billingReady]]) : undefined}
             noTokenHint={`Seal your ${ui.label} (step 1) to enable scope grants.`}
             requiredScope={requiredScope}
-            onToggle={(name, enable) => { void handleToggleScope(name, enable); }}
+            onToggle={(name, enable) => { if (!scopeAccess.disabled) void handleToggleScope(name, enable); }}
           />
+
+          </fieldset>
 
           {status.manifestAssetId && (
             <div className="text-xs text-gray-700 font-mono truncate pt-1 border-t border-white/5" title="Scope-manifest asset ID">
@@ -1748,7 +1829,7 @@ function CredentialPasteConnectorCard({ entry }: Readonly<{ entry: ConnectorEntr
           )}
 
           {/* Disconnect — only for connectors that expose a disconnect route. */}
-          {sealed && entry.disconnectRoute && (
+          {!orgMode && sealed && entry.disconnectRoute && (
             <DisconnectSection
               label={`Disconnect ${entry.name}`}
               disconnecting={disconnecting}
@@ -1758,7 +1839,7 @@ function CredentialPasteConnectorCard({ entry }: Readonly<{ entry: ConnectorEntr
           )}
         </div>
       )}
-    </div>
+    </article>
   );
 }
 
@@ -2287,7 +2368,11 @@ const OAUTH_CARDS: Record<string, (props: Readonly<{ entry: ConnectorEntry }>) =
  * A brand-new ingestion pattern is a typecheck failure in `connectorCardKind`,
  * which is the point: it can no longer fall through to "Coming soon" unnoticed.
  */
-export function ConnectorDetail({ entry }: Readonly<{ entry: ConnectorEntry }>) {
+export function ConnectorDetail({ entry, mode = { kind: 'personal' } }: Readonly<{ entry: ConnectorEntry; mode?: ConnectorMode }>) {
+  return <ConnectorModeContext.Provider value={mode}><ConnectorCard entry={entry} /></ConnectorModeContext.Provider>;
+}
+
+function ConnectorCard({ entry }: Readonly<{ entry: ConnectorEntry }>) {
   switch (connectorCardKind(entry)) {
     case 'pending':
       return <PendingConnectorCard entry={entry} />;

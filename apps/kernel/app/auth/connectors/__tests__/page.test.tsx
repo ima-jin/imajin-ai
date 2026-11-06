@@ -117,10 +117,10 @@ describe('connector status pills', () => {
 describe('acting identity context', () => {
   const orgDid = 'did:imajin:artifact';
   const actorDid = 'did:imajin:admin';
-  function orgFetch() {
+  function orgFetch(subtype?: string) {
     const fetch = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
-      if (url === '/auth/api/session') return jsonResponse({ scope: 'actor', name: 'Personal name', handle: 'personal' });
+      if (url === '/auth/api/session') return jsonResponse({ scope: 'actor', subtype, name: 'Personal name', handle: 'personal' });
       if (url === '/infer/v1/models/usable?explain=1') {
         const actingDid = localStorage.getItem('imajin:acting-as');
         return jsonResponse({ routes: [{
@@ -136,6 +136,7 @@ describe('acting identity context', () => {
         controllers: [{ controllerDid: actorDid, scope: 'actor', subtype: null, role: 'admin', allowedServices: null }],
       });
       if (url === '/connections/api/org-held') return jsonResponse({ connections: [] });
+      if (url.startsWith('/connections/api/org-held/status?')) return jsonResponse({ connections: [] });
       if (url === '/auth/api/org-connections') return jsonResponse({ connections: [], suspensions: [], events: [] });
       return jsonResponse({ grants: [], activeScopes: [] });
     });
@@ -177,6 +178,15 @@ describe('acting identity context', () => {
     });
     expect(screen.queryByRole('region', { name: 'Org service keys' })).toBeNull();
     expect(await screen.findByText('Anthropic Claude')).toBeDefined();
+  });
+  it.each(['agent', 'presence'])('keeps org cards status-only for a %s session', async subtype => {
+    localStorage.setItem('imajin:acting-as', orgDid);
+    const fetch = orgFetch(subtype);
+    render(<ConnectionsPage />);
+    const card = await screen.findByRole('article', { name: 'Anthropic Claude org service key' });
+    expect(within(card).queryByRole('button')).toBeNull();
+    expect(within(card).queryByLabelText(/write-only/)).toBeNull();
+    expect(fetch.mock.calls.some(([url]) => String(url) === '/connections/api/org-held')).toBe(false);
   });
   it('handles a rejected session check without exposing controls', async () => {
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('offline')));

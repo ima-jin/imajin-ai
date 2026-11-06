@@ -183,6 +183,109 @@ tags:
     description: imajin connections service
 
 paths:
+  /api/org-held/{provider}/{section}:
+    parameters:
+      - { name: provider, in: path, required: true, schema: { type: string, enum: [anthropic, warp] } }
+      - { name: section, in: path, required: true, schema: { type: string, enum: [models, billing-key, scopes, settings] } }
+    get:
+      tags: [connections]
+      operationId: readOrgProviderSection
+      summary: Read org provider configuration through the shared connector sections
+      description: >-
+        Cookie session acting as an org with live owner/admin membership and
+        connections-service access required. App/bearer/delegated contexts are
+        refused. Anthropic supports models, billing-key and scopes; Warp supports
+        settings. Other pairs return 404 and unsupported verbs return 405.
+        Models opens only the live provenance-bearing org-subject custody grant
+        in-process to list provider models, never returning a key. Billing status
+        requires loadedByDid and loadedAt and returns those metadata fields only
+        when loaded. Legacy provenance-less rows never report loaded.
+        Every response is no-store. Ordinary members use the existing metadata-only
+        status endpoint; this endpoint grants no member or runtime authority.
+      security: [{ cookieAuth: [] }]
+      responses:
+        "200": { description: "Models/currentModelId, billing readiness/provenance, scope manifest, or environmentId; never credentials." }
+        "400": { description: No usable org model credential }
+        "401": { description: Cookie session required }
+        "403": { description: Live org owner/admin and connections-service access required }
+        "404": { description: Unsupported provider section }
+        "405": { description: Unsupported verb for section }
+        "502": { description: Provider model list unavailable; no raw diagnostics }
+        "503": { description: Org configuration unavailable; no raw exceptions }
+    put:
+      tags: [connections]
+      operationId: updateOrgProviderDefault
+      summary: Save an org model or Warp environment default
+      description: >-
+        Same org-admin gate as GET. Anthropic models validates the supplied model
+        with the org-held key before saving the non-secret per-org model default.
+        Each inference call still supplies its model ID; this does not change
+        gateway or plugin routing. Warp settings validates and stores the per-org
+        environment default. Both reuse existing signed vault history; custody,
+        provenance, grants and personal defaults remain untouched.
+      security: [{ cookieAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - { type: object, required: [modelId], properties: { modelId: { type: string, minLength: 1 } } }
+                - { type: object, required: [environmentId], properties: { environmentId: { type: string, maxLength: 64, pattern: '^[A-Za-z0-9_-]+$' } } }
+      responses:
+        "200": { description: Saved non-secret default }
+        "400": { description: Invalid JSON or field value }
+        "401": { description: Cookie session required }
+        "403": { description: Live org admin required }
+        "404": { description: Unsupported provider section }
+        "405": { description: Unsupported verb for section }
+        "422": { description: Provider rejected an unavailable model }
+        "502": { description: Provider probe unavailable }
+        "503": { description: Org configuration unavailable }
+    post:
+      tags: [connections]
+      operationId: loadOrgProviderBillingOrScopes
+      summary: Load an org Anthropic billing credential or publish org scope consent
+      description: >-
+        Same org-admin gate as GET. billing-key accepts a write-only token and
+        seals under the org DID with authenticated loaded-by/time provenance.
+        scopes reuses existing Anthropic scope-consent validation and publishing.
+        Loading billing custody does not grant its scope, change inference
+        custody, or create a per-member grant. The key is never returned.
+      security: [{ cookieAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - { type: object, required: [token], properties: { token: { type: string, minLength: 1, writeOnly: true } } }
+                - { type: object, required: [scopes], properties: { scopes: { type: array, items: { type: string } } } }
+      responses:
+        "200": { description: Scope-consent result }
+        "201": { description: Billing sealed=true only }
+        "400": { description: Invalid JSON, credential or scope input }
+        "401": { description: Cookie session required }
+        "403": { description: Live human org admin required }
+        "404": { description: Unsupported provider section }
+        "405": { description: Unsupported verb for section }
+        "503": { description: Org configuration unavailable }
+    delete:
+      tags: [connections]
+      operationId: revokeOrgBillingOrClearEnvironment
+      summary: Revoke billing custody or clear the org environment default
+      description: >-
+        Same org-admin gate as GET. billing-key revokes only billing custody,
+        retaining inference custody and signed history. Warp settings clears its
+        default through a signed vault tombstone. No rows are deleted.
+      security: [{ cookieAuth: [] }]
+      responses:
+        "200": { description: Credential revocation or environment clear result }
+        "401": { description: Cookie session required }
+        "403": { description: Live org admin required }
+        "404": { description: Unsupported provider section }
+        "405": { description: Unsupported verb for section }
+        "503": { description: Org configuration unavailable }
   /api/org-held/status:
     get:
       tags: [connections]

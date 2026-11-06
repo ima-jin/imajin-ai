@@ -93,7 +93,7 @@ describe('org service-key cards', () => {
     await waitFor(() => expect((card.getByRole('button', { name: 'Replace key' }) as HTMLButtonElement).disabled).toBe(false));
     expect(replacement.value).toBe('');
     fireEvent.click(card.getByRole('button', { name: 'Remove key' }));
-    await card.findByText('Not loaded');
+    await card.findByText('Not loaded — re-load here');
     expect(fetch.mock.calls.filter(([url, init]) => url === keyEndpoint && init?.method).map(([, init]) => init?.method))
       .toEqual(['POST', 'POST', 'DELETE']);
   });
@@ -119,7 +119,7 @@ describe('org service-key cards', () => {
     fireEvent.submit(input.closest('form')!);
     expect(input.value).toBe('');
     await card.findByRole('alert');
-    expect(card.getByRole('status').textContent).toContain('unavailable');
+    expect(within(card.getByRole('region', { name: 'Anthropic Claude org custody' })).getByRole('status').textContent).toContain('unavailable');
     expect(document.body.textContent).not.toContain(value);
     expect(log).not.toHaveBeenCalled();
   });
@@ -159,10 +159,11 @@ describe('org service-key cards', () => {
     expect(fetch.mock.calls.some(([url]) => url === '/connections/api/org-held' || url.endsWith('/grants'))).toBe(false);
   });
 
-  it.each(['agent-session', 'service-restricted', 'missing-viewer'])('fails closed for %s', async boundary => {
+  it.each(['agent-session', 'presence-controller', 'service-restricted', 'missing-viewer'])('fails closed for %s', async boundary => {
     const group = fixture();
     if (boundary === 'service-restricted') Object.assign(group.controllers[0], { allowedServices: ['profile'] });
     if (boundary === 'missing-viewer') group.viewerDid = 'did:imajin:unknown';
+    if (boundary === 'presence-controller') Object.assign(group.controllers[0], { subtype: 'presence' });
     transport({ group });
     const card = await panel(boundary !== 'agent-session');
     expect(card.queryByRole('button')).toBeNull();
@@ -241,6 +242,21 @@ describe('per-provider human-member grants', () => {
     const grant = await card.findByRole('button', { name: 'Grant Anthropic Claude for Ryan' });
     fireEvent.change(card.getByLabelText(/Grant\/revoke reason/), { target: { value: 'Org work' } });
     expect((grant as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it.each(['loadedByDid', 'loadedAt'])('never claims loaded when legacy metadata lacks %s', async field => {
+    const fetch = transport();
+    const legacy = { ...metadata(), [field]: null };
+    fetch.mockImplementation(async (url: string) => {
+      if (url.startsWith('/auth/api/groups/')) return Response.json(fixture());
+      if (url === '/connections/api/org-held') return Response.json({ connections: [legacy] });
+      return Response.json({ grants: [], connections: [], events: [], suspensions: [] });
+    });
+    const card = await panel();
+    const custody = within(card.getByRole('region', { name: 'Anthropic Claude org custody' }));
+    expect(custody.getByText('Not loaded — re-load here')).toBeDefined();
+    expect(card.queryByText('Loaded')).toBeNull();
+    expect(card.getByRole('button', { name: 'Load key' })).toBeDefined();
   });
 
   it.each([403, 503])('does not claim a failed mutation changed grant state (%i)', async status => {

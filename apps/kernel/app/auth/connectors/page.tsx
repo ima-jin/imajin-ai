@@ -23,6 +23,7 @@ import Link from 'next/link';
 import { InferenceRoutes } from './components/InferenceRoutes';
 import { getActingAs, getActingAsHeaders } from '@imajin/ui/server';
 import OrgServiceKeys from './components/OrgServiceKeys';
+import { isAgentCapableSubtype } from '@/src/lib/kernel/connection-principal-policy';
 import {
   CONNECTOR_REGISTRY,
   type ConnectorEntry,
@@ -135,7 +136,7 @@ export default function ConnectionsPage() {
       .then(async (r) => {
         if (r.ok) {
           const session = await r.json();
-          setHumanSession(session.subtype !== 'agent' && session.scope === 'actor');
+          setHumanSession(!isAgentCapableSubtype(session.subtype) && session.scope === 'actor');
         }
         setIsLoggedIn(r.ok); setSessionLoading(false);
       })

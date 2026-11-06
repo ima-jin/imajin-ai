@@ -10,6 +10,19 @@ import { GET } from '@/app/connections/api/spec/route';
 const kernelRoot = resolve('apps/kernel');
 
 afterEach(() => vi.restoreAllMocks());
+it('documents org provider sections with cookie-only admin authority and write-only billing input', async () => {
+  vi.spyOn(process, 'cwd').mockReturnValue(kernelRoot);
+  const spec = parse(await (await GET()).text());
+  const path = '/api/org-held/{provider}/{section}';
+  expect(listApiSpecs().find(item => item.service === 'connections')?.paths).toContain(path);
+  const item = spec.paths[path];
+  for (const verb of ['get', 'put', 'post', 'delete']) expect(item[verb].security).toEqual([{ cookieAuth: [] }]);
+  expect(item.get.description).toContain('Ordinary members use the existing metadata-only');
+  expect(item.get.description).toContain('Legacy provenance-less rows never report loaded');
+  expect(item.put.description).toContain('Each inference call still supplies its model ID');
+  expect(item.post.requestBody.content['application/json'].schema.oneOf[0].properties.token.writeOnly).toBe(true);
+  expect(item.delete.description).toContain('No rows are deleted');
+});
 it('publishes the member grant lifecycle with provenance-only responses and no runtime injection promise', async () => {
   vi.spyOn(process, 'cwd').mockReturnValue(kernelRoot);
   const spec = parse(await (await GET()).text());

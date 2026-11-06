@@ -77,7 +77,7 @@ describe.each(['anthropic', 'openai'])('%s billing slot on the connector card', 
     confirm.mockReturnValue(true);
     fireEvent.click(screen.getByRole('button', { name: 'Revoke billing key' }));
     await screen.findByText('billed: not connected');
-    expect(fetchMock).toHaveBeenCalledWith(entry.billingCredential!.route, { method: 'DELETE' });
+    expect(fetchMock).toHaveBeenCalledWith(entry.billingCredential!.route, expect.objectContaining({ method: 'DELETE' }));
     expect(fill('').value).toBe('');
   });
   it('clears a refused submission and never renders the returned error or claims sealed', async () => {
