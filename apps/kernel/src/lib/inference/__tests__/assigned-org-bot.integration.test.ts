@@ -81,6 +81,7 @@ import { transactions, balanceRollups } from '@/src/db/schemas/pay';
 import { prepareMechanicalAttestation } from '@/src/lib/auth/emit-mechanical-attestation';
 import { revokeVaultDelegationGrantsForConnector } from '@/src/lib/vault';
 import { isExternalMcpField } from '@/src/lib/vault/field-grammar';
+import type { ConnectionErrorCode } from '@/src/lib/kernel/external-mcp-policy';
 import { changeOrgConnection } from '@/src/lib/kernel/org-connection-admin';
 import { requireOrgConnectionMemberGrant } from '@/src/lib/kernel/org-connection-member-grants';
 import { registerReactor } from '../../../../../../packages/bus/src/registry';
@@ -203,7 +204,7 @@ async function connection(seed: Scenario) {
   const [row] = await database.select().from(connectors).where(eq(connectors.ownerDid, seed.orgDid));
   return row;
 }
-async function deniedOnBoth(seed: Scenario, status: number, error: string, actorDid = seed.botDid) {
+async function deniedOnBoth(seed: Scenario, status: number, error: string, code: ConnectionErrorCode, actorDid = seed.botDid) {
   const calls = h.upstreamCalls;
   const usage = await database.select().from(usageIncurred);
   for (const response of [await discover(seed, actorDid), await infer(seed, actorDid)]) {
@@ -212,6 +213,11 @@ async function deniedOnBoth(seed: Scenario, status: number, error: string, actor
   }
   expect(h.upstreamCalls).toBe(calls);
   expect(await database.select().from(usageIncurred)).toEqual(usage);
+  // HTTP auth and inference routes intentionally project safe messages, not
+  // every internal code. Assert the real resolver's boundary code as well.
+  await expect(resolveBrain({ caller: { actorDid, actingAs: seed.orgDid } }, {
+    connectors: ['anthropic'], model: 'claude-scenario',
+  })).rejects.toMatchObject({ status, code });
 }
 function connectionGate(seed: Scenario, actorDid: string, provider = 'anthropic') {
   return authorizeMemberConnection(database, {
@@ -270,7 +276,7 @@ describe('assigned org-bot discovery seeded by real writers (#3335, #3342)', () 
       expect(seed.field).toBe(`anthropic-api-key:${seed.orgDid}`);
       expect(custody).toMatchObject({ subject: h.nodeDid, grantedTo: h.nodeDid, status: 'active', oneTime: false });
       expect(hasOrgConnectionProvenance(row)).toBe(false);
-      await deniedOnBoth(seed, 403, 're-seal through the org connectors page');
+      await deniedOnBoth(seed, 403, 're-seal through the org connectors page', 'connection_not_loaded');
       expect(await connection(seed)).toEqual(row);
       await expect(connectionGate(seed, seed.botDid)).rejects.toMatchObject({
         status: 403, code: 'connection_not_loaded',
@@ -307,14 +313,14 @@ describe('assigned org-bot discovery seeded by real writers (#3335, #3342)', () 
 
   it('refuses an unassigned agent before custody or upstream access', async () => {
     const seed = await seedOrgWithAssignedBot({ authenticate: identity => { h.identity = identity; }, assigned: false });
-    await deniedOnBoth(seed, 403, 'Not authorized to act as this group');
+    await deniedOnBoth(seed, 403, 'Not authorized to act as this group', 'agent_not_assigned');
   });
 
   it('refuses revoked vault custody on the next call, with its signed revocation retained', async () => {
     const seed = await scenario();
     expect((await discover(seed)).status).toBe(200);
     expect(await revokeVaultDelegationGrantsForConnector('anthropic', seed.orgDid, { attest: true })).toBe(1);
-    await deniedOnBoth(seed, 503, 'Organization inference credential unavailable');
+    await deniedOnBoth(seed, 503, 'Organization inference credential unavailable', 'credential_unavailable');
     expect(await database.select().from(attestations).where(and(
       eq(attestations.subjectDid, seed.orgDid), eq(attestations.type, 'delegation.grant.revoked'),
     ))).toHaveLength(1);
@@ -324,14 +330,14 @@ describe('assigned org-bot discovery seeded by real writers (#3335, #3342)', () 
     const seed = await scenario();
     expect((await discover(seed)).status).toBe(200);
     await corrupt(seed, 'custody', { grantedTo: 'did:imajin:another-node' });
-    await deniedOnBoth(seed, 503, 'Organization inference credential unavailable');
+    await deniedOnBoth(seed, 503, 'Organization inference credential unavailable', 'credential_unavailable');
   });
 
   it('refuses another org field even when its real custody and connector are active', async () => {
     const seed = await scenario();
     const other = await scenario();
     await corrupt(seed, 'connector', { sealedKeyField: other.field });
-    await deniedOnBoth(seed, 403, 'No active connection');
+    await deniedOnBoth(seed, 403, 'No active connection', 'connection_not_loaded');
     expect((await discover(other)).status).toBe(200);
   });
 
@@ -341,14 +347,14 @@ describe('assigned org-bot discovery seeded by real writers (#3335, #3342)', () 
     await changeOrgConnection({ effectiveDid: seed.orgDid, actingHumanDid: seed.humanDid }, {
       action: 'suspend', provider: 'anthropic', reason: 'Scenario admin suspension',
     });
-    await deniedOnBoth(seed, 403, 'No active personal external MCP connection or grant');
+    await deniedOnBoth(seed, 403, 'No active personal external MCP connection or grant', 'connection_suspended');
     expect(await database.select().from(orgConnectionEvents).where(eq(orgConnectionEvents.orgDid, seed.orgDid))).toHaveLength(1);
   });
 
   it('refuses a non-member human acting as the org', async () => {
     const seed = await scenario();
     const outsider = await seedRegisteredActor('human');
-    await deniedOnBoth(seed, 403, 'Not authorized to act as this group', outsider.did);
+    await deniedOnBoth(seed, 403, 'Not authorized to act as this group', 'org_membership_required', outsider.did);
   });
 
   it.each([
@@ -383,7 +389,8 @@ describe('assigned org-bot discovery seeded by real writers (#3335, #3342)', () 
         message: expect.stringContaining(row.code === 'agent_not_assigned'
           ? 'Agent is not assigned' : 'Active org-connection member grant required') });
       await deniedOnBoth(seed, 403, row.code === 'agent_not_assigned'
-        ? 'Not authorized to act as this group' : 'Active org-connection member grant required', actorDid);
+        ? 'Not authorized to act as this group' : 'Active org-connection member grant required',
+      row.code as ConnectionErrorCode, actorDid);
     }
   });
 
@@ -436,7 +443,7 @@ describe('assigned org-bot discovery seeded by real writers (#3335, #3342)', () 
   it.each(['loadedByDid', 'loadedAt'] as const)('refuses missing %s without weakening the provenance boundary', async field => {
     const seed = await scenario();
     await corrupt(seed, 'connector', { [field]: null });
-    await deniedOnBoth(seed, 403, 're-seal through the org connectors page');
+    await deniedOnBoth(seed, 403, 're-seal through the org connectors page', 'connection_not_loaded');
   });
 
   it('keeps the same agent on its own identity without an org selector', async () => {
