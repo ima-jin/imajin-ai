@@ -106,6 +106,10 @@ import { readOrgHeldStatus } from '../org-held-status';
 import { SESSION_COOKIE_NAME } from '@imajin/config';
 import { POST as sealAnthropicToken } from '@/app/anthropic/api/token/route';
 import { resolveOrgHeldBrain } from '@/src/lib/inference/org-held-brain';
+import { GET as PROVIDER_GET, POST as PROVIDER_POST, PUT as PROVIDER_PUT, DELETE as PROVIDER_DELETE } from '@/app/connections/api/org-held/[provider]/[section]/route';
+import { GET as PERSONAL_MODELS } from '@/app/anthropic/api/models/route';
+import { POST as PERSONAL_BILLING } from '@/app/anthropic/api/billing-key/route';
+import { loadOrgPickerCredentials } from '../org-provider-management';
 
 const tables = [identities, identityMembers, delegationGrants, attestations, channelLinks, registryApps, connectors, orgConnectionSuspensions, orgConnectionEvents,
   vaultDelegationGrants, vaultOwnerEnvelopes, vaultGrantRequests, orgConnectionMemberGrants];
@@ -383,6 +387,172 @@ afterEach(async () => {
   vi.unstubAllGlobals();
 });
 afterAll(async () => { await client.close(); vi.unstubAllEnvs(); _resetSealingCache(); });
+
+describe('org provider management: real auth policy, SQL and vault crypto', () => {
+  async function section(provider: string, name: string, method = 'GET', input?: unknown, headers: Record<string, string> = {}, raw?: string) {
+    const handlers = { GET: PROVIDER_GET, POST: PROVIDER_POST, PUT: PROVIDER_PUT, DELETE: PROVIDER_DELETE };
+    const response = await handlers[method as keyof typeof handlers](new NextRequest(`https://kernel.test/connections/api/org-held/${provider}/${name}`, {
+      method, headers: { 'x-acting-as': org, ...headers },
+      ...(input === undefined && raw === undefined ? {} : { body: raw ?? JSON.stringify(input) }),
+    }), { params: Promise.resolve({ provider, section: name }) });
+    const body = await response.json();
+    h.outputs.push(body);
+    return { status: response.status, body, headers: response.headers };
+  }
+  async function prepare() {
+    await asOrg();
+    await database.update(identities).set({ subtype: 'human' }).where(eq(identities.id, member));
+    expect((await orgRequest('POST', 'anthropic', orgKey())).status).toBe(201);
+    h.fetch.mockImplementation(async () => {
+      expect(h.openTransactions).toBe(0);
+      return Response.json({ data: [{ id: 'test-model', display_name: 'Test model' }] });
+    });
+  }
+  it('lists and saves the model using the loaded org credential without touching the human key or custody', async () => {
+    await prepare();
+    const before = await orgRows();
+    const vaultBefore = h.vault.entries.length;
+    const result = await section('anthropic', 'models');
+    expect(result.status).toBe(200);
+    expect(result.body).toMatchObject({ models: [{ id: 'test-model', name: 'Test model' }], currentModelId: null });
+    expect(h.fetch.mock.calls.at(-1)?.[1].headers['x-api-key']).toBe(h.secrets.at(-1));
+    expect((await section('anthropic', 'models', 'PUT', { modelId: 'test-model', ownerDid: member })).status).toBe(200);
+    expect((await section('anthropic', 'models')).body.currentModelId).toBe('test-model');
+    expect((await loadOrgPickerCredentials({ actorDid: member, orgDid: org }))?.modelId).toBe('test-model');
+    expect(await loadAndUnseal(`anthropic-model-id:${member}`)).toBeUndefined();
+    expect(await orgRows()).toEqual(before);
+    expect(h.vault.entries.length).toBeGreaterThan(vaultBefore);
+    expect(result.headers.get('cache-control')).toBe('no-store');
+  });
+  it.each(['loadedByDid', 'loadedAt', 'revoked', 'expired', 'missing-field', 'foreign-field'])(
+    'refuses legacy or unusable org picker custody: %s', async boundary => {
+      await prepare();
+      const [row] = await orgRows();
+      const changes = boundary === 'revoked' ? { status: 'revoked' }
+        : boundary === 'expired' ? { expiresAt: new Date(0) }
+          : boundary === 'missing-field' ? { sealedKeyField: null }
+            : boundary === 'foreign-field' ? { sealedKeyField: `anthropic-api-key:${member}` }
+              : { [boundary]: null };
+      await database.update(connectors).set(changes).where(eq(connectors.id, row.id));
+      expect((await section('anthropic', 'models')).status).toBe(400);
+      expect(h.fetch).not.toHaveBeenCalled();
+    });
+  it.each(['revoked', 'expired', 'one-time', 'missing-entry', 'bad-signer'])('refuses invalid picker custody %s', async boundary => {
+    await prepare();
+    const vaultBefore = structuredClone(h.vault);
+    const [row] = await orgRows();
+    if (boundary === 'revoked') await database.update(vaultDelegationGrants).set({ status: 'revoked' }).where(eq(vaultDelegationGrants.subject, org));
+    if (boundary === 'expired') await database.update(vaultDelegationGrants).set({ expiresAt: new Date(0) }).where(eq(vaultDelegationGrants.subject, org));
+    if (boundary === 'one-time') await database.update(vaultDelegationGrants).set({ oneTime: true }).where(eq(vaultDelegationGrants.subject, org));
+    if (boundary === 'missing-entry') h.vault.entries = h.vault.entries.filter(entry => entry.field !== row.sealedKeyField);
+    if (boundary === 'bad-signer') {
+      const entry = h.vault.entries.find(entry => entry.field === row.sealedKeyField)!;
+      entry.senderPubkey = generateKeypair().publicKey;
+    }
+    expect((await section('anthropic', 'models')).status).toBe(boundary === 'bad-signer' ? 503 : 400);
+    expect(h.fetch).not.toHaveBeenCalled();
+    h.vault = vaultBefore;
+  });
+  it('validates model input/probe before saving and sanitizes upstream failures', async () => {
+    await prepare();
+    for (const input of [{}, { modelId: '' }, { modelId: 42 }]) {
+      expect((await section('anthropic', 'models', 'PUT', input)).status).toBe(400);
+    }
+    expect((await section('anthropic', 'models', 'PUT', undefined, {}, '{bad')).status).toBe(400);
+    expect(h.fetch).not.toHaveBeenCalled();
+    h.fetch.mockResolvedValueOnce(new Response(null, { status: 404 }));
+    expect((await section('anthropic', 'models', 'PUT', { modelId: 'retired-test-model' })).status).toBe(422);
+    expect(await loadAndUnseal(`anthropic-model-id:${org}`)).toBeUndefined();
+    h.fetch.mockRejectedValueOnce(new Error(h.secrets.at(-1)));
+    expect((await section('anthropic', 'models')).status).toBe(502);
+  });
+  it('loads, rotates and revokes billing independently under the org DID with load provenance', async () => {
+    await prepare();
+    const inferenceBefore = (await orgRows()).find(row => row.provider === 'anthropic');
+    const value = orgKey().secret;
+    expect((await section('anthropic', 'billing-key', 'POST', { token: value })).status).toBe(201);
+    const read = await section('anthropic', 'billing-key');
+    expect(read.body).toMatchObject({ keySealed: true, loadedByDid: member, loadedAt: expect.any(String) });
+    const billing = (await orgRows()).find(row => row.provider === 'anthropic-billing')!;
+    expect(billing).toMatchObject({ ownerDid: org, loadedByDid: member, loadedAt: expect.any(Date) });
+    const [grant] = await database.select().from(vaultDelegationGrants).where(eq(vaultDelegationGrants.field, billing.sealedKeyField!));
+    expect(grant.subject).toBe(org);
+    expect((await section('anthropic', 'billing-key', 'POST', { token: orgKey().secret })).status).toBe(201);
+    expect((await section('anthropic', 'billing-key', 'DELETE')).status).toBe(200);
+    expect((await section('anthropic', 'billing-key')).body.keySealed).toBe(false);
+    expect((await orgRows()).find(row => row.provider === 'anthropic')).toEqual(inferenceBefore);
+    expect((await orgRows()).find(row => row.provider === 'anthropic-billing')?.status).toBe('revoked');
+  });
+  it('does not report a legacy billing credential loaded without its load record', async () => {
+    await prepare();
+    expect((await section('anthropic', 'billing-key', 'POST', { token: orgKey().secret })).status).toBe(201);
+    await database.update(connectors).set({ loadedAt: null }).where(eq(connectors.provider, 'anthropic-billing'));
+    expect((await section('anthropic', 'billing-key')).body).toMatchObject({ keySealed: false });
+  });
+  it.each([{}, { token: '' }, { token: 42 }])('refuses invalid org billing input %# without custody writes', async input => {
+    await prepare();
+    const before = await permanentState();
+    expect((await section('anthropic', 'billing-key', 'POST', input)).status).toBe(400);
+    expect(await permanentState()).toBe(before);
+  });
+  it('reads, saves and clears Warp settings for the acting org, retaining signed vault history', async () => {
+    await prepare();
+    expect((await section('warp', 'settings')).body).toEqual({ environmentId: null });
+    expect((await section('warp', 'settings', 'PUT', { environmentId: 'org-environment', did: member })).status).toBe(200);
+    expect((await section('warp', 'settings')).body).toEqual({ environmentId: 'org-environment' });
+    expect(await loadAndUnseal(`warp-environment-id:${member}`)).toBeUndefined();
+    expect((await section('warp', 'settings', 'DELETE')).status).toBe(200);
+    expect((await section('warp', 'settings')).body).toEqual({ environmentId: null });
+    expect(await vaultService.getHistory(`warp-environment-id:${org}`)).toHaveLength(2);
+  });
+  it.each([{}, { environmentId: '' }, { environmentId: 'not valid' }, { environmentId: 'x'.repeat(65) }, { environmentId: 42 }])(
+    'refuses invalid org environment input %#', async input => {
+      await prepare();
+      const before = await permanentState();
+      expect((await section('warp', 'settings', 'PUT', input)).status).toBe(400);
+      expect(await permanentState()).toBe(before);
+    });
+  it.each(['member', 'maintainer', 'agent', 'removed', 'restricted', 'suspended-org', 'suspended-actor', 'foreign-org',
+    'missing-org', 'personal', 'delegated', 'agent-session', 'agent-in-db', 'no-act-as', 'session-member', 'unauthenticated'])(
+    'denies %s before any provider action, read, unseal or mutation', async boundary => {
+      await prepare();
+      await changeOrgBoundary(boundary);
+      const before = await permanentState();
+      const read = vi.spyOn(vaultService, 'get');
+      try {
+        for (const [provider, name] of [['anthropic', 'models'], ['anthropic', 'billing-key'], ['anthropic', 'scopes'], ['warp', 'settings']]) {
+          for (const method of ['GET', 'PUT', 'POST', 'DELETE']) {
+            expect((await section(provider, name, method, method === 'GET' ? undefined : {})).status)
+              .toBe(boundary === 'unauthenticated' ? 401 : 403);
+          }
+        }
+        expect(read).not.toHaveBeenCalled();
+        expect(h.fetch).not.toHaveBeenCalled();
+        expect(await permanentState()).toBe(before);
+      } finally { read.mockRestore(); }
+    });
+  it.each(['x-app-did', 'x-app-authorization', 'x-acting-for'])('refuses app/delegated context %s on management routes', async header => {
+    await prepare();
+    expect((await section('anthropic', 'models', 'GET', undefined, { [header]: org })).status).toBe(403);
+    expect(h.fetch).not.toHaveBeenCalled();
+  });
+  it('keeps personal routes personal and refuses the org-only route without acting-as', async () => {
+    const value = orgKey().secret;
+    expect((await call(sealAnthropicToken, 'POST', { token: value })).status).toBe(201);
+    h.fetch.mockResolvedValue(Response.json({ data: [{ id: 'personal-model', display_name: 'Personal model' }] }));
+    expect((await call(PERSONAL_MODELS)).status).toBe(200);
+    expect((await call(PERSONAL_BILLING, 'POST', { token: orgKey().secret })).status).toBe(201);
+    expect((await section('anthropic', 'models')).status).toBe(403);
+    expect((await orgRows()).length).toBe(0);
+  });
+  it('refuses unsupported sections/providers/methods without inventing a personal fallback', async () => {
+    await prepare();
+    expect((await section('openai', 'models')).status).toBe(404);
+    expect((await section('anthropic', 'unknown')).status).toBe(404);
+    expect((await section('anthropic', 'models', 'DELETE')).status).toBe(405);
+    expect(h.fetch).not.toHaveBeenCalled();
+  });
+});
 
 describe('personal external MCP: real SQL, signatures and vault crypto', () => {
   it('returns 429 over the member limit without upstream, transactions or permanent writes, then recovers', async () => {

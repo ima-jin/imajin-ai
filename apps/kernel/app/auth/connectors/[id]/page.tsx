@@ -13,7 +13,7 @@ import { use } from 'react';
 
 import Link from 'next/link';
 import { getConnector } from '@/src/lib/kernel/connector-registry';
-import { ConnectorDetail } from '../components/ConnectorDetail';
+import { ActingConnectorDetail } from '../components/ActingConnectorDetail';
 import { ConnectorUsage } from '../components/ConnectorUsage';
 import { ConnectorSpendBurnDown } from '../components/ConnectorSpendBurnDown';
 
@@ -52,7 +52,7 @@ export default function ConnectorDetailPage(props: Readonly<{ params: Promise<{ 
         </Link>
       </div>
 
-      <ConnectorDetail entry={entry} />
+      <ActingConnectorDetail entry={entry} />
 
       {/* Usage rollup (#1799) — attestations + signed connector actions, scoped
           to this connector's registered scope(s). Renders nothing until the
