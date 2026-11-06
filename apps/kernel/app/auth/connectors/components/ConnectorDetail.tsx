@@ -39,8 +39,8 @@ import { ConnectionSlots, slotRoute, useConnectionSlot, useRefreshConnections } 
 import { GoogleSetupChecklist } from './GoogleSetupChecklist';
 import { GitHubSetupChecklist, GitHubOrgAccessNote } from './GitHubSetupChecklist';
 import { BillingCredentialSection } from './BillingCredentialSection';
-import { ConnectorModeContext, sectionHeaders, useConnectorMode, useProviderSection, type ConnectorMode } from './ConnectorMode';
-import { OrgCredentialSection } from './OrgConnectorSection';
+import { ConnectorModeContext, ORG_PROVIDER_PARITY_URL, ProviderSectionNotice, sectionHeaders, useConnectorMode, useProviderSection, type ConnectorMode } from './ConnectorMode';
+import { OrgCredentialSection } from './OrgCredentialSection';
 import type { GoogleSetupView } from '@/src/lib/google/setup-content';
 
 // ── Types ─────────────────────────────────────────────────────
@@ -460,7 +460,7 @@ function ConnectorSettingsSection({ settings, stepNumber, onSaved, provider }: R
   const [error, setError] = useState<string | null>(null);
 
   const { fields } = settings;
-  const { route, disabled, note, orgDid } = useProviderSection(provider, 'settings', settings.route);
+  const { route, disabled, note, orgDid, followUp, showControls } = useProviderSection(provider, 'settings', settings.route);
 
   const load = useCallback(async () => {
     if (disabled) { setLoading(false); return; }
@@ -530,7 +530,7 @@ function ConnectorSettingsSection({ settings, stepNumber, onSaved, provider }: R
 
       {loading && <p className="text-gray-500 text-xs">Loading settings…</p>}
       {error && <p className="text-red-400 text-xs mb-2">{error}</p>}
-      {note && <p className="text-xs text-gray-400">{note}</p>}
+      <ProviderSectionNotice note={note} followUp={followUp} />
 
       {!loading && (
         <fieldset disabled={disabled} className="space-y-4">
@@ -553,14 +553,14 @@ function ConnectorSettingsSection({ settings, stepNumber, onSaved, provider }: R
                   className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-amber-500/50 font-mono"
                 />
                 <p className="text-xs text-gray-700">{field.hint}</p>
-                <button
+                {showControls && <button
                   type="button"
                   onClick={() => { void save(field.key); }}
                   disabled={busyKey !== null || !dirty}
                   className="px-4 py-1.5 bg-white/10 hover:bg-white/20 disabled:opacity-40 text-gray-200 text-sm rounded-lg transition"
                 >
                   {busyKey === field.key ? 'Saving…' : 'Save'}
-                </button>
+                </button>}
               </div>
             );
           })}
@@ -592,7 +592,7 @@ function ModelPickerSection({ route: personalRoute, stepNumber, provider }: Read
   stepNumber: string | number;
   provider: string;
 }>) {
-  const { route, disabled, note, orgDid } = useProviderSection(provider, 'models', personalRoute);
+  const { route, disabled, note, orgDid, followUp, showControls } = useProviderSection(provider, 'models', personalRoute);
   const [models, setModels] = useState<ModelOption[]>([]);
   const [selected, setSelected] = useState('');
   const [loading, setLoading] = useState(true);
@@ -655,7 +655,7 @@ function ModelPickerSection({ route: personalRoute, stepNumber, provider }: Read
       </h3>
       {loading && <p className="text-gray-500 text-xs">Loading models…</p>}
       {error && <p className="text-red-400 text-xs mb-2">{error}</p>}
-      {note && <p className="text-xs text-gray-400">{note}</p>}
+      <ProviderSectionNotice note={note} followUp={followUp} />
       {!loading && (
         <select
           aria-label="Default model"
@@ -670,10 +670,10 @@ function ModelPickerSection({ route: personalRoute, stepNumber, provider }: Read
           ))}
         </select>
       )}
-      {!loading && !error && models.length === 0 && (
+      {!disabled && !loading && !error && models.length === 0 && (
         <p className="text-xs text-gray-600 mt-2">No models available for this key yet.</p>
       )}
-      {!disabled && <button type="button" disabled={loading || saving} onClick={() => { void load(); }}
+      {showControls && <button type="button" disabled={disabled || loading || saving} onClick={() => { void load(); }}
         className="mt-2 text-xs text-gray-400 disabled:opacity-50">Test connection / refresh models</button>}
     </div>
   );
@@ -1666,7 +1666,31 @@ function ProviderConfigurationSections({ entry, sealed, onSaved, onBillingReady 
           {entry.billingCredential && (
             <BillingCredentialSection provider={entry.id} credential={entry.billingCredential} onReady={onBillingReady} />
           )}
+          {!entry.modelsRoute && (
+            <section aria-label="Connection test" className="space-y-2">
+              <h3 className="text-sm text-white">Connection test</h3>
+              {(mode.kind === 'personal' || mode.canManage) && <button type="button" disabled className="text-xs text-gray-500">Test connection</button>}
+              <ProviderSectionNotice note="No read-only provider probe is configured for this connector; loaded status is not a provider test."
+                followUp={ORG_PROVIDER_PARITY_URL} />
+            </section>
+          )}
   </>;
+}
+
+function OrgProviderCredentialSetup({ entry, canManage }: Readonly<{ entry: ConnectorEntry; canManage: boolean }>) {
+  const ui = credentialCopy(entry);
+  const additionalField = ui.additionalField;
+  if (!additionalField && !ui.webhookSetup && !['gcp', 'local'].includes(entry.id)) return null;
+  return (
+    <fieldset disabled aria-label="Provider credential setup" className="space-y-2">
+              <legend className="text-sm text-white">Provider credential setup</legend>
+              <p className="text-xs text-gray-400">{ui.hint}</p>
+              {canManage && additionalField && <CredentialPasswordInput label={additionalField.label} value="" onChange={() => {}} placeholder={additionalField.placeholder} />}
+              {ui.webhookSetup && <p className="text-xs text-gray-400">Webhook URL, events and signing-secret setup require provider-specific org custody.</p>}
+              <ProviderSectionNotice note="Disabled: this opaque org service key does not configure these fields."
+                followUp={ORG_PROVIDER_PARITY_URL} />
+            </fieldset>
+  );
 }
 
 function CredentialPasteConnectorCard({ entry }: Readonly<{ entry: ConnectorEntry }>) {
@@ -1682,7 +1706,6 @@ function CredentialPasteConnectorCard({ entry }: Readonly<{ entry: ConnectorEntr
   const [billingReady, setBillingReady] = useState(false);
 
   const ui = credentialCopy(entry);
-  const additionalField = ui.additionalField;
 
   const fetchStatus = useCallback(async () => {
     setStatusLoading(scopeAccess.orgDid === null);
@@ -1781,17 +1804,9 @@ function CredentialPasteConnectorCard({ entry }: Readonly<{ entry: ConnectorEntr
           {!orgMode && ui.webhookSetup && sealed && !additionalMissing && entry.tokenRoute && (
             <WebhookSecretSetup route={entry.tokenRoute} onSaved={() => { void refreshStatus(); }} onReady={setWebhookReady} />
           )}
-          {orgMode && (additionalField || ui.webhookSetup || ['gcp', 'local'].includes(entry.id)) && (
-            <fieldset disabled aria-label="Provider credential setup" className="space-y-2">
-              <legend className="text-sm text-white">Provider credential setup</legend>
-              <p className="text-xs text-gray-400">{ui.hint}</p>
-              {additionalField && <CredentialPasswordInput label={additionalField.label} value="" onChange={() => {}} placeholder={additionalField.placeholder} />}
-              {ui.webhookSetup && <p className="text-xs text-gray-400">Webhook URL, events and signing-secret setup require provider-specific org custody.</p>}
-              <p className="text-xs text-gray-400">Disabled pending #3341: this opaque org service key does not configure these fields.</p>
-            </fieldset>
-          )}
+          {orgMode && <OrgProviderCredentialSetup entry={entry} canManage={orgMode.canManage} />}
           <fieldset disabled={scopeAccess.disabled}>
-          {scopeAccess.note && <p className="text-xs text-gray-400">{scopeAccess.note}</p>}
+          <ProviderSectionNotice note={scopeAccess.note} followUp={scopeAccess.followUp} />
           <ScopeGrantSection
             entry={entry}
             activeSet={activeSet}

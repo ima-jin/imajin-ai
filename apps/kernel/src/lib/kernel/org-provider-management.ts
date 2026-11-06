@@ -1,4 +1,4 @@
-import { NextResponse, type NextRequest } from 'next/server';
+import { NextResponse, NextRequest } from 'next/server';
 import { requireAuth, resolveActingDid } from '@imajin/auth';
 import { and, eq, sql } from 'drizzle-orm';
 import { db, vaultDelegationGrants } from '@/src/db';
@@ -19,6 +19,7 @@ import { isExternalMcpField } from '@/src/lib/vault/field-grammar';
 import { readConnectorRegistration } from './connector-registry-store';
 import { resolveOrgSealProvenance } from './org-seal-provenance';
 import { isAgentCapableSubtype } from './connection-principal-policy';
+import { externalConnectionBody } from './external-mcp-route';
 
 /** A management surface, not a new member/runtime credential authority. */
 async function requireManager(request: NextRequest): Promise<OrgConnectionActor> {
@@ -28,7 +29,7 @@ async function requireManager(request: NextRequest): Promise<OrgConnectionActor>
   if (!person.actingAs || person.actingFor || isAgentCapableSubtype(person.subtype)
     || !['owner', 'admin'].includes(person.actingAsRole ?? '')
     || request.headers.has('x-app-did') || request.headers.has('x-app-authorization')
-    || request.headers.has('x-acting-for')) {
+    || request.headers.has('x-acting-for') || request.headers.has('authorization')) {
     throw new ExternalMcpError(403, 'Organization admin act-as required');
   }
   const actor = { actorDid: person.id, orgDid: resolveActingDid(person) };
@@ -79,6 +80,17 @@ function billingHandlers(request: NextRequest) {
 
 type Handler = (request: NextRequest) => Promise<NextResponse>;
 
+async function managementRequest(request: NextRequest) {
+  if (!['POST', 'PUT'].includes(request.method)) return request;
+  const raw = await externalConnectionBody(request);
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    throw new ExternalMcpError(400, 'JSON object body required');
+  }
+  return new NextRequest(request.url, {
+    method: request.method, headers: request.headers, body: JSON.stringify(raw),
+  });
+}
+
 async function dispatch(request: NextRequest, actor: OrgConnectionActor, provider: string, section: string) {
   let handlers: { GET?: Handler; POST?: Handler; PUT?: Handler; DELETE?: Handler };
   if (provider === 'anthropic' && section === 'models') {
@@ -86,8 +98,15 @@ async function dispatch(request: NextRequest, actor: OrgConnectionActor, provide
       id: 'anthropic', displayName: 'Anthropic',
       loadSealedCredentials: () => loadOrgPickerCredentials(actor),
       keyPending: async () => false,
-      setModelId: (_ownerDid, modelId) => setModelId(actor.orgDid, modelId),
-      listModels, probeModel,
+      setModelId: async (_ownerDid, modelId) => {
+        try { await setModelId(actor.orgDid, modelId); }
+        catch { throw new Error('Organization model default unavailable'); }
+      },
+      listModels,
+      probeModel: async (credentials, modelId) => {
+        try { return await probeModel(credentials, modelId); }
+        catch { throw new Error('Organization model probe unavailable'); }
+      },
     });
   } else if (provider === 'anthropic' && section === 'billing-key') {
     handlers = billingHandlers(request);
@@ -96,7 +115,7 @@ async function dispatch(request: NextRequest, actor: OrgConnectionActor, provide
   } else if (provider === 'warp' && section === 'settings') {
     handlers = environment;
   } else {
-    throw new ExternalMcpError(404, 'Org-held section unavailable; see #3341');
+    throw new ExternalMcpError(404, 'Org-held section unavailable');
   }
   const handler = handlers[request.method as keyof typeof handlers];
   if (!handler) throw new ExternalMcpError(405, 'Method not allowed');
@@ -114,7 +133,7 @@ export async function orgProviderManagement(request: NextRequest, provider: stri
   const headers = { ...corsHeaders(request), 'Cache-Control': 'no-store' };
   try {
     const actor = await requireManager(request);
-    const response = await dispatch(request, actor, provider, section);
+    const response = await dispatch(await managementRequest(request), actor, provider, section);
     for (const [name, value] of Object.entries(headers)) response.headers.set(name, value);
     return response;
   } catch (error) {

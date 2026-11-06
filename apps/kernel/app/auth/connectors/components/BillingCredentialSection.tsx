@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ConnectorEntry } from '@/src/lib/kernel/connector-registry';
-import { sectionHeaders, useProviderSection } from './ConnectorMode';
+import { ProviderSectionNotice, sectionHeaders, useProviderSection } from './ConnectorMode';
 
 type BillingCredential = NonNullable<ConnectorEntry['billingCredential']>;
 function billingKeyLabel(status: { keySealed: boolean; credentialPending: boolean }): string {
@@ -17,7 +17,7 @@ export function BillingCredentialSection({ credential, onReady, provider = 'anth
   onReady: (ready: boolean) => void;
   provider?: string;
 }>) {
-  const { route, disabled, note, orgDid } = useProviderSection(provider, 'billing-key', credential.route);
+  const { route, disabled, note, orgDid, followUp } = useProviderSection(provider, 'billing-key', credential.route);
   const [status, setStatus] = useState<{
     keySealed: boolean; credentialPending: boolean; loadedByDid?: string; loadedAt?: string;
   } | null>(null);
@@ -84,7 +84,7 @@ export function BillingCredentialSection({ credential, onReady, provider = 'anth
           {orgDid && status.keySealed && <span className="block">Loaded by {status.loadedByDid} · {status.loadedAt}</span>}
         </output>
       )}
-      {note && <p className="text-xs text-gray-400">{note}</p>}
+      <ProviderSectionNotice note={note} followUp={followUp} />
       <p className="text-xs text-gray-400">After sealing, explicitly enable {credential.scope} in Scope grants below. Sealing alone does not grant billing access.</p>
       {error && <p role="alert" className="text-xs text-red-400">{error}</p>}
       {!disabled && status && (!present || editing) && (

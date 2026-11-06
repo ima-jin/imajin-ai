@@ -265,6 +265,7 @@ describe('agent-capable subtypes cannot enter human member/admin paths', () => {
     expect(await permanentState()).toBe(before);
     expect(h.fetch).not.toHaveBeenCalled();
   });
+
 });
 async function permanentState() {
   return JSON.stringify([await Promise.all(tables.map(table => database.select().from(table))), h.vault]);
@@ -465,6 +466,12 @@ describe('org provider management: real auth policy, SQL and vault crypto', () =
     expect(await loadAndUnseal(`anthropic-model-id:${org}`)).toBeUndefined();
     h.fetch.mockRejectedValueOnce(new Error(h.secrets.at(-1)));
     expect((await section('anthropic', 'models')).status).toBe(502);
+    h.fetch.mockRejectedValueOnce(new Error(h.secrets.at(-1)));
+    expect((await section('anthropic', 'models', 'PUT', { modelId: 'test-model' })).status).toBe(502);
+    h.fetch.mockResolvedValueOnce(Response.json({ data: [{ id: 'test-model' }] }));
+    h.saveError = true;
+    expect((await section('anthropic', 'models', 'PUT', { modelId: 'test-model' })).status).toBe(500);
+    h.saveError = false;
   });
   it('loads, rotates and revokes billing independently under the org DID with load provenance', async () => {
     await prepare();
@@ -531,7 +538,7 @@ describe('org provider management: real auth policy, SQL and vault crypto', () =
         expect(await permanentState()).toBe(before);
       } finally { read.mockRestore(); }
     });
-  it.each(['x-app-did', 'x-app-authorization', 'x-acting-for'])('refuses app/delegated context %s on management routes', async header => {
+  it.each(['x-app-did', 'x-app-authorization', 'x-acting-for', 'authorization'])('refuses app/delegated context %s on management routes', async header => {
     await prepare();
     expect((await section('anthropic', 'models', 'GET', undefined, { [header]: org })).status).toBe(403);
     expect(h.fetch).not.toHaveBeenCalled();
@@ -551,6 +558,23 @@ describe('org provider management: real auth policy, SQL and vault crypto', () =
     expect((await section('anthropic', 'unknown')).status).toBe(404);
     expect((await section('anthropic', 'models', 'DELETE')).status).toBe(405);
     expect(h.fetch).not.toHaveBeenCalled();
+  });
+  it.each([null, [], true, 42, 'not-an-object'])('refuses invalid management body shape %# before any provider operation', async input => {
+    await prepare();
+    const before = await permanentState();
+    for (const [provider, name, method] of [
+      ['anthropic', 'models', 'PUT'], ['anthropic', 'billing-key', 'POST'],
+      ['anthropic', 'scopes', 'POST'], ['warp', 'settings', 'PUT'],
+    ]) expect((await section(provider, name, method, input)).status).toBe(400);
+    expect(h.fetch).not.toHaveBeenCalled();
+    expect(await permanentState()).toBe(before);
+  });
+  it('refuses oversized and absent management bodies without echoing or writing', async () => {
+    await prepare();
+    const before = await permanentState();
+    expect((await section('anthropic', 'billing-key', 'POST', { token: 'x'.repeat(17000) })).status).toBe(413);
+    expect((await section('warp', 'settings', 'PUT')).status).toBe(400);
+    expect(await permanentState()).toBe(before);
   });
 });
 

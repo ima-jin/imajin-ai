@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { CONNECTOR_REGISTRY, getConnector } from '@/src/lib/kernel/connector-registry';
 import { ConnectorDetail } from '../ConnectorDetail';
 import type { OrgConnectorMode } from '../OrgConnectorSection';
@@ -90,7 +90,31 @@ describe('shared provider parity in org mode', () => {
       if (entry.modelsRoute) expect(await screen.findByRole('combobox', { name: 'Default model' })).toBeDefined();
       if (entry.billingCredential) expect(screen.getByRole('region', { name: 'Billing (admin) key' })).toBeDefined();
       if (entry.settings) expect(await screen.findByLabelText(entry.settings.fields[0].label)).toBeDefined();
-      if (!['anthropic', 'warp'].includes(entry.id)) expect(screen.getAllByText(/#3341/).length).toBeGreaterThan(0);
+      if (!['anthropic', 'warp'].includes(entry.id)) expect(screen.getAllByRole('link', { name: 'Provider parity follow-up' })
+        .every(link => link.getAttribute('href') === 'https://github.com/ima-jin/imajin-ai/issues/3341')).toBe(true);
       expect(fetch.mock.calls.every(([url]) => url.startsWith('/connections/api/org-held/'))).toBe(true);
     });
+  it.each(CONNECTOR_REGISTRY.filter(entry => !entry.backendPending
+    && ['static-secret', 'token-paste'].includes(entry.ingestionPattern)))(
+    'keeps $id status-only for members, with no secret fields, management buttons or admin requests', async entry => {
+      const fetch = providerTransport();
+      render(<ConnectorDetail entry={entry} mode={mode(false)} />);
+      await screen.findByRole('article', { name: `${entry.name} org service key` });
+      expect(screen.queryByRole('button')).toBeNull();
+      expect(document.querySelector('input[type="password"]')).toBeNull();
+      if (entry.modelsRoute) expect(await screen.findByRole('combobox', { name: 'Default model' })).toHaveProperty('disabled', true);
+      expect(fetch).not.toHaveBeenCalled();
+    });
+  it.each(['loadedByDid', 'loadedAt'])('never labels legacy billing custody loaded without %s', async field => {
+    const fetch = providerTransport();
+    const original = fetch.getMockImplementation()!;
+    fetch.mockImplementation(async (url, init) => url.endsWith('/billing-key')
+      ? Response.json({ keySealed: true, loadedByDid: actorDid, loadedAt, [field]: null })
+      : original(url, init));
+    render(<ConnectorDetail entry={getConnector('anthropic')!} mode={mode()} />);
+    const billing = within(screen.getByRole('region', { name: 'Billing (admin) key' }));
+    expect(await billing.findByText('Not loaded — re-load here')).toBeDefined();
+    expect(billing.queryByText('Billing key loaded')).toBeNull();
+    expect(billing.queryByRole('button', { name: 'Rotate billing key' })).toBeNull();
+  });
 });
