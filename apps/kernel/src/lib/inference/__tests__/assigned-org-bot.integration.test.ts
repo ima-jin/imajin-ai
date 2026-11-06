@@ -58,6 +58,7 @@ import { createAppToken } from '@/src/lib/auth/jwt';
 import { POST as verifyToken } from '@/app/auth/api/apps/token/verify/route';
 import { GET as usableModels } from '@/app/infer/v1/models/usable/route';
 import { hasOrgConnectionProvenance } from '@/src/lib/kernel/member-connection-gate';
+import { setVaultInternalApiKey } from '../../../../../../packages/auth/tests/support/internal-post-test-env';
 import { seedOrgWithAssignedBot } from './seed-org-with-assigned-bot';
 
 vi.setConfig({ testTimeout: 30_000, hookTimeout: 60_000 });
@@ -94,9 +95,6 @@ beforeAll(async () => {
   `);
   database = drizzle(client);
   h.db = database;
-  h.log.mockImplementation((data, message) => {
-    if (message === 'Register error') throw new Error(`Registration setup: ${String(data.err).split('\n')[0]}`);
-  });
   vi.stubEnv('AUTH_PRIVATE_KEY', nodeKeys.privateKey.export({ type: 'pkcs8', format: 'der' }).toString('hex'));
   vi.stubEnv('GROUP_KEY_ENCRYPTION_SECRET', randomUUID());
   vi.stubEnv('VAULT_OWNER_X_PUB', '');
@@ -131,6 +129,7 @@ beforeAll(async () => {
 afterEach(() => { h.log.mockClear(); });
 afterAll(async () => {
   await client.close();
+  setVaultInternalApiKey(undefined);
   vi.unstubAllGlobals();
   vi.unstubAllEnvs();
   _resetSealingCache();
