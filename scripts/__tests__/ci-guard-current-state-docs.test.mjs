@@ -51,8 +51,8 @@ describe('current-state consumer documentation guard', () => {
     expect(CONSUMER_FILES).toContain(file);
   });
 
-  it('retains only the existing llms blockquote wording', () => {
-    const text = readFileSync(join(root, 'apps/kernel/public/llms.txt'), 'utf8');
+  it.each(['llms.txt', 'llms-full.txt'])('%s retains only the existing llms blockquote wording', name => {
+    const text = readFileSync(join(root, 'apps/kernel/public', name), 'utf8');
     expect(text.split(/\r?\n/)[2]).toBe(
       '> You compose. Imajin orchestrates. Signed. Legible. Imajin is Agentic Relation Management.',
     );
