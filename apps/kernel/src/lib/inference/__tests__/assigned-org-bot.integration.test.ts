@@ -224,7 +224,7 @@ async function corrupt(seed: Scenario, target: 'connector' | 'custody', changes:
   });
 }
 
-describe('assigned org-bot discovery seeded by real writers (#3335)', () => {
+describe('assigned org-bot discovery seeded by real writers (#3335, #3342)', () => {
   it('refuses the legacy node-self-granted row and directs an admin to re-seal without backfilling provenance', async () => {
     const seed = await scenario('legacy-token-paste');
     const [connection] = await database.select().from(connectors).where(eq(connectors.ownerDid, seed.orgDid));
