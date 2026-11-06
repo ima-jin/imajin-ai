@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { getActingAs } from '@imajin/ui/server';
 import type { ConnectorEntry } from '@/src/lib/kernel/connector-registry';
+import { isAgentCapableSubtype } from '@/src/lib/kernel/connection-principal-policy';
 import { ConnectorDetail } from './ConnectorDetail';
 import OrgConnectorSection from './OrgConnectorSection';
 
@@ -21,7 +22,7 @@ export function ActingConnectorDetail({ entry }: Readonly<{ entry: ConnectorEntr
         const response = await fetch('/auth/api/session', { cache: 'no-store' });
         const session = response.ok ? await response.json() : null;
         if (!cancelled && current === revision) setContext({
-          orgDid, human: session?.scope === 'actor' && session?.subtype !== 'agent',
+          orgDid, human: session?.scope === 'actor' && !isAgentCapableSubtype(session?.subtype),
         });
       } catch {
         if (!cancelled && current === revision) setContext({ orgDid, human: false });

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { CONNECTOR_REGISTRY } from '@/src/lib/kernel/connector-registry';
+import { isAgentCapableSubtype } from '@/src/lib/kernel/connection-principal-policy';
 import OrgConnectionsPanel from '../../components/OrgConnectionsPanel';
 import { ConnectorDetail } from './ConnectorDetail';
 import { loadedMetadata, sectionHeaders, type LoadedKey, type Member } from './ConnectorMode';
@@ -33,7 +34,7 @@ const serviceProviders = CONNECTOR_REGISTRY.filter(entry =>
 function canManageGroup(group: Group, humanSession: boolean) {
   const viewer = group.controllers.find(member => member.controllerDid === group.viewerDid);
   return humanSession && ['owner', 'admin'].includes(group.viewerRole)
-    && !!viewer && viewer.subtype !== 'agent' && viewer.role !== 'agent'
+    && !!viewer && !isAgentCapableSubtype(viewer.subtype) && viewer.role !== 'agent'
     && (viewer.allowedServices === null || viewer.allowedServices.includes('connections'));
 }
 
@@ -71,7 +72,7 @@ export default function OrgConnectorSection({ orgDid, humanSession, connectorId 
   }, [orgDid, humanSession]);
 
   const canManage = group !== null && canManageGroup(group, humanSession);
-  const members = group?.controllers.filter(member => member.scope === 'actor' && member.subtype !== 'agent' && member.role !== 'agent') ?? [];
+  const members = group?.controllers.filter(member => member.scope === 'actor' && !isAgentCapableSubtype(member.subtype) && member.role !== 'agent') ?? [];
   const label = group?.name || (group?.handle ? `@${group.handle}` : orgDid);
   return <section aria-label="Org service keys" className="mb-8 space-y-4">
     <h2 className="text-xl font-semibold text-white">Org service keys</h2>

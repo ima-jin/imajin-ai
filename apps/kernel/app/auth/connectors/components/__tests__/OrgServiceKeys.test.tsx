@@ -159,10 +159,11 @@ describe('org service-key cards', () => {
     expect(fetch.mock.calls.some(([url]) => url === '/connections/api/org-held' || url.endsWith('/grants'))).toBe(false);
   });
 
-  it.each(['agent-session', 'service-restricted', 'missing-viewer'])('fails closed for %s', async boundary => {
+  it.each(['agent-session', 'presence-controller', 'service-restricted', 'missing-viewer'])('fails closed for %s', async boundary => {
     const group = fixture();
     if (boundary === 'service-restricted') Object.assign(group.controllers[0], { allowedServices: ['profile'] });
     if (boundary === 'missing-viewer') group.viewerDid = 'did:imajin:unknown';
+    if (boundary === 'presence-controller') Object.assign(group.controllers[0], { subtype: 'presence' });
     transport({ group });
     const card = await panel(boundary !== 'agent-session');
     expect(card.queryByRole('button')).toBeNull();

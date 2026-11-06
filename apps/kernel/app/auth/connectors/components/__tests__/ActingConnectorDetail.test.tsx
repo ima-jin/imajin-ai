@@ -57,9 +57,9 @@ describe('connector detail acting identity', () => {
     render(<ActingConnectorDetail entry={entry} />);
     expect(await screen.findByText('Org did:imajin:artifact anthropic read-only')).toBeDefined();
   });
-  it('never enables management for an agent session', async () => {
+  it.each(['agent', 'presence'])('never enables management for a %s session', async subtype => {
     state.acting = 'did:imajin:artifact';
-    vi.stubGlobal('fetch', vi.fn(async () => Response.json({ scope: 'actor', subtype: 'agent' })));
+    vi.stubGlobal('fetch', vi.fn(async () => Response.json({ scope: 'actor', subtype })));
     render(<ActingConnectorDetail entry={entry} />);
     expect(await screen.findByText('Org did:imajin:artifact anthropic read-only')).toBeDefined();
   });
