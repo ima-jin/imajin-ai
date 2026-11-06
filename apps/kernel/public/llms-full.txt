@@ -1,6 +1,6 @@
 # Imajin
 
-> You compose. Imajin orchestrates. Signed. Legible. Imajin is Agentic Relation Management: a self-hosted kernel through which people, organizations, apps and agents coordinate identity, relationships, attribution and payments with explicit authority and recorded provenance.
+> You compose. Imajin orchestrates. Signed. Legible. Imajin is Agentic Relation Management.
 
 ## What Imajin is
 
