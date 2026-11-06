@@ -550,7 +550,7 @@ describe('org provider management: real auth policy, SQL and vault crypto', () =
     expect((await call(PERSONAL_MODELS)).status).toBe(200);
     expect((await call(PERSONAL_BILLING, 'POST', { token: orgKey().secret })).status).toBe(201);
     expect((await section('anthropic', 'models')).status).toBe(403);
-    expect((await orgRows()).length).toBe(0);
+    expect(await orgRows()).toHaveLength(0);
   });
   it('refuses unsupported sections/providers/methods without inventing a personal fallback', async () => {
     await prepare();

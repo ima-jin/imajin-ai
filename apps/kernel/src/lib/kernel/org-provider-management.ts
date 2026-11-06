@@ -97,7 +97,7 @@ async function dispatch(request: NextRequest, actor: OrgConnectionActor, provide
     handlers = createConnectorModelPickerRoute({
       id: 'anthropic', displayName: 'Anthropic',
       loadSealedCredentials: () => loadOrgPickerCredentials(actor),
-      keyPending: async () => false,
+      keyPending: () => Promise.resolve(false),
       setModelId: async (_ownerDid, modelId) => {
         try { await setModelId(actor.orgDid, modelId); }
         catch { throw new Error('Organization model default unavailable'); }

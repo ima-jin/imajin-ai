@@ -5,7 +5,8 @@ import type { ConnectorEntry } from '@/src/lib/kernel/connector-registry';
 import { ProviderSectionNotice, sectionHeaders, useProviderSection } from './ConnectorMode';
 
 type BillingCredential = NonNullable<ConnectorEntry['billingCredential']>;
-function billingKeyLabel(status: { keySealed: boolean; credentialPending: boolean }): string {
+function billingKeyLabel(status: { keySealed: boolean; credentialPending: boolean }, orgHeld: boolean): string {
+  if (orgHeld) return status.keySealed ? 'Billing key loaded' : 'Not loaded — re-load here';
   if (status.keySealed) return 'Billing key sealed';
   if (status.credentialPending) return 'Billing key awaiting owner approval';
   return 'billed: not connected';
@@ -80,7 +81,7 @@ export function BillingCredentialSection({ credential, onReady, provider = 'anth
       <p className="text-xs text-gray-400">{credential.hint} Sealed through the kernel vault; never returned.</p>
       {status && (
         <output className="block text-xs text-gray-400">
-          {orgDid ? (status.keySealed ? 'Billing key loaded' : 'Not loaded — re-load here') : billingKeyLabel(status)}
+          {billingKeyLabel(status, !!orgDid)}
           {orgDid && status.keySealed && <span className="block">Loaded by {status.loadedByDid} · {status.loadedAt}</span>}
         </output>
       )}
