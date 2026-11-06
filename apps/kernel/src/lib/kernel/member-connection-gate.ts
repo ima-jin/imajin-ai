@@ -5,6 +5,7 @@ import { APP_AUTHORIZATION_CHANNEL } from '@/src/lib/auth/app-authorization-gran
 import { ExternalMcpError, EXTERNAL_MCP_SCOPE, POSTMAN_PROVIDER, type ConnectionErrorCode } from './external-mcp-policy';
 import { missingConnection, resolveConnectionPrincipal, type ConnectionCaller } from './connection-principal';
 import { orgHeldProvider } from './org-held-connection-policy';
+import { orgConnectionRequiresReseal } from './connection-principal-policy';
 
 export type ConnectionTransaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
 export interface ExternalMcpCaller { memberDid: string; appDid?: string; serviceToken?: boolean; caller?: ConnectionCaller }
@@ -72,7 +73,7 @@ export async function authorizeMemberConnection(
   const row = await findMemberConnection(tx, principal.ownerDid, target.provider, !!orgContext);
   if (caller.caller && (!row || !isLiveConnection(row) || !row.sealedKeyField)) throw missingConnection(principal.ownerDid);
   if (!row || !isLiveConnection(row) || !row.sealedKeyField) throw connectionUnavailable();
-  if (orgContext && !hasOrgConnectionProvenance(row)) throw missingConnection(principal.ownerDid);
+  if (orgContext && !hasOrgConnectionProvenance(row)) throw orgConnectionRequiresReseal(principal.ownerDid);
   if (target.binding !== undefined && row.upstreamBinding !== target.binding) throw connectionUnavailable();
   await checkMemberStanding(tx, principal.ownerDid, row.orgContextDid);
   const orgDid = orgContext?.orgDid ?? row.orgContextDid;

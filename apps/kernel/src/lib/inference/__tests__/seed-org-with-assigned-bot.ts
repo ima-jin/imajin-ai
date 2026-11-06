@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { NextRequest } from 'next/server';
 import { crypto, generateKeypair, type Identity } from '@imajin/auth';
 import { POST as registerIdentity } from '@/app/auth/api/register/route';
@@ -40,7 +40,7 @@ export async function seedRegisteredActor(subtype: 'human' | 'agent') {
  */
 export async function seedOrgWithAssignedBot(options: {
   authenticate: (identity: Identity) => void;
-  seal: 'legacy-token-paste' | 'authenticated-org-route';
+  seal?: 'legacy-token-paste' | 'authenticated-org-route';
   assigned?: boolean;
 }) {
   const human = await seedRegisteredActor('human');
@@ -64,5 +64,8 @@ export async function seedOrgWithAssignedBot(options: {
   } else {
     await created(await sealOrgToken(seedRequest('/anthropic/api/token', { token: credential }, orgDid)), 'org connector sealing');
   }
-  return { humanDid: human.did, orgDid, botDid: bot.did, field: `anthropic-api-key:${orgDid}` };
+  return {
+    humanDid: human.did, orgDid, botDid: bot.did, field: `anthropic-api-key:${orgDid}`,
+    credentialHash: createHash('sha256').update(credential).digest('hex'),
+  };
 }
