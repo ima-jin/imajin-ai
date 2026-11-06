@@ -13,7 +13,7 @@ import { isOrgSealedAnthropicField } from '@/src/lib/kernel/org-held-connection-
 
 const unavailable = () => new ExternalMcpError(503, 'Organization inference credential unavailable', 'credential_unavailable');
 
-/** One live grant + custody snapshot per call; never cache a key or authorization. */
+/** One live grant + node custody snapshot per call; never cache a key or authorization. */
 export function resolveOrgHeldBrain(context: VerifiedInferenceOrgContext, modelId = ''): Promise<ResolvedBrain> {
   return db.transaction(async tx => {
     const { memberDid, orgDid } = context;
