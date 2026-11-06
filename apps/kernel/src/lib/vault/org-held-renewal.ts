@@ -12,6 +12,7 @@ import { isExternalMcpField } from './field-grammar';
 import { getNodeSigningIdentity, getNodeXPublicKey, getOwnerXPublicKey, isVaultTier1 } from './sealing';
 import { resolveVaultAuthorization } from './authorization';
 import { isImportHuman } from './import-authority';
+import { findNodeCustodyGrant } from './node-custody-grant';
 
 export const ORG_HELD_RENEWAL_KIND = 'vault:renew-org-held-key';
 const FAILURE = 'Organization key renewal unavailable';
@@ -86,10 +87,7 @@ async function renewalTarget(tx: Transaction, input: OrgHeldRenewalInput) {
     || connection.orgSuspendedAt || connection.revokedAt
     || (connection.expiresAt && connection.expiresAt <= new Date())) throw new Error(FAILURE);
   const node = getNodeSigningIdentity();
-  const [current] = await tx.select().from(vaultDelegationGrants).where(and(
-    eq(vaultDelegationGrants.field, connection.sealedKeyField), eq(vaultDelegationGrants.subject, input.orgDid),
-    eq(vaultDelegationGrants.grantedTo, node.senderDid), eq(vaultDelegationGrants.status, 'active'),
-  )).for('update');
+  const current = await findNodeCustodyGrant({ field: connection.sealedKeyField, ownerDid: input.orgDid, tx, lock: true });
   const grant = requireRenewableGrant(current, input);
   const entry = await vaultService.get(connection.sealedKeyField);
   if (!entry || entry.deleted || entry.custodyScheme !== 'delegation-grant'

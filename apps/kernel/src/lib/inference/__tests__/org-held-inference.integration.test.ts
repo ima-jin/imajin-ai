@@ -50,6 +50,7 @@ vi.mock('@imajin/config', async original => ({
 import { channelLinks, delegationGrants, identities, identityMembers } from '@/src/db/schemas/auth';
 import { connectors, orgConnectionMemberGrants, orgConnectionSuspensions } from '@/src/db/schemas/connectors';
 import { vaultDelegationGrants } from '@/src/db/schemas/vault';
+import { nodeCustodyGrantFixture } from '@/src/lib/vault/__tests__/node-custody-fixture';
 import { provideInternalApiKey, provideSessionResolver } from '@imajin/auth';
 import { SESSION_COOKIE_NAME } from '@imajin/config';
 import { requireAuth as requireSessionAuth } from '../../../../../../packages/auth/src/require-auth';
@@ -470,10 +471,7 @@ describe.each(['agent', 'presence'])('route discovery ≡ chat/completions for %
       id: 'artifact-anthropic', ownerDid: orgDid, provider: 'anthropic', slot: 'primary',
       status: 'active', sealedKeyField: field, loadedByDid: MEMBER, loadedAt: new Date(),
     });
-    await database.insert(vaultDelegationGrants).values({
-      id: 'artifact-custody', field, subject: orgDid, grantedTo: 'did:imajin:node', status: 'active', oneTime: false,
-      ownerXPub: 'fixture', wrappedKey: 'fixture', wrappedNonce: 'fixture', keyId: 'fixture', ownerSignature: 'fixture',
-    });
+    await database.insert(vaultDelegationGrants).values(nodeCustodyGrantFixture(field));
     const result = await assertParity({ actorDid: agentDid, actingAs: orgDid }, orgDid, 'A', ORG_MODEL);
     expect(result.route).toMatchObject({
       kind: 'A', billedPrincipal: { did: orgDid, handle: 'artifact' }, selectedModels: [ORG_MODEL], usable: true,
@@ -810,10 +808,7 @@ beforeEach(async () => {
     id: 'org-connection', ownerDid: ORG, provider: 'anthropic', slot: 'primary',
     status: 'active', sealedKeyField: FIELD, loadedByDid: MEMBER, loadedAt: new Date(),
   });
-  await database.insert(vaultDelegationGrants).values({
-    id: 'custody', field: FIELD, subject: ORG, grantedTo: 'did:imajin:node', status: 'active', oneTime: false,
-    ownerXPub: 'fixture', wrappedKey: 'fixture', wrappedNonce: 'fixture', keyId: 'fixture', ownerSignature: 'fixture',
-  });
+  await database.insert(vaultDelegationGrants).values({ ...nodeCustodyGrantFixture(FIELD), id: 'custody' });
   vi.stubGlobal('fetch', vi.fn(async (input: string, init?: RequestInit) => {
     if (input.endsWith('/api/apps/token/verify')) {
       return h.deniedScope ? Response.json({ error: 'Scope not granted' }, { status: 403 })
