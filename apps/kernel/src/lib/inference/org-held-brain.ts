@@ -1,6 +1,7 @@
-import { and, eq, inArray, sql } from 'drizzle-orm';
-import { db, connectors, vaultDelegationGrants } from '@/src/db';
+import { and, eq, sql } from 'drizzle-orm';
+import { db, connectors } from '@/src/db';
 import { _applyDelegationGrant, vaultService } from '@/src/lib/vault';
+import { findNodeCustodyGrant } from '@/src/lib/vault/node-custody-grant';
 import { isExternalMcpField } from '@/src/lib/vault/field-grammar';
 import { getNodeSigningIdentity, getNodeXPrivateKey } from '@/src/lib/vault/sealing';
 import { requireOrgConnectionMemberGrant } from '@/src/lib/kernel/org-connection-member-grants';
@@ -34,10 +35,7 @@ export function resolveOrgHeldBrain(context: VerifiedInferenceOrgContext, modelI
       if (!row || !isLiveConnection(row) || !row.sealedKeyField
         || !(isExternalMcpField(row.sealedKeyField) || isOrgSealedAnthropicField(orgDid, row.sealedKeyField))) throw missingConnection(orgDid);
       const node = getNodeSigningIdentity();
-      const [custody] = await tx.select().from(vaultDelegationGrants).where(and(
-        eq(vaultDelegationGrants.field, row.sealedKeyField), inArray(vaultDelegationGrants.subject, [orgDid, node.senderDid]),
-        eq(vaultDelegationGrants.grantedTo, node.senderDid), eq(vaultDelegationGrants.status, 'active'),
-      )).limit(1).for('update');
+      const custody = await findNodeCustodyGrant({ field: row.sealedKeyField, ownerDid: orgDid, tx, lock: true });
       if (!custody || !isLiveConnection(custody) || custody.oneTime) throw unavailable();
       const entry = await vaultService.get(row.sealedKeyField);
       if (!entry || entry.deleted || entry.senderPubkey !== node.senderPubkey || entry.custodyScheme !== 'delegation-grant') {

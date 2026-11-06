@@ -45,7 +45,7 @@ import { POST as delegationGrant } from '@/app/api/vault/delegation/grant/route'
 import { executeVaultApproval } from '../approvals-execution';
 import { executeOrgHeldRenewal, readOrgHeldRenewalInput } from '../org-held-renewal';
 import { decideOperatorApproval } from '@/src/lib/notify/operator-approvals-service';
-import { sealAndGrantStaticSecret, canonicalizeGrantPayload, vaultService } from '../index';
+import { sealAndGrantStaticSecret, sealAndStoreV2, canonicalizeGrantPayload, vaultService } from '../index';
 import { getNodeSigningIdentity, _resetSealingCache } from '../sealing';
 import { resolveOrgHeldBrain } from '@/src/lib/inference/org-held-brain';
 import { DELEGATION_ROUTES } from '@imajin/auth/delegation-policy';
@@ -134,7 +134,8 @@ afterEach(async () => {
 const later = () => new Date(Date.now() + 86400_000).toISOString();
 const digest = (text: string) => createHash('sha256').update(text).digest('hex');
 async function grant() {
-  return (await database.select().from(vaultDelegationGrants).where(eq(vaultDelegationGrants.subject, org)))[0];
+  const rows = await database.select().from(vaultDelegationGrants).where(eq(vaultDelegationGrants.field, field));
+  return rows.find(row => row.status === 'active') ?? rows.at(-1)!;
 }
 async function propose(raw: unknown = { orgDid: org, provider: 'anthropic', expiresAt: later() }) {
   const response = await POST(new NextRequest('https://kernel.test/api/vault/org-held/renew', {
@@ -180,6 +181,21 @@ async function changeConnectionState(state: string) {
 }
 
 describe('private-custody org-held renewal acceptance', () => {
+  it('renews real sealAndStoreV2 node custody without changing its self-grant pair', async () => {
+    const previous = await grant();
+    await database.update(vaultDelegationGrants).set({ status: 'superseded' }).where(eq(vaultDelegationGrants.id, previous.id));
+    const sealed = await sealAndStoreV2(field, value, { expiresAt: oldExpiry });
+    await database.update(vaultDelegationGrants).set({ purpose: 'connectors:org-held:anthropic' })
+      .where(eq(vaultDelegationGrants.id, sealed.grantId!));
+    const before = await grant();
+    expect(before.subject).toBe(getNodeSigningIdentity().senderDid);
+    expect(before.grantedTo).toBe(before.subject);
+    expect(await executeVaultApproval(await approve())).toEqual({ ok: true });
+    const renewed = await grant();
+    expect(renewed.subject).toBe(before.subject);
+    expect(renewed.grantedTo).toBe(before.grantedTo);
+    expect(renewed.expiresAt!.getTime()).toBeGreaterThan(oldExpiry.getTime());
+  });
   it.each([false, true])('owner proposes in personal / acting-as-org=%s; signature extends custody without touching material', async actingAs => {
     if (!actingAs) h.identity = { id: human, scope: 'actor', subtype: 'human' };
     const before = await grant();
@@ -279,7 +295,7 @@ describe('private-custody org-held renewal acceptance', () => {
     const response = await POST(new NextRequest('https://kernel.test/api/vault/org-held/renew', { method: 'POST', body: '{' }));
     expect(response.status).toBe(400);
   });
-  it.each(['revoked', 'revoked-at', 'erased', 'one-time', 'purpose', 'foreign-signer', 'bad-signature', 'owner-x', 'recipient-x',
+  it.each(['revoked', 'revoked-at', 'erased', 'one-time', 'foreign-grantee', 'purpose', 'foreign-signer', 'bad-signature', 'owner-x', 'recipient-x',
     'no-expiry', 'shorter', 'foreign-field', 'connection-off', 'connection-suspended', 'connection-expired', 'entry-missing'])(
     'refuses %s custody state without mutation', async failure => {
       const before = await grant();
@@ -288,6 +304,7 @@ describe('private-custody org-held renewal acceptance', () => {
       if (failure === 'revoked-at') changes.revokedAt = new Date();
       if (failure === 'erased') { changes.wrappedKey = ''; changes.wrappedNonce = ''; }
       if (failure === 'one-time') changes.oneTime = true;
+      if (failure === 'foreign-grantee') changes.grantedTo = 'did:imajin:foreignnode';
       if (failure === 'purpose') changes.purpose = 'other';
       if (failure === 'foreign-signer') changes.ownerEdPub = keys.publicKey;
       if (failure === 'bad-signature') changes.ownerSignature = '00'.repeat(64);

@@ -694,7 +694,8 @@ describe('personal external MCP: real SQL, signatures and vault crypto', () => {
     }
     const [row] = await database.select().from(connectors).where(eq(connectors.ownerDid, member));
     const [grant] = await database.select().from(vaultDelegationGrants).where(eq(vaultDelegationGrants.field, row.sealedKeyField!));
-    expect(grant).toMatchObject({ subject: member, grantedTo: h.nodeDid, status: 'active' });
+    expect(grant.subject).toBe(member);
+    expect(grant).toMatchObject({ grantedTo: h.nodeDid, status: 'active' });
     const logs = await database.select().from(attestations).where(eq(attestations.subjectDid, member));
     expect(logs).toHaveLength(2);
     expect(logs[1].payload).toMatchObject({ action: 'call', memberDid: member, orgContextDid: org, tool: 'getCollections' });
@@ -1168,6 +1169,35 @@ describe('read-only connector discovery matches actual call authorization (#3256
     });
   });
 
+  it.each(['valid', 'foreign-grantee', 'revoked', 'oneTime', 'wrong-field'])(
+    'org HTTP discovery and invocation agree on real node self-custody: %s', async boundary => {
+      await asOrg();
+      const input = orgKey();
+      expect((await orgRequest('POST', 'warp', input)).status).toBe(201);
+      await assignAgent(org);
+      const [row] = await orgRows();
+      const sealed = await sealAndStoreV2(row.sealedKeyField!, input.secret);
+      // Retire the prior owner-subject grant, leaving only the real self-grant active.
+      const prior = await database.select().from(vaultDelegationGrants)
+        .where(eq(vaultDelegationGrants.field, row.sealedKeyField!));
+      for (const grant of prior.filter(grant => grant.id !== sealed.grantId)) {
+        await database.update(vaultDelegationGrants).set({ status: 'superseded' })
+          .where(eq(vaultDelegationGrants.id, grant.id));
+      }
+      const changes: Partial<typeof vaultDelegationGrants.$inferInsert> = {};
+      if (boundary === 'foreign-grantee') changes.grantedTo = 'did:imajin:foreignnode';
+      if (boundary === 'revoked') changes.status = 'revoked';
+      if (boundary === 'oneTime') changes.oneTime = true;
+      if (boundary === 'wrong-field') changes.field = 'external-mcp-key:other:did:imajin:otherorg';
+      if (boundary !== 'valid') await database.update(vaultDelegationGrants).set(changes)
+        .where(eq(vaultDelegationGrants.id, sealed.grantId!));
+      const caller = { actorDid: agentDid(), actingAs: org };
+      expect(await discover({ ownerDid: org, caller }, warp, 'http')).toMatchObject({ usable: boundary === 'valid' });
+      if (boundary === 'valid') expect(await requireAgentKey(org, caller) === input.secret).toBe(true);
+      else await expect(requireAgentKey(org, caller)).rejects.toMatchObject({ status: 403 });
+    },
+  );
+
   it.each(['agent', 'presence'])('uses the assigned org HTTP keys for a %s without a member grant', async subtype => {
     await asOrg();
     expect((await orgRequest('POST', 'warp', orgKey())).status).toBe(201);
@@ -1353,7 +1383,8 @@ describe('registered app service → declared external API', () => {
     });
     const [row] = await database.select().from(connectors).where(eq(connectors.ownerDid, member));
     const [custody] = await database.select().from(vaultDelegationGrants).where(eq(vaultDelegationGrants.field, row.sealedKeyField!));
-    expect(custody).toMatchObject({ subject: member, grantedTo: h.nodeDid, purpose: UPSTREAM_READ_SCOPE });
+    expect(custody.subject).toBe(member);
+    expect(custody).toMatchObject({ grantedTo: h.nodeDid, purpose: UPSTREAM_READ_SCOPE });
     expect(await fetchGrantSecret({ grantId: custody.id, granteeDid: appDid })).toEqual({ status: 'not_grantee' });
     await expect(loadAndUnseal(row.sealedKeyField!)).rejects.toThrow();
   });
@@ -1942,10 +1973,8 @@ describe('/jin Anthropic seal human provenance (#3313)', () => {
     expect((await seal()).status).toBe(201);
     expect(await orgRows()).toEqual([expect.objectContaining({ id: before.id, loadedByDid: member, loadedAt: expect.any(Date) })]);
     const custody = await database.select().from(vaultDelegationGrants).where(eq(vaultDelegationGrants.field, field));
-    expect(custody).toEqual(expect.arrayContaining([
-      expect.objectContaining({ subject: h.nodeDid, status: 'superseded' }),
-      expect.objectContaining({ subject: org, grantedTo: h.nodeDid, status: 'active' }),
-    ]));
+    expect(custody.some(grant => grant.subject === h.nodeDid && grant.status === 'superseded')).toBe(true);
+    expect(custody.some(grant => grant.subject === org && grant.grantedTo === h.nodeDid && grant.status === 'active')).toBe(true);
   });
 
   it.each([true, false])('resolves the actual /jin org seal through real vault crypto with assignedAgent=%s', async assigned => {
@@ -2090,7 +2119,8 @@ describe('org-held service keys: real SQL, signatures and private vault custody'
       slot: 'primary', loadedByDid: member,
     });
     const [grant] = await database.select().from(vaultDelegationGrants).where(eq(vaultDelegationGrants.field, row.sealedKeyField!));
-    expect(grant).toMatchObject({ subject: org, grantedTo: h.nodeDid, status: 'active' });
+    expect(grant.subject).toBe(org);
+    expect(grant).toMatchObject({ grantedTo: h.nodeDid, status: 'active' });
     const entry = await vaultService.get(row.sealedKeyField!);
     expect(entry?.custodyScheme).toBe('delegation-grant');
     const read = vi.spyOn(vaultService, 'get');
