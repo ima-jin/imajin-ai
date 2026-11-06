@@ -5,7 +5,7 @@ import {
 } from '@/src/db';
 import { prepareMechanicalAttestation } from '@/src/lib/auth/emit-mechanical-attestation';
 import { ExternalMcpError, type ConnectionErrorCode } from './external-mcp-policy';
-import { isAgentCapableSubtype } from './connection-principal-policy';
+import { isAgentCapableSubtype, orgConnectionRequiresReseal } from './connection-principal-policy';
 import { generateId } from './id';
 import { hasOrgConnectionProvenance, isLiveConnection, type ConnectionTransaction } from './member-connection-gate';
 import { missingConnection } from './connection-principal';
@@ -150,6 +150,9 @@ export async function requireOrgConnectionMemberGrant(context: OrgMemberGrantCon
   if (!org || !['business', 'community', 'family'].includes(org.scope) || org.suspendedAt) throw denied(provider);
   await requireMember(tx, orgDid, memberDid, provider);
   const connection = await findConnection(tx, orgDid, provider);
+  if (connection && isLiveConnection(connection) && !hasOrgConnectionProvenance(connection)) {
+    throw orgConnectionRequiresReseal(orgDid);
+  }
   if (!connection || !liveOrgConnection(connection)) {
     if (provider === 'anthropic') throw missingConnection(orgDid);
     throw denied(provider, 'connection_not_loaded');

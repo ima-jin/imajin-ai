@@ -25,4 +25,8 @@ export const missingConnection = (did: string) => new ExternalMcpError(
   403, `No active connection for ${did}. Configure that identity's connectors on /auth/connectors while acting as ${did}`,
   'connection_not_loaded',
 );
+export const orgConnectionRequiresReseal = (did: string) => new ExternalMcpError(
+  403, `Organization connection for ${did} has no verified loader provenance. Ask an org admin to re-seal through the org connectors page on /auth/connectors while acting as ${did}`,
+  'connection_not_loaded', did,
+);
 export const isOrgScope = (scope: string) => ['business', 'community', 'family'].includes(scope);
