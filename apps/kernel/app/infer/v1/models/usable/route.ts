@@ -48,6 +48,7 @@ import { inferenceBrainContext } from '@/src/lib/inference/route-context';
 import { listUsableModels } from '@/src/lib/inference/brain';
 import { ExternalMcpError } from '@/src/lib/kernel/external-mcp-policy';
 import type { UsableModel } from '@/src/lib/inference/model-catalog';
+import { getTokenRateUsd } from '@/src/lib/inference/pricing';
 
 const log = createLogger('kernel:inference:usable-models-route');
 
@@ -121,6 +122,9 @@ function toModelList(brains: readonly UsableModel[]) {
         credentialDid: brain.credentialDid,
         servable: true,
         picked: brain.picked,
+        // USD per million tokens, identical to usage-ledger estimates.
+        // Cache rates are not known by that table; do not invent them here.
+        pricing: getTokenRateUsd(brain.connector, brain.modelId),
       },
     })),
   };

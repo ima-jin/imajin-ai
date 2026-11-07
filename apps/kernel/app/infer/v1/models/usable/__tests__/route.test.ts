@@ -35,6 +35,7 @@ vi.mock('@/src/lib/inference/brain', () => ({
 // ─── Subject ────────────────────────────────────────────────────────────────
 
 import { GET, OPTIONS } from '../route';
+import { computeCostUsd, getTokenRateUsd } from '@/src/lib/inference/pricing';
 
 // ─── Fixtures ────────────────────────────────────────────────────────────────
 
@@ -48,7 +49,7 @@ function makeReq(headers: Record<string, string> = {}): RouteRequest {
 }
 
 const XAI_BRAIN = {
-  connector: 'xai',
+  connector: 'xai' as const,
   credentialDid: OWNER_DID,
   provider: 'openai' as const,
   modelId: 'grok-4',
@@ -58,7 +59,7 @@ const XAI_BRAIN = {
 };
 
 const OPENAI_BRAIN = {
-  connector: 'openai',
+  connector: 'openai' as const,
   credentialDid: OWNER_DID,
   provider: 'openai' as const,
   modelId: 'gpt-6-astra',
@@ -163,6 +164,39 @@ describe('GET /infer/v1/models/usable — request gating', () => {
 });
 
 describe('GET /infer/v1/models/usable — listing', () => {
+  it('prices every discovered model from the ledger rate table, including unknown-model fallbacks and free local inference', async () => {
+    const models = [
+      { ...OPENAI_BRAIN, modelId: 'gpt-4o-mini' },
+      OPENAI_BRAIN,
+      XAI_BRAIN,
+      { ...XAI_BRAIN, connector: 'anthropic' as const, modelId: 'claude-sonnet-5-5' },
+      { ...XAI_BRAIN, connector: 'local' as const, modelId: 'local-scenario' },
+    ];
+    mockListUsableModels.mockResolvedValueOnce(models);
+    const body = await (await GET(makeReq())).json();
+    expect(body.data).toHaveLength(models.length);
+    for (const [index, model] of models.entries()) {
+      const pricing = body.data[index].imajin.pricing;
+      expect(pricing).toEqual(getTokenRateUsd(model.connector, model.modelId));
+      expect(pricing.inputPer1M).toBe(computeCostUsd(model.connector, model.modelId, 1_000_000, 0));
+      expect(pricing.outputPer1M).toBe(computeCostUsd(model.connector, model.modelId, 0, 1_000_000));
+      expect(pricing).not.toHaveProperty('cacheReadPer1M');
+      expect(pricing).not.toHaveProperty('cacheWritePer1M');
+    }
+  });
+
+  it('keeps acting-org ownership when returning catalog pricing', async () => {
+    const context = { ownerDid: 'did:imajin:org', orgContext: { memberDid: OWNER_DID, orgDid: 'did:imajin:org' } };
+    mockResolveInferenceAuth.mockResolvedValueOnce({ ok: true, context });
+    mockListUsableModels.mockResolvedValueOnce([{ ...XAI_BRAIN, credentialDid: context.ownerDid }]);
+    const body = await (await GET(makeReq())).json();
+    expect(mockListUsableModels).toHaveBeenCalledWith(context);
+    expect(body.data[0].imajin).toMatchObject({
+      credentialDid: context.ownerDid,
+      pricing: getTokenRateUsd('xai', 'grok-4'),
+    });
+  });
+
   it('keeps data[].id consumers working and exposes picked metadata for every picker row', async () => {
     mockListUsableModels.mockResolvedValueOnce([
       XAI_BRAIN, { ...XAI_BRAIN, modelId: 'grok-other', picked: false },
