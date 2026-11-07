@@ -332,8 +332,17 @@ describe('self-discovery with real app auth, assignment and grant SQL (#3250)', 
       id: 'self-grant', orgDid: ORG, memberDid: MEMBER, connectionId: 'org-connection',
       provider: 'anthropic', grantedByDid: MEMBER, grantedAt: new Date(),
     });
+    await database.insert(connectors).values({
+      id: 'self-personal-connection', ownerDid: MEMBER, provider: 'anthropic', slot: 'primary',
+      status: 'active', sealedKeyField: `anthropic-api-key:${MEMBER}`,
+    });
     const before = await bodyAndParity(selfRequest(ORG, MEMBER));
-    expect(before.connectors.find((row: { kind?: string }) => row.kind === 'C')).toMatchObject({ usable: true });
+    expect(before.connectors.find((row: { kind?: string }) => row.kind === 'C')).toMatchObject({
+      provider: 'anthropic', authority: 'member-grant', usable: true,
+      billedPrincipal: { did: ORG }, grantStatus: 'granted',
+    });
+    expect(before.connectors.some((row: { provider: string; authority: string; billedPrincipal?: { did: string } }) =>
+      row.provider === 'anthropic' && row.billedPrincipal?.did === ORG && row.authority === 'own-key')).toBe(false);
     await database.update(orgConnectionMemberGrants).set({ revokedAt: new Date() });
     const response = await discoverSelf(selfRequest(ORG, MEMBER));
     expect(response.status).toBe(200);
@@ -756,6 +765,19 @@ describe('assigned agents use only the assigned DID keys, without member-grant r
       .rejects.toMatchObject({ status: 403, message: expect.stringContaining('/auth/connectors') });
     await database.update(identityMembers).set({ allowedServices: ['infer'] }).where(eq(identityMembers.memberDid, AGENT));
     await expect(authorizeExternalMcp(agent, target)).rejects.toMatchObject({ status: 403 });
+  });
+  it.each(['warp', 'org-held-warp'])('enforces %s suspension against a vendor-only held row for an assigned agent', async provider => {
+    await assign();
+    await useWarpConnection();
+    await database.update(connectors).set({ provider: 'warp' });
+    await database.insert(orgConnectionSuspensions).values({
+      orgDid: ORG, memberDid: AGENT, provider, slot: 'primary', suspendedAt: new Date(),
+    });
+    await expect(authorizeExternalMcp({
+      memberDid: AGENT, caller: { actorDid: AGENT, actingAs: ORG },
+    }, { provider: 'warp', scope: 'warp:dispatch' })).rejects.toMatchObject({ code: 'connection_suspended' });
+    expect(h.get).not.toHaveBeenCalled();
+    expect(h.unseal).not.toHaveBeenCalled();
   });
   it.each(['agent', 'presence'])('sends the org Warp key for %s through the actual tool route and rechecks assignment', async subtype => {
     await database.update(identities).set({ subtype }).where(eq(identities.id, AGENT));

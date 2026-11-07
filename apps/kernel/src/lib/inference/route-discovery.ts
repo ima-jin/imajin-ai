@@ -110,7 +110,7 @@ export async function listInferenceRoutes(context: DiscoveryContext, options?: {
   await forEachSequential(candidates, async candidate => {
     const providers = candidate.orgHeld ? ['anthropic'] as const : listBrainConnectors();
     await forEachSequential(providers, async provider => {
-      const card = await readInferenceCard(candidate.principal.did, provider, candidate.orgHeld);
+      const card = await readInferenceCard(candidate.principal.did, provider);
       const resolution = await resolveCard(candidate, provider, options?.model);
       routes.push(describeInferenceRoute(candidate, card, resolution));
     });

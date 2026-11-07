@@ -119,7 +119,7 @@ export async function loadInferenceRouteCandidates(selected: DiscoveryContext): 
 }
 
 /** Project card metadata only, never a complete registry row or credential reference. */
-export async function readInferenceCard(did: string, provider: BrainConnectorId, _orgHeld: boolean) {
+export async function readInferenceCard(did: string, provider: BrainConnectorId) {
   const row = await readConnectorRegistration(did, provider, 'primary');
   return { provider, id: row?.id ?? connectorRegistryId(did, provider, 'primary'), label: row?.label ?? `${provider} · primary` };
 }

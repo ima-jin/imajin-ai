@@ -18,7 +18,7 @@ export const isLiveConnection = (row: { status: string; expiresAt: Date | null; 
 export const hasOrgConnectionProvenance = (row: ConnectorRow) =>
   !!(row.loadedByDid && row.loadedAt);
 
-export async function findMemberConnection(tx: Pick<ConnectionTransaction, 'select'>, memberDid: string, provider: string, _orgHeld = false) {
+export async function findMemberConnection(tx: Pick<ConnectionTransaction, 'select'>, memberDid: string, provider: string) {
   const rows = await tx.select().from(connectors).where(and(
     eq(connectors.ownerDid, memberDid),
     connectionProviderCondition(connectors.provider, connectorVendor({ provider }), connectorPurpose({ provider })),
@@ -73,7 +73,7 @@ export async function authorizeMemberConnection(
       memberDid: orgContext.memberDid, orgDid: orgContext.orgDid, actingDid: orgContext.orgDid, provider: target.provider,
     }, tx);
   }
-  const row = await findMemberConnection(tx, principal.ownerDid, target.provider, !!orgContext);
+  const row = await findMemberConnection(tx, principal.ownerDid, target.provider);
   if (caller.caller && (!row || !isLiveConnection(row) || !row.sealedKeyField)) throw missingConnection(principal.ownerDid);
   if (!row || !isLiveConnection(row) || !row.sealedKeyField) throw connectionUnavailable();
   if (orgContext && !hasOrgConnectionProvenance(row)) throw orgConnectionRequiresReseal(principal.ownerDid);
@@ -84,7 +84,7 @@ export async function authorizeMemberConnection(
     const [suspension] = await tx.select({ provider: orgConnectionSuspensions.provider })
       .from(orgConnectionSuspensions).where(and(
         eq(orgConnectionSuspensions.orgDid, orgDid),
-        or(eq(orgConnectionSuspensions.provider, row.provider), eq(orgConnectionSuspensions.provider, target.provider)),
+        connectionProviderCondition(orgConnectionSuspensions.provider, connectorVendor(row), connectorPurpose(row)),
         isNotNull(orgConnectionSuspensions.suspendedAt),
         or(
           eq(orgConnectionSuspensions.memberDid, ''),
