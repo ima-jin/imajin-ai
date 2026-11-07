@@ -72,8 +72,10 @@ import { POST as verifyToken } from '@/app/auth/api/apps/token/verify/route';
 import { GET as usableModels } from '@/app/infer/v1/models/usable/route';
 import { POST as messages } from '@/app/infer/v1/messages/route';
 import { POST as internalAttestation } from '@/app/auth/api/attestations/internal/route';
+import { GET as sessionUsage } from '@/app/usage/api/audit/sessions/[sessionId]/route';
 import { hasOrgConnectionProvenance } from '@/src/lib/kernel/member-connection-gate';
 import { resolveBrain } from '../brain';
+import { computeCostUsd, getTokenRateUsd } from '../pricing';
 import { usageIncurred } from '@/src/db/schemas/usage';
 import { transactions, balanceRollups } from '@/src/db/schemas/pay';
 import { prepareMechanicalAttestation } from '@/src/lib/auth/emit-mechanical-attestation';
@@ -184,7 +186,10 @@ async function callerRequest(seed: Scenario, path: string, actorDid = seed.botDi
     azp: actorDid, sub: actorDid, scope: 'infer:completions', attestationId: randomUUID(),
   });
   return new NextRequest(`https://kernel.test/infer/v1/${path}`, {
-    headers: { 'x-api-key': token, ...(actingAs ? { 'x-acting-as': actingAs } : {}) },
+    headers: {
+      'x-api-key': token, ...(actingAs ? { 'x-acting-as': actingAs } : {}),
+      'x-imajin-session': `session-${seed.botDid}`, 'x-imajin-turn': 'scenario-turn',
+    },
     ...(path === 'messages' ? { method: 'POST', body: JSON.stringify({
       model: 'claude-scenario', messages: [{ role: 'user', content: 'Scenario prompt' }], max_tokens: 8,
     }) } : {}),
@@ -251,7 +256,9 @@ describe('assigned org-bot discovery seeded by real writers (#3335)', () => {
     const response = await discover(seed);
     expect(response.status, JSON.stringify(await response.clone().json())).toBe(200);
     expect(await response.json()).toMatchObject({ data: [expect.objectContaining({
-      id: 'claude-scenario', imajin: expect.objectContaining({ credentialDid: seed.orgDid }),
+      id: 'claude-scenario', imajin: expect.objectContaining({
+        credentialDid: seed.orgDid, pricing: getTokenRateUsd('anthropic', 'claude-scenario'),
+      }),
     })] });
     expect(await database.select().from(orgConnectionMemberGrants)).toEqual([]);
   });
@@ -264,21 +271,53 @@ describe('assigned org-bot discovery seeded by real writers (#3335)', () => {
     expect(createHash('sha256').update(brain.apiKey).digest('hex')).toBe(seed.credentialHash);
     expect(brain).toMatchObject({ actorDid: seed.botDid, credentialDid: seed.orgDid, provider: 'anthropic',
       orgUsage: { orgDid: seed.orgDid, memberDid: seed.orgDid, connectionId: (await connection(seed)).id } });
-    expect((await infer(seed)).status).toBe(200);
-    const [usage] = await database.select().from(usageIncurred).where(eq(usageIncurred.principalDid, seed.orgDid));
-    expect(usage).toMatchObject({ agentDid: seed.botDid, provider: 'anthropic', model: 'claude-scenario', tokensIn: 3, tokensOut: 2 });
+    const callsBefore = h.upstreamCalls;
+    const completion = await infer(seed);
+    expect(completion.status).toBe(200);
+    const { id: requestId } = await completion.json();
+    expect(h.upstreamCalls).toBe(callsBefore + 1);
+    const rows = await database.select().from(usageIncurred).where(eq(usageIncurred.principalDid, seed.orgDid));
+    expect(rows).toHaveLength(1);
+    const [usage] = rows;
+    const costUsd = computeCostUsd('anthropic', 'claude-scenario', 3, 2)!;
+    expect(usage).toMatchObject({
+      principalDid: seed.orgDid, agentDid: seed.botDid, provider: 'anthropic', model: 'claude-scenario',
+      tokensIn: 3, tokensOut: 2, externalId: requestId, sessionId: `session-${seed.botDid}`,
+      turnId: 'scenario-turn', costUsd: costUsd.toFixed(8),
+    });
     await vi.waitFor(async () => {
-      const [receipt] = await database.select().from(attestations).where(and(
+      const receipts = await database.select().from(attestations).where(and(
         eq(attestations.type, 'usage.incurred'), eq(attestations.contextId, usage.id),
       ));
+      expect(receipts).toHaveLength(1);
+      const [receipt] = receipts;
       expect(receipt).toMatchObject({ issuerDid: h.nodeDid, subjectDid: seed.orgDid,
         payload: expect.objectContaining({ agentDid: seed.botDid, actingFor: seed.orgDid, usageId: usage.id,
+          externalId: requestId, costEstimateUsd: costUsd, sessionId: usage.sessionId, turnId: usage.turnId,
           metadata: expect.objectContaining({ orgDid: seed.orgDid }) }) });
       expect(crypto.verifySync(receipt.signature, canonicalize({
         subject_did: receipt.subjectDid, type: receipt.type, context_id: receipt.contextId,
         context_type: receipt.contextType, payload: receipt.payload, issued_at: receipt.issuedAt.getTime(),
       }), getNodeSigningIdentity().senderPubkey)).toBe(true);
     });
+    const request = new NextRequest(`https://kernel.test/usage/api/audit/sessions/${encodeURIComponent(usage.sessionId!)}`);
+    const params = { params: Promise.resolve({ sessionId: usage.sessionId! }) };
+    // The org's authenticated owner is still acting as the org after sealing.
+    const audit = await sessionUsage(request, params);
+    expect(audit.status).toBe(200);
+    const body = await audit.json();
+    expect(body.principalDid).toBe(seed.orgDid);
+    expect(body.turns).toHaveLength(1);
+    expect(body.turns[0].usage).toHaveLength(1);
+    expect(body.turns[0]).toMatchObject({ turnId: usage.turnId, usage: [{
+      id: usage.id, agentDid: seed.botDid, externalId: requestId, costUsd: usage.costUsd,
+      transaction: { amount: usage.costUsd, currency: 'USD' },
+      attestation: { id: expect.any(String), signature: expect.any(String),
+        payload: { agentDid: seed.botDid, actingFor: seed.orgDid, externalId: requestId, costEstimateUsd: costUsd } },
+    }] });
+    // Removing the org selector must not turn a human owner session into org-billing access.
+    h.identity = { id: seed.humanDid, scope: 'actor', subtype: 'human' };
+    expect((await sessionUsage(request, params)).status).toBe(403);
   });
 
   it('refuses an unassigned agent before custody or upstream access', async () => {
