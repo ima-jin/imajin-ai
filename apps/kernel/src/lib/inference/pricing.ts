@@ -90,6 +90,11 @@ const DEFAULT_RATE: Record<BrainConnectorId, TokenRateUsd> = {
   openrouter: { inputPer1M: 2.5, outputPer1M: 10 },
 };
 
+/** The same USD-per-million rate used by the usage ledger, including its fallback estimates. */
+export function getTokenRateUsd(connector: BrainConnectorId, modelId: string): Readonly<TokenRateUsd> {
+  return MODEL_RATES[connector]?.[modelId] ?? DEFAULT_RATE[connector];
+}
+
 /**
  * Compute the estimated USD cost of one call, or `undefined` when either
  * token count is unknown (nothing to compute from) — never `0`, which would
@@ -103,7 +108,7 @@ export function computeCostUsd(
 ): number | undefined {
   if (tokensIn === undefined || tokensOut === undefined) return undefined;
 
-  const rate = MODEL_RATES[connector]?.[modelId] ?? DEFAULT_RATE[connector];
+  const rate = getTokenRateUsd(connector, modelId);
   const cost = (tokensIn / 1_000_000) * rate.inputPer1M + (tokensOut / 1_000_000) * rate.outputPer1M;
   // Round to 8 decimal places — matches usage.incurred.cost_usd's NUMERIC(20,8).
   return Math.round(cost * 1e8) / 1e8;
