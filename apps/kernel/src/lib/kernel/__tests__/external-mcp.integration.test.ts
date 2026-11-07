@@ -147,6 +147,7 @@ describe('member-readable org-held status without custody or grant authority', (
     await orgRequest('POST', 'anthropic', orgKey());
     await asOrg('member');
   }
+
   it.each(['member', 'maintainer', 'admin', 'owner'])('lets an active %s read only provider/status/loadedAt without unseal or writes', async role => {
     await loadForMember();
     await asOrg(role);
@@ -1652,6 +1653,42 @@ describe('org-held member grants: durable lifecycle and live metadata contract',
     });
   }
 
+  it.each(['family', 'actor'])('uses a live grant held by a %s DID without classifying it from scope', async scope => {
+    await prepare();
+    await grantRequest();
+    await database.update(identities).set({ scope }).where(eq(identities.id, org));
+    expect(await requireOrgConnectionMemberGrant(context())).toMatchObject({ orgDid: org, memberDid: grantee() });
+    await database.update(orgConnectionMemberGrants).set({ revokedAt: new Date() })
+      .where(eq(orgConnectionMemberGrants.memberDid, grantee()));
+    await expectDenied();
+  });
+
+  it.each(['anthropic', 'warp'])('dual-reads %s legacy rows and suspensions without a personal fallback', async provider => {
+    await prepare(provider);
+    const [connection] = await orgRows();
+    await database.update(connectors).set({ provider: `org-held-${provider}` })
+      .where(eq(connectors.id, connection.id));
+    await database.insert(connectors).values({
+      id: `personal_${sequence}`, ownerDid: grantee(), provider, slot: 'primary',
+      channel: provider, connectorDid: h.nodeDid, sealedKeyField: 'personal-reference',
+    });
+    expect((await grantRequest('POST', provider)).status).toBe(200);
+    expect(await requireOrgConnectionMemberGrant(context(provider))).toMatchObject({ connectionId: connection.id });
+    const store = await vi.importActual<typeof import('../connector-registry-store')>('../connector-registry-store');
+    expect(await store.readConnectorRegistration(org, provider, 'primary')).toMatchObject({
+      id: connection.id, ownerDid: org,
+    });
+    for (const spelling of [provider, `org-held-${provider}`]) {
+      await database.insert(orgConnectionSuspensions).values({
+        orgDid: org, memberDid: grantee(), provider: spelling, suspendedAt: new Date(),
+      });
+      await expect(requireOrgConnectionMemberGrant(context(provider)))
+        .rejects.toMatchObject({ code: 'connection_suspended' });
+      await database.update(orgConnectionSuspensions).set({ suspendedAt: null })
+        .where(eq(orgConnectionSuspensions.provider, spelling));
+    }
+  });
+
   it.each(['anthropic', 'warp'])('grants %s without custody access, retains signed provenance and idempotent revoke/regrant history', async provider => {
     await prepare(provider);
     const vaultBefore = structuredClone(h.vault);
@@ -1911,11 +1948,12 @@ describe('org-held member grants: durable lifecycle and live metadata contract',
     await expectDenied({ orgDid: '' });
     await expectDenied({ orgDid: `${org}foreign`, actingDid: `${org}foreign` });
     await expectDenied({ provider: 'warp' });
-    for (const column of ['scope', 'suspendedAt'] as const) {
-      await database.update(identities).set(column === 'scope' ? { scope: 'actor' } : { suspendedAt: new Date() }).where(eq(identities.id, org));
-      await expectDenied();
-      await database.update(identities).set({ scope: 'business', suspendedAt: null }).where(eq(identities.id, org));
-    }
+    // Holding is scope-independent; active standing still gates every grant.
+    await database.update(identities).set({ scope: 'actor' }).where(eq(identities.id, org));
+    expect(await requireOrgConnectionMemberGrant(context())).toMatchObject({ memberDid: grantee() });
+    await database.update(identities).set({ suspendedAt: new Date() }).where(eq(identities.id, org));
+    await expectDenied();
+    await database.update(identities).set({ scope: 'business', suspendedAt: null }).where(eq(identities.id, org));
     await database.update(identityMembers).set({ removedAt: new Date() }).where(eq(identityMembers.memberDid, grantee()));
     await expectDenied();
     await database.update(identityMembers).set({ removedAt: null }).where(eq(identityMembers.memberDid, grantee()));
@@ -2067,6 +2105,35 @@ describe('/jin Anthropic seal human provenance (#3313)', () => {
 });
 
 describe('org-held service keys: real SQL, signatures and private vault custody', () => {
+  it.each(['anthropic', 'warp'])('keeps legacy %s rows readable, replaceable and revocable under the original id', async provider => {
+    await asOrg();
+    await orgRequest('POST', provider, orgKey());
+    const [original] = await orgRows();
+    await database.update(connectors).set({ provider: `org-held-${provider}` })
+      .where(eq(connectors.id, original.id));
+    expect(await orgRequest('GET', provider)).toMatchObject({ status: 200, body: { provider, status: 'loaded' } });
+    expect(await memberStatus()).toMatchObject({
+      status: 200, body: { connections: [expect.objectContaining({ provider, status: 'loaded' })] },
+    });
+    expect((await orgRequest('POST', provider, orgKey())).status).toBe(201);
+    expect(await orgRows()).toEqual([expect.objectContaining({ id: original.id, provider: `org-held-${provider}` })]);
+    expect((await orgRequest('DELETE', provider)).status).toBe(200);
+    expect((await orgRequest('GET', provider)).status).toBe(404);
+    expect(await orgRows()).toHaveLength(1);
+  });
+
+  it('lists any vendor held by ownerDid, excluding billing and upstream rows without field-name provenance', async () => {
+    await asOrg();
+    for (const provider of ['anthropic', 'warp', 'gemini']) await orgRequest('POST', provider, orgKey());
+    const [source] = await orgRows();
+    for (const provider of ['anthropic-billing', 'openai-billing', 'app-upstream:did:imajin:app:catalog']) {
+      await database.insert(connectors).values({ ...source, id: `excluded_${provider}_${sequence}`, provider });
+    }
+    expect((await call(ORG_LIST)).body.connections.map((row: { provider: string }) => row.provider).sort())
+      .toEqual(['anthropic', 'gemini', 'warp']);
+    expect((await memberStatus()).body.connections.map((row: { provider: string }) => row.provider).sort())
+      .toEqual(['anthropic', 'gemini', 'warp']);
+  });
   it('shares one Anthropic provider row with the ordinary seal projection and revocation', async () => {
     await asOrg();
     await orgRequest('POST', 'anthropic', orgKey());
@@ -2082,16 +2149,19 @@ describe('org-held service keys: real SQL, signatures and private vault custody'
     expect((await orgRequest()).status).toBe(404);
   });
 
-  it('isolates org custody from the existing generic provider registration and revoke writers', async () => {
+  it('uses the same holder/vendor row for Warp registry projection and revocation', async () => {
     await asOrg();
     const loaded = await orgRequest('POST', 'warp', orgKey());
     const [orgHeld] = await orgRows();
     const store = await vi.importActual<typeof import('../connector-registry-store')>('../connector-registry-store');
     await store.recordConnectorRegistration({ ownerDid: org, provider: 'warp', sealedKeyField: 'ordinary:fixture' });
     await store.revokeConnectorRegistration(org, 'warp');
-    expect(await database.select().from(connectors).where(eq(connectors.id, orgHeld.id))).toEqual([orgHeld]);
-    expect((await orgRequest('GET', 'warp')).body).toEqual(loaded.body);
-    await expect(store.createConnectorConnection(org, 'org-held-anthropic')).rejects.toThrow('Unknown connector');
+    expect(loaded.status).toBe(201);
+    expect(await database.select().from(connectors).where(eq(connectors.id, orgHeld.id))).toEqual([
+      expect.objectContaining({ id: orgHeld.id, ownerDid: org, provider: 'warp', status: 'revoked' }),
+    ]);
+    expect((await orgRequest('GET', 'warp')).status).toBe(404);
+    expect(await orgRows()).toHaveLength(1);
   });
   it('hides unconfigured slots and refuses removed slots without changing their history', async () => {
     await asOrg();
@@ -2115,7 +2185,7 @@ describe('org-held service keys: real SQL, signatures and private vault custody'
     expect(loaded.body).toEqual({ provider, loadedByDid: member, loadedAt: expect.any(String), status: 'loaded' });
     const [row] = await orgRows();
     expect(row).toMatchObject({
-      ownerDid: org, provider: provider === 'anthropic' ? provider : `org-held-${provider}`,
+      ownerDid: org, provider,
       slot: 'primary', loadedByDid: member,
     });
     const [grant] = await database.select().from(vaultDelegationGrants).where(eq(vaultDelegationGrants.field, row.sealedKeyField!));

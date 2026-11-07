@@ -1,15 +1,16 @@
 import { and, eq, inArray, isNotNull, isNull, or } from 'drizzle-orm';
 import {
-  db, attestations, connectors, identities, identityMembers, orgConnectionEvents,
+  db, attestations, identities, identityMembers, orgConnectionEvents,
   orgConnectionMemberGrants, orgConnectionSuspensions, type ConnectorRow, type OrgConnectionMemberGrant,
 } from '@/src/db';
 import { prepareMechanicalAttestation } from '@/src/lib/auth/emit-mechanical-attestation';
 import { ExternalMcpError, type ConnectionErrorCode } from './external-mcp-policy';
 import { isAgentCapableSubtype, orgConnectionRequiresReseal } from './connection-principal-policy';
 import { generateId } from './id';
-import { hasOrgConnectionProvenance, isLiveConnection, type ConnectionTransaction } from './member-connection-gate';
+import { findMemberConnection, hasOrgConnectionProvenance, isLiveConnection, type ConnectionTransaction } from './member-connection-gate';
 import { missingConnection } from './connection-principal';
-import { authorizeOrgConnectionAdmin, orgHeldProvider, type OrgConnectionActor } from './org-held-connection-policy';
+import { authorizeOrgConnectionAdmin, type OrgConnectionActor } from './org-held-connection-policy';
+import { connectionProviderCondition, readConnectionGrant } from './connection-holding';
 
 export interface MemberGrantInput { memberDid: string; reason: string }
 export function parseMemberGrantInput(raw: unknown): MemberGrantInput {
@@ -36,10 +37,7 @@ async function requireMember(tx: GrantReader, orgDid: string, memberDid: string,
 }
 
 async function findConnection(tx: GrantReader, orgDid: string, provider: string) {
-  const [row] = await tx.select().from(connectors).where(and(
-    eq(connectors.ownerDid, orgDid), eq(connectors.provider, orgHeldProvider(provider)), eq(connectors.slot, 'primary'),
-  )).limit(1);
-  return row;
+  return findMemberConnection(tx, orgDid, provider);
 }
 
 function liveOrgConnection(row: ConnectorRow) {
@@ -147,7 +145,7 @@ export async function requireOrgConnectionMemberGrant(context: OrgMemberGrantCon
   const { memberDid, orgDid, actingDid, provider } = context;
   if (!memberDid || !orgDid || actingDid !== orgDid || memberDid === orgDid) throw denied(provider);
   const [org] = await tx.select().from(identities).where(eq(identities.id, orgDid)).limit(1);
-  if (!org || !['business', 'community', 'family'].includes(org.scope) || org.suspendedAt) throw denied(provider);
+  if (!org || org.suspendedAt) throw denied(provider);
   await requireMember(tx, orgDid, memberDid, provider);
   const connection = await findConnection(tx, orgDid, provider);
   if (connection && isLiveConnection(connection) && !hasOrgConnectionProvenance(connection)) {
@@ -157,15 +155,11 @@ export async function requireOrgConnectionMemberGrant(context: OrgMemberGrantCon
     if (provider === 'anthropic') throw missingConnection(orgDid);
     throw denied(provider, 'connection_not_loaded');
   }
-  const [grant] = await tx.select().from(orgConnectionMemberGrants).where(and(
-    eq(orgConnectionMemberGrants.orgDid, orgDid), eq(orgConnectionMemberGrants.memberDid, memberDid),
-    eq(orgConnectionMemberGrants.connectionId, connection.id), eq(orgConnectionMemberGrants.provider, provider),
-    isNull(orgConnectionMemberGrants.revokedAt),
-  )).limit(1);
+  const grant = await readConnectionGrant(connection, memberDid, tx);
   if (!grant) throw denied(provider);
   const [suspension] = await tx.select().from(orgConnectionSuspensions).where(and(
     eq(orgConnectionSuspensions.orgDid, orgDid),
-    or(eq(orgConnectionSuspensions.provider, provider), eq(orgConnectionSuspensions.provider, orgHeldProvider(provider))),
+    connectionProviderCondition(orgConnectionSuspensions.provider, provider),
     isNotNull(orgConnectionSuspensions.suspendedAt),
     or(eq(orgConnectionSuspensions.memberDid, ''), and(
       eq(orgConnectionSuspensions.memberDid, memberDid),

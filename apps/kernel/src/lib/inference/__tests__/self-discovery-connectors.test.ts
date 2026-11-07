@@ -56,22 +56,22 @@ describe('read-only connector authority projection', () => {
     ]);
     const rows = await listDiscoveryConnectorMetadata(context);
     expect(rows.some(row => ['anthropic', 'future-family', 'org-held-future'].includes(row.provider))).toBe(false);
-    expect(h.identity).toHaveBeenCalledWith(org);
+    expect(h.identity).not.toHaveBeenCalled();
   });
 
   it('does not infer org ownership from a provider prefix on a personal-owned registration', async () => {
     h.registrations.mockResolvedValue([{ ownerDid: actor, provider: 'org-held-future', status: 'active' }]);
     const rows = await listDiscoveryConnectorMetadata(context);
-    expect(rows.find(row => row.provider === 'org-held-future')).toMatchObject({
+    expect(rows.find(row => row.provider === 'future')).toMatchObject({
       ownerDid: actor, usable: null, grantStatus: 'not-evaluated',
     });
-    expect(h.identity).toHaveBeenCalledWith(actor);
+    expect(h.identity).not.toHaveBeenCalled();
   });
 
   it('distinguishes configured from usable and never spreads registry fields', async () => {
     const privateValue = randomUUID();
     h.registrations.mockResolvedValue([
-      { provider: 'warp', status: 'active', sealedKeyField: privateValue },
+      { ownerDid: actor, provider: 'warp', status: 'active', sealedKeyField: privateValue },
       { ownerDid: actor, provider: 'future-family', status: 'active', sealedKeyField: privateValue },
       { ownerDid: org, provider: 'org-held-warp', status: 'active' }, { provider: 'anthropic-billing', status: 'active' },
     ]);

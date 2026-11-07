@@ -1,4 +1,4 @@
-import { and, eq, isNotNull, like, or, sql } from 'drizzle-orm';
+import { and, eq, isNotNull, sql } from 'drizzle-orm';
 import { db, attestations, connectors, type ConnectorRow } from '@/src/db';
 import { prepareMechanicalAttestation } from '@/src/lib/auth/emit-mechanical-attestation';
 import { deleteFromVault, revokeStaticSecretGrant, sealAndGrantStaticSecret, vaultService } from '@/src/lib/vault';
@@ -8,18 +8,19 @@ import { connectorRegistryId } from './connector-registry-store';
 import { getConnector } from './connector-registry';
 import { connectInput, ExternalMcpError } from './external-mcp-policy';
 import { generateId } from './id';
-import { authorizeOrgConnectionAdmin, ORG_HELD_PREFIX, orgHeldProvider, type OrgConnectionActor } from './org-held-connection-policy';
-export { orgHeldProvider, type OrgConnectionActor } from './org-held-connection-policy';
+import { authorizeOrgConnectionAdmin, type OrgConnectionActor } from './org-held-connection-policy';
+import { connectionProviderCondition, connectorPurpose, connectorVendor, isHeldBy, isUpstreamConnection } from './connection-holding';
+import { findMemberConnection } from './member-connection-gate';
+export type { OrgConnectionActor } from './org-held-connection-policy';
 
 type Transaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
 function selection(orgDid: string, provider?: string) {
   return and(eq(connectors.ownerDid, orgDid), eq(connectors.slot, 'primary'),
-    provider === undefined ? or(eq(connectors.provider, 'anthropic'), like(connectors.provider, `${ORG_HELD_PREFIX}%`))
-      : eq(connectors.provider, orgHeldProvider(provider)));
+    provider === undefined ? undefined : connectionProviderCondition(connectors.provider, provider));
 }
 function metadata(row: ConnectorRow) {
-  return { provider: row.provider === 'anthropic' ? row.provider : row.provider.slice(ORG_HELD_PREFIX.length),
+  return { provider: connectorVendor(row),
     loadedByDid: row.loadedByDid, loadedAt: row.loadedAt, status: 'loaded' as const };
 }
 function providerEntry(provider: string) {
@@ -51,11 +52,14 @@ export function readOrgHeldConnections(actor: OrgConnectionActor, provider?: str
       .where(and(selection(actor.orgDid, provider), eq(connectors.status, 'active'),
         isNotNull(connectors.sealedKeyField), isNotNull(connectors.loadedByDid), isNotNull(connectors.loadedAt)))
       .orderBy(connectors.provider);
+    const held = rows.filter(row => isHeldBy(row, actor.orgDid)
+      && connectorPurpose(row) === 'inference' && !isUpstreamConnection(row));
     if (provider !== undefined) {
-      if (!rows[0]) throw new ExternalMcpError(404, 'No loaded organization connection');
-      return metadata(rows[0]);
+      const row = held.find(item => item.provider === provider) ?? held[0];
+      if (!row) throw new ExternalMcpError(404, 'No loaded organization connection');
+      return metadata(row);
     }
-    return { connections: rows.map(metadata) };
+    return { connections: held.map(metadata) };
   });
 }
 
@@ -70,7 +74,7 @@ export function loadOrgHeldConnection(actor: OrgConnectionActor, provider: strin
   }
   if (isVaultTier1()) throw new ExternalMcpError(409, 'Organization connections require kernel vault custody');
   return locked(actor, async tx => {
-    const [previous] = await tx.select().from(connectors).where(selection(actor.orgDid, provider));
+    const previous = await findMemberConnection(tx, actor.orgDid, provider);
     if (previous?.status === 'removed') throw new ExternalMcpError(409, 'Organization connection unavailable');
     const node = getNodeSigningIdentity();
     // Reuse the private-custody namespace: generic fetch, export and renewal deny it.
@@ -81,8 +85,8 @@ export function loadOrgHeldConnection(actor: OrgConnectionActor, provider: strin
     if (previous?.sealedKeyField) await revokeStaticSecretGrant(previous.sealedKeyField, node.senderDid, tx);
     const loadedAt = new Date();
     const [row] = await tx.insert(connectors).values({
-      id: connectorRegistryId(actor.orgDid, orgHeldProvider(provider), 'primary'),
-      ownerDid: actor.orgDid, provider: orgHeldProvider(provider), slot: 'primary', channel: entry.channel,
+      id: previous?.id ?? connectorRegistryId(actor.orgDid, provider, 'primary'),
+      ownerDid: actor.orgDid, provider: previous?.provider ?? provider, slot: 'primary', channel: entry.channel,
       connectorDid: node.senderDid, sealedKeyField: field, loadedByDid: actor.actorDid, loadedAt,
       status: 'active',
     }).onConflictDoUpdate({
@@ -100,7 +104,7 @@ export function loadOrgHeldConnection(actor: OrgConnectionActor, provider: strin
 /** Retain the row and signed vault history; repeated removal is a no-op. */
 export function revokeOrgHeldConnection(actor: OrgConnectionActor, provider: string) {
   return locked(actor, async tx => {
-    const [row] = await tx.select().from(connectors).where(selection(actor.orgDid, provider));
+    const row = await findMemberConnection(tx, actor.orgDid, provider);
     if (!row?.sealedKeyField || row.status !== 'active') return { revoked: true };
     await revokeStaticSecretGrant(row.sealedKeyField, getNodeSigningIdentity().senderDid, tx);
     await tx.update(connectors).set({ status: 'revoked', revokedAt: new Date(), updatedAt: new Date() })

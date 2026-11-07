@@ -32,6 +32,9 @@ import { db, connectors, type ConnectorRow } from '@/src/db';
 import { getConnector } from './connector-registry';
 import { connectionSlot } from './connection-slots';
 import { currentConnectionSlot } from './connector-connection-context';
+import {
+  connectionProviderCondition, connectionStorageProvider, connectorPurpose, connectorVendor, isHeldBy,
+} from './connection-holding';
 
 const log = createLogger('kernel');
 
@@ -75,10 +78,9 @@ export interface ConnectorRegistration {
  * actually serve — the drift that #1253 exists to prevent, in a new table.
  */
 function connectorIdentity(provider: string): { channel: string; connectorDid: string } | undefined {
-  // Billing is independent custody on the Anthropic card, not a second UI
-  // connector. Keep its provider/vault reference distinct while deriving the
-  // shared channel and DID from the same canonical catalogue entry.
-  const entry = getConnector(provider === 'anthropic-billing' ? 'anthropic' : provider);
+  const row = { provider };
+  const entry = getConnector(connectorVendor(row));
+  if (connectorPurpose(row) === 'billing' && !entry?.billingCredential) return undefined;
   if (!entry) return undefined;
   return { channel: entry.channel, connectorDid: entry.connectorDid };
 }
@@ -185,10 +187,14 @@ export async function syncConnectorRegistrationScopes(
   slot?: string,
 ): Promise<void> {
   const selected = connectionSlot(slot ?? currentConnectionSlot(provider, ownerDid));
-  if (provider === 'anthropic') {
+  const row = { provider };
+  const vendor = connectorVendor(row);
+  const purpose = connectorPurpose(row);
+  const entry = getConnector(vendor);
+  if (purpose === 'inference' && entry?.billingCredential) {
     // Both credentials share one scope manifest. Publishing it must update
     // the billing row too, including an empty snapshot on scope withdrawal.
-    await syncConnectorRegistrationScopes(ownerDid, 'anthropic-billing', scopes, selected);
+    await syncConnectorRegistrationScopes(ownerDid, connectionStorageProvider(vendor, 'billing'), scopes, selected);
   }
   const identity = connectorIdentity(provider);
   if (!identity) {
@@ -197,8 +203,8 @@ export async function syncConnectorRegistrationScopes(
   }
 
   const now = new Date();
-  const snapshot = provider === 'anthropic-billing'
-    ? scopes.filter(scope => scope === getConnector('anthropic')?.billingCredential?.scope)
+  const snapshot = purpose === 'billing'
+    ? scopes.filter(scope => scope === entry?.billingCredential?.scope)
     : [...scopes];
   try {
     await db
@@ -251,9 +257,11 @@ export async function readConnectorRegistration(
   const rows = await db
     .select()
     .from(connectors)
-    .where(and(eq(connectors.ownerDid, ownerDid), eq(connectors.provider, provider), eq(connectors.slot, selected)))
-    .limit(1);
-  return rows[0];
+    .where(and(eq(connectors.ownerDid, ownerDid),
+      connectionProviderCondition(connectors.provider, connectorVendor({ provider }), connectorPurpose({ provider })),
+      eq(connectors.slot, selected)));
+  return rows.find(row => isHeldBy(row, ownerDid) && row.provider === provider)
+    ?? rows.find(row => isHeldBy(row, ownerDid));
 }
 
 /**

@@ -5,7 +5,7 @@ import { listConnectorRegistrations } from '@/src/lib/kernel/connector-registry-
 import { ExternalMcpError } from '@/src/lib/kernel/external-mcp-policy';
 import { authorizeExternalMcpAccess } from '@/src/lib/kernel/external-mcp-authority';
 import { resolveConnectionPrincipal } from '@/src/lib/kernel/connection-principal';
-import { isOrgScope } from '@/src/lib/kernel/connection-principal-policy';
+import { connectorPurpose, connectorVendor, isHeldBy, isUpstreamConnection } from '@/src/lib/kernel/connection-holding';
 import {
   POSTMAN_CONNECTION, requireConnectionApp, type MemberConnectionTarget,
   type ExternalMcpCaller,
@@ -19,7 +19,6 @@ import { listBrainConnectors } from './brain';
 import { httpConnectorAuthority, httpCredentialAuthorized } from './http-connector-authority';
 import type { InferenceAuthContext } from './auth';
 import type { ConnectorAuthority, ConnectorFamily } from './self-discovery';
-import { readInferencePrincipal } from './route-discovery-store';
 
 interface ConnectorDiagnostic {
   provider: string;
@@ -219,7 +218,9 @@ export async function listDiscoveryConnectorMetadata(context: InferenceAuthConte
   const rows: ConnectorDiagnostic[] = [];
   await forEachSequential(CONNECTOR_REGISTRY, async entry => {
     if (brains.has(entry.id)) return;
-    const configured = registrations.some(row => row.provider === entry.id && row.status === 'active' && !row.revokedAt);
+    const configured = registrations.some(row => isHeldBy(row, actorDid)
+      && connectorVendor(row) === entry.id && connectorPurpose(row) === 'inference'
+      && !isUpstreamConnection(row) && row.status === 'active' && !row.revokedAt);
     rows.push(await safeHttpRow(context, entry, configured));
   });
   rows.push(
@@ -228,14 +229,12 @@ export async function listDiscoveryConnectorMetadata(context: InferenceAuthConte
   );
   const known = new Set([...brains, ...rows.map(row => row.provider)]);
   await forEachSequential(registrations, async registration => {
-    if (known.has(registration.provider)
-      || registration.provider.startsWith('app-upstream:') || registration.provider.endsWith('-billing')) return;
-    const owner = await readInferencePrincipal(registration.ownerDid);
-    // Org-owned credentials are projected through the authorized org lanes, never as personal fallbacks.
-    if (!owner || isOrgScope(owner.scope)) return;
-    known.add(registration.provider);
+    const vendor = connectorVendor(registration);
+    if (known.has(vendor) || isUpstreamConnection(registration) || connectorPurpose(registration) === 'billing'
+      || !isHeldBy(registration, actorDid)) return;
+    known.add(vendor);
     rows.push({
-      ...diagnostic(registration.provider, 'http', actorDid, registration.status === 'active' && !registration.revokedAt),
+      ...diagnostic(vendor, 'http', actorDid, registration.status === 'active' && !registration.revokedAt),
       grantStatus: 'not-evaluated', usable: null,
       fix: { control: 'Connectors → configuration and grants', href: '/auth/connectors', actingDid: actorDid },
     });
