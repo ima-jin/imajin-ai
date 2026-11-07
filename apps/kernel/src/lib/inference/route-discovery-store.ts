@@ -5,7 +5,6 @@ import { requireAgentAssignment, resolveConnectionPrincipal } from '@/src/lib/ke
 import { isAgentCapableSubtype, isOrgScope, type ConnectionCaller } from '@/src/lib/kernel/connection-principal-policy';
 import { ExternalMcpError } from '@/src/lib/kernel/external-mcp-policy';
 import { forEachSequential } from '@/src/lib/async/sequential';
-import { orgHeldProvider } from '@/src/lib/kernel/org-held-connection-policy';
 import { resolveInferenceRouteContext } from './route-context';
 import type { BrainConnectorId } from './brain';
 import type { DiscoveryContext, InferenceRouteCandidate, InferenceRouteKind } from './route-discovery';
@@ -120,8 +119,7 @@ export async function loadInferenceRouteCandidates(selected: DiscoveryContext): 
 }
 
 /** Project card metadata only, never a complete registry row or credential reference. */
-export async function readInferenceCard(did: string, provider: BrainConnectorId, orgHeld: boolean) {
-  const registryProvider = orgHeld ? orgHeldProvider(provider) : provider;
-  const row = await readConnectorRegistration(did, registryProvider, 'primary');
-  return { provider, id: row?.id ?? connectorRegistryId(did, registryProvider, 'primary'), label: row?.label ?? `${provider} · primary` };
+export async function readInferenceCard(did: string, provider: BrainConnectorId, _orgHeld: boolean) {
+  const row = await readConnectorRegistration(did, provider, 'primary');
+  return { provider, id: row?.id ?? connectorRegistryId(did, provider, 'primary'), label: row?.label ?? `${provider} · primary` };
 }

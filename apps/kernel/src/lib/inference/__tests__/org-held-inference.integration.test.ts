@@ -919,12 +919,21 @@ describe('prod-shaped sealed Anthropic org resolution (#3313)', () => {
     expect(h.fallback).not.toHaveBeenCalled();
   });
 
-  it.each(['secondary-slot', 'registry-provider', 'personal-field', 'unrelated-field'] as const)(
+  it.each([true, false])('dual-reads legacy Anthropic spelling with assignedAgent=%s', async assigned => {
+    const selected = await context(assigned);
+    await database.update(connectors).set({ provider: 'org-held-anthropic' });
+    expect(await resolveOrgHeldBrain(selected, 'claude-test')).toMatchObject({
+      provider: 'anthropic', credentialDid: ORG, orgUsage: { connectionId: 'org-connection' },
+    });
+    expect(h.personal).not.toHaveBeenCalled();
+  });
+
+  it.each(['secondary-slot', 'billing-purpose', 'personal-field', 'unrelated-field'] as const)(
     'refuses %s without credential access', async boundary => {
       const selected = await context(true);
       const changes = {
         'secondary-slot': { slot: 'secondary' },
-        'registry-provider': { provider: 'org-held-anthropic' },
+        'billing-purpose': { provider: 'anthropic-billing' },
         'personal-field': { sealedKeyField: `anthropic-api-key:${MEMBER}` },
         'unrelated-field': { sealedKeyField: `anthropic-billing-api-key:${ORG}` },
       };

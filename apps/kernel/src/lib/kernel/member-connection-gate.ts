@@ -4,7 +4,7 @@ import { isActiveGroupMember } from '@/src/lib/auth/group-membership';
 import { APP_AUTHORIZATION_CHANNEL } from '@/src/lib/auth/app-authorization-grant';
 import { ExternalMcpError, EXTERNAL_MCP_SCOPE, POSTMAN_PROVIDER, type ConnectionErrorCode } from './external-mcp-policy';
 import { missingConnection, resolveConnectionPrincipal, type ConnectionCaller } from './connection-principal';
-import { orgHeldProvider } from './org-held-connection-policy';
+import { connectionProviderCondition, connectorPurpose, connectorVendor, isHeldBy } from './connection-holding';
 import { orgConnectionRequiresReseal } from './connection-principal-policy';
 
 export type ConnectionTransaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
@@ -18,11 +18,14 @@ export const isLiveConnection = (row: { status: string; expiresAt: Date | null; 
 export const hasOrgConnectionProvenance = (row: ConnectorRow) =>
   !!(row.loadedByDid && row.loadedAt);
 
-export async function findMemberConnection(tx: Pick<ConnectionTransaction, 'select'>, memberDid: string, provider: string, orgHeld = false) {
-  const [row] = await tx.select().from(connectors).where(and(
-    eq(connectors.ownerDid, memberDid), eq(connectors.provider, orgHeld ? orgHeldProvider(provider) : provider), eq(connectors.slot, 'primary'),
-  )).limit(1);
-  return row;
+export async function findMemberConnection(tx: Pick<ConnectionTransaction, 'select'>, memberDid: string, provider: string, _orgHeld = false) {
+  const rows = await tx.select().from(connectors).where(and(
+    eq(connectors.ownerDid, memberDid),
+    connectionProviderCondition(connectors.provider, connectorVendor({ provider }), connectorPurpose({ provider })),
+    eq(connectors.slot, 'primary'),
+  ));
+  return rows.find(row => row.provider === provider && isHeldBy(row, memberDid))
+    ?? rows.find(row => isHeldBy(row, memberDid));
 }
 async function activeIdentity(tx: Pick<ConnectionTransaction, 'select'>, did: string) {
   const [identity] = await tx.select({ id: identities.id }).from(identities)

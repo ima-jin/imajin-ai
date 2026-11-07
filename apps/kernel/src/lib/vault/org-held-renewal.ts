@@ -2,7 +2,8 @@ import { and, eq, sql } from 'drizzle-orm';
 import { canonicalize, crypto as authCrypto, verifySync } from '@imajin/auth';
 import { db, attestations, connectors, operatorApprovals, vaultDelegationGrants, type VaultDelegationGrant } from '@/src/db';
 import { prepareMechanicalAttestation } from '@/src/lib/auth/emit-mechanical-attestation';
-import { authorizeOrgConnectionAdmin, orgHeldProvider, type OrgConnectionActor } from '@/src/lib/kernel/org-held-connection-policy';
+import { authorizeOrgConnectionAdmin, type OrgConnectionActor } from '@/src/lib/kernel/org-held-connection-policy';
+import { connectionProviderCondition } from '@/src/lib/kernel/connection-holding';
 import { getConnector } from '@/src/lib/kernel/connector-registry';
 import { computeApprovalContentHash, toWireContentHash, type ContentHashFields } from '@/src/lib/notify/operator-approvals';
 import type { OperatorApprovalCard } from '@/src/lib/notify/operator-approvals-service';
@@ -80,7 +81,7 @@ function requireRenewableGrant(grant: VaultDelegationGrant | undefined, input: O
 /** Resolves the existing grant under the same lock as load/replace, revoke and inference. */
 async function renewalTarget(tx: Transaction, input: OrgHeldRenewalInput) {
   const [connection] = await tx.select().from(connectors).where(and(
-    eq(connectors.ownerDid, input.orgDid), eq(connectors.provider, orgHeldProvider(input.provider)),
+    eq(connectors.ownerDid, input.orgDid), connectionProviderCondition(connectors.provider, input.provider),
     eq(connectors.slot, 'primary'), eq(connectors.status, 'active'),
   )).for('update');
   if (!connection?.sealedKeyField || !isExternalMcpField(connection.sealedKeyField)

@@ -11,6 +11,7 @@ import type { VerifiedInferenceOrgContext } from './auth';
 import type { ResolvedBrain } from './brain';
 import { missingConnection } from '@/src/lib/kernel/connection-principal';
 import { isOrgSealedAnthropicField } from '@/src/lib/kernel/org-held-connection-policy';
+import { connectionProviderCondition, isHeldBy } from '@/src/lib/kernel/connection-holding';
 
 const unavailable = () => new ExternalMcpError(503, 'Organization inference credential unavailable', 'credential_unavailable');
 
@@ -30,9 +31,9 @@ export function resolveOrgHeldBrain(context: VerifiedInferenceOrgContext, modelI
     try {
       const row = assignedConnection ?? (await tx.select().from(connectors).where(and(
         ...(grant ? [eq(connectors.id, grant.connectionId)] : []), eq(connectors.ownerDid, orgDid),
-        eq(connectors.provider, 'anthropic'), eq(connectors.slot, 'primary'),
+        connectionProviderCondition(connectors.provider, 'anthropic'), eq(connectors.slot, 'primary'),
       )).limit(1))[0];
-      if (!row || !isLiveConnection(row) || !row.sealedKeyField
+      if (!row || !isHeldBy(row, orgDid) || !isLiveConnection(row) || !row.sealedKeyField
         || !(isExternalMcpField(row.sealedKeyField) || isOrgSealedAnthropicField(orgDid, row.sealedKeyField))) throw missingConnection(orgDid);
       const node = getNodeSigningIdentity();
       const custody = await findNodeCustodyGrant({ field: row.sealedKeyField, ownerDid: orgDid, tx, lock: true });
