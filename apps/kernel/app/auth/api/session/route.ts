@@ -4,6 +4,7 @@ import { getSessionCookieOptions } from '@/src/lib/auth/jwt';
 import { resolveKernelSession } from '@/src/lib/auth/session-resolver';
 import { corsHeaders } from '@imajin/config';
 import { withLogger } from '@imajin/logger';
+import { databaseTimeoutResponse } from '@/src/lib/auth/database-timeout';
 
 export const GET = withLogger('kernel', async (request: NextRequest, { log }) => {
   const cors = corsHeaders(request);
@@ -31,6 +32,8 @@ export const GET = withLogger('kernel', async (request: NextRequest, { log }) =>
     return NextResponse.json(result.data, { headers: cors });
 
   } catch (error) {
+    const unavailable = databaseTimeoutResponse(error, cors);
+    if (unavailable) return unavailable;
     log.error({ err: String(error) }, 'Session error');
     return NextResponse.json(
       { error: 'Failed to get session' },

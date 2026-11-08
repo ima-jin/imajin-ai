@@ -62,6 +62,7 @@ export CURL_LOG="$WORK/curl.log"
 export RESTART_ALERT_STATE="$WORK/restarts.json"
 export STATUS_ALERT_STATE="$WORK/status.json"
 export PM2_ALERT_WEBHOOK_FILE="$WORK/webhook"
+export IMAJIN_LIVENESS_STATE_DIR="$WORK/liveness"
 unset RESTART_ALERT_WEBHOOK STATUS_ALERT_WEBHOOK || true
 
 FAILURES=0
@@ -198,7 +199,8 @@ expect_exit_2 "missing ecosystem file exits 2" "ecosystem file not found" bash "
 NOPM2_BIN="$WORK/nopm2-bin"
 mkdir -p "$NOPM2_BIN"
 for tool in node dirname hostname; do
-  ln -sf "$(command -v "$tool")" "$NOPM2_BIN/$tool"
+  printf '#!/bin/bash\nexec %q "$@"\n' "$(command -v "$tool")" > "$NOPM2_BIN/$tool"
+  chmod +x "$NOPM2_BIN/$tool"
 done
 BASH_BIN="$(command -v bash)"
 expect_exit_2 "pm2 not installed exits 2" "'pm2' is not installed" env PATH="$NOPM2_BIN" "$BASH_BIN" "$HEALTH" prod "$ECO"

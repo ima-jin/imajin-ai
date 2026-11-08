@@ -37,6 +37,7 @@ import { canConsentToApp, PRIVATE_APP_CONSENT_ERROR } from '@/src/lib/kernel/app
 import { isLiveAppAuthorization } from '@/src/lib/auth/live-app-authorization';
 import { recordAppAuthorizationUse } from '@/src/lib/auth/app-authorization-usage';
 import { consumeAppAuthorizationCode } from '@/src/lib/auth/app-authorization-code';
+import { databaseTimeoutResponse, isDatabaseTimeout } from '@/src/lib/auth/database-timeout';
 
 export const dynamic = 'force-dynamic';
 
@@ -110,7 +111,8 @@ async function resolveMintAuthorization(mint: MintRequest, app: { name: string; 
     selector = exchange.authorization.attestationId;
     codeSubject = exchange.authorization.subjectDid;
   }
-  const att = await resolveAuthorization(mint.appDid, selector, mint.byPrincipal).catch(() => {
+  const att = await resolveAuthorization(mint.appDid, selector, mint.byPrincipal).catch((error: unknown) => {
+    if (isDatabaseTimeout(error)) throw error;
     throw new Error('App authorization lookup unavailable');
   });
   if (!att && mint.byPrincipal) {
@@ -124,7 +126,7 @@ async function resolveMintAuthorization(mint: MintRequest, app: { name: string; 
   return { att };
 }
 
-export async function POST(request: NextRequest) {
+async function mintAppToken(request: NextRequest) {
   const cors = { ...corsHeaders(request), 'Cache-Control': 'no-store' };
 
   let body: Record<string, unknown>;
@@ -220,6 +222,15 @@ export async function POST(request: NextRequest) {
     },
     { headers: cors }
   );
+}
+
+export async function POST(request: NextRequest) {
+  try { return await mintAppToken(request); }
+  catch (error) {
+    const unavailable = databaseTimeoutResponse(error, corsHeaders(request));
+    if (unavailable) return unavailable;
+    throw error;
+  }
 }
 
 export { preflight as OPTIONS } from '@/app/auth/lib/preflight';

@@ -1,52 +1,57 @@
-import { createRequire } from 'node:module';
+import { PGlite } from '@electric-sql/pglite';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   REAP_STUCK_BACKENDS_SQL, STUCK_BACKEND_PREDICATE,
   reapStuckBackends, reaperThreshold, startDatabaseReaper,
 } from '../db-reaper';
 
-const { DatabaseSync } = createRequire(import.meta.url)('node:sqlite');
-
 afterEach(() => { vi.useRealTimers(); });
 
 describe('stuck backend selection', () => {
-  it('selects exactly the own-role, own-database old active ClientRead client', () => {
-    const fixture = new DatabaseSync(':memory:');
-    // SQLite timestamps are epoch seconds. Only interval syntax and the SQL
-    // current_user keyword need dialect adaptation; the predicate is unchanged.
-    fixture.function('now', () => 1000);
-    fixture.function('current_database', () => 'imajin_prod');
-    fixture.function('pg_backend_pid', () => 99);
-    fixture.exec(`CREATE TABLE pg_stat_activity (
+  it('selects exactly the own-role, own-database old active ClientRead client', async () => {
+    const fixture = new PGlite();
+    const { rows: [self] } = await fixture.query<{ db: string; role: string; pid: number }>(
+      'SELECT current_database() AS db, current_user AS role, pg_backend_pid() AS pid',
+    );
+    await fixture.exec(`CREATE TABLE activity_fixture (
       pid INTEGER, datname TEXT, usename TEXT, backend_type TEXT,
-      state TEXT, wait_event TEXT, state_change INTEGER
+      state TEXT, wait_event TEXT, state_change TIMESTAMPTZ
     )`);
-    const base = [1, 'imajin_prod', 'app', 'client backend', 'active', 'ClientRead', 699];
+    const old = new Date(Date.now() - 301_000).toISOString();
+    const base = [1, self.db, self.role, 'client backend', 'active', 'ClientRead', old];
     const rows = [
       base,
-      [2, ...base.slice(1, 6), 700], // exactly threshold is not older
-      [3, ...base.slice(1, 6), 701],
-      [4, 'imajin_dev', ...base.slice(2)],
+      [2, ...base.slice(1, 6), 'threshold'],
+      [3, ...base.slice(1, 6), new Date().toISOString()],
+      [4, 'another_database', ...base.slice(2)],
       [5, base[1], 'another_role', ...base.slice(3)],
       [6, ...base.slice(1, 3), 'walsender', ...base.slice(4)],
       [7, ...base.slice(1, 4), 'idle', ...base.slice(5)],
       [8, ...base.slice(1, 4), 'idle in transaction', ...base.slice(5)],
       [9, ...base.slice(1, 5), 'ClientWrite', base[6]],
       [10, ...base.slice(1, 5), null, base[6]],
-      [99, ...base.slice(1)],
+      [self.pid, ...base.slice(1)],
       [11, ...base.slice(1, 6), null],
     ];
-    const insert = fixture.prepare('INSERT INTO pg_stat_activity VALUES (?, ?, ?, ?, ?, ?, ?)');
-    for (const row of rows) insert.run(...row as (string | number | null)[]);
-    const predicate = STUCK_BACKEND_PREDICATE
-      .replaceAll("interval '1 second'", '1')
-      .replaceAll('current_user', "'app'");
-    expect(fixture.prepare(`SELECT pid FROM pg_stat_activity WHERE ${predicate}`).all({ $1: 300 }))
-      .toEqual([{ pid: 1 }]);
-    expect(REAP_STUCK_BACKENDS_SQL).toContain(`WHERE ${STUCK_BACKEND_PREDICATE}`);
-    expect(REAP_STUCK_BACKENDS_SQL).toContain('pg_terminate_backend(pid)');
-    fixture.close();
-  });
+    try {
+      // One transaction freezes now(), including the exact five-minute boundary.
+      await fixture.transaction(async tx => {
+        for (const row of rows) {
+          if (row[6] === 'threshold') {
+            await tx.query(`INSERT INTO activity_fixture VALUES ($1,$2,$3,$4,$5,$6, now() - interval '5 minutes')`, row.slice(0, 6));
+          } else {
+            await tx.query('INSERT INTO activity_fixture VALUES ($1,$2,$3,$4,$5,$6,$7)', row);
+          }
+        }
+        expect((await tx.query(`SELECT pid FROM activity_fixture WHERE ${STUCK_BACKEND_PREDICATE}`, [300])).rows)
+          .toEqual([{ pid: 1 }]);
+        expect((await tx.query(`SELECT pid FROM activity_fixture WHERE ${STUCK_BACKEND_PREDICATE}`, [600])).rows)
+          .toEqual([]);
+      });
+      expect(REAP_STUCK_BACKENDS_SQL).toContain(`WHERE ${STUCK_BACKEND_PREDICATE}`);
+      expect(REAP_STUCK_BACKENDS_SQL).toContain('pg_terminate_backend(pid)');
+    } finally { await fixture.close(); }
+  }, 15_000);
 
   it('defaults to five minutes and accepts a configured threshold', () => {
     expect(reaperThreshold({})).toBe(300);

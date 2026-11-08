@@ -7,6 +7,7 @@
 #   1. the install check (pm2 + node on PATH, ecosystem file present),
 #   2. scripts/check-pm2-restarts.sh — crash loops (restart counter climbing),
 #   3. scripts/check-pm2-status.sh   — errored/stopped/waiting-restart apps,
+#   4. deploy/liveness-probe.mjs    — DB-aware HTTP failures, exact-app restart,
 # and exits with the worst result, so a crash loop OR a parked app is heard
 # either way. Both checks POST to the same alert webhook.
 #
@@ -69,6 +70,12 @@ for check in check-pm2-restarts check-pm2-status; do
     worst="$check_status"
   fi
 done
+
+check_status=0
+check_out="$(node "$SCRIPT_DIR/../deploy/liveness-probe.mjs" \
+  --env "$SCOPE" --once --execute --watchdog --ecosystem "$ECOSYSTEM" 2>&1)" || check_status=$?
+output="${output:+$output$'\n'}$check_out"
+if [[ "$check_status" -gt "$worst" ]]; then worst="$check_status"; fi
 
 if [[ "$worst" -ne 0 || "${PM2_HEALTH_QUIET:-}" != "1" ]]; then
   echo "[$(date -u +%FT%TZ)] pm2-health-check ($SCOPE)"

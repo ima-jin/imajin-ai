@@ -10,10 +10,10 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 vi.mock('next/server', () => ({
   NextResponse: {
-    json: (body: unknown, init?: { status?: number }) =>
+    json: (body: unknown, init?: { status?: number; headers?: Record<string, string> }) =>
       new Response(JSON.stringify(body), {
         status: init?.status ?? 200,
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...init?.headers },
       }),
   },
 }));
@@ -179,6 +179,7 @@ vi.mock('@imajin/logger', () => ({
 }));
 
 import { POST } from '../route';
+import { DatabaseTimeoutError } from '../../../../../../../../packages/db/src/bounds';
 
 const APP_DID = 'did:imajin:wjLjV7nSWNZLTUqnhKRUiBrnGG8mKK7q9WXpNEnV2SM';
 const REAL_PUBLIC_KEY = 'a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f9';
@@ -228,6 +229,36 @@ beforeEach(() => {
 });
 
 describe('POST /auth/api/apps/token — registry.apps PoP lookup (#1739)', () => {
+  it.each(['DB_ACQUIRE_TIMEOUT', 'DB_QUERY_TIMEOUT'] as const)(
+    'returns 503 with Retry-After for %s at the registry lookup', async code => {
+      mocks.whereMock.mockImplementationOnce(() => ({ limit: () => Promise.reject(new DatabaseTimeoutError(code)) }));
+      const response = await POST(makeRequest(VALID_BODY) as never);
+      expect(response.status).toBe(503);
+      expect(response.headers.get('Retry-After')).toBe('5');
+      expect(response.headers.get('Cache-Control')).toBe('no-store');
+      expect(mocks.createAppTokenMock).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(['DB_ACQUIRE_TIMEOUT', 'DB_QUERY_TIMEOUT'] as const)(
+    'preserves wrapped %s at the authorization lookup', async code => {
+      nextSelect([REGISTRY_APP_ROW]);
+      mocks.whereMock.mockImplementationOnce(() => Promise.reject(
+        new Error('query failed', { cause: new DatabaseTimeoutError(code) }),
+      ));
+      const response = await POST(makeRequest(VALID_BODY) as never);
+      expect(response.status).toBe(503);
+      expect(response.headers.get('Retry-After')).toBe('5');
+      expect(mocks.createAppTokenMock).not.toHaveBeenCalled();
+    },
+  );
+
+  it('preserves non-timeout database failures', async () => {
+    const failure = new Error('database unavailable');
+    mocks.whereMock.mockImplementationOnce(() => ({ limit: () => Promise.reject(failure) }));
+    await expect(POST(makeRequest(VALID_BODY) as never)).rejects.toBe(failure);
+  });
+
   it('verifies the PoP signature against registry.apps.publicKey', async () => {
     nextSelect([REGISTRY_APP_ROW]);
     nextSelect([ATTESTATION_ROW]);
