@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { parse } from 'yaml';
 import {
-  AUDIENCES, GUIDE_PATH, MAP_PATH, ROOT, evidenceFile, parseMap,
+  AUDIENCES, GUIDE_PATH, MAP_PATH, ROOT, byAlpha, evidenceFile, parseMap,
   renderTable, validateGuide, validateMap, validateRepository,
 } from '../validate-capabilities.mjs';
 
@@ -32,6 +32,15 @@ function reject(change, message) {
 }
 
 describe('capability map acceptance', () => {
+  it('sorts ASCII names deterministically regardless of input order', () => {
+    const names = ['vault', 'auth', 'kernel', 'corpus', 'auth'];
+    const expected = ['auth', 'auth', 'corpus', 'kernel', 'vault'];
+    expect([...names].sort(byAlpha)).toEqual(expected);
+    expect([...names].reverse().sort(byAlpha)).toEqual(expected);
+    expect(byAlpha('auth', 'auth')).toBe(0);
+    expect(names).toEqual(['vault', 'auth', 'kernel', 'corpus', 'auth']);
+  });
+
   it('validates real YAML, grades, evidence files and complete app/page/spec/package coverage', () => {
     expect(validateRepository().capabilities).toHaveLength(77);
     expect(new Set(document.capabilities.flatMap(c => c.apps)))
@@ -70,7 +79,7 @@ describe('capability map acceptance', () => {
     const ranking = guide.split('<!-- core-ranking:start -->')[1].split('<!-- core-ranking:end -->')[0];
     const rows = [...ranking.matchAll(/^(\d+)\. `([^`]+)` — \[[^\]]+\]\(([^)]+)\)\.$/gm)];
     const core = document.capabilities.filter(c => c.business_weight.value === 'core');
-    expect(rows.map(row => row[2]).sort()).toEqual(core.map(c => c.id).sort());
+    expect(rows.map(row => row[2]).sort(byAlpha)).toEqual(core.map(c => c.id).sort(byAlpha));
     expect(rows.map(row => Number(row[1]))).toEqual(core.map((_c, i) => i + 1));
     for (const row of rows) expect(() => evidenceFile(ROOT, row[3].slice('../../'.length))).not.toThrow();
   });

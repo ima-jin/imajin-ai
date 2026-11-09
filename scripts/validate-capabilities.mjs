@@ -13,10 +13,11 @@ const WEIGHTS = ['core', 'supporting', 'side-effect'];
 export const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 export const MAP_PATH = 'docs/capabilities/capabilities.yaml';
 export const GUIDE_PATH = 'docs/capabilities/README.md';
+export const byAlpha = (a, b) => a.localeCompare(b);
 
 function object(value, keys, label) {
   assert(value && typeof value === 'object' && !Array.isArray(value), `${label}: expected object`);
-  assert.deepEqual(Object.keys(value).sort(), [...keys].sort(), `${label}: required/unknown fields`);
+  assert.deepEqual(Object.keys(value).sort(byAlpha), [...keys].sort(byAlpha), `${label}: required/unknown fields`);
 }
 
 function text(value, label) {
@@ -165,7 +166,7 @@ function coverageIndex(root, rows, expected, ids, type) {
     row.capabilities.forEach(id => assert(ids.has(id), `unknown capability reference: ${id}`));
     if (type === 'packages') text(row.note, 'package coverage note');
   }
-  assert.deepEqual([...seen].sort(), expected.sort(), `coverage.${type}: missing or unexpected paths`);
+  assert.deepEqual([...seen].sort(byAlpha), expected.sort(byAlpha), `coverage.${type}: missing or unexpected paths`);
 }
 
 export function validateMap(document, root = ROOT) {
@@ -187,7 +188,7 @@ export function validateMap(document, root = ROOT) {
       coveredApps.add(app);
     });
   }
-  assert.deepEqual([...coveredApps].sort(), [...apps].sort(), 'every apps/* directory needs a capability');
+  assert.deepEqual([...coveredApps].sort(byAlpha), [...apps].sort(byAlpha), 'every apps/* directory needs a capability');
   object(document.coverage, ['pages', 'specs', 'packages', 'external'], 'coverage');
   const appFiles = files(root, 'apps');
   coverageIndex(root, document.coverage.pages, appFiles.filter(p => p.endsWith('/page.tsx')), ids, 'pages');
