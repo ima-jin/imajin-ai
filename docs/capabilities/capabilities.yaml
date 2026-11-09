@@ -27,7 +27,7 @@ capabilities:
       value: business buyer
       rationale: "business buyer: Understand the platform, read its integration contracts and decide whether to sign
         up or request a demo. The cited entrypoints identify the acting role, not an observed user count."
-      paths: &a1
+      paths:
         - apps/kernel/app/page.tsx
         - apps/kernel/app/register/page.tsx
         - apps/kernel/app/registry/docs/page.tsx
@@ -44,7 +44,10 @@ capabilities:
       value: core
       rationale: "Directly supports agent identity, scoped authority, custody, approvals or signed spend/action
         accountability: evaluate agent identity and authority."
-      paths: *a1
+      paths:
+        - apps/kernel/app/page.tsx
+        - apps/kernel/app/register/page.tsx
+        - apps/kernel/app/registry/docs/page.tsx
     evidence:
       paths:
         - apps/kernel/app/page.tsx
@@ -94,7 +97,7 @@ capabilities:
       value: end user/consumer
       rationale: "end user/consumer: Register with an invitation, sign in with a key or password, recover access and
         configure MFA. The cited entrypoints identify the acting role, not an observed user count."
-      paths: &a2
+      paths:
         - apps/kernel/app/auth/register/page.tsx
         - apps/kernel/app/auth/security/page.tsx
     maturity:
@@ -110,7 +113,9 @@ capabilities:
       value: supporting
       rationale: "Helps a business deploy or use authorized agents but is not itself the identity-and-authority
         promise: create and secure a human account."
-      paths: *a2
+      paths:
+        - apps/kernel/app/auth/register/page.tsx
+        - apps/kernel/app/auth/security/page.tsx
     evidence:
       paths:
         - apps/kernel/app/auth/register/page.tsx
@@ -163,7 +168,7 @@ capabilities:
       value: org admin
       rationale: "org admin: Create an organization, assign controllers and members, transfer ownership and switch
         the acting identity. The cited entrypoints identify the acting role, not an observed user count."
-      paths: &a3
+      paths:
         - apps/kernel/app/auth/members/page.tsx
         - apps/kernel/app/auth/settings/page.tsx
         - packages/auth/src/acting-did.ts
@@ -183,7 +188,10 @@ capabilities:
       value: core
       rationale: "Directly supports agent identity, scoped authority, custody, approvals or signed spend/action
         accountability: manage an organization identity."
-      paths: *a3
+      paths:
+        - apps/kernel/app/auth/members/page.tsx
+        - apps/kernel/app/auth/settings/page.tsx
+        - packages/auth/src/acting-did.ts
     evidence:
       paths:
         - apps/kernel/app/auth/members/page.tsx
@@ -228,7 +236,7 @@ capabilities:
       value: org admin
       rationale: "org admin: Create or adopt an agent, review knocks, provision its identity and inspect its
         authority. The cited entrypoints identify the acting role, not an observed user count."
-      paths: &a4
+      paths:
         - apps/kernel/app/auth/agents/page.tsx
         - apps/kernel/app/auth/api/agents/route.ts
     maturity:
@@ -246,7 +254,9 @@ capabilities:
       value: core
       rationale: "Directly supports agent identity, scoped authority, custody, approvals or signed spend/action
         accountability: create and delegate to agents."
-      paths: *a4
+      paths:
+        - apps/kernel/app/auth/agents/page.tsx
+        - apps/kernel/app/auth/api/agents/route.ts
     evidence:
       paths:
         - apps/kernel/app/auth/agents/page.tsx
@@ -291,7 +301,7 @@ capabilities:
       value: org admin
       rationale: "org admin: Issue, narrow, renew and revoke an expiring grant without giving an agent blanket
         account membership. The cited entrypoints identify the acting role, not an observed user count."
-      paths: &a5
+      paths:
         - apps/kernel/app/auth/api/grants/route.ts
         - apps/kernel/app/jin/grants-panel.tsx
         - packages/auth/src/delegation-grant.ts
@@ -311,7 +321,10 @@ capabilities:
       value: core
       rationale: "Directly supports agent identity, scoped authority, custody, approvals or signed spend/action
         accountability: grant and withdraw scoped authority."
-      paths: *a5
+      paths:
+        - apps/kernel/app/auth/api/grants/route.ts
+        - apps/kernel/app/jin/grants-panel.tsx
+        - packages/auth/src/delegation-grant.ts
     evidence:
       paths:
         - apps/kernel/app/auth/api/grants/route.ts
@@ -360,7 +373,7 @@ capabilities:
       value: org admin
       rationale: "org admin: Seal an org model or execution key once and grant members use without exposing or
         copying the key. The cited entrypoints identify the acting role, not an observed user count."
-      paths: &a6
+      paths:
         - apps/kernel/app/auth/connectors/components/OrgServiceKeys.tsx
         - apps/kernel/src/lib/inference/org-held-brain.ts
     maturity:
@@ -377,7 +390,9 @@ capabilities:
       value: core
       rationale: "Directly supports agent identity, scoped authority, custody, approvals or signed spend/action
         accountability: share organization-owned service credentials."
-      paths: *a6
+      paths:
+        - apps/kernel/app/auth/connectors/components/OrgServiceKeys.tsx
+        - apps/kernel/src/lib/inference/org-held-brain.ts
     evidence:
       paths:
         - apps/kernel/app/auth/connectors/components/OrgServiceKeys.tsx
@@ -423,7 +438,7 @@ capabilities:
       value: org admin
       rationale: "org admin: Review a proposal and countersign, reject or withdraw it as its addressed human or
         organization. The cited entrypoints identify the acting role, not an observed user count."
-      paths: &a7
+      paths:
         - apps/kernel/app/jin/operator-approvals-panel.tsx
         - apps/kernel/app/jin/api/operator-approvals/route.ts
     maturity:
@@ -441,7 +456,9 @@ capabilities:
       value: core
       rationale: "Directly supports agent identity, scoped authority, custody, approvals or signed spend/action
         accountability: approve or reject agent actions."
-      paths: *a7
+      paths:
+        - apps/kernel/app/jin/operator-approvals-panel.tsx
+        - apps/kernel/app/jin/api/operator-approvals/route.ts
     evidence:
       paths:
         - apps/kernel/app/jin/operator-approvals-panel.tsx
@@ -487,7 +504,7 @@ capabilities:
       value: org admin
       rationale: "org admin: Propose a sealed credential import or rotation, review its custody and retain signed
         history when revoking it. The cited entrypoints identify the acting role, not an observed user count."
-      paths: &a8
+      paths:
         - apps/kernel/app/jin/vault-import-panel.tsx
         - apps/kernel/src/lib/vault/index.ts
     maturity:
@@ -505,7 +522,9 @@ capabilities:
       value: core
       rationale: "Directly supports agent identity, scoped authority, custody, approvals or signed spend/action
         accountability: import and rotate identity-owned secrets."
-      paths: *a8
+      paths:
+        - apps/kernel/app/jin/vault-import-panel.tsx
+        - apps/kernel/src/lib/vault/index.ts
     evidence:
       paths:
         - apps/kernel/app/jin/vault-import-panel.tsx
@@ -522,8 +541,9 @@ capabilities:
         - apps/kernel/src/lib/vault/__tests__/import-spec.test.ts
         - apps/kernel/app/jin/__tests__/vault-import-approval.test.tsx
       last_touched:
-        date: 2026-11-05
-        commit: e0e4952686a3ee65a8b2676745303b921c2891e3
+        date: 2026-11-04
+        commit: 5156937abd23c1714c5b1bc1437f680bbfc846b8
+        path: apps/kernel/src/lib/vault/index.ts
       open_issues:
         - 3318
         - 3319
@@ -554,7 +574,7 @@ capabilities:
       rationale: "org admin: Generate a signing key inside the vault and deliver it once to its intended recipient
         under a purpose-bound grant. The cited entrypoints identify the acting role, not an observed user
         count."
-      paths: &a9
+      paths:
         - apps/kernel/app/api/vault/mint/route.ts
         - apps/kernel/app/jin/vault-keys-panel.tsx
     maturity:
@@ -572,7 +592,9 @@ capabilities:
       value: core
       rationale: "Directly supports agent identity, scoped authority, custody, approvals or signed spend/action
         accountability: mint and delegate a service signing key."
-      paths: *a9
+      paths:
+        - apps/kernel/app/api/vault/mint/route.ts
+        - apps/kernel/app/jin/vault-keys-panel.tsx
     evidence:
       paths:
         - apps/kernel/app/api/vault/mint/route.ts
@@ -616,7 +638,7 @@ capabilities:
       rationale: "operator: Mint a custodied SSH CA, grant signing authority and issue a restricted certificate with
         overlapping trust during rotation. The cited entrypoints identify the acting role, not an observed
         user count."
-      paths: &a10
+      paths:
         - apps/kernel/app/api/vault/ssh-ca/route.ts
     maturity:
       value: works
@@ -630,7 +652,8 @@ capabilities:
       value: core
       rationale: "Directly supports agent identity, scoped authority, custody, approvals or signed spend/action
         accountability: delegate short-lived ssh access."
-      paths: *a10
+      paths:
+        - apps/kernel/app/api/vault/ssh-ca/route.ts
     evidence:
       paths:
         - apps/kernel/app/api/vault/ssh-ca/route.ts
@@ -672,7 +695,7 @@ capabilities:
       rationale: "org admin: Create a hash-bound agreement, collect signatures as the effective identity, amend or
         decline it and verify a saved copy. The cited entrypoints identify the acting role, not an observed
         user count."
-      paths: &a11
+      paths:
         - apps/kernel/app/auth/attestations/page.tsx
         - apps/kernel/src/lib/auth/document-authorization.ts
     maturity:
@@ -690,7 +713,9 @@ capabilities:
       value: supporting
       rationale: "Helps a business deploy or use authorized agents but is not itself the identity-and-authority
         promise: request and sign a document."
-      paths: *a11
+      paths:
+        - apps/kernel/app/auth/attestations/page.tsx
+        - apps/kernel/src/lib/auth/document-authorization.ts
     evidence:
       paths:
         - apps/kernel/app/auth/attestations/page.tsx
@@ -732,7 +757,7 @@ capabilities:
       value: org admin
       rationale: "org admin: Bind a domain to an identity using DNS proof and publish verifiable ownership for host
         routing. The cited entrypoints identify the acting role, not an observed user count."
-      paths: &a12
+      paths:
         - apps/kernel/app/auth/settings/page.tsx
         - apps/kernel/src/lib/domains/service.ts
     maturity:
@@ -748,7 +773,9 @@ capabilities:
       value: supporting
       rationale: "Helps a business deploy or use authorized agents but is not itself the identity-and-authority
         promise: prove organization domain ownership."
-      paths: *a12
+      paths:
+        - apps/kernel/app/auth/settings/page.tsx
+        - apps/kernel/src/lib/domains/service.ts
     evidence:
       paths:
         - apps/kernel/app/auth/settings/page.tsx
@@ -789,7 +816,7 @@ capabilities:
       rationale: "org admin: Provision a verified send-only mail domain, check DNS and select fixed-purpose
         organization or app senders. The cited entrypoints identify the acting role, not an observed user
         count."
-      paths: &a13
+      paths:
         - apps/kernel/app/jin/org-settings/page.tsx
         - apps/kernel/src/lib/mail/types.ts
     maturity:
@@ -805,7 +832,9 @@ capabilities:
       value: supporting
       rationale: "Helps a business deploy or use authorized agents but is not itself the identity-and-authority
         promise: configure organization sending domains."
-      paths: *a13
+      paths:
+        - apps/kernel/app/jin/org-settings/page.tsx
+        - apps/kernel/src/lib/mail/types.ts
     evidence:
       paths:
         - apps/kernel/app/jin/org-settings/page.tsx
@@ -849,7 +878,7 @@ capabilities:
       rationale: "org admin: Choose a named credential connection, authorize selected scopes and disconnect it
         without revoking other slots. The cited entrypoints identify the acting role, not an observed user
         count."
-      paths: &a14
+      paths:
         - apps/kernel/app/auth/connectors/page.tsx
         - apps/kernel/src/lib/kernel/connector-registry.ts
         - packages/auth/src/scope-vocabulary.ts
@@ -869,7 +898,10 @@ capabilities:
       value: core
       rationale: "Directly supports agent identity, scoped authority, custody, approvals or signed spend/action
         accountability: connect services and control their scopes."
-      paths: *a14
+      paths:
+        - apps/kernel/app/auth/connectors/page.tsx
+        - apps/kernel/src/lib/kernel/connector-registry.ts
+        - packages/auth/src/scope-vocabulary.ts
     evidence:
       paths:
         - apps/kernel/app/auth/connectors/page.tsx
@@ -914,7 +946,7 @@ capabilities:
       rationale: "developer: Review an app upstream, seal a member-owned key and let the kernel inject it only for
         that declared destination. The cited entrypoints identify the acting role, not an observed user
         count."
-      paths: &a15
+      paths:
         - apps/kernel/api-spec/connections.yaml
         - apps/kernel/src/lib/kernel/external-mcp.ts
     maturity:
@@ -929,7 +961,9 @@ capabilities:
       value: core
       rationale: "Directly supports agent identity, scoped authority, custody, approvals or signed spend/action
         accountability: authorize a destination-bound app api call."
-      paths: *a15
+      paths:
+        - apps/kernel/api-spec/connections.yaml
+        - apps/kernel/src/lib/kernel/external-mcp.ts
     evidence:
       paths:
         - apps/kernel/api-spec/connections.yaml
@@ -962,7 +996,7 @@ capabilities:
       value: agent (machine)
       rationale: "agent (machine): Seal a personal Postman key and call allowlisted read-only MCP tools through the
         kernel. The cited entrypoints identify the acting role, not an observed user count."
-      paths: &a16
+      paths:
         - apps/kernel/src/lib/kernel/external-mcp.ts
         - apps/kernel/api-spec/connections.yaml
     maturity:
@@ -977,7 +1011,9 @@ capabilities:
       value: supporting
       rationale: "Helps a business deploy or use authorized agents but is not itself the identity-and-authority
         promise: use a sealed external mcp connection."
-      paths: *a16
+      paths:
+        - apps/kernel/src/lib/kernel/external-mcp.ts
+        - apps/kernel/api-spec/connections.yaml
     evidence:
       paths:
         - apps/kernel/src/lib/kernel/external-mcp.ts
@@ -1014,7 +1050,7 @@ capabilities:
       rationale: "org admin: Inspect signed lifecycle history, lineage, artifacts and spend, then prepare or
         dispatch a principal-signed command. The cited entrypoints identify the acting role, not an observed
         user count."
-      paths: &a17
+      paths:
         - apps/kernel/app/jin/runs-panel.tsx
         - apps/kernel/app/api/loops/route.ts
     maturity:
@@ -1032,7 +1068,9 @@ capabilities:
       value: core
       rationale: "Directly supports agent identity, scoped authority, custody, approvals or signed spend/action
         accountability: track agent runs and send commands."
-      paths: *a17
+      paths:
+        - apps/kernel/app/jin/runs-panel.tsx
+        - apps/kernel/app/api/loops/route.ts
     evidence:
       paths:
         - apps/kernel/app/jin/runs-panel.tsx
@@ -1076,7 +1114,7 @@ capabilities:
       value: org admin
       rationale: "org admin: Read personal or acting-organization events and trace signed actions back to their
         actors. The cited entrypoints identify the acting role, not an observed user count."
-      paths: &a18
+      paths:
         - apps/kernel/app/jin/record-panel.tsx
         - apps/kernel/src/lib/jin/record-events.ts
     maturity:
@@ -1094,7 +1132,9 @@ capabilities:
       value: core
       rationale: "Directly supports agent identity, scoped authority, custody, approvals or signed spend/action
         accountability: inspect a signed action record."
-      paths: *a18
+      paths:
+        - apps/kernel/app/jin/record-panel.tsx
+        - apps/kernel/src/lib/jin/record-events.ts
     evidence:
       paths:
         - apps/kernel/app/jin/record-panel.tsx
@@ -1140,7 +1180,7 @@ capabilities:
       value: org admin
       rationale: "org admin: Compare incurred and billed cost, attribute it to runs and verify a signed rollup. The
         cited entrypoints identify the acting role, not an observed user count."
-      paths: &a19
+      paths:
         - apps/kernel/app/jin/spend-panel.tsx
         - apps/kernel/api-spec/usage.yaml
     maturity:
@@ -1156,7 +1196,9 @@ capabilities:
       value: core
       rationale: "Directly supports agent identity, scoped authority, custody, approvals or signed spend/action
         accountability: reconcile agent spend and provider bills."
-      paths: *a19
+      paths:
+        - apps/kernel/app/jin/spend-panel.tsx
+        - apps/kernel/api-spec/usage.yaml
     evidence:
       paths:
         - apps/kernel/app/jin/spend-panel.tsx
@@ -1199,7 +1241,7 @@ capabilities:
       value: org admin
       rationale: "org admin: Select how future Warp briefs are retained and record the preference change as a signed
         event. The cited entrypoints identify the acting role, not an observed user count."
-      paths: &a20
+      paths:
         - apps/kernel/app/jin/brief-settings/page.tsx
         - apps/kernel/src/lib/warp/brief.ts
     maturity:
@@ -1214,7 +1256,9 @@ capabilities:
       value: supporting
       rationale: "Helps a business deploy or use authorized agents but is not itself the identity-and-authority
         promise: choose dispatch brief retention."
-      paths: *a20
+      paths:
+        - apps/kernel/app/jin/brief-settings/page.tsx
+        - apps/kernel/src/lib/warp/brief.ts
     evidence:
       paths:
         - apps/kernel/app/jin/brief-settings/page.tsx
@@ -1247,7 +1291,7 @@ capabilities:
       value: agent (machine)
       rationale: "agent (machine): Ask who the signing agent is, which connectors it can use and which sealed models
         its authority permits. The cited entrypoints identify the acting role, not an observed user count."
-      paths: &a21
+      paths:
         - apps/kernel/app/infer/v1/self/route.ts
         - apps/kernel/api-spec/infer.yaml
     maturity:
@@ -1263,7 +1307,9 @@ capabilities:
       value: core
       rationale: "Directly supports agent identity, scoped authority, custody, approvals or signed spend/action
         accountability: discover an agent identity and usable models."
-      paths: *a21
+      paths:
+        - apps/kernel/app/infer/v1/self/route.ts
+        - apps/kernel/api-spec/infer.yaml
     evidence:
       paths:
         - apps/kernel/app/infer/v1/self/route.ts
@@ -1289,6 +1335,15 @@ capabilities:
       - kernel
     services:
       - infer
+      - anthropic
+      - openai
+      - gemini
+      - xai
+      - moonshot
+      - zai
+      - local
+      - openrouter
+      - gcp
     entry_points:
       ui: []
       api:
@@ -1305,7 +1360,7 @@ capabilities:
       rationale: "agent (machine): Send model requests under scoped agent authority while the kernel injects the
         eligible sealed credential and enforces spend caps. The cited entrypoints identify the acting role,
         not an observed user count."
-      paths: &a22
+      paths:
         - apps/kernel/app/infer/v1/messages/route.ts
         - apps/kernel/src/lib/inference/brain.ts
         - packages/openclaw-infer-passthrough/src/server.ts
@@ -1324,7 +1379,10 @@ capabilities:
       value: core
       rationale: "Directly supports agent identity, scoped authority, custody, approvals or signed spend/action
         accountability: run inference without exporting provider keys."
-      paths: *a22
+      paths:
+        - apps/kernel/app/infer/v1/messages/route.ts
+        - apps/kernel/src/lib/inference/brain.ts
+        - packages/openclaw-infer-passthrough/src/server.ts
     evidence:
       paths:
         - apps/kernel/app/infer/v1/messages/route.ts
@@ -1367,7 +1425,7 @@ capabilities:
       rationale: "agent (machine): Dispatch an agent using an authorized sealed execution credential, follow its
         output and cancel or continue its run. The cited entrypoints identify the acting role, not an observed
         user count."
-      paths: &a23
+      paths:
         - apps/kernel/app/warp/api/dispatch/route.ts
         - apps/kernel/src/lib/warp/dispatch.ts
     maturity:
@@ -1383,7 +1441,9 @@ capabilities:
       value: core
       rationale: "Directly supports agent identity, scoped authority, custody, approvals or signed spend/action
         accountability: dispatch and follow cloud agent work."
-      paths: *a23
+      paths:
+        - apps/kernel/app/warp/api/dispatch/route.ts
+        - apps/kernel/src/lib/warp/dispatch.ts
     evidence:
       paths:
         - apps/kernel/app/warp/api/dispatch/route.ts
@@ -1396,7 +1456,8 @@ capabilities:
         - apps/kernel/src/lib/warp/__tests__/corpus-context.test.ts
       last_touched:
         date: 2026-11-04
-        commit: f9ea074f192d5a919681caa9aa642df234482c8a
+        commit: 9a7908d6285efb9bcb6f97cf426cebdc644cf24a
+        path: apps/kernel/src/lib/warp/dispatch.ts
       open_issues:
         - 3137
   - id: mcp-tools
@@ -1421,7 +1482,7 @@ capabilities:
       value: agent (machine)
       rationale: "agent (machine): Authorize an MCP client and invoke only the platform tools allowed by its live
         scopes and agent binding. The cited entrypoints identify the acting role, not an observed user count."
-      paths: &a24
+      paths:
         - apps/kernel/app/mcp/route.ts
         - apps/kernel/src/lib/mcp/server.ts
     maturity:
@@ -1437,7 +1498,9 @@ capabilities:
       value: core
       rationale: "Directly supports agent identity, scoped authority, custody, approvals or signed spend/action
         accountability: use delegated platform tools through mcp."
-      paths: *a24
+      paths:
+        - apps/kernel/app/mcp/route.ts
+        - apps/kernel/src/lib/mcp/server.ts
     evidence:
       paths:
         - apps/kernel/app/mcp/route.ts
@@ -1480,7 +1543,7 @@ capabilities:
       value: agent (machine)
       rationale: "agent (machine): Discover a public reach card, submit a gated message and retrieve a signed reply
         or receipt. The cited entrypoints identify the acting role, not an observed user count."
-      paths: &a25
+      paths:
         - apps/kernel/app/[handle]/reach/page.tsx
         - apps/kernel/src/lib/auth/reach-discovery.ts
     maturity:
@@ -1496,7 +1559,9 @@ capabilities:
       value: core
       rationale: "Directly supports agent identity, scoped authority, custody, approvals or signed spend/action
         accountability: reach an identity through its agent."
-      paths: *a25
+      paths:
+        - apps/kernel/app/[handle]/reach/page.tsx
+        - apps/kernel/src/lib/auth/reach-discovery.ts
     evidence:
       paths:
         - apps/kernel/app/[handle]/reach/page.tsx
@@ -1534,7 +1599,7 @@ capabilities:
       value: developer
       rationale: "developer: Ingest signed turn evidence and independently check the tool-call boundary of a claimed
         agent turn. The cited entrypoints identify the acting role, not an observed user count."
-      paths: &a26
+      paths:
         - packages/auth/src/turn-evidence.ts
         - apps/kernel/api-spec/auth.yaml
     maturity:
@@ -1549,7 +1614,9 @@ capabilities:
       value: core
       rationale: "Directly supports agent identity, scoped authority, custody, approvals or signed spend/action
         accountability: verify committed agent tool evidence."
-      paths: *a26
+      paths:
+        - packages/auth/src/turn-evidence.ts
+        - apps/kernel/api-spec/auth.yaml
     evidence:
       paths:
         - packages/auth/src/turn-evidence.ts
@@ -1587,7 +1654,7 @@ capabilities:
       rationale: "developer: Register or revoke an app, configure its presentation and manage it under the effective
         personal or organization owner. The cited entrypoints identify the acting role, not an observed user
         count."
-      paths: &a27
+      paths:
         - apps/kernel/app/auth/developer/apps/page.tsx
         - apps/kernel/app/api/registry/apps/route.ts
     maturity:
@@ -1605,7 +1672,9 @@ capabilities:
       value: core
       rationale: "Directly supports agent identity, scoped authority, custody, approvals or signed spend/action
         accountability: register an owned developer app."
-      paths: *a27
+      paths:
+        - apps/kernel/app/auth/developer/apps/page.tsx
+        - apps/kernel/app/api/registry/apps/route.ts
     evidence:
       paths:
         - apps/kernel/app/auth/developer/apps/page.tsx
@@ -1653,7 +1722,7 @@ capabilities:
       rationale: "end user/consumer: Review app scopes, exchange a single-use sign-in code and revoke an app without
         confusing navigation membership with authorization. The cited entrypoints identify the acting role,
         not an observed user count."
-      paths: &a28
+      paths:
         - apps/kernel/app/auth/authorize/page.tsx
         - apps/kernel/app/api/auth/authorize/route.ts
     maturity:
@@ -1671,7 +1740,9 @@ capabilities:
       value: core
       rationale: "Directly supports agent identity, scoped authority, custody, approvals or signed spend/action
         accountability: authorize and revoke an app sign-in."
-      paths: *a28
+      paths:
+        - apps/kernel/app/auth/authorize/page.tsx
+        - apps/kernel/app/api/auth/authorize/route.ts
     evidence:
       paths:
         - apps/kernel/app/auth/authorize/page.tsx
@@ -1718,7 +1789,7 @@ capabilities:
       value: org admin
       rationale: "org admin: Browse active registered apps and add or remove their navigation placements for the
         acting identity. The cited entrypoints identify the acting role, not an observed user count."
-      paths: &a29
+      paths:
         - apps/kernel/app/auth/app-directory/page.tsx
         - apps/kernel/src/lib/kernel/app-nav.ts
     maturity:
@@ -1736,7 +1807,9 @@ capabilities:
       value: supporting
       rationale: "Helps a business deploy or use authorized agents but is not itself the identity-and-authority
         promise: choose apps for an identity workspace."
-      paths: *a29
+      paths:
+        - apps/kernel/app/auth/app-directory/page.tsx
+        - apps/kernel/src/lib/kernel/app-nav.ts
     evidence:
       paths:
         - apps/kernel/app/auth/app-directory/page.tsx
@@ -1754,8 +1827,9 @@ capabilities:
         - apps/kernel/app/auth/api/apps/[slug]/__tests__/route.test.ts
         - apps/kernel/src/lib/kernel/__tests__/app-nav.test.ts
       last_touched:
-        date: 2026-10-18
-        commit: 0050eb34e2986c4523ddeff6f42472e76d8e92f6
+        date: 2026-10-17
+        commit: 33a5fdaac098f78b64d7ff5a1322a59bb84dd8e8
+        path: apps/kernel/app/auth/app-directory/page.tsx
       open_issues: []
   - id: integrate-sdk
     name: Integrate identity and app bootstrapping
@@ -1785,7 +1859,7 @@ capabilities:
       rationale: "developer: Use SDK helpers for session callbacks, scoped app tokens, signed webhooks and
         vault-backed service bootstrap. The cited entrypoints identify the acting role, not an observed user
         count."
-      paths: &a30
+      paths:
         - packages/auth-client/src/index.ts
         - packages/auth/src/kernel-webhook.ts
         - packages/provision-bootstrap/package.json
@@ -1803,7 +1877,10 @@ capabilities:
       value: core
       rationale: "Directly supports agent identity, scoped authority, custody, approvals or signed spend/action
         accountability: integrate identity and app bootstrapping."
-      paths: *a30
+      paths:
+        - packages/auth-client/src/index.ts
+        - packages/auth/src/kernel-webhook.ts
+        - packages/provision-bootstrap/package.json
     evidence:
       paths:
         - packages/auth-client/src/index.ts
@@ -1849,7 +1926,7 @@ capabilities:
       rationale: "org admin: Render a scoped OpenClaw or NanoClaw envelope and run a provision attempt with
         retraceable identity and grant references. The cited entrypoints identify the acting role, not an
         observed user count."
-      paths: &a31
+      paths:
         - apps/kernel/app/auth/agents/page.tsx
         - packages/claw-envelope/src/generate.ts
         - packages/claw-provisioner/src/runner.ts
@@ -1869,7 +1946,10 @@ capabilities:
       value: core
       rationale: "Directly supports agent identity, scoped authority, custody, approvals or signed spend/action
         accountability: generate and provision an agent runtime."
-      paths: *a31
+      paths:
+        - apps/kernel/app/auth/agents/page.tsx
+        - packages/claw-envelope/src/generate.ts
+        - packages/claw-provisioner/src/runner.ts
     evidence:
       paths:
         - apps/kernel/app/auth/agents/page.tsx
@@ -1911,7 +1991,7 @@ capabilities:
       rationale: "developer: Authenticate a channel adapter, receive messages and reconnect while mapping agent
         usage into the accounting rail. The cited entrypoints identify the acting role, not an observed user
         count."
-      paths: &a32
+      paths:
         - packages/nanoclaw-imajin-channel/src/index.ts
     maturity:
       value: partial
@@ -1925,7 +2005,8 @@ capabilities:
       value: supporting
       rationale: "Helps a business deploy or use authorized agents but is not itself the identity-and-authority
         promise: connect a nanoclaw agent to imajin chat."
-      paths: *a32
+      paths:
+        - packages/nanoclaw-imajin-channel/src/index.ts
     evidence:
       paths:
         - packages/nanoclaw-imajin-channel/src/index.ts
@@ -1961,7 +2042,7 @@ capabilities:
       value: developer
       rationale: "developer: Apply configured reflex warrants and injection checks to outbound actions and retain a
         structured audit log. The cited entrypoints identify the acting role, not an observed user count."
-      paths: &a33
+      paths:
         - packages/openclaw-reflex-guard/src/outbound-guard-hooks.ts
     maturity:
       value: works
@@ -1975,7 +2056,8 @@ capabilities:
       value: core
       rationale: "Directly supports agent identity, scoped authority, custody, approvals or signed spend/action
         accountability: guard and audit outbound agent actions."
-      paths: *a33
+      paths:
+        - packages/openclaw-reflex-guard/src/outbound-guard-hooks.ts
     evidence:
       paths:
         - packages/openclaw-reflex-guard/src/outbound-guard-hooks.ts
@@ -2017,7 +2099,7 @@ capabilities:
       value: developer
       rationale: "developer: Sign, countersign, decline or revoke a typed claim and verify its identity chain or
         witness record. The cited entrypoints identify the acting role, not an observed user count."
-      paths: &a34
+      paths:
         - packages/auth/src/emit-attestation.ts
         - packages/dfos/src/bridge.ts
     maturity:
@@ -2033,7 +2115,9 @@ capabilities:
       value: core
       rationale: "Directly supports agent identity, scoped authority, custody, approvals or signed spend/action
         accountability: issue and verify identity attestations."
-      paths: *a34
+      paths:
+        - packages/auth/src/emit-attestation.ts
+        - packages/dfos/src/bridge.ts
     evidence:
       paths:
         - packages/auth/src/emit-attestation.ts
@@ -2082,7 +2166,7 @@ capabilities:
       rationale: "org admin: Create a tax-aware invoice, share its opaque pay link and settle as an authorized
         personal or organization payer. The cited entrypoints identify the acting role, not an observed user
         count."
-      paths: &a35
+      paths:
         - apps/kernel/app/auth/money/page.tsx
         - apps/kernel/src/lib/pay/payment-requests/service.ts
     maturity:
@@ -2100,7 +2184,9 @@ capabilities:
       value: core
       rationale: "Directly supports agent identity, scoped authority, custody, approvals or signed spend/action
         accountability: issue and settle a business payment request."
-      paths: *a35
+      paths:
+        - apps/kernel/app/auth/money/page.tsx
+        - apps/kernel/src/lib/pay/payment-requests/service.ts
     evidence:
       paths:
         - apps/kernel/app/auth/money/page.tsx
@@ -2146,7 +2232,7 @@ capabilities:
       value: org admin
       rationale: "org admin: Maintain an identity-owned bank document and revoke its disclosure grants while
         retaining provenance. The cited entrypoints identify the acting role, not an observed user count."
-      paths: &a36
+      paths:
         - apps/kernel/api-spec/auth.yaml
         - apps/kernel/src/lib/vault/index.ts
     maturity:
@@ -2161,7 +2247,9 @@ capabilities:
       value: supporting
       rationale: "Helps a business deploy or use authorized agents but is not itself the identity-and-authority
         promise: seal and revoke payment bank details."
-      paths: *a36
+      paths:
+        - apps/kernel/api-spec/auth.yaml
+        - apps/kernel/src/lib/vault/index.ts
     evidence:
       paths:
         - apps/kernel/api-spec/auth.yaml
@@ -2174,7 +2262,8 @@ capabilities:
         - apps/kernel/src/lib/vault/__tests__/bank-details-spec.test.ts
       last_touched:
         date: 2026-11-05
-        commit: e0e4952686a3ee65a8b2676745303b921c2891e3
+        commit: e45df42b04d7148a953817d294751389800d7717
+        path: apps/kernel/api-spec/auth.yaml
       open_issues:
         - 3077
   - id: wallet
@@ -2200,7 +2289,7 @@ capabilities:
       value: end user/consumer
       rationale: "end user/consumer: View balances, top up by an available rail, transfer credits and inspect
         transactions. The cited entrypoints identify the acting role, not an observed user count."
-      paths: &a37
+      paths:
         - apps/kernel/app/pay/page.tsx
         - apps/kernel/app/pay/topup/page.tsx
     maturity:
@@ -2217,7 +2306,9 @@ capabilities:
       value: supporting
       rationale: "Helps a business deploy or use authorized agents but is not itself the identity-and-authority
         promise: fund a wallet and inspect its history."
-      paths: *a37
+      paths:
+        - apps/kernel/app/pay/page.tsx
+        - apps/kernel/app/pay/topup/page.tsx
     evidence:
       paths:
         - apps/kernel/app/pay/page.tsx
@@ -2261,7 +2352,7 @@ capabilities:
       value: developer
       rationale: "developer: Create an app-owned checkout, refund or settle its order and verify signed kernel
         callbacks. The cited entrypoints identify the acting role, not an observed user count."
-      paths: &a38
+      paths:
         - apps/kernel/api-spec/pay.yaml
         - packages/auth/src/kernel-webhook.ts
     maturity:
@@ -2277,7 +2368,9 @@ capabilities:
       value: core
       rationale: "Directly supports agent identity, scoped authority, custody, approvals or signed spend/action
         accountability: collect and settle app payments."
-      paths: *a38
+      paths:
+        - apps/kernel/api-spec/pay.yaml
+        - packages/auth/src/kernel-webhook.ts
     evidence:
       paths:
         - apps/kernel/api-spec/pay.yaml
@@ -2314,7 +2407,7 @@ capabilities:
       value: developer
       rationale: "developer: Create a hold and release or refund it through the payment API. The cited entrypoints
         identify the acting role, not an observed user count."
-      paths: &a39
+      paths:
         - apps/kernel/app/pay/api/escrow/route.ts
     maturity:
       value: works
@@ -2327,7 +2420,8 @@ capabilities:
       value: supporting
       rationale: "Helps a business deploy or use authorized agents but is not itself the identity-and-authority
         promise: hold and release escrow."
-      paths: *a39
+      paths:
+        - apps/kernel/app/pay/api/escrow/route.ts
     evidence:
       paths:
         - apps/kernel/app/pay/api/escrow/route.ts
@@ -2360,7 +2454,7 @@ capabilities:
       value: developer
       rationale: "developer: Build, sign and verify a .fair manifest and compute its multi-party fees, taxes and
         settlement distribution. The cited entrypoints identify the acting role, not an observed user count."
-      paths: &a40
+      paths:
         - packages/fair/src/index.ts
         - packages/fair/src/settlement.ts
     maturity:
@@ -2376,7 +2470,9 @@ capabilities:
       value: core
       rationale: "Directly supports agent identity, scoped authority, custody, approvals or signed spend/action
         accountability: verify attribution and settlement manifests."
-      paths: *a40
+      paths:
+        - packages/fair/src/index.ts
+        - packages/fair/src/settlement.ts
     evidence:
       paths:
         - packages/fair/src/index.ts
@@ -2413,7 +2509,7 @@ capabilities:
       rationale: "developer: Compute minor-unit amounts, convert currencies using a signed FX snapshot and reject
         mixed-currency arithmetic. The cited entrypoints identify the acting role, not an observed user
         count."
-      paths: &a41
+      paths:
         - packages/money/src/index.ts
     maturity:
       value: works
@@ -2427,7 +2523,8 @@ capabilities:
       value: supporting
       rationale: "Helps a business deploy or use authorized agents but is not itself the identity-and-authority
         promise: calculate precise money and signed fx."
-      paths: *a41
+      paths:
+        - packages/money/src/index.ts
     evidence:
       paths:
         - packages/money/src/index.ts
@@ -2466,7 +2563,7 @@ capabilities:
       rationale: "org admin: Load workspace or GitHub sources, sync them and retrieve evidence excerpts from
         authorized owner partitions. The cited entrypoints identify the acting role, not an observed user
         count."
-      paths: &a42
+      paths:
         - apps/corpus/src/routes.ts
         - apps/corpus/README.md
         - apps/corpus/api-spec/openapi.yaml
@@ -2488,7 +2585,11 @@ capabilities:
       value: supporting
       rationale: "Helps a business deploy or use authorized agents but is not itself the identity-and-authority
         promise: index and search did-owned knowledge."
-      paths: *a42
+      paths:
+        - apps/corpus/src/routes.ts
+        - apps/corpus/README.md
+        - apps/corpus/api-spec/openapi.yaml
+        - apps/kernel/app/auth/corpus/page.tsx
     evidence:
       paths:
         - apps/corpus/src/routes.ts
@@ -2533,7 +2634,7 @@ capabilities:
       rationale: "agent (machine): Search authorized source-owner partitions and optionally attach bounded evidence
         to a dispatched agent brief. The cited entrypoints identify the acting role, not an observed user
         count."
-      paths: &a43
+      paths:
         - apps/kernel/src/lib/warp/corpus-context.ts
         - apps/kernel/src/lib/kernel/corpus-client.ts
     maturity:
@@ -2549,7 +2650,9 @@ capabilities:
       value: supporting
       rationale: "Helps a business deploy or use authorized agents but is not itself the identity-and-authority
         promise: attach authorized corpus context to agent work."
-      paths: *a43
+      paths:
+        - apps/kernel/src/lib/warp/corpus-context.ts
+        - apps/kernel/src/lib/kernel/corpus-client.ts
     evidence:
       paths:
         - apps/kernel/src/lib/warp/corpus-context.ts
@@ -2593,7 +2696,7 @@ capabilities:
       rationale: "developer: Send authorized notifications or interest broadcasts, deliver configured email or push
         and honor recipient preferences. The cited entrypoints identify the acting role, not an observed user
         count."
-      paths: &a44
+      paths:
         - packages/notify/src/index.ts
         - apps/kernel/api-spec/notify.yaml
     maturity:
@@ -2609,7 +2712,9 @@ capabilities:
       value: supporting
       rationale: "Helps a business deploy or use authorized agents but is not itself the identity-and-authority
         promise: deliver scoped notifications."
-      paths: *a44
+      paths:
+        - packages/notify/src/index.ts
+        - apps/kernel/api-spec/notify.yaml
     evidence:
       paths:
         - packages/notify/src/index.ts
@@ -2655,7 +2760,7 @@ capabilities:
       rationale: "end user/consumer: Create an authorized conversation, send text or attachments, react, invite
         participants and track unread messages. The cited entrypoints identify the acting role, not an
         observed user count."
-      paths: &a45
+      paths:
         - apps/kernel/app/chat/conversations/page.tsx
         - packages/chat/src/index.ts
         - apps/kernel/api-spec/chat.yaml
@@ -2675,7 +2780,10 @@ capabilities:
       value: supporting
       rationale: "Helps a business deploy or use authorized agents but is not itself the identity-and-authority
         promise: exchange direct and group messages."
-      paths: *a45
+      paths:
+        - apps/kernel/app/chat/conversations/page.tsx
+        - packages/chat/src/index.ts
+        - apps/kernel/api-spec/chat.yaml
     evidence:
       paths:
         - apps/kernel/app/chat/conversations/page.tsx
@@ -2721,7 +2829,7 @@ capabilities:
       value: org admin
       rationale: "org admin: Upload a file, organize folders, set access, transfer ownership and retrieve its signed
         attribution manifest. The cited entrypoints identify the acting role, not an observed user count."
-      paths: &a46
+      paths:
         - apps/kernel/app/media/page.tsx
         - apps/kernel/api-spec/media.yaml
         - packages/media/src/index.ts
@@ -2740,7 +2848,10 @@ capabilities:
       value: supporting
       rationale: "Helps a business deploy or use authorized agents but is not itself the identity-and-authority
         promise: store and share attributed assets."
-      paths: *a46
+      paths:
+        - apps/kernel/app/media/page.tsx
+        - apps/kernel/api-spec/media.yaml
+        - packages/media/src/index.ts
     evidence:
       paths:
         - apps/kernel/app/media/page.tsx
@@ -2775,7 +2886,7 @@ capabilities:
       value: agent (machine)
       rationale: "agent (machine): Submit an authorized media asset or upload and obtain text transcription. The
         cited entrypoints identify the acting role, not an observed user count."
-      paths: &a47
+      paths:
         - apps/kernel/app/media/api/transcribe/route.ts
     maturity:
       value: works
@@ -2789,7 +2900,8 @@ capabilities:
       value: supporting
       rationale: "Helps a business deploy or use authorized agents but is not itself the identity-and-authority
         promise: transcribe audio or video."
-      paths: *a47
+      paths:
+        - apps/kernel/app/media/api/transcribe/route.ts
     evidence:
       paths:
         - apps/kernel/app/media/api/transcribe/route.ts
@@ -2824,7 +2936,7 @@ capabilities:
       rationale: "developer: Create and update temporal entries and read another identity calendar only through its
         visibility and broker gate. The cited entrypoints identify the acting role, not an observed user
         count."
-      paths: &a48
+      paths:
         - apps/kernel/app/calendar/api/entries/route.ts
         - apps/kernel/api-spec/calendar.yaml
     maturity:
@@ -2839,7 +2951,9 @@ capabilities:
       value: supporting
       rationale: "Helps a business deploy or use authorized agents but is not itself the identity-and-authority
         promise: manage visibility-scoped calendar entries."
-      paths: *a48
+      paths:
+        - apps/kernel/app/calendar/api/entries/route.ts
+        - apps/kernel/api-spec/calendar.yaml
     evidence:
       paths:
         - apps/kernel/app/calendar/api/entries/route.ts
@@ -2875,7 +2989,7 @@ capabilities:
       rationale: "end user/consumer: Set an expiring private intention and receive a match only when independently
         declared availability overlaps. The cited entrypoints identify the acting role, not an observed user
         count."
-      paths: &a49
+      paths:
         - apps/kernel/api-spec/calendar.yaml
         - packages/bus/src/match/engine.ts
         - apps/broker-agent/src/tools.ts
@@ -2892,7 +3006,10 @@ capabilities:
       value: side-effect
       rationale: "Consumer, community or project-background outcome rather than the B2B identity-and-authority front
         door: match sealed availability intentions."
-      paths: *a49
+      paths:
+        - apps/kernel/api-spec/calendar.yaml
+        - packages/bus/src/match/engine.ts
+        - apps/broker-agent/src/tools.ts
     evidence:
       paths:
         - apps/kernel/api-spec/calendar.yaml
@@ -2926,7 +3043,7 @@ capabilities:
       rationale: "end user/consumer: Use conversational tools to set, list or cancel your own sealed intentions
         without exposing another person availability. The cited entrypoints identify the acting role, not an
         observed user count."
-      paths: &a50
+      paths:
         - apps/broker-agent/src/tools.ts
         - apps/broker-agent/README.md
         - apps/broker-agent/src/bot.ts
@@ -2944,7 +3061,10 @@ capabilities:
       value: side-effect
       rationale: "Consumer, community or project-background outcome rather than the B2B identity-and-authority front
         door: coordinate intentions in telegram."
-      paths: *a50
+      paths:
+        - apps/broker-agent/src/tools.ts
+        - apps/broker-agent/README.md
+        - apps/broker-agent/src/bot.ts
     evidence:
       paths:
         - apps/broker-agent/src/tools.ts
@@ -2986,7 +3106,7 @@ capabilities:
       rationale: "end user/consumer: Claim a handle and edit a personal or business profile, discover enabled apps
         and maintain a place stub. The cited entrypoints identify the acting role, not an observed user
         count."
-      paths: &a51
+      paths:
         - apps/kernel/app/profile/edit/page.tsx
         - apps/kernel/app/profile/p/[handle]/page.tsx
     maturity:
@@ -3001,7 +3121,9 @@ capabilities:
       value: supporting
       rationale: "Helps a business deploy or use authorized agents but is not itself the identity-and-authority
         promise: publish an identity profile."
-      paths: *a51
+      paths:
+        - apps/kernel/app/profile/edit/page.tsx
+        - apps/kernel/app/profile/p/[handle]/page.tsx
     evidence:
       paths:
         - apps/kernel/app/profile/edit/page.tsx
@@ -3015,8 +3137,9 @@ capabilities:
       tests:
         - apps/kernel/app/profile/lib/__tests__/registry-app-links.test.ts
       last_touched:
-        date: 2026-10-18
-        commit: 0050eb34e2986c4523ddeff6f42472e76d8e92f6
+        date: 2026-10-17
+        commit: 047a77d0aaa01561eadc39be3d5344add5f6b9c8
+        path: apps/kernel/app/profile/edit/page.tsx
       open_issues: []
   - id: presence
     name: Query an opt-in AI presence
@@ -3041,7 +3164,7 @@ capabilities:
       rationale: "end user/consumer: Ask a permitted identity presence for a streamed or non-streamed answer subject
         to trust and inference availability. The cited entrypoints identify the acting role, not an observed
         user count."
-      paths: &a52
+      paths:
         - apps/kernel/api-spec/profile.yaml
         - packages/llm/src/index.ts
     maturity:
@@ -3057,7 +3180,9 @@ capabilities:
       value: side-effect
       rationale: "Consumer, community or project-background outcome rather than the B2B identity-and-authority front
         door: query an opt-in ai presence."
-      paths: *a52
+      paths:
+        - apps/kernel/api-spec/profile.yaml
+        - packages/llm/src/index.ts
     evidence:
       paths:
         - apps/kernel/api-spec/profile.yaml
@@ -3101,7 +3226,7 @@ capabilities:
       rationale: "end user/consumer: Invite and accept a connection, label an organization relationship, manage a
         pod and resolve authorized members. The cited entrypoints identify the acting role, not an observed
         user count."
-      paths: &a53
+      paths:
         - apps/kernel/app/connections/page.tsx
         - packages/trust-graph/src/index.ts
     maturity:
@@ -3119,7 +3244,9 @@ capabilities:
       value: supporting
       rationale: "Helps a business deploy or use authorized agents but is not itself the identity-and-authority
         promise: manage bilateral and group relationships."
-      paths: *a53
+      paths:
+        - apps/kernel/app/connections/page.tsx
+        - packages/trust-graph/src/index.ts
     evidence:
       paths:
         - apps/kernel/app/connections/page.tsx
@@ -3162,7 +3289,7 @@ capabilities:
       value: end user/consumer
       rationale: "end user/consumer: Inspect broker-mediated disclosures and revoke one or all outstanding consent
         grants. The cited entrypoints identify the acting role, not an observed user count."
-      paths: &a54
+      paths:
         - apps/kernel/app/disclosures/page.tsx
         - apps/kernel/app/api/broker/consent/route.ts
     maturity:
@@ -3178,7 +3305,9 @@ capabilities:
       value: core
       rationale: "Directly supports agent identity, scoped authority, custody, approvals or signed spend/action
         accountability: review and withdraw data disclosures."
-      paths: *a54
+      paths:
+        - apps/kernel/app/disclosures/page.tsx
+        - apps/kernel/app/api/broker/consent/route.ts
     evidence:
       paths:
         - apps/kernel/app/disclosures/page.tsx
@@ -3193,7 +3322,8 @@ capabilities:
         - apps/kernel/app/api/broker/consent/__tests__/acting-for.test.ts
       last_touched:
         date: 2026-07-28
-        commit: e25e6f9e2631ebbd3f374978b3366666f69c5dd3
+        commit: 5042b9c48f7ebeb2d95de09d0b9a49e998601252
+        path: apps/kernel/app/disclosures/page.tsx
       open_issues: []
   - id: github-work
     name: Read and propose GitHub work
@@ -3215,7 +3345,7 @@ capabilities:
       value: agent (machine)
       rationale: "agent (machine): Connect a GitHub OAuth slot, read allowed repositories and stage scoped writes
         for approval. The cited entrypoints identify the acting role, not an observed user count."
-      paths: &a55
+      paths:
         - apps/kernel/src/lib/github/connector.ts
         - apps/kernel/api-spec/github.yaml
     maturity:
@@ -3231,7 +3361,9 @@ capabilities:
       value: supporting
       rationale: "Helps a business deploy or use authorized agents but is not itself the identity-and-authority
         promise: read and propose github work."
-      paths: *a55
+      paths:
+        - apps/kernel/src/lib/github/connector.ts
+        - apps/kernel/api-spec/github.yaml
     evidence:
       paths:
         - apps/kernel/src/lib/github/connector.ts
@@ -3268,7 +3400,7 @@ capabilities:
       rationale: "agent (machine): Connect a Workspace slot and use scoped Gmail, Calendar, Drive or Meet tools
         under sealed refresh-token custody. The cited entrypoints identify the acting role, not an observed
         user count."
-      paths: &a56
+      paths:
         - apps/kernel/api-spec/google.yaml
         - apps/kernel/src/lib/google/connector.ts
     maturity:
@@ -3284,7 +3416,9 @@ capabilities:
       value: supporting
       rationale: "Helps a business deploy or use authorized agents but is not itself the identity-and-authority
         promise: use consented workspace data and actions."
-      paths: *a56
+      paths:
+        - apps/kernel/api-spec/google.yaml
+        - apps/kernel/src/lib/google/connector.ts
     evidence:
       paths:
         - apps/kernel/api-spec/google.yaml
@@ -3318,7 +3452,7 @@ capabilities:
       value: org admin
       rationale: "org admin: Authorize a QuickBooks realm, invoke permitted invoice operations and reconcile signed
         payment events. The cited entrypoints identify the acting role, not an observed user count."
-      paths: &a57
+      paths:
         - apps/kernel/api-spec/quickbooks.yaml
         - apps/kernel/src/lib/quickbooks/connector.ts
     maturity:
@@ -3334,7 +3468,9 @@ capabilities:
       value: supporting
       rationale: "Helps a business deploy or use authorized agents but is not itself the identity-and-authority
         promise: connect accounting and reconcile invoices."
-      paths: *a57
+      paths:
+        - apps/kernel/api-spec/quickbooks.yaml
+        - apps/kernel/src/lib/quickbooks/connector.ts
     evidence:
       paths:
         - apps/kernel/api-spec/quickbooks.yaml
@@ -3367,7 +3503,7 @@ capabilities:
       value: org admin
       rationale: "org admin: Seal a Discord bot credential and authorize channel reads or message delivery. The
         cited entrypoints identify the acting role, not an observed user count."
-      paths: &a58
+      paths:
         - apps/kernel/src/lib/kernel/connector-registry.ts
         - apps/kernel/src/lib/discord/connector.ts
     maturity:
@@ -3382,7 +3518,9 @@ capabilities:
       value: supporting
       rationale: "Helps a business deploy or use authorized agents but is not itself the identity-and-authority
         promise: connect a discord bot channel."
-      paths: *a58
+      paths:
+        - apps/kernel/src/lib/kernel/connector-registry.ts
+        - apps/kernel/src/lib/discord/connector.ts
     evidence:
       paths:
         - apps/kernel/src/lib/kernel/connector-registry.ts
@@ -3415,7 +3553,7 @@ capabilities:
       value: org admin
       rationale: "org admin: Approve an account link and check the channel sender membership before allowing the
         organization bot to act. The cited entrypoints identify the acting role, not an observed user count."
-      paths: &a59
+      paths:
         - apps/kernel/api-spec/auth.yaml
         - apps/kernel/app/auth/channel-link/[token]/page.tsx
     maturity:
@@ -3431,7 +3569,9 @@ capabilities:
       value: core
       rationale: "Directly supports agent identity, scoped authority, custody, approvals or signed spend/action
         accountability: bind a channel speaker to an organization bot."
-      paths: *a59
+      paths:
+        - apps/kernel/api-spec/auth.yaml
+        - apps/kernel/app/auth/channel-link/[token]/page.tsx
     evidence:
       paths:
         - apps/kernel/api-spec/auth.yaml
@@ -3465,7 +3605,7 @@ capabilities:
       value: agent (machine)
       rationale: "agent (machine): Call a calibrated TypeSafe decision service with a sealed credential and record
         its metered result. The cited entrypoints identify the acting role, not an observed user count."
-      paths: &a60
+      paths:
         - apps/kernel/app/typesafe/api/decide/route.ts
         - apps/kernel/src/lib/typesafe/client.ts
     maturity:
@@ -3481,7 +3621,9 @@ capabilities:
       value: supporting
       rationale: "Helps a business deploy or use authorized agents but is not itself the identity-and-authority
         promise: request a typed probabilistic decision."
-      paths: *a60
+      paths:
+        - apps/kernel/app/typesafe/api/decide/route.ts
+        - apps/kernel/src/lib/typesafe/client.ts
     evidence:
       paths:
         - apps/kernel/app/typesafe/api/decide/route.ts
@@ -3516,7 +3658,7 @@ capabilities:
       value: org admin
       rationale: "org admin: Grant DNS, SSL or cache operations for a verified zone and approve bulk mutations with
         signed history. The cited entrypoints identify the acting role, not an observed user count."
-      paths: &a61
+      paths:
         - apps/kernel/api-spec/cloudflare.yaml
         - apps/kernel/app/jin/cloudflare-panel.tsx
     maturity:
@@ -3532,7 +3674,9 @@ capabilities:
       value: supporting
       rationale: "Helps a business deploy or use authorized agents but is not itself the identity-and-authority
         promise: delegate verified-zone edge operations."
-      paths: *a61
+      paths:
+        - apps/kernel/api-spec/cloudflare.yaml
+        - apps/kernel/app/jin/cloudflare-panel.tsx
     evidence:
       paths:
         - apps/kernel/api-spec/cloudflare.yaml
@@ -3573,7 +3717,7 @@ capabilities:
       value: operator
       rationale: "operator: Register a node, resolve identities, publish chain content and relay authorized DFOS
         operations. The cited entrypoints identify the acting role, not an observed user count."
-      paths: &a62
+      paths:
         - apps/kernel/api-spec/registry.yaml
         - packages/dfos/src/content-publish.ts
     maturity:
@@ -3589,7 +3733,9 @@ capabilities:
       value: supporting
       rationale: "Helps a business deploy or use authorized agents but is not itself the identity-and-authority
         promise: register and relay verifiable identities."
-      paths: *a62
+      paths:
+        - apps/kernel/api-spec/registry.yaml
+        - packages/dfos/src/content-publish.ts
     evidence:
       paths:
         - apps/kernel/api-spec/registry.yaml
@@ -3641,7 +3787,7 @@ capabilities:
       value: operator
       rationale: "operator: Check services, migrations, storage, logs and correlated request or event traces from
         the operator console. The cited entrypoints identify the acting role, not an observed user count."
-      paths: &a63
+      paths:
         - apps/kernel/app/admin/admin-nav.tsx
         - apps/kernel/app/admin/services/page.tsx
         - packages/db/src/health-route.ts
@@ -3661,7 +3807,10 @@ capabilities:
       value: supporting
       rationale: "Helps a business deploy or use authorized agents but is not itself the identity-and-authority
         promise: inspect node health and operational traces."
-      paths: *a63
+      paths:
+        - apps/kernel/app/admin/admin-nav.tsx
+        - apps/kernel/app/admin/services/page.tsx
+        - packages/db/src/health-route.ts
     evidence:
       paths:
         - apps/kernel/app/admin/admin-nav.tsx
@@ -3713,7 +3862,7 @@ capabilities:
       value: operator
       rationale: "operator: Inspect node keys and vault state and perform reviewed key rotation or withdrawal
         reconciliation. The cited entrypoints identify the acting role, not an observed user count."
-      paths: &a64
+      paths:
         - apps/kernel/app/admin/keys/page.tsx
         - apps/kernel/app/admin/vault/page.tsx
         - apps/kernel/app/admin/withdrawals/page.tsx
@@ -3731,7 +3880,10 @@ capabilities:
       value: core
       rationale: "Directly supports agent identity, scoped authority, custody, approvals or signed spend/action
         accountability: operate node key custody and recovery."
-      paths: *a64
+      paths:
+        - apps/kernel/app/admin/keys/page.tsx
+        - apps/kernel/app/admin/vault/page.tsx
+        - apps/kernel/app/admin/withdrawals/page.tsx
     evidence:
       paths:
         - apps/kernel/app/admin/keys/page.tsx
@@ -3777,7 +3929,7 @@ capabilities:
       value: operator
       rationale: "operator: Inspect identity records, moderate flagged content and manage subscribed mailing
         audiences. The cited entrypoints identify the acting role, not an observed user count."
-      paths: &a65
+      paths:
         - apps/kernel/app/admin/moderation/page.tsx
         - apps/kernel/app/admin/subscribers/page.tsx
         - apps/kernel/app/admin/newsletter/page.tsx
@@ -3794,7 +3946,10 @@ capabilities:
       value: side-effect
       rationale: "Consumer, community or project-background outcome rather than the B2B identity-and-authority front
         door: administer users, moderation and mailing lists."
-      paths: *a65
+      paths:
+        - apps/kernel/app/admin/moderation/page.tsx
+        - apps/kernel/app/admin/subscribers/page.tsx
+        - apps/kernel/app/admin/newsletter/page.tsx
     evidence:
       paths:
         - apps/kernel/app/admin/moderation/page.tsx
@@ -3831,7 +3986,7 @@ capabilities:
       value: end user/consumer
       rationale: "end user/consumer: Submit a bug report, view its state and import an authorized report into
         GitHub. The cited entrypoints identify the acting role, not an observed user count."
-      paths: &a66
+      paths:
         - apps/kernel/app/bugs/page.tsx
         - apps/kernel/app/bugs/admin/page.tsx
     maturity:
@@ -3846,7 +4001,9 @@ capabilities:
       value: supporting
       rationale: "Helps a business deploy or use authorized agents but is not itself the identity-and-authority
         promise: report and triage a platform problem."
-      paths: *a66
+      paths:
+        - apps/kernel/app/bugs/page.tsx
+        - apps/kernel/app/bugs/admin/page.tsx
     evidence:
       paths:
         - apps/kernel/app/bugs/page.tsx
@@ -3882,7 +4039,7 @@ capabilities:
       value: end user/consumer
       rationale: "end user/consumer: Read essays, the whitepaper and build log or subscribe to launch updates. The
         cited entrypoints identify the acting role, not an observed user count."
-      paths: &a67
+      paths:
         - apps/kernel/app/articles/page.tsx
         - apps/kernel/app/subscribe/page.tsx
         - apps/kernel/app/privacy/page.tsx
@@ -3898,7 +4055,10 @@ capabilities:
       value: side-effect
       rationale: "Consumer, community or project-background outcome rather than the B2B identity-and-authority front
         door: read project background and updates."
-      paths: *a67
+      paths:
+        - apps/kernel/app/articles/page.tsx
+        - apps/kernel/app/subscribe/page.tsx
+        - apps/kernel/app/privacy/page.tsx
     evidence:
       paths:
         - apps/kernel/app/articles/page.tsx
@@ -3933,7 +4093,7 @@ capabilities:
       rationale: "developer: Tail local coding-agent usage, deduplicate signed accounting input and advance the
         cursor only after successful delivery. The cited entrypoints identify the acting role, not an observed
         user count."
-      paths: &a68
+      paths:
         - packages/usage-emitter-claude-code/src/index.ts
     maturity:
       value: partial
@@ -3947,7 +4107,8 @@ capabilities:
       value: core
       rationale: "Directly supports agent identity, scoped authority, custody, approvals or signed spend/action
         accountability: report local coding-agent usage."
-      paths: *a68
+      paths:
+        - packages/usage-emitter-claude-code/src/index.ts
     evidence:
       paths:
         - packages/usage-emitter-claude-code/src/index.ts
@@ -3994,7 +4155,7 @@ capabilities:
       value: developer
       rationale: "developer: Compose identity-aware navigation, chat inputs, media pickers and onboarding gates in
         an integrating app. The cited entrypoints identify the acting role, not an observed user count."
-      paths: &a69
+      paths:
         - packages/ui/src/index.ts
         - packages/input/src/index.ts
         - packages/chat/src/index.ts
@@ -4014,7 +4175,11 @@ capabilities:
       value: supporting
       rationale: "Helps a business deploy or use authorized agents but is not itself the identity-and-authority
         promise: embed shared platform controls."
-      paths: *a69
+      paths:
+        - packages/ui/src/index.ts
+        - packages/input/src/index.ts
+        - packages/chat/src/index.ts
+        - packages/onboard/src/index.tsx
     evidence:
       paths:
         - packages/ui/src/index.ts
@@ -4060,7 +4225,7 @@ capabilities:
       value: developer
       rationale: "developer: Emit app events and project signed action, usage and settlement records through the
         event bus. The cited entrypoints identify the acting role, not an observed user count."
-      paths: &a70
+      paths:
         - packages/bus/src/publish-app-event.ts
         - packages/emit/src/index.ts
     maturity:
@@ -4076,7 +4241,9 @@ capabilities:
       value: core
       rationale: "Directly supports agent identity, scoped authority, custody, approvals or signed spend/action
         accountability: publish signed events and react to them."
-      paths: *a70
+      paths:
+        - packages/bus/src/publish-app-event.ts
+        - packages/emit/src/index.ts
     evidence:
       paths:
         - packages/bus/src/publish-app-event.ts
@@ -4120,7 +4287,7 @@ capabilities:
       rationale: "developer: Preview agreement, secret, grant, DNS and run controls using development fixtures
         without treating them as customer journeys. The cited entrypoints identify the acting role, not an
         observed user count."
-      paths: &a71
+      paths:
         - apps/kernel/app/dev/grants-preview/page.tsx
     maturity:
       value: partial
@@ -4133,7 +4300,8 @@ capabilities:
       value: supporting
       rationale: "Helps a business deploy or use authorized agents but is not itself the identity-and-authority
         promise: inspect development-only control fixtures."
-      paths: *a71
+      paths:
+        - apps/kernel/app/dev/grants-preview/page.tsx
     evidence:
       paths:
         - apps/kernel/app/dev/grants-preview/page.tsx
@@ -4149,6 +4317,340 @@ capabilities:
         date: 2026-10-21
         commit: 44b031a88d69c09d471c1c69142ee5467ac1e9d7
         path: apps/kernel/app/dev/grants-preview/__tests__/preview.test.ts
+      open_issues: []
+  - id: request-consent
+    name: Request an external principal decision
+    action: Raise an expiring app-authenticated consent request and let only its addressed principal approve or
+      reject it.
+    apps:
+      - kernel
+    services:
+      - consent
+    entry_points:
+      ui: []
+      api:
+        - POST /consent/api/requests
+        - POST /consent/api/requests/{requestId}/decision
+      sdk: []
+    audience:
+      value: developer
+      rationale: "developer: Raise an expiring app-authenticated consent request and let only its addressed
+        principal approve or reject it. The cited entrypoints identify the acting role, not an observed user
+        count."
+      paths:
+        - apps/kernel/app/consent/api/requests/route.ts
+        - apps/kernel/src/lib/consent-requests/consent-requests.ts
+    maturity:
+      value: works
+      rationale: The external consent primitive has requester/approver authorization tests. It is separate from app
+        sign-in consent and the operator-proposal rail; no dedicated primary human home is established.
+      paths:
+        - apps/kernel/app/consent/api/requests/route.ts
+        - apps/kernel/src/lib/consent-requests/consent-requests.ts
+        - apps/kernel/app/consent/api/requests/__tests__/route.test.ts
+        - apps/kernel/app/consent/api/requests/[requestId]/decision/__tests__/route.test.ts
+    business_weight:
+      value: core
+      rationale: "Directly supports agent identity, scoped authority, custody, approvals or signed spend/action
+        accountability: request an external principal decision."
+      paths:
+        - apps/kernel/app/consent/api/requests/route.ts
+        - apps/kernel/src/lib/consent-requests/consent-requests.ts
+    evidence:
+      paths:
+        - apps/kernel/app/consent/api/requests/route.ts
+        - apps/kernel/src/lib/consent-requests/consent-requests.ts
+        - apps/kernel/app/consent/api/requests/__tests__/route.test.ts
+        - apps/kernel/app/consent/api/requests/[requestId]/decision/__tests__/route.test.ts
+      tests:
+        - apps/kernel/app/consent/api/requests/__tests__/route.test.ts
+        - apps/kernel/app/consent/api/requests/[requestId]/decision/__tests__/route.test.ts
+      last_touched:
+        date: 2026-10-05
+        commit: 742ac9ab44447ac6b82afea950ff756aa9d3ac58
+        path: apps/kernel/app/consent/api/requests/route.ts
+      open_issues: []
+  - id: access-bearers
+    name: Issue and revoke a scoped access bearer
+    action: Request a surface-scoped bearer, approve its issuance and inspect or revoke your own bearer metadata.
+    apps:
+      - kernel
+    services:
+      - auth
+      - jin
+    entry_points:
+      ui:
+        - /jin
+      api:
+        - POST /auth/api/access/knock
+        - GET /auth/api/access/bearers
+        - POST /auth/api/access/bearers/{id}/revoke
+      sdk: []
+    audience:
+      value: org admin
+      rationale: "org admin: Request a surface-scoped bearer, approve its issuance and inspect or revoke your own
+        bearer metadata. The cited entrypoints identify the acting role, not an observed user count."
+      paths:
+        - apps/kernel/app/jin/access-bearers-panel.tsx
+        - apps/kernel/src/lib/access/delegate-grant.ts
+    maturity:
+      value: works
+      rationale: Bearer lifecycle and metadata isolation are tested. The list route binds the personal caller
+        directly, so organization parity must not be inferred from the shared Jin page.
+      paths:
+        - apps/kernel/app/jin/access-bearers-panel.tsx
+        - apps/kernel/src/lib/access/delegate-grant.ts
+        - apps/kernel/app/auth/api/access/bearers/__tests__/route.test.ts
+        - apps/kernel/src/lib/access/__tests__/delegate-grant.test.ts
+    business_weight:
+      value: core
+      rationale: "Directly supports agent identity, scoped authority, custody, approvals or signed spend/action
+        accountability: issue and revoke a scoped access bearer."
+      paths:
+        - apps/kernel/app/jin/access-bearers-panel.tsx
+        - apps/kernel/src/lib/access/delegate-grant.ts
+    evidence:
+      paths:
+        - apps/kernel/app/jin/access-bearers-panel.tsx
+        - apps/kernel/src/lib/access/delegate-grant.ts
+        - apps/kernel/app/auth/api/access/bearers/__tests__/route.test.ts
+        - apps/kernel/src/lib/access/__tests__/delegate-grant.test.ts
+        - apps/kernel/app/jin/page.tsx
+        - apps/kernel/api-spec/auth.yaml
+        - apps/kernel/api-spec/jin.yaml
+      tests:
+        - apps/kernel/app/auth/api/access/bearers/__tests__/route.test.ts
+        - apps/kernel/src/lib/access/__tests__/delegate-grant.test.ts
+      last_touched:
+        date: 2026-10-07
+        commit: d1744cf34c831eb398b084dc381f962c69c612ac
+        path: apps/kernel/app/jin/access-bearers-panel.tsx
+      open_issues: []
+  - id: supply-provenance
+    name: Record and trace a supply lot
+    action: Publish declared, collected, received, processed or listed stages and inspect the resulting signed lot
+      history.
+    apps:
+      - kernel
+    services:
+      - supply
+    entry_points:
+      ui: []
+      api:
+        - POST /supply/api/declared
+        - POST /supply/api/processed
+        - GET /supply/api/lots
+        - GET /supply/api/lot/{correlationId}
+      sdk:
+        - package: bus
+          path: packages/bus/package.json
+    audience:
+      value: developer
+      rationale: "developer: Publish declared, collected, received, processed or listed stages and inspect the
+        resulting signed lot history. The cited entrypoints identify the acting role, not an observed user
+        count."
+      paths:
+        - apps/kernel/app/supply/api/declared/route.ts
+        - packages/bus/src/supply-lots.ts
+    maturity:
+      value: works
+      rationale: Thin route wrappers call the supply publisher and the bus projection has lot/recorder tests. This
+        is not verified agricultural customer adoption or a full supply-chain UI.
+      paths:
+        - apps/kernel/app/supply/api/declared/route.ts
+        - packages/bus/src/supply-lots.ts
+        - packages/bus/tests/supply-lots.test.ts
+        - packages/bus/tests/supply-recorder.test.ts
+    business_weight:
+      value: supporting
+      rationale: "Helps a business deploy or use authorized agents but is not itself the identity-and-authority
+        promise: record and trace a supply lot."
+      paths:
+        - apps/kernel/app/supply/api/declared/route.ts
+        - packages/bus/src/supply-lots.ts
+    evidence:
+      paths:
+        - apps/kernel/app/supply/api/declared/route.ts
+        - packages/bus/src/supply-lots.ts
+        - packages/bus/tests/supply-lots.test.ts
+        - packages/bus/tests/supply-recorder.test.ts
+        - packages/bus/package.json
+      tests:
+        - packages/bus/tests/supply-lots.test.ts
+        - packages/bus/tests/supply-recorder.test.ts
+      last_touched:
+        date: 2026-10-05
+        commit: 742ac9ab44447ac6b82afea950ff756aa9d3ac58
+        path: apps/kernel/app/supply/api/declared/route.ts
+      open_issues: []
+  - id: nostr-messages
+    name: Sign and relay attributed Nostr messages
+    action: Seal a DID-owned Nostr key and send a signed group message with identity attribution through an
+      authenticated relay.
+    apps:
+      - kernel
+    services:
+      - buzz
+      - mcp
+    entry_points:
+      ui: []
+      api:
+        - POST /mcp
+      sdk:
+        - package: auth
+          path: packages/auth/package.json
+    audience:
+      value: agent (machine)
+      rationale: "agent (machine): Seal a DID-owned Nostr key and send a signed group message with identity
+        attribution through an authenticated relay. The cited entrypoints identify the acting role, not an
+        observed user count."
+      paths:
+        - apps/kernel/src/lib/buzz/connector.ts
+        - apps/kernel/src/lib/buzz/relay-transport.ts
+    maturity:
+      value: works
+      rationale: Connector and DID-tag tests exist and the library has a relay pipeline. No human home or observed
+        relay use is established; old code alone is not evidence of no inbound links.
+      paths:
+        - apps/kernel/src/lib/buzz/connector.ts
+        - apps/kernel/src/lib/buzz/relay-transport.ts
+        - apps/kernel/src/lib/buzz/__tests__/connector.test.ts
+        - apps/kernel/src/lib/buzz/__tests__/did-tags.test.ts
+    business_weight:
+      value: side-effect
+      rationale: "Consumer, community or project-background outcome rather than the B2B identity-and-authority front
+        door: sign and relay attributed nostr messages."
+      paths:
+        - apps/kernel/src/lib/buzz/connector.ts
+        - apps/kernel/src/lib/buzz/relay-transport.ts
+    evidence:
+      paths:
+        - apps/kernel/src/lib/buzz/connector.ts
+        - apps/kernel/src/lib/buzz/relay-transport.ts
+        - apps/kernel/src/lib/buzz/__tests__/connector.test.ts
+        - apps/kernel/src/lib/buzz/__tests__/did-tags.test.ts
+        - packages/auth/package.json
+      tests:
+        - apps/kernel/src/lib/buzz/__tests__/connector.test.ts
+        - apps/kernel/src/lib/buzz/__tests__/did-tags.test.ts
+      last_touched:
+        date: 2026-08-02
+        commit: 5fda4a57ceeffcda58aa7ea9e81306519a8b3f11
+        path: apps/kernel/src/lib/buzz/__tests__/connector.test.ts
+      open_issues: []
+  - id: register-emitter
+    name: Register a scoped usage emitter
+    action: Register an issuer-owned accounting emitter and ingest signed incurred usage without allowing another
+      issuer identity.
+    apps:
+      - kernel
+    services:
+      - usage
+    entry_points:
+      ui: []
+      api:
+        - GET /usage/api/emitters
+        - PUT /usage/api/emitters
+        - POST /usage/api/incurred
+      sdk:
+        - package: usage-emitter-claude-code
+          path: packages/usage-emitter-claude-code/package.json
+    audience:
+      value: developer
+      rationale: "developer: Register an issuer-owned accounting emitter and ingest signed incurred usage without
+        allowing another issuer identity. The cited entrypoints identify the acting role, not an observed user
+        count."
+      paths:
+        - apps/kernel/app/usage/api/emitters/route.ts
+        - packages/usage-emitter-claude-code/src/client.ts
+    maturity:
+      value: works
+      rationale: The effective-DID registry and emitter scope/client tests exist. Health presentation and
+        registration of real consumers remain open; tested ingestion is narrower than complete metering.
+      paths:
+        - apps/kernel/app/usage/api/emitters/route.ts
+        - packages/usage-emitter-claude-code/src/client.ts
+        - packages/auth/tests/usage-emitter-scopes.test.ts
+        - packages/usage-emitter-claude-code/tests/client.test.ts
+    business_weight:
+      value: core
+      rationale: "Directly supports agent identity, scoped authority, custody, approvals or signed spend/action
+        accountability: register a scoped usage emitter."
+      paths:
+        - apps/kernel/app/usage/api/emitters/route.ts
+        - packages/usage-emitter-claude-code/src/client.ts
+    evidence:
+      paths:
+        - apps/kernel/app/usage/api/emitters/route.ts
+        - packages/usage-emitter-claude-code/src/client.ts
+        - packages/auth/tests/usage-emitter-scopes.test.ts
+        - packages/usage-emitter-claude-code/tests/client.test.ts
+        - packages/usage-emitter-claude-code/package.json
+        - apps/kernel/api-spec/usage.yaml
+      tests:
+        - packages/auth/tests/usage-emitter-scopes.test.ts
+        - packages/usage-emitter-claude-code/tests/client.test.ts
+      last_touched:
+        date: 2026-10-18
+        commit: d394103c4b5947de114a3ac7543b8ddbcbe2d278
+        path: apps/kernel/app/usage/api/emitters/route.ts
+      open_issues:
+        - 3138
+        - 3140
+  - id: subscribe-events
+    name: Subscribe to authorized app events
+    action: Declare allowed app events, publish them and deliver subscriptions or signed callbacks under scoped
+      app authority.
+    apps:
+      - kernel
+    services:
+      - kernel
+      - registry
+    entry_points:
+      ui: []
+      api: []
+      sdk:
+        - package: bus
+          path: packages/bus/package.json
+    audience:
+      value: developer
+      rationale: "developer: Declare allowed app events, publish them and deliver subscriptions or signed callbacks
+        under scoped app authority. The cited entrypoints identify the acting role, not an observed user
+        count."
+      paths:
+        - packages/bus/src/subscriptions.ts
+        - packages/bus/src/publish-app-event.ts
+    maturity:
+      value: works
+      rationale: Subscription and app-event authorization tests exist. This is an integration rail, not a separate
+        public event-ticketing application.
+      paths:
+        - packages/bus/src/subscriptions.ts
+        - packages/bus/src/publish-app-event.ts
+        - packages/bus/tests/event-subscription.test.ts
+        - packages/bus/tests/publish-app-event.test.ts
+    business_weight:
+      value: core
+      rationale: "Directly supports agent identity, scoped authority, custody, approvals or signed spend/action
+        accountability: subscribe to authorized app events."
+      paths:
+        - packages/bus/src/subscriptions.ts
+        - packages/bus/src/publish-app-event.ts
+    evidence:
+      paths:
+        - packages/bus/src/subscriptions.ts
+        - packages/bus/src/publish-app-event.ts
+        - packages/bus/tests/event-subscription.test.ts
+        - packages/bus/tests/publish-app-event.test.ts
+        - packages/bus/package.json
+        - apps/kernel/api-spec/registry.yaml
+      tests:
+        - packages/bus/tests/event-subscription.test.ts
+        - packages/bus/tests/publish-app-event.test.ts
+      last_touched:
+        date: 2026-10-20
+        commit: 0499a7202cc546e9e84c8b7f094bea806aca6825
+        path: packages/bus/src/subscriptions.ts
       open_issues: []
 coverage:
   pages:
@@ -4401,6 +4903,7 @@ coverage:
         - account-spend
         - reach-agent
         - cloudflare
+        - access-bearers
     - path: apps/kernel/app/jin/vault/renew/page.tsx
       capabilities:
         - org-held-keys
@@ -4511,6 +5014,7 @@ coverage:
         - disclosures
         - link-channel-speaker
         - compose-ui
+        - access-bearers
     - path: apps/kernel/api-spec/calendar.yaml
       capabilities:
         - calendar
@@ -4560,6 +5064,7 @@ coverage:
         - dispatch-agent
         - reach-agent
         - cloudflare
+        - access-bearers
     - path: apps/kernel/api-spec/media.yaml
       capabilities:
         - signed-documents
@@ -4599,12 +5104,14 @@ coverage:
         - issue-attestations
         - federation
         - operate-node
+        - subscribe-events
     - path: apps/kernel/api-spec/usage.yaml
       capabilities:
         - account-spend
         - nanoclaw-channel
         - emit-local-usage
         - publish-events
+        - register-emitter
     - path: apps/kernel/api-spec/vault.yaml
       capabilities:
         - org-held-keys
@@ -4645,6 +5152,7 @@ coverage:
         - disclosures
         - link-channel-speaker
         - compose-ui
+        - access-bearers
     - path: apps/kernel/app/calendar/api/spec/route.ts
       capabilities:
         - calendar
@@ -4691,6 +5199,7 @@ coverage:
         - dispatch-agent
         - reach-agent
         - cloudflare
+        - access-bearers
     - path: apps/kernel/app/media/api/spec/route.ts
       capabilities:
         - signed-documents
@@ -4730,12 +5239,14 @@ coverage:
         - issue-attestations
         - federation
         - operate-node
+        - subscribe-events
     - path: apps/kernel/app/usage/api/spec/route.ts
       capabilities:
         - account-spend
         - nanoclaw-channel
         - emit-local-usage
         - publish-events
+        - register-emitter
     - path: apps/kernel/app/vault/api/spec/route.ts
       capabilities:
         - org-held-keys
@@ -4762,6 +5273,7 @@ coverage:
         - issue-attestations
         - app-checkout
         - disclosures
+        - nostr-messages
       note: Implementation SDK; grade the linked actions, not the number of exports.
     - path: packages/auth-client/package.json
       capabilities:
@@ -4777,6 +5289,8 @@ coverage:
         - reach-agent
         - availability
         - publish-events
+        - supply-provenance
+        - subscribe-events
       note: Implementation SDK; grade the linked actions, not the number of exports.
     - path: packages/chat/package.json
       capabilities:
@@ -4901,6 +5415,7 @@ coverage:
       capabilities:
         - account-spend
         - emit-local-usage
+        - register-emitter
       note: Implementation SDK; grade the linked actions, not the number of exports.
     - path: packages/vault-core/package.json
       capabilities:

@@ -14,7 +14,7 @@ product code or `DESIGN.md`.
 
 Snapshot: **2026-11-09**, source commit
 `d905c286816f975d3ef5ed79564d5c274c4b91bd`. The authoritative records are in
-[`capabilities.yaml`](capabilities.yaml): 71 actions, all three current apps
+[`capabilities.yaml`](capabilities.yaml): 77 actions, all three current apps
 (`kernel`, `corpus`, `broker-agent`), all 102 `page.tsx` files, all served specs,
 and all 30 shared packages. A capability is an action someone can take; several
 routes often implement one action. The coverage index includes aliases,
@@ -29,9 +29,10 @@ tool definitions and README are the local contract.
 
 Every grade has a rationale and existing repository paths. `evidence.tests`
 identifies relevant tests, **not a claim those tests were run during the audit**.
-`last_touched` is a git-log date, commit and path for the cited implementation;
+`last_touched` is the latest non-merge git-log date, commit and changed path among
+the capability-specific source and test citations (excluding generic navigation);
 it is not a release date or proof of use. Reproduce a date with
-`git log -1 --format=%cs -- <path>`. Open issue numbers were checked against the
+`git log -1 --no-merges --format=%cs -- <path>`. Open issue numbers were checked against the
 repository's open issue list on the snapshot date; an empty list means no
 specific open issue was attached during this audit, not absence of defects.
 
@@ -137,7 +138,7 @@ entry points. Dates refer to cited code, not last user activity.
 | `delegate-authority` — Grant and withdraw scoped authority | Issue, narrow, renew and revoke an expiring grant without giving an agent blanket account membership. | live | core | [source](../../apps/kernel/app/auth/api/grants/route.ts), [test](../../apps/kernel/app/auth/api/grants/__tests__/route.test.ts); 2026-10-22 |
 | `org-held-keys` — Share organization-owned service credentials | Seal an org model or execution key once and grant members use without exposing or copying the key. | partial | core | [source](../../apps/kernel/app/auth/connectors/components/OrgServiceKeys.tsx), [test](../../apps/kernel/src/lib/inference/__tests__/org-held-inference.integration.test.ts); 2026-11-06 |
 | `approve-actions` — Approve or reject agent actions | Review a proposal and countersign, reject or withdraw it as its addressed human or organization. | live | core | [source](../../apps/kernel/app/jin/operator-approvals-panel.tsx), [test](../../apps/kernel/app/jin/api/operator-approvals/[proposalId]/decision/__tests__/route-mode-countersign.test.ts); 2026-11-04 |
-| `import-secrets` — Import and rotate identity-owned secrets | Propose a sealed credential import or rotation, review its custody and retain signed history when revoking it. | live | core | [source](../../apps/kernel/app/jin/vault-import-panel.tsx), [test](../../apps/kernel/src/lib/vault/__tests__/import-spec.test.ts); 2026-11-05 |
+| `import-secrets` — Import and rotate identity-owned secrets | Propose a sealed credential import or rotation, review its custody and retain signed history when revoking it. | live | core | [source](../../apps/kernel/app/jin/vault-import-panel.tsx), [test](../../apps/kernel/src/lib/vault/__tests__/import-spec.test.ts); 2026-11-04 |
 | `mint-service-keys` — Mint and delegate a service signing key | Generate a signing key inside the vault and deliver it once to its intended recipient under a purpose-bound grant. | live | core | [source](../../apps/kernel/app/api/vault/mint/route.ts), [test](../../apps/kernel/app/api/vault/mint/__tests__/route.test.ts); 2026-10-28 |
 | `signed-documents` — Request and sign a document | Create a hash-bound agreement, collect signatures as the effective identity, amend or decline it and verify a saved copy. | live | supporting | [source](../../apps/kernel/app/auth/attestations/page.tsx), [test](../../apps/kernel/app/auth/attestations/__tests__/document-page-auth.test.tsx); 2026-11-05 |
 | `verify-domains` — Prove organization domain ownership | Bind a domain to an identity using DNS proof and publish verifiable ownership for host routing. | works | supporting | [source](../../apps/kernel/app/auth/settings/page.tsx), [test](../../apps/kernel/src/lib/domains/__tests__/routes.test.ts); 2026-11-04 |
@@ -147,7 +148,7 @@ entry points. Dates refer to cited code, not last user activity.
 | `audit-record` — Inspect a signed action record | Read personal or acting-organization events and trace signed actions back to their actors. | live | core | [source](../../apps/kernel/app/jin/record-panel.tsx), [test](../../apps/kernel/app/jin/api/events/__tests__/org-record.integration.test.ts); 2026-11-02 |
 | `account-spend` — Reconcile agent spend and provider bills | Compare incurred and billed cost, attribute it to runs and verify a signed rollup. | partial | core | [source](../../apps/kernel/app/jin/spend-panel.tsx), [test](../../apps/kernel/app/jin/__tests__/spend-panel.test.tsx); 2026-10-28 |
 | `brief-retention` — Choose dispatch brief retention | Select how future Warp briefs are retained and record the preference change as a signed event. | works | supporting | [source](../../apps/kernel/app/jin/brief-settings/page.tsx), [test](../../apps/kernel/src/lib/warp/__tests__/brief-ledger.test.ts); 2026-11-04 |
-| `app-directory` — Choose apps for an identity workspace | Browse active registered apps and add or remove their navigation placements for the acting identity. | live | supporting | [source](../../apps/kernel/app/auth/app-directory/page.tsx), [test](../../apps/kernel/app/auth/api/apps/[slug]/__tests__/route.test.ts); 2026-10-18 |
+| `app-directory` — Choose apps for an identity workspace | Browse active registered apps and add or remove their navigation placements for the acting identity. | live | supporting | [source](../../apps/kernel/app/auth/app-directory/page.tsx), [test](../../apps/kernel/app/auth/api/apps/[slug]/__tests__/route.test.ts); 2026-10-17 |
 | `provision-runtime` — Generate and provision an agent runtime | Render a scoped OpenClaw or NanoClaw envelope and run a provision attempt with retraceable identity and grant references. | live | core | [source](../../apps/kernel/app/auth/agents/page.tsx), [test](../../apps/kernel/app/auth/agents/__tests__/provisioner-ui.test.tsx); 2026-11-05 |
 | `request-payment` — Issue and settle a business payment request | Create a tax-aware invoice, share its opaque pay link and settle as an authorized personal or organization payer. | live | core | [source](../../apps/kernel/app/auth/money/page.tsx), [test](../../apps/kernel/app/auth/money/__tests__/page.test.tsx); 2026-10-26 |
 | `bank-disclosure` — Seal and revoke payment bank details | Maintain an identity-owned bank document and revoke its disclosure grants while retaining provenance. | works | supporting | [source](../../apps/kernel/api-spec/auth.yaml), [test](../../apps/kernel/src/lib/vault/__tests__/bank-details-spec.test.ts); 2026-11-05 |
@@ -157,6 +158,7 @@ entry points. Dates refer to cited code, not last user activity.
 | `discord-channel` — Connect a Discord bot channel | Seal a Discord bot credential and authorize channel reads or message delivery. | works | supporting | [source](../../apps/kernel/src/lib/kernel/connector-registry.ts), [test](../../apps/kernel/src/lib/mcp/__tests__/messages.test.ts); 2026-10-27 |
 | `link-channel-speaker` — Bind a channel speaker to an organization bot | Approve an account link and check the channel sender membership before allowing the organization bot to act. | works | core | [source](../../apps/kernel/api-spec/auth.yaml), [test](../../apps/kernel/src/lib/auth/__tests__/channel-speaker.integration.test.ts); 2026-11-05 |
 | `cloudflare` — Delegate verified-zone edge operations | Grant DNS, SSL or cache operations for a verified zone and approve bulk mutations with signed history. | works | supporting | [source](../../apps/kernel/api-spec/cloudflare.yaml), [test](../../apps/kernel/src/lib/cloudflare/__tests__/zone-grants.test.ts); 2026-10-23 |
+| `access-bearers` — Issue and revoke a scoped access bearer | Request a surface-scoped bearer, approve its issuance and inspect or revoke your own bearer metadata. | works | core | [source](../../apps/kernel/app/jin/access-bearers-panel.tsx), [test](../../apps/kernel/app/auth/api/access/bearers/__tests__/route.test.ts); 2026-10-07 |
 
 ### developer
 | Capability | What you can do | Maturity | Weight | Evidence |
@@ -178,6 +180,10 @@ entry points. Dates refer to cited code, not last user activity.
 | `compose-ui` — Embed shared platform controls | Compose identity-aware navigation, chat inputs, media pickers and onboarding gates in an integrating app. | partial | supporting | [source](../../packages/ui/src/index.ts), [test](../../packages/ui/tests/server.test.ts); 2026-10-09 |
 | `publish-events` — Publish signed events and react to them | Emit app events and project signed action, usage and settlement records through the event bus. | works | core | [source](../../packages/bus/src/publish-app-event.ts), [test](../../packages/bus/tests/publish-app-event.test.ts); 2026-11-04 |
 | `preview-controls` — Inspect development-only control fixtures | Preview agreement, secret, grant, DNS and run controls using development fixtures without treating them as customer journeys. | partial | supporting | [source](../../apps/kernel/app/dev/grants-preview/page.tsx), [test](../../apps/kernel/app/dev/grants-preview/__tests__/preview.test.ts); 2026-10-21 |
+| `request-consent` — Request an external principal decision | Raise an expiring app-authenticated consent request and let only its addressed principal approve or reject it. | works | core | [source](../../apps/kernel/app/consent/api/requests/route.ts), [test](../../apps/kernel/app/consent/api/requests/__tests__/route.test.ts); 2026-10-05 |
+| `supply-provenance` — Record and trace a supply lot | Publish declared, collected, received, processed or listed stages and inspect the resulting signed lot history. | works | supporting | [source](../../apps/kernel/app/supply/api/declared/route.ts), [test](../../packages/bus/tests/supply-lots.test.ts); 2026-10-05 |
+| `register-emitter` — Register a scoped usage emitter | Register an issuer-owned accounting emitter and ingest signed incurred usage without allowing another issuer identity. | works | core | [source](../../apps/kernel/app/usage/api/emitters/route.ts), [test](../../packages/auth/tests/usage-emitter-scopes.test.ts); 2026-10-18 |
+| `subscribe-events` — Subscribe to authorized app events | Declare allowed app events, publish them and deliver subscriptions or signed callbacks under scoped app authority. | works | core | [source](../../packages/bus/src/subscriptions.ts), [test](../../packages/bus/tests/event-subscription.test.ts); 2026-10-20 |
 
 ### operator
 | Capability | What you can do | Maturity | Weight | Evidence |
@@ -197,7 +203,7 @@ entry points. Dates refer to cited code, not last user activity.
 | `chat` — Exchange direct and group messages | Create an authorized conversation, send text or attachments, react, invite participants and track unread messages. | live | supporting | [source](../../apps/kernel/app/chat/conversations/page.tsx), [test](../../apps/kernel/app/chat/api/spec/__tests__/route.test.ts); 2026-10-26 |
 | `availability` — Match sealed availability intentions | Set an expiring private intention and receive a match only when independently declared availability overlaps. | partial | side-effect | [source](../../apps/kernel/api-spec/calendar.yaml), [test](../../packages/bus/tests/match-engine-broker.test.ts); 2026-10-14 |
 | `broker-agent` — Coordinate intentions in Telegram | Use conversational tools to set, list or cancel your own sealed intentions without exposing another person availability. | partial | side-effect | [source](../../apps/broker-agent/src/tools.ts), [test](../../apps/broker-agent/src/__tests__/agent.test.ts); 2026-10-17 |
-| `profile` — Publish an identity profile | Claim a handle and edit a personal or business profile, discover enabled apps and maintain a place stub. | works | supporting | [source](../../apps/kernel/app/profile/edit/page.tsx), [test](../../apps/kernel/app/profile/lib/__tests__/registry-app-links.test.ts); 2026-10-18 |
+| `profile` — Publish an identity profile | Claim a handle and edit a personal or business profile, discover enabled apps and maintain a place stub. | works | supporting | [source](../../apps/kernel/app/profile/edit/page.tsx), [test](../../apps/kernel/app/profile/lib/__tests__/registry-app-links.test.ts); 2026-10-17 |
 | `presence` — Query an opt-in AI presence | Ask a permitted identity presence for a streamed or non-streamed answer subject to trust and inference availability. | works | side-effect | [source](../../apps/kernel/api-spec/profile.yaml), [test](../../apps/kernel/src/lib/inference/__tests__/presence-query-usage.test.ts); 2026-11-04 |
 | `connections` — Manage bilateral and group relationships | Invite and accept a connection, label an organization relationship, manage a pod and resolve authorized members. | live | supporting | [source](../../apps/kernel/app/connections/page.tsx), [test](../../apps/kernel/src/lib/connections/__tests__/relationship-spec.test.ts); 2026-10-21 |
 | `disclosures` — Review and withdraw data disclosures | Inspect broker-mediated disclosures and revoke one or all outstanding consent grants. | works | core | [source](../../apps/kernel/app/disclosures/page.tsx), [test](../../apps/kernel/src/lib/broker/__tests__/revoke-all.test.ts); 2026-07-28 |
@@ -218,6 +224,7 @@ entry points. Dates refer to cited code, not last user activity.
 | `github-work` — Read and propose GitHub work | Connect a GitHub OAuth slot, read allowed repositories and stage scoped writes for approval. | works | supporting | [source](../../apps/kernel/src/lib/github/connector.ts), [test](../../apps/kernel/src/lib/mcp/__tests__/github-tools.test.ts); 2026-10-27 |
 | `google-work` — Use consented Workspace data and actions | Connect a Workspace slot and use scoped Gmail, Calendar, Drive or Meet tools under sealed refresh-token custody. | works | supporting | [source](../../apps/kernel/api-spec/google.yaml), [test](../../apps/kernel/src/lib/mcp/tools/__tests__/google-tools.test.ts); 2026-11-04 |
 | `calibrated-decisions` — Request a typed probabilistic decision | Call a calibrated TypeSafe decision service with a sealed credential and record its metered result. | works | supporting | [source](../../apps/kernel/app/typesafe/api/decide/route.ts), [test](../../apps/kernel/app/typesafe/api/decide/__tests__/route.test.ts); 2026-11-04 |
+| `nostr-messages` — Sign and relay attributed Nostr messages | Seal a DID-owned Nostr key and send a signed group message with identity attribution through an authenticated relay. | works | side-effect | [source](../../apps/kernel/src/lib/buzz/connector.ts), [test](../../apps/kernel/src/lib/buzz/__tests__/connector.test.ts); 2026-08-02 |
 <!-- capability-table:end -->
 
 ## Primary navigation proposal
@@ -270,11 +277,14 @@ and `/register` belong to public Company/account entry paths, not core app group
 `/chat` and `/notify` are entry/placeholder routes, not extra capabilities.
 All concrete current pages, including trace/detail routes, are in YAML coverage.
 
-**No adequate human home today:** API-only SSH certificates, app-upstream
+**No adequate human home today:** API-only external consent requests, supply-lot
+provenance, Nostr messaging, SSH certificates, app-upstream
 destination authority, external Postman MCP, standalone escrow, calendar entries
 and emitter registration/health. Proposed homes: Node operations for SSH;
 Organization & connections for upstreams/Postman; Runs, spend & record for escrow
-and emitter health; Workspace for calendar. Dispatch and tool execution stay
+and emitter health; Workspace for calendar and supply traces. External consent
+belongs beside approvals; Nostr is an optional integration, not a new core group.
+Dispatch and tool execution stay
 machine APIs, with human status in Runs. No direct buyer demo or self-service
 business onboarding home is proven yet. Do not invent links to close those gaps.
 
@@ -344,6 +354,10 @@ Additional boundary gaps, not fixed here:
 - Scoped authority still has legacy agent-membership fallback (#3012);
   proposal degraded/expiry presentation has #3020 / #3019. Live narrow paths do
   not make the entire authority migration complete.
+- Access-bearer metadata currently binds the personal caller in its
+  [list route](../../apps/kernel/app/auth/api/access/bearers/route.ts); do not
+  infer acting-organization parity from the shared `/jin` page. External consent
+  requests, operator proposals and app sign-in consent are separate rails.
 - Corpus context, membership, layered search, continuous sync and real-consumer
   proof: #3086, #3100, #3101, #3085, #3091. Corpus's README documents explicit
   grant checks; never describe organization membership as current corpus access.
