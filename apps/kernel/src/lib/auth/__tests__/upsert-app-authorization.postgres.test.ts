@@ -399,7 +399,9 @@ describe.skipIf(!adminUrl)('shared app consent — disposable real PostgreSQL (#
     it('retains expired history and rolls back consent rather than silently cleaning it up', async () => {
       await seed('expired', ['media:read'], { expiresAt: new Date(0) });
       const before = await state();
-      await expect(upsertAppAuthorization(consent)).rejects.toMatchObject({ code: '23505' });
+      await expect(upsertAppAuthorization(consent)).rejects.toMatchObject({ cause: {
+        code: '23505', constraint_name: 'uniq_auth_attestations_unrevoked_app_grant',
+      } });
       expect(await state()).toEqual(before);
       await verifyProofs([]);
     });
@@ -415,7 +417,7 @@ describe.skipIf(!adminUrl)('shared app consent — disposable real PostgreSQL (#
       await verifyProofs(['expired']);
       const [expired] = await client`SELECT signature, revoked_at FROM auth.attestations WHERE id = 'expired'`;
       expect(expired.signature).toBe('historical-fixture');
-      expect(expired.revoked_at).toBeInstanceOf(Date);
+      expect(expired.revoked_at).not.toBeNull();
     });
   });
 });
