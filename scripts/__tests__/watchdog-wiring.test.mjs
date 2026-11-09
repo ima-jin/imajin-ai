@@ -9,6 +9,7 @@ it('the production watchdog runs the executable HTTP probe against the same ecos
   const script = await readFile(new URL('../pm2-health-check.sh', import.meta.url), 'utf8');
   expect(script).toContain('node "$SCRIPT_DIR/../deploy/liveness-probe.mjs"');
   expect(script).toContain('--env "$SCOPE" --once --execute --watchdog --ecosystem "$ECOSYSTEM"');
+  expect(script).toContain('if [[ "${PM2_HEALTH_LIVENESS:-1}" != "0" ]]; then');
   expect(script).toContain('if [[ "$check_status" -gt "$worst" ]]; then worst="$check_status"; fi');
 });
 

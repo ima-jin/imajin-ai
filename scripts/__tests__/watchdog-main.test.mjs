@@ -1,8 +1,9 @@
 import { createServer } from 'node:http';
 import { once } from 'node:events';
-import { mkdtemp, readFile, writeFile, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, writeFile, rm, access } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
+import nodeConsole from 'node:console';
 import { afterEach, expect, it, vi } from 'vitest';
 
 const { command } = vi.hoisted(() => ({ command: vi.fn() }));
@@ -20,6 +21,7 @@ let work;
 afterEach(async () => {
   vi.unstubAllEnvs();
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
   if (server) {
     server.closeAllConnections();
     await new Promise(resolve => server.close(resolve));
@@ -80,4 +82,26 @@ it('retains an alert when webhook delivery fails or throws', async () => {
   vi.stubEnv('RESTART_ALERT_WEBHOOK', 'https://watchdog.test/alert');
   vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('unreachable'); }));
   expect(await deliverWatchdog({ app: 'prod-jin' }, 7000)).toBe(false);
+});
+
+it.each(['dev', 'prod'])('skips a port-less %s kernel before any state or pm2 access', async environment => {
+  work = await mkdtemp(join(tmpdir(), 'watchdog-portless-'));
+  const ecosystem = join(work, 'ecosystem.cjs');
+  const stateDirectory = join(work, 'liveness');
+  await writeFile(ecosystem, `module.exports = { apps: [
+    { name: '${environment}-jin', script: 'server.js' },
+    { name: '${environment}-file-online', env: { PORT: 7001 } },
+    { name: '${environment}-file-stopped', env: { PORT: 7002 } }
+  ] };`);
+  vi.stubEnv('IMAJIN_LIVENESS_STATE_DIR', stateDirectory);
+  command.mockReset();
+  const log = vi.spyOn(nodeConsole, 'info').mockImplementation(() => {});
+  expect(await main(['--env', environment, '--once', '--execute', '--watchdog', '--ecosystem', ecosystem]))
+    .toBe(true);
+  expect(log).toHaveBeenCalledWith(JSON.stringify({
+    service: 'liveness-probe', environment,
+    event: 'watchdog.skipped', reason: 'Kernel HTTP port is not configured',
+  }));
+  expect(command).not.toHaveBeenCalled();
+  await expect(access(stateDirectory)).rejects.toMatchObject({ code: 'ENOENT' });
 });

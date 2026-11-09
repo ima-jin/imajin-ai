@@ -220,8 +220,14 @@ async function main(args = process.argv.slice(2)) {
   const config = await import(options.ecosystem
     ? pathToFileURL(resolve(options.ecosystem)).href : `./ecosystem.${options.environment}.config.js`);
   const targets = targetsFromConfig(config.default).filter(target => target.app.startsWith(`${options.environment}-`));
-  if (options.watchdog && targets.length === 0) return; // No HTTP apps in this inventory.
   const kernelPort = targets.find((target) => target.app === `${options.environment}-jin`)?.port;
+  if (options.watchdog && !kernelPort) {
+    console.info(JSON.stringify({
+      service: 'liveness-probe', environment: options.environment,
+      event: 'watchdog.skipped', reason: 'Kernel HTTP port is not configured',
+    }));
+    return true;
+  }
   if (!kernelPort) throw new Error('Kernel target is required');
   if (options.execute && !options.watchdog && !process.env.AUTH_INTERNAL_API_KEY) throw new Error('Ops-event credential is required');
   const path = join(process.env.IMAJIN_LIVENESS_STATE_DIR || join(homedir(), '.imajin', 'liveness'), `${options.environment}.json`);

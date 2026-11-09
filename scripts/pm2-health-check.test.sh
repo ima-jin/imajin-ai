@@ -63,7 +63,7 @@ export RESTART_ALERT_STATE="$WORK/restarts.json"
 export STATUS_ALERT_STATE="$WORK/status.json"
 export PM2_ALERT_WEBHOOK_FILE="$WORK/webhook"
 export IMAJIN_LIVENESS_STATE_DIR="$WORK/liveness"
-unset RESTART_ALERT_WEBHOOK STATUS_ALERT_WEBHOOK || true
+unset RESTART_ALERT_WEBHOOK STATUS_ALERT_WEBHOOK PM2_HEALTH_LIVENESS || true
 
 FAILURES=0
 ENV_HOOK="https://env.example/hook"
@@ -176,6 +176,46 @@ if [[ "$status" -eq 1 && "$(cat "$CURL_LOG")" = "$ENV_HOOK" ]]; then
   echo "✅ the environment's webhook wins over the file"
 else
   echo "❌ env webhook: exit $status, POSTs: $(cat "$CURL_LOG")"
+  FAILURES=$((FAILURES + 1))
+fi
+
+# Default-on liveness and explicit fixture opt-out, without a real HTTP probe.
+LIVENESS_BIN="$WORK/liveness-bin"
+mkdir -p "$LIVENESS_BIN"
+export REAL_NODE="$(command -v node)" LIVENESS_LOG="$WORK/liveness.log"
+cat > "$LIVENESS_BIN/node" <<'EOF'
+#!/usr/bin/env bash
+if [[ "$1" = */deploy/liveness-probe.mjs ]]; then
+  printf '%s\n' "$*" >> "$LIVENESS_LOG"
+  exit 2
+fi
+exec "$REAL_NODE" "$@"
+EOF
+chmod +x "$LIVENESS_BIN/node"
+reset_state
+jl "t-events=online:0 t-auth=online:0" > "$FAKE_JLIST"
+status=0
+PATH="$LIVENESS_BIN:$PATH" bash "$HEALTH" prod "$ECO" >/dev/null 2>&1 || status=$?
+if [[ "$status" -eq 2 && -s "$LIVENESS_LOG" ]]; then
+  echo "✅ liveness runs by default and its failure reaches the wrapper"
+else
+  echo "❌ default liveness: expected probe call and exit 2, got $status"
+  FAILURES=$((FAILURES + 1))
+fi
+: > "$LIVENESS_LOG"
+status=0
+PM2_HEALTH_LIVENESS=0 PATH="$LIVENESS_BIN:$PATH" bash "$HEALTH" prod "$ECO" >/dev/null 2>&1 || status=$?
+if [[ "$status" -eq 0 && ! -s "$LIVENESS_LOG" ]]; then
+  echo "✅ test-only opt-out skips liveness without skipping pm2 checks"
+else
+  echo "❌ liveness opt-out: expected no probe call and exit 0, got $status"
+  FAILURES=$((FAILURES + 1))
+fi
+jl "t-events=errored:0 t-auth=online:0" > "$FAKE_JLIST"
+status=0
+PM2_HEALTH_LIVENESS=0 PATH="$LIVENESS_BIN:$PATH" bash "$HEALTH" prod "$ECO" >/dev/null 2>&1 || status=$?
+if [[ "$status" -ne 1 ]]; then
+  echo "❌ liveness opt-out must preserve pm2 status failures, got $status"
   FAILURES=$((FAILURES + 1))
 fi
 

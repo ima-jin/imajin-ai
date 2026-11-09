@@ -24,6 +24,8 @@
 # Env:
 #   PM2_HEALTH_QUIET=1        print nothing when everything is healthy (cron
 #                             sets this so the log only holds problems)
+#   PM2_HEALTH_LIVENESS=0     test fixtures only: skip the HTTP probe. Enabled
+#                             by default; do not disable in production.
 #   PM2_ALERT_WEBHOOK_FILE    file holding the webhook URL (see above)
 #   PM2_DEPLOY_STOPPED_FILE   deploy-only JSON names observed stopped before
 #                             restart (#2815); still-stopped names are exempt
@@ -71,11 +73,13 @@ for check in check-pm2-restarts check-pm2-status; do
   fi
 done
 
-check_status=0
-check_out="$(node "$SCRIPT_DIR/../deploy/liveness-probe.mjs" \
-  --env "$SCOPE" --once --execute --watchdog --ecosystem "$ECOSYSTEM" 2>&1)" || check_status=$?
-output="${output:+$output$'\n'}$check_out"
-if [[ "$check_status" -gt "$worst" ]]; then worst="$check_status"; fi
+if [[ "${PM2_HEALTH_LIVENESS:-1}" != "0" ]]; then
+  check_status=0
+  check_out="$(node "$SCRIPT_DIR/../deploy/liveness-probe.mjs" \
+    --env "$SCOPE" --once --execute --watchdog --ecosystem "$ECOSYSTEM" 2>&1)" || check_status=$?
+  output="${output:+$output$'\n'}$check_out"
+  if [[ "$check_status" -gt "$worst" ]]; then worst="$check_status"; fi
+fi
 
 if [[ "$worst" -ne 0 || "${PM2_HEALTH_QUIET:-}" != "1" ]]; then
   echo "[$(date -u +%FT%TZ)] pm2-health-check ($SCOPE)"
