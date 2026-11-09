@@ -1,0 +1,4939 @@
+# Capability map — source-backed grades, not deployment or adoption claims.
+schema_version: 1
+audited_on: 2026-11-09
+source_commit: d905c286816f975d3ef5ed79564d5c274c4b91bd
+scope: Repository code snapshot only. No production calls, usage counts, customer validation or
+  deployed-service verification. Every current page/spec/package is indexed below; routes are entrypoints,
+  never one-capability-per-route.
+capabilities:
+  - id: evaluate-platform
+    name: Evaluate agent identity and authority
+    action: Understand the platform, read its integration contracts and decide whether to sign up or request a demo.
+    apps:
+      - kernel
+    services:
+      - kernel
+      - registry
+    entry_points:
+      ui:
+        - /
+        - /project
+        - /whitepaper
+        - /developer-guide
+        - /registry/docs
+      api: []
+      sdk: []
+    audience:
+      value: business buyer
+      rationale: "business buyer: Understand the platform, read its integration contracts and decide whether to sign
+        up or request a demo. The cited entrypoints identify the acting role, not an observed user count."
+      paths: &a1
+        - apps/kernel/app/page.tsx
+        - apps/kernel/app/register/page.tsx
+        - apps/kernel/app/registry/docs/page.tsx
+    maturity:
+      value: partial
+      rationale: The landing page still leads with the protocol matrix; /register redirects to /subscribe. API docs
+        exist, but a business demo and direct sign-up journey are not demonstrated.
+      paths:
+        - apps/kernel/app/page.tsx
+        - apps/kernel/app/register/page.tsx
+        - apps/kernel/app/registry/docs/page.tsx
+        - apps/kernel/app/registry/docs/__tests__/page.s9383.test.tsx
+    business_weight:
+      value: core
+      rationale: "Directly supports agent identity, scoped authority, custody, approvals or signed spend/action
+        accountability: evaluate agent identity and authority."
+      paths: *a1
+    evidence:
+      paths:
+        - apps/kernel/app/page.tsx
+        - apps/kernel/app/register/page.tsx
+        - apps/kernel/app/registry/docs/page.tsx
+        - apps/kernel/app/registry/docs/__tests__/page.s9383.test.tsx
+        - apps/kernel/app/project/page.tsx
+        - apps/kernel/app/whitepaper/page.tsx
+        - apps/kernel/app/developer-guide/page.tsx
+        - apps/kernel/api-spec/registry.yaml
+      tests:
+        - apps/kernel/app/registry/docs/__tests__/page.s9383.test.tsx
+      last_touched:
+        date: 2026-10-18
+        commit: 6ea8c4c31d3123fde4c01f3de1d7fcbf8e769dcf
+        path: apps/kernel/app/page.tsx
+      open_issues:
+        - 3284
+        - 3347
+  - id: create-account
+    name: Create and secure a human account
+    action: Register with an invitation, sign in with a key or password, recover access and configure MFA.
+    apps:
+      - kernel
+    services:
+      - auth
+      - profile
+    entry_points:
+      ui:
+        - /auth/register
+        - /auth/login
+        - /auth/onboard
+        - /auth/recover
+        - /auth/security
+        - /profile/register
+        - /profile/keys
+      api:
+        - POST /auth/api/register
+        - POST /auth/api/login/verify
+        - POST /auth/api/recovery-codes/verify
+      sdk:
+        - package: auth
+          path: packages/auth/package.json
+        - package: onboard
+          path: packages/onboard/package.json
+    audience:
+      value: end user/consumer
+      rationale: "end user/consumer: Register with an invitation, sign in with a key or password, recover access and
+        configure MFA. The cited entrypoints identify the acting role, not an observed user count."
+      paths: &a2
+        - apps/kernel/app/auth/register/page.tsx
+        - apps/kernel/app/auth/security/page.tsx
+    maturity:
+      value: partial
+      rationale: Invite-only registration and tested recovery exist; security still labels some features coming
+        soon. This is not open business self-service sign-up.
+      paths:
+        - apps/kernel/app/auth/register/page.tsx
+        - apps/kernel/app/auth/security/page.tsx
+        - apps/kernel/app/auth/api/recovery-codes/verify/__tests__/route.test.ts
+        - apps/kernel/app/auth/login/components/__tests__/KeyAuthTab.render.test.tsx
+    business_weight:
+      value: supporting
+      rationale: "Helps a business deploy or use authorized agents but is not itself the identity-and-authority
+        promise: create and secure a human account."
+      paths: *a2
+    evidence:
+      paths:
+        - apps/kernel/app/auth/register/page.tsx
+        - apps/kernel/app/auth/security/page.tsx
+        - apps/kernel/app/auth/api/recovery-codes/verify/__tests__/route.test.ts
+        - apps/kernel/app/auth/login/components/__tests__/KeyAuthTab.render.test.tsx
+        - apps/kernel/app/auth/login/page.tsx
+        - apps/kernel/app/auth/onboard/page.tsx
+        - apps/kernel/app/auth/recover/page.tsx
+        - apps/kernel/app/profile/register/page.tsx
+        - apps/kernel/app/profile/keys/page.tsx
+        - packages/auth/package.json
+        - packages/onboard/package.json
+        - apps/kernel/api-spec/auth.yaml
+        - apps/kernel/api-spec/profile.yaml
+      tests:
+        - apps/kernel/app/auth/api/recovery-codes/verify/__tests__/route.test.ts
+        - apps/kernel/app/auth/login/components/__tests__/KeyAuthTab.render.test.tsx
+      last_touched:
+        date: 2026-10-05
+        commit: 3ecbc7974e5f4c64dc4e48d554caa0c96a1c7de6
+        path: apps/kernel/app/auth/security/page.tsx
+      open_issues:
+        - 3284
+        - 3353
+  - id: manage-org
+    name: Manage an organization identity
+    action: Create an organization, assign controllers and members, transfer ownership and switch the acting
+      identity.
+    apps:
+      - kernel
+    services:
+      - auth
+    entry_points:
+      ui:
+        - /auth
+        - /auth/groups/new
+        - /auth/members
+        - /auth/settings
+      api:
+        - POST /auth/api/groups
+        - POST /auth/api/groups/{groupDid}/controllers
+        - POST /auth/api/groups/{groupDid}/transfer-owner
+      sdk:
+        - package: auth
+          path: packages/auth/package.json
+        - package: ui
+          path: packages/ui/package.json
+    audience:
+      value: org admin
+      rationale: "org admin: Create an organization, assign controllers and members, transfer ownership and switch
+        the acting identity. The cited entrypoints identify the acting role, not an observed user count."
+      paths: &a3
+        - apps/kernel/app/auth/members/page.tsx
+        - apps/kernel/app/auth/settings/page.tsx
+        - packages/auth/src/acting-did.ts
+    maturity:
+      value: live
+      rationale: The identity hub and shared identity switcher expose organization management; acting-DID and
+        group-authority tests cover the distinction between personal and organization authority.
+      paths:
+        - apps/kernel/app/auth/members/page.tsx
+        - apps/kernel/app/auth/settings/page.tsx
+        - packages/auth/src/acting-did.ts
+        - apps/kernel/src/lib/auth/__tests__/org-grants.integration.test.ts
+        - packages/auth/tests/acting-did.test.ts
+        - packages/ui/src/nav-bar.tsx
+        - apps/kernel/app/auth/layout.tsx
+    business_weight:
+      value: core
+      rationale: "Directly supports agent identity, scoped authority, custody, approvals or signed spend/action
+        accountability: manage an organization identity."
+      paths: *a3
+    evidence:
+      paths:
+        - apps/kernel/app/auth/members/page.tsx
+        - apps/kernel/app/auth/settings/page.tsx
+        - packages/auth/src/acting-did.ts
+        - apps/kernel/src/lib/auth/__tests__/org-grants.integration.test.ts
+        - packages/auth/tests/acting-did.test.ts
+        - apps/kernel/app/auth/page.tsx
+        - apps/kernel/app/auth/groups/new/page.tsx
+        - packages/auth/package.json
+        - packages/ui/package.json
+        - packages/ui/src/nav-bar.tsx
+        - apps/kernel/app/auth/layout.tsx
+        - apps/kernel/api-spec/auth.yaml
+      tests:
+        - apps/kernel/src/lib/auth/__tests__/org-grants.integration.test.ts
+        - packages/auth/tests/acting-did.test.ts
+      last_touched:
+        date: 2026-10-28
+        commit: c46de533df0b2255f54e4cd6ee99c26b6ae7ecfe
+        path: apps/kernel/app/auth/members/page.tsx
+      open_issues:
+        - 3334
+  - id: manage-agents
+    name: Create and delegate to agents
+    action: Create or adopt an agent, review knocks, provision its identity and inspect its authority.
+    apps:
+      - kernel
+    services:
+      - auth
+    entry_points:
+      ui:
+        - /auth/agents
+      api:
+        - POST /auth/api/agents
+        - POST /auth/api/agents/adopt
+        - POST /auth/api/knock/{knockId}/accept
+      sdk:
+        - package: auth
+          path: packages/auth/package.json
+    audience:
+      value: org admin
+      rationale: "org admin: Create or adopt an agent, review knocks, provision its identity and inspect its
+        authority. The cited entrypoints identify the acting role, not an observed user count."
+      paths: &a4
+        - apps/kernel/app/auth/agents/page.tsx
+        - apps/kernel/app/auth/api/agents/route.ts
+    maturity:
+      value: live
+      rationale: The Agents page implements create/adopt/knock workflows and is linked from the shared identity
+        navigation. Legacy agent-membership fallback remains a separate authority gap.
+      paths:
+        - apps/kernel/app/auth/agents/page.tsx
+        - apps/kernel/app/auth/api/agents/route.ts
+        - apps/kernel/app/auth/api/agents/__tests__/route.test.ts
+        - apps/kernel/app/auth/agents/__tests__/page.test.tsx
+        - packages/ui/src/nav-bar.tsx
+        - apps/kernel/app/auth/layout.tsx
+    business_weight:
+      value: core
+      rationale: "Directly supports agent identity, scoped authority, custody, approvals or signed spend/action
+        accountability: create and delegate to agents."
+      paths: *a4
+    evidence:
+      paths:
+        - apps/kernel/app/auth/agents/page.tsx
+        - apps/kernel/app/auth/api/agents/route.ts
+        - apps/kernel/app/auth/api/agents/__tests__/route.test.ts
+        - apps/kernel/app/auth/agents/__tests__/page.test.tsx
+        - packages/auth/package.json
+        - packages/ui/src/nav-bar.tsx
+        - apps/kernel/app/auth/layout.tsx
+        - apps/kernel/api-spec/auth.yaml
+      tests:
+        - apps/kernel/app/auth/api/agents/__tests__/route.test.ts
+        - apps/kernel/app/auth/agents/__tests__/page.test.tsx
+      last_touched:
+        date: 2026-11-05
+        commit: e149bf453ac24eb61895dd29ea00b332a2f063c6
+        path: apps/kernel/app/auth/agents/__tests__/page.test.tsx
+      open_issues:
+        - 3012
+        - 3119
+        - 3352
+  - id: delegate-authority
+    name: Grant and withdraw scoped authority
+    action: Issue, narrow, renew and revoke an expiring grant without giving an agent blanket account membership.
+    apps:
+      - kernel
+    services:
+      - auth
+      - jin
+    entry_points:
+      ui:
+        - /auth/agents
+        - /jin
+      api:
+        - POST /auth/api/grants
+        - DELETE /auth/api/grants/{grantId}
+        - POST /auth/api/grants/{grantId}/renew
+      sdk:
+        - package: auth
+          path: packages/auth/package.json
+    audience:
+      value: org admin
+      rationale: "org admin: Issue, narrow, renew and revoke an expiring grant without giving an agent blanket
+        account membership. The cited entrypoints identify the acting role, not an observed user count."
+      paths: &a5
+        - apps/kernel/app/auth/api/grants/route.ts
+        - apps/kernel/app/jin/grants-panel.tsx
+        - packages/auth/src/delegation-grant.ts
+    maturity:
+      value: live
+      rationale: The Agents and Jin Grants panels expose tested grant lifecycle and execution-time introspection.
+        Grant possession, membership and credential custody are distinct.
+      paths:
+        - apps/kernel/app/auth/api/grants/route.ts
+        - apps/kernel/app/jin/grants-panel.tsx
+        - packages/auth/src/delegation-grant.ts
+        - apps/kernel/app/auth/api/grants/__tests__/route.test.ts
+        - apps/kernel/app/auth/api/internal/grants/introspect/__tests__/route.test.ts
+        - packages/ui/src/nav-bar.tsx
+        - apps/kernel/app/auth/layout.tsx
+    business_weight:
+      value: core
+      rationale: "Directly supports agent identity, scoped authority, custody, approvals or signed spend/action
+        accountability: grant and withdraw scoped authority."
+      paths: *a5
+    evidence:
+      paths:
+        - apps/kernel/app/auth/api/grants/route.ts
+        - apps/kernel/app/jin/grants-panel.tsx
+        - packages/auth/src/delegation-grant.ts
+        - apps/kernel/app/auth/api/grants/__tests__/route.test.ts
+        - apps/kernel/app/auth/api/internal/grants/introspect/__tests__/route.test.ts
+        - apps/kernel/app/auth/agents/page.tsx
+        - apps/kernel/app/jin/page.tsx
+        - packages/auth/package.json
+        - packages/ui/src/nav-bar.tsx
+        - apps/kernel/app/auth/layout.tsx
+        - apps/kernel/api-spec/auth.yaml
+        - apps/kernel/api-spec/jin.yaml
+      tests:
+        - apps/kernel/app/auth/api/grants/__tests__/route.test.ts
+        - apps/kernel/app/auth/api/internal/grants/introspect/__tests__/route.test.ts
+      last_touched:
+        date: 2026-10-22
+        commit: ecd160f72c119962ffc9ffe9c4aa7b34eb5ffdd4
+        path: apps/kernel/app/auth/api/grants/__tests__/route.test.ts
+      open_issues:
+        - 3012
+        - 3318
+  - id: org-held-keys
+    name: Share organization-owned service credentials
+    action: Seal an org model or execution key once and grant members use without exposing or copying the key.
+    apps:
+      - kernel
+    services:
+      - connections
+      - vault
+      - infer
+    entry_points:
+      ui:
+        - /auth/connectors
+        - /auth/connectors/{id}
+        - /jin/vault/renew
+      api:
+        - POST /connections/api/org-held/{provider}
+        - POST /connections/api/org-held/{provider}/grants
+      sdk:
+        - package: vault-core
+          path: packages/vault-core/package.json
+    audience:
+      value: org admin
+      rationale: "org admin: Seal an org model or execution key once and grant members use without exposing or
+        copying the key. The cited entrypoints identify the acting role, not an observed user count."
+      paths: &a6
+        - apps/kernel/app/auth/connectors/components/OrgServiceKeys.tsx
+        - apps/kernel/src/lib/inference/org-held-brain.ts
+    maturity:
+      value: partial
+      rationale: Org custody, member grants and personal-versus-org inference have integration proof, but provider
+        parity, model-picker custody and assigned-bot writer coverage remain open. Do not promise every
+        provider works identically.
+      paths:
+        - apps/kernel/app/auth/connectors/components/OrgServiceKeys.tsx
+        - apps/kernel/src/lib/inference/org-held-brain.ts
+        - apps/kernel/src/lib/inference/__tests__/org-held-inference.integration.test.ts
+        - apps/kernel/src/lib/vault/__tests__/org-held-renewal.integration.test.ts
+    business_weight:
+      value: core
+      rationale: "Directly supports agent identity, scoped authority, custody, approvals or signed spend/action
+        accountability: share organization-owned service credentials."
+      paths: *a6
+    evidence:
+      paths:
+        - apps/kernel/app/auth/connectors/components/OrgServiceKeys.tsx
+        - apps/kernel/src/lib/inference/org-held-brain.ts
+        - apps/kernel/src/lib/inference/__tests__/org-held-inference.integration.test.ts
+        - apps/kernel/src/lib/vault/__tests__/org-held-renewal.integration.test.ts
+        - apps/kernel/app/auth/connectors/page.tsx
+        - apps/kernel/app/auth/connectors/[id]/page.tsx
+        - apps/kernel/app/jin/vault/renew/page.tsx
+        - packages/vault-core/package.json
+        - apps/kernel/api-spec/connections.yaml
+        - apps/kernel/api-spec/vault.yaml
+        - apps/kernel/api-spec/infer.yaml
+      tests:
+        - apps/kernel/src/lib/inference/__tests__/org-held-inference.integration.test.ts
+        - apps/kernel/src/lib/vault/__tests__/org-held-renewal.integration.test.ts
+      last_touched:
+        date: 2026-11-06
+        commit: b9d02a0b4673996179c49b2bc5569efea04eed9b
+        path: apps/kernel/src/lib/inference/__tests__/org-held-inference.integration.test.ts
+      open_issues:
+        - 3341
+        - 3342
+        - 3343
+        - 3318
+        - 3329
+  - id: approve-actions
+    name: Approve or reject agent actions
+    action: Review a proposal and countersign, reject or withdraw it as its addressed human or organization.
+    apps:
+      - kernel
+    services:
+      - jin
+      - notify
+    entry_points:
+      ui:
+        - /jin
+      api:
+        - GET /jin/api/operator-approvals
+        - POST /jin/api/operator-approvals/{proposalId}/decision
+      sdk: []
+    audience:
+      value: org admin
+      rationale: "org admin: Review a proposal and countersign, reject or withdraw it as its addressed human or
+        organization. The cited entrypoints identify the acting role, not an observed user count."
+      paths: &a7
+        - apps/kernel/app/jin/operator-approvals-panel.tsx
+        - apps/kernel/app/jin/api/operator-approvals/route.ts
+    maturity:
+      value: live
+      rationale: Jin is a persistent shared-header human approval surface, not an operator-only audience. Addressing
+        and decision-mode tests prove scoped decisions; individual admin-only panels remain separately gated.
+      paths:
+        - apps/kernel/app/jin/operator-approvals-panel.tsx
+        - apps/kernel/app/jin/api/operator-approvals/route.ts
+        - apps/kernel/app/jin/api/operator-approvals/[proposalId]/decision/__tests__/route-mode-countersign.test.ts
+        - apps/kernel/app/jin/__tests__/jin-nav-entry.test.tsx
+        - packages/ui/src/nav-bar.tsx
+        - apps/kernel/app/auth/layout.tsx
+    business_weight:
+      value: core
+      rationale: "Directly supports agent identity, scoped authority, custody, approvals or signed spend/action
+        accountability: approve or reject agent actions."
+      paths: *a7
+    evidence:
+      paths:
+        - apps/kernel/app/jin/operator-approvals-panel.tsx
+        - apps/kernel/app/jin/api/operator-approvals/route.ts
+        - apps/kernel/app/jin/api/operator-approvals/[proposalId]/decision/__tests__/route-mode-countersign.test.ts
+        - apps/kernel/app/jin/__tests__/jin-nav-entry.test.tsx
+        - apps/kernel/app/jin/page.tsx
+        - packages/ui/src/nav-bar.tsx
+        - apps/kernel/app/auth/layout.tsx
+        - apps/kernel/api-spec/jin.yaml
+        - apps/kernel/api-spec/notify.yaml
+      tests:
+        - apps/kernel/app/jin/api/operator-approvals/[proposalId]/decision/__tests__/route-mode-countersign.test.ts
+        - apps/kernel/app/jin/__tests__/jin-nav-entry.test.tsx
+      last_touched:
+        date: 2026-11-04
+        commit: e95f4aabc3b1d0d867968027205c1604d1356b7e
+        path: apps/kernel/app/jin/operator-approvals-panel.tsx
+      open_issues:
+        - 2084
+        - 3019
+        - 3020
+        - 3347
+  - id: import-secrets
+    name: Import and rotate identity-owned secrets
+    action: Propose a sealed credential import or rotation, review its custody and retain signed history when
+      revoking it.
+    apps:
+      - kernel
+    services:
+      - vault
+      - jin
+    entry_points:
+      ui:
+        - /jin
+      api:
+        - POST /api/vault/import
+        - GET /api/vault/import
+      sdk:
+        - package: vault-core
+          path: packages/vault-core/package.json
+    audience:
+      value: org admin
+      rationale: "org admin: Propose a sealed credential import or rotation, review its custody and retain signed
+        history when revoking it. The cited entrypoints identify the acting role, not an observed user count."
+      paths: &a8
+        - apps/kernel/app/jin/vault-import-panel.tsx
+        - apps/kernel/src/lib/vault/index.ts
+    maturity:
+      value: live
+      rationale: The Jin import panel and countersigned vault rail are implemented and tested; permission-dependent
+        cards are not a promise that every signed-in person can manage node secrets.
+      paths:
+        - apps/kernel/app/jin/vault-import-panel.tsx
+        - apps/kernel/src/lib/vault/index.ts
+        - apps/kernel/src/lib/vault/__tests__/import-spec.test.ts
+        - apps/kernel/app/jin/__tests__/vault-import-approval.test.tsx
+        - packages/ui/src/nav-bar.tsx
+        - apps/kernel/app/auth/layout.tsx
+    business_weight:
+      value: core
+      rationale: "Directly supports agent identity, scoped authority, custody, approvals or signed spend/action
+        accountability: import and rotate identity-owned secrets."
+      paths: *a8
+    evidence:
+      paths:
+        - apps/kernel/app/jin/vault-import-panel.tsx
+        - apps/kernel/src/lib/vault/index.ts
+        - apps/kernel/src/lib/vault/__tests__/import-spec.test.ts
+        - apps/kernel/app/jin/__tests__/vault-import-approval.test.tsx
+        - apps/kernel/app/jin/page.tsx
+        - packages/vault-core/package.json
+        - packages/ui/src/nav-bar.tsx
+        - apps/kernel/app/auth/layout.tsx
+        - apps/kernel/api-spec/vault.yaml
+        - apps/kernel/api-spec/jin.yaml
+      tests:
+        - apps/kernel/src/lib/vault/__tests__/import-spec.test.ts
+        - apps/kernel/app/jin/__tests__/vault-import-approval.test.tsx
+      last_touched:
+        date: 2026-11-05
+        commit: e0e4952686a3ee65a8b2676745303b921c2891e3
+      open_issues:
+        - 3318
+        - 3319
+        - 3197
+  - id: mint-service-keys
+    name: Mint and delegate a service signing key
+    action: Generate a signing key inside the vault and deliver it once to its intended recipient under a
+      purpose-bound grant.
+    apps:
+      - kernel
+    services:
+      - vault
+      - jin
+    entry_points:
+      ui:
+        - /jin
+      api:
+        - POST /api/vault/mint
+        - POST /api/vault/mint/revoke
+        - POST /api/vault/delegation/grants/{grantId}/fetch
+      sdk:
+        - package: vault-core
+          path: packages/vault-core/package.json
+        - package: auth-client
+          path: packages/auth-client/package.json
+    audience:
+      value: org admin
+      rationale: "org admin: Generate a signing key inside the vault and deliver it once to its intended recipient
+        under a purpose-bound grant. The cited entrypoints identify the acting role, not an observed user
+        count."
+      paths: &a9
+        - apps/kernel/app/api/vault/mint/route.ts
+        - apps/kernel/app/jin/vault-keys-panel.tsx
+    maturity:
+      value: live
+      rationale: Jin key cards wire mint/revoke to tested routes. Fetch is recipient-bound; the mint response itself
+        never releases a private key.
+      paths:
+        - apps/kernel/app/api/vault/mint/route.ts
+        - apps/kernel/app/jin/vault-keys-panel.tsx
+        - apps/kernel/app/api/vault/mint/__tests__/route.test.ts
+        - apps/kernel/app/api/vault/delegation/grants/[grantId]/fetch/__tests__/app-self-guard.test.ts
+        - packages/ui/src/nav-bar.tsx
+        - apps/kernel/app/auth/layout.tsx
+    business_weight:
+      value: core
+      rationale: "Directly supports agent identity, scoped authority, custody, approvals or signed spend/action
+        accountability: mint and delegate a service signing key."
+      paths: *a9
+    evidence:
+      paths:
+        - apps/kernel/app/api/vault/mint/route.ts
+        - apps/kernel/app/jin/vault-keys-panel.tsx
+        - apps/kernel/app/api/vault/mint/__tests__/route.test.ts
+        - apps/kernel/app/api/vault/delegation/grants/[grantId]/fetch/__tests__/app-self-guard.test.ts
+        - apps/kernel/app/jin/page.tsx
+        - packages/vault-core/package.json
+        - packages/auth-client/package.json
+        - packages/ui/src/nav-bar.tsx
+        - apps/kernel/app/auth/layout.tsx
+        - apps/kernel/api-spec/vault.yaml
+        - apps/kernel/api-spec/jin.yaml
+      tests:
+        - apps/kernel/app/api/vault/mint/__tests__/route.test.ts
+        - apps/kernel/app/api/vault/delegation/grants/[grantId]/fetch/__tests__/app-self-guard.test.ts
+      last_touched:
+        date: 2026-10-28
+        commit: 950046ba75d5d33d222469f064e5735a0256cfc9
+        path: apps/kernel/app/jin/vault-keys-panel.tsx
+      open_issues: []
+  - id: ssh-authority
+    name: Delegate short-lived SSH access
+    action: Mint a custodied SSH CA, grant signing authority and issue a restricted certificate with overlapping
+      trust during rotation.
+    apps:
+      - kernel
+    services:
+      - vault
+    entry_points:
+      ui: []
+      api:
+        - POST /api/vault/ssh-ca
+        - POST /api/vault/ssh-ca/sign
+        - POST /api/vault/ssh-ca/grants
+      sdk:
+        - package: vault-core
+          path: packages/vault-core/package.json
+    audience:
+      value: operator
+      rationale: "operator: Mint a custodied SSH CA, grant signing authority and issue a restricted certificate with
+        overlapping trust during rotation. The cited entrypoints identify the acting role, not an observed
+        user count."
+      paths: &a10
+        - apps/kernel/app/api/vault/ssh-ca/route.ts
+    maturity:
+      value: works
+      rationale: API and certificate contract tests exist; a dedicated human certificate-management workflow is not
+        demonstrated.
+      paths:
+        - apps/kernel/app/api/vault/ssh-ca/route.ts
+        - apps/kernel/src/lib/vault/__tests__/ssh-ca-spec.test.ts
+        - apps/kernel/app/api/vault/ssh-ca/__tests__/route.test.ts
+    business_weight:
+      value: core
+      rationale: "Directly supports agent identity, scoped authority, custody, approvals or signed spend/action
+        accountability: delegate short-lived ssh access."
+      paths: *a10
+    evidence:
+      paths:
+        - apps/kernel/app/api/vault/ssh-ca/route.ts
+        - apps/kernel/src/lib/vault/__tests__/ssh-ca-spec.test.ts
+        - apps/kernel/app/api/vault/ssh-ca/__tests__/route.test.ts
+        - packages/vault-core/package.json
+        - apps/kernel/api-spec/vault.yaml
+      tests:
+        - apps/kernel/src/lib/vault/__tests__/ssh-ca-spec.test.ts
+        - apps/kernel/app/api/vault/ssh-ca/__tests__/route.test.ts
+      last_touched:
+        date: 2026-10-27
+        commit: 639d59dba7bf3c6c34a4c6b98a434a2d4ab73a03
+        path: apps/kernel/src/lib/vault/__tests__/ssh-ca-spec.test.ts
+      open_issues: []
+  - id: signed-documents
+    name: Request and sign a document
+    action: Create a hash-bound agreement, collect signatures as the effective identity, amend or decline it and
+      verify a saved copy.
+    apps:
+      - kernel
+    services:
+      - auth
+      - media
+    entry_points:
+      ui:
+        - /auth/attestations
+        - /auth/documents/{id}
+        - /auth/legal-entity
+      api:
+        - POST /auth/api/documents
+        - POST /auth/api/documents/{id}/sign
+        - POST /auth/api/documents/{id}/verify
+      sdk:
+        - package: auth
+          path: packages/auth/package.json
+    audience:
+      value: org admin
+      rationale: "org admin: Create a hash-bound agreement, collect signatures as the effective identity, amend or
+        decline it and verify a saved copy. The cited entrypoints identify the acting role, not an observed
+        user count."
+      paths: &a11
+        - apps/kernel/app/auth/attestations/page.tsx
+        - apps/kernel/src/lib/auth/document-authorization.ts
+    maturity:
+      value: live
+      rationale: Attestations navigation exposes document creation and signature UI; authorization tests cover
+        effective-account readers and signers.
+      paths:
+        - apps/kernel/app/auth/attestations/page.tsx
+        - apps/kernel/src/lib/auth/document-authorization.ts
+        - apps/kernel/app/auth/attestations/__tests__/document-page-auth.test.tsx
+        - apps/kernel/src/lib/auth/__tests__/verify-document-route.test.ts
+        - packages/ui/src/nav-bar.tsx
+        - apps/kernel/app/auth/layout.tsx
+    business_weight:
+      value: supporting
+      rationale: "Helps a business deploy or use authorized agents but is not itself the identity-and-authority
+        promise: request and sign a document."
+      paths: *a11
+    evidence:
+      paths:
+        - apps/kernel/app/auth/attestations/page.tsx
+        - apps/kernel/src/lib/auth/document-authorization.ts
+        - apps/kernel/app/auth/attestations/__tests__/document-page-auth.test.tsx
+        - apps/kernel/src/lib/auth/__tests__/verify-document-route.test.ts
+        - apps/kernel/app/auth/documents/[id]/page.tsx
+        - apps/kernel/app/auth/legal-entity/page.tsx
+        - packages/auth/package.json
+        - packages/ui/src/nav-bar.tsx
+        - apps/kernel/app/auth/layout.tsx
+        - apps/kernel/api-spec/auth.yaml
+        - apps/kernel/api-spec/media.yaml
+      tests:
+        - apps/kernel/app/auth/attestations/__tests__/document-page-auth.test.tsx
+        - apps/kernel/src/lib/auth/__tests__/verify-document-route.test.ts
+      last_touched:
+        date: 2026-11-05
+        commit: a2557579fa56aa117e47b5a99a5e172cb39fc8ea
+        path: apps/kernel/src/lib/auth/document-authorization.ts
+      open_issues: []
+  - id: verify-domains
+    name: Prove organization domain ownership
+    action: Bind a domain to an identity using DNS proof and publish verifiable ownership for host routing.
+    apps:
+      - kernel
+    services:
+      - auth
+      - registry
+    entry_points:
+      ui:
+        - /auth/settings
+      api:
+        - POST /auth/api/identities/{did}/domains
+        - POST /auth/api/identities/{did}/domains/{domain}/verify
+        - GET /.well-known/imajin.json
+      sdk: []
+    audience:
+      value: org admin
+      rationale: "org admin: Bind a domain to an identity using DNS proof and publish verifiable ownership for host
+        routing. The cited entrypoints identify the acting role, not an observed user count."
+      paths: &a12
+        - apps/kernel/app/auth/settings/page.tsx
+        - apps/kernel/src/lib/domains/service.ts
+    maturity:
+      value: works
+      rationale: Settings and tested ownership routes exist; DNS provisioning remains manual and
+        configurable-provider automation is separate work.
+      paths:
+        - apps/kernel/app/auth/settings/page.tsx
+        - apps/kernel/src/lib/domains/service.ts
+        - apps/kernel/src/lib/domains/__tests__/routes.test.ts
+        - apps/kernel/src/lib/domains/__tests__/public-routes.test.ts
+    business_weight:
+      value: supporting
+      rationale: "Helps a business deploy or use authorized agents but is not itself the identity-and-authority
+        promise: prove organization domain ownership."
+      paths: *a12
+    evidence:
+      paths:
+        - apps/kernel/app/auth/settings/page.tsx
+        - apps/kernel/src/lib/domains/service.ts
+        - apps/kernel/src/lib/domains/__tests__/routes.test.ts
+        - apps/kernel/src/lib/domains/__tests__/public-routes.test.ts
+        - apps/kernel/api-spec/auth.yaml
+        - apps/kernel/api-spec/registry.yaml
+      tests:
+        - apps/kernel/src/lib/domains/__tests__/routes.test.ts
+        - apps/kernel/src/lib/domains/__tests__/public-routes.test.ts
+      last_touched:
+        date: 2026-11-04
+        commit: b9e57d65372d8ed473f14dc661ebdb32e9b9edef
+        path: apps/kernel/src/lib/domains/service.ts
+      open_issues:
+        - 2920
+  - id: org-mail
+    name: Configure organization sending domains
+    action: Provision a verified send-only mail domain, check DNS and select fixed-purpose organization or app
+      senders.
+    apps:
+      - kernel
+    services:
+      - jin
+      - notify
+    entry_points:
+      ui:
+        - /jin/org-settings
+      api:
+        - POST /jin/api/orgs/{ownerDid}/mail-domains
+        - PUT /jin/api/orgs/{ownerDid}/mail-senders
+      sdk:
+        - package: email
+          path: packages/email/package.json
+    audience:
+      value: org admin
+      rationale: "org admin: Provision a verified send-only mail domain, check DNS and select fixed-purpose
+        organization or app senders. The cited entrypoints identify the acting role, not an observed user
+        count."
+      paths: &a13
+        - apps/kernel/app/jin/org-settings/page.tsx
+        - apps/kernel/src/lib/mail/types.ts
+    maturity:
+      value: works
+      rationale: The Jin settings link and tested mail-domain panel exist, but external DNS and Postal configuration
+        are prerequisites; this is not a mailbox-hosting product.
+      paths:
+        - apps/kernel/app/jin/org-settings/page.tsx
+        - apps/kernel/src/lib/mail/types.ts
+        - apps/kernel/app/jin/api/orgs/[ownerDid]/mail-domains/__tests__/route.test.ts
+        - apps/kernel/app/jin/org-settings/__tests__/mail-domains-panel.test.tsx
+    business_weight:
+      value: supporting
+      rationale: "Helps a business deploy or use authorized agents but is not itself the identity-and-authority
+        promise: configure organization sending domains."
+      paths: *a13
+    evidence:
+      paths:
+        - apps/kernel/app/jin/org-settings/page.tsx
+        - apps/kernel/src/lib/mail/types.ts
+        - apps/kernel/app/jin/api/orgs/[ownerDid]/mail-domains/__tests__/route.test.ts
+        - apps/kernel/app/jin/org-settings/__tests__/mail-domains-panel.test.tsx
+        - packages/email/package.json
+        - apps/kernel/api-spec/jin.yaml
+        - apps/kernel/api-spec/notify.yaml
+      tests:
+        - apps/kernel/app/jin/api/orgs/[ownerDid]/mail-domains/__tests__/route.test.ts
+        - apps/kernel/app/jin/org-settings/__tests__/mail-domains-panel.test.tsx
+      last_touched:
+        date: 2026-11-04
+        commit: b9e57d65372d8ed473f14dc661ebdb32e9b9edef
+        path: apps/kernel/app/jin/api/orgs/[ownerDid]/mail-domains/__tests__/route.test.ts
+      open_issues:
+        - 2920
+  - id: connector-consent
+    name: Connect services and control their scopes
+    action: Choose a named credential connection, authorize selected scopes and disconnect it without revoking
+      other slots.
+    apps:
+      - kernel
+    services:
+      - connections
+      - auth
+    entry_points:
+      ui:
+        - /auth/connectors
+        - /auth/connectors/{id}
+      api:
+        - POST /github/api/scope-manifest
+        - POST /google/api/scope-manifest
+        - POST /connections/api/connectors/{id}/connections
+      sdk:
+        - package: auth
+          path: packages/auth/package.json
+    audience:
+      value: org admin
+      rationale: "org admin: Choose a named credential connection, authorize selected scopes and disconnect it
+        without revoking other slots. The cited entrypoints identify the acting role, not an observed user
+        count."
+      paths: &a14
+        - apps/kernel/app/auth/connectors/page.tsx
+        - apps/kernel/src/lib/kernel/connector-registry.ts
+        - packages/auth/src/scope-vocabulary.ts
+    maturity:
+      value: live
+      rationale: Registry-driven connection cards and slot-aware consent tests prove the lifecycle, not universal
+        availability of every upstream function.
+      paths:
+        - apps/kernel/app/auth/connectors/page.tsx
+        - apps/kernel/src/lib/kernel/connector-registry.ts
+        - packages/auth/src/scope-vocabulary.ts
+        - apps/kernel/src/lib/github/__tests__/scope-manifest.test.ts
+        - apps/kernel/src/lib/google/__tests__/scope-manifest.test.ts
+        - packages/ui/src/nav-bar.tsx
+        - apps/kernel/app/auth/layout.tsx
+    business_weight:
+      value: core
+      rationale: "Directly supports agent identity, scoped authority, custody, approvals or signed spend/action
+        accountability: connect services and control their scopes."
+      paths: *a14
+    evidence:
+      paths:
+        - apps/kernel/app/auth/connectors/page.tsx
+        - apps/kernel/src/lib/kernel/connector-registry.ts
+        - packages/auth/src/scope-vocabulary.ts
+        - apps/kernel/src/lib/github/__tests__/scope-manifest.test.ts
+        - apps/kernel/src/lib/google/__tests__/scope-manifest.test.ts
+        - apps/kernel/app/auth/connectors/[id]/page.tsx
+        - packages/auth/package.json
+        - packages/ui/src/nav-bar.tsx
+        - apps/kernel/app/auth/layout.tsx
+        - apps/kernel/api-spec/connections.yaml
+        - apps/kernel/api-spec/auth.yaml
+      tests:
+        - apps/kernel/src/lib/github/__tests__/scope-manifest.test.ts
+        - apps/kernel/src/lib/google/__tests__/scope-manifest.test.ts
+      last_touched:
+        date: 2026-11-06
+        commit: 55286fb09e4ae256eff2351ee5e587a3200c0e50
+        path: apps/kernel/app/auth/connectors/page.tsx
+      open_issues:
+        - 3347
+        - 3352
+        - 3318
+  - id: upstream-credentials
+    name: Authorize a destination-bound app API call
+    action: Review an app upstream, seal a member-owned key and let the kernel inject it only for that declared
+      destination.
+    apps:
+      - kernel
+    services:
+      - connections
+    entry_points:
+      ui: []
+      api:
+        - PUT /connections/api/upstreams
+        - POST /connections/api/upstreams/connection
+        - POST /connections/api/upstreams/call
+      sdk: []
+    audience:
+      value: developer
+      rationale: "developer: Review an app upstream, seal a member-owned key and let the kernel inject it only for
+        that declared destination. The cited entrypoints identify the acting role, not an observed user
+        count."
+      paths: &a15
+        - apps/kernel/api-spec/connections.yaml
+        - apps/kernel/src/lib/kernel/external-mcp.ts
+    maturity:
+      value: works
+      rationale: The upstream contract and external transport are implemented and tested; there is no standalone
+        navigation home for app-upstream authority.
+      paths:
+        - apps/kernel/api-spec/connections.yaml
+        - apps/kernel/src/lib/kernel/external-mcp.ts
+        - apps/kernel/src/lib/kernel/__tests__/external-mcp.integration.test.ts
+    business_weight:
+      value: core
+      rationale: "Directly supports agent identity, scoped authority, custody, approvals or signed spend/action
+        accountability: authorize a destination-bound app api call."
+      paths: *a15
+    evidence:
+      paths:
+        - apps/kernel/api-spec/connections.yaml
+        - apps/kernel/src/lib/kernel/external-mcp.ts
+        - apps/kernel/src/lib/kernel/__tests__/external-mcp.integration.test.ts
+      tests:
+        - apps/kernel/src/lib/kernel/__tests__/external-mcp.integration.test.ts
+      last_touched:
+        date: 2026-11-06
+        commit: ff36800145cf1344afd610bf0e7da941844c47b8
+        path: apps/kernel/src/lib/kernel/__tests__/external-mcp.integration.test.ts
+      open_issues:
+        - 3163
+        - 3318
+  - id: postman-mcp
+    name: Use a sealed external MCP connection
+    action: Seal a personal Postman key and call allowlisted read-only MCP tools through the kernel.
+    apps:
+      - kernel
+    services:
+      - connections
+      - mcp
+    entry_points:
+      ui: []
+      api:
+        - POST /connections/api/external-mcp/postman
+        - POST /connections/api/external-mcp/postman/rpc
+      sdk: []
+    audience:
+      value: agent (machine)
+      rationale: "agent (machine): Seal a personal Postman key and call allowlisted read-only MCP tools through the
+        kernel. The cited entrypoints identify the acting role, not an observed user count."
+      paths: &a16
+        - apps/kernel/src/lib/kernel/external-mcp.ts
+        - apps/kernel/api-spec/connections.yaml
+    maturity:
+      value: works
+      rationale: Read-only Postman transport has tests; this is not arbitrary third-party MCP execution or completed
+        organization revocation parity.
+      paths:
+        - apps/kernel/src/lib/kernel/external-mcp.ts
+        - apps/kernel/api-spec/connections.yaml
+        - apps/kernel/src/lib/kernel/__tests__/external-mcp-transport.test.ts
+    business_weight:
+      value: supporting
+      rationale: "Helps a business deploy or use authorized agents but is not itself the identity-and-authority
+        promise: use a sealed external mcp connection."
+      paths: *a16
+    evidence:
+      paths:
+        - apps/kernel/src/lib/kernel/external-mcp.ts
+        - apps/kernel/api-spec/connections.yaml
+        - apps/kernel/src/lib/kernel/__tests__/external-mcp-transport.test.ts
+      tests:
+        - apps/kernel/src/lib/kernel/__tests__/external-mcp-transport.test.ts
+      last_touched:
+        date: 2026-11-06
+        commit: 93d89903c029f5cb1c8e274c0c3057bfecf9c48c
+        path: apps/kernel/api-spec/connections.yaml
+      open_issues:
+        - 3163
+  - id: track-runs
+    name: Track agent runs and send commands
+    action: Inspect signed lifecycle history, lineage, artifacts and spend, then prepare or dispatch a
+      principal-signed command.
+    apps:
+      - kernel
+    services:
+      - jin
+    entry_points:
+      ui:
+        - /jin
+      api:
+        - GET /api/loops
+        - GET /api/loops/{loopId}
+        - POST /jin/api/runs/{loopId}/commands
+      sdk:
+        - package: bus
+          path: packages/bus/package.json
+    audience:
+      value: org admin
+      rationale: "org admin: Inspect signed lifecycle history, lineage, artifacts and spend, then prepare or
+        dispatch a principal-signed command. The cited entrypoints identify the acting role, not an observed
+        user count."
+      paths: &a17
+        - apps/kernel/app/jin/runs-panel.tsx
+        - apps/kernel/app/api/loops/route.ts
+    maturity:
+      value: live
+      rationale: Jin Runs is wired to signed registry reads and tested panels; command authorization remains
+        principal-specific.
+      paths:
+        - apps/kernel/app/jin/runs-panel.tsx
+        - apps/kernel/app/api/loops/route.ts
+        - apps/kernel/app/jin/__tests__/runs-panel.test.tsx
+        - apps/kernel/app/api/loops/__tests__/route.test.ts
+        - packages/ui/src/nav-bar.tsx
+        - apps/kernel/app/auth/layout.tsx
+    business_weight:
+      value: core
+      rationale: "Directly supports agent identity, scoped authority, custody, approvals or signed spend/action
+        accountability: track agent runs and send commands."
+      paths: *a17
+    evidence:
+      paths:
+        - apps/kernel/app/jin/runs-panel.tsx
+        - apps/kernel/app/api/loops/route.ts
+        - apps/kernel/app/jin/__tests__/runs-panel.test.tsx
+        - apps/kernel/app/api/loops/__tests__/route.test.ts
+        - apps/kernel/app/jin/page.tsx
+        - packages/bus/package.json
+        - packages/ui/src/nav-bar.tsx
+        - apps/kernel/app/auth/layout.tsx
+        - apps/kernel/api-spec/jin.yaml
+      tests:
+        - apps/kernel/app/jin/__tests__/runs-panel.test.tsx
+        - apps/kernel/app/api/loops/__tests__/route.test.ts
+      last_touched:
+        date: 2026-11-04
+        commit: 1c3d2874791eaf9ded6b95f6590931e65aa73caf
+        path: apps/kernel/app/api/loops/__tests__/route.test.ts
+      open_issues:
+        - 3322
+  - id: audit-record
+    name: Inspect a signed action record
+    action: Read personal or acting-organization events and trace signed actions back to their actors.
+    apps:
+      - kernel
+    services:
+      - jin
+    entry_points:
+      ui:
+        - /jin
+      api:
+        - GET /jin/api/events
+      sdk:
+        - package: bus
+          path: packages/bus/package.json
+        - package: dfos
+          path: packages/dfos/package.json
+        - package: cid
+          path: packages/cid/package.json
+    audience:
+      value: org admin
+      rationale: "org admin: Read personal or acting-organization events and trace signed actions back to their
+        actors. The cited entrypoints identify the acting role, not an observed user count."
+      paths: &a18
+        - apps/kernel/app/jin/record-panel.tsx
+        - apps/kernel/src/lib/jin/record-events.ts
+    maturity:
+      value: live
+      rationale: Record lane UI and integration tests explicitly exercise personal and organization visibility; code
+        proof is not evidence that every historical action is captured.
+      paths:
+        - apps/kernel/app/jin/record-panel.tsx
+        - apps/kernel/src/lib/jin/record-events.ts
+        - apps/kernel/app/jin/api/events/__tests__/org-record.integration.test.ts
+        - apps/kernel/app/jin/__tests__/record-panel.test.tsx
+        - packages/ui/src/nav-bar.tsx
+        - apps/kernel/app/auth/layout.tsx
+    business_weight:
+      value: core
+      rationale: "Directly supports agent identity, scoped authority, custody, approvals or signed spend/action
+        accountability: inspect a signed action record."
+      paths: *a18
+    evidence:
+      paths:
+        - apps/kernel/app/jin/record-panel.tsx
+        - apps/kernel/src/lib/jin/record-events.ts
+        - apps/kernel/app/jin/api/events/__tests__/org-record.integration.test.ts
+        - apps/kernel/app/jin/__tests__/record-panel.test.tsx
+        - apps/kernel/app/jin/page.tsx
+        - packages/bus/package.json
+        - packages/dfos/package.json
+        - packages/cid/package.json
+        - packages/ui/src/nav-bar.tsx
+        - apps/kernel/app/auth/layout.tsx
+        - apps/kernel/api-spec/jin.yaml
+      tests:
+        - apps/kernel/app/jin/api/events/__tests__/org-record.integration.test.ts
+        - apps/kernel/app/jin/__tests__/record-panel.test.tsx
+      last_touched:
+        date: 2026-11-02
+        commit: 3dbcf0f1efebe2cc6b273a216e7ef7f7bb796243
+        path: apps/kernel/app/jin/api/events/__tests__/org-record.integration.test.ts
+      open_issues:
+        - 3334
+  - id: account-spend
+    name: Reconcile agent spend and provider bills
+    action: Compare incurred and billed cost, attribute it to runs and verify a signed rollup.
+    apps:
+      - kernel
+    services:
+      - usage
+      - jin
+    entry_points:
+      ui:
+        - /jin
+        - /auth/connectors/{id}
+      api:
+        - GET /usage/api/summary
+        - GET /usage/api/rollup/{did}/latest
+        - POST /usage/api/receipts
+      sdk:
+        - package: usage-emitter-claude-code
+          path: packages/usage-emitter-claude-code/package.json
+    audience:
+      value: org admin
+      rationale: "org admin: Compare incurred and billed cost, attribute it to runs and verify a signed rollup. The
+        cited entrypoints identify the acting role, not an observed user count."
+      paths: &a19
+        - apps/kernel/app/jin/spend-panel.tsx
+        - apps/kernel/api-spec/usage.yaml
+    maturity:
+      value: partial
+      rationale: The Spend lane, receipts and rollup contracts have tests, but idle emitters, missing billed sources
+        and public cost-to-date proof prevent a complete all-surface accounting claim.
+      paths:
+        - apps/kernel/app/jin/spend-panel.tsx
+        - apps/kernel/api-spec/usage.yaml
+        - apps/kernel/app/jin/__tests__/spend-panel.test.tsx
+        - apps/kernel/src/lib/jin/__tests__/spend-lane.test.ts
+    business_weight:
+      value: core
+      rationale: "Directly supports agent identity, scoped authority, custody, approvals or signed spend/action
+        accountability: reconcile agent spend and provider bills."
+      paths: *a19
+    evidence:
+      paths:
+        - apps/kernel/app/jin/spend-panel.tsx
+        - apps/kernel/api-spec/usage.yaml
+        - apps/kernel/app/jin/__tests__/spend-panel.test.tsx
+        - apps/kernel/src/lib/jin/__tests__/spend-lane.test.ts
+        - apps/kernel/app/jin/page.tsx
+        - apps/kernel/app/auth/connectors/[id]/page.tsx
+        - packages/usage-emitter-claude-code/package.json
+        - apps/kernel/api-spec/jin.yaml
+      tests:
+        - apps/kernel/app/jin/__tests__/spend-panel.test.tsx
+        - apps/kernel/src/lib/jin/__tests__/spend-lane.test.ts
+      last_touched:
+        date: 2026-10-28
+        commit: 950046ba75d5d33d222469f064e5735a0256cfc9
+        path: apps/kernel/app/jin/__tests__/spend-panel.test.tsx
+      open_issues:
+        - 2029
+        - 3140
+        - 3142
+        - 3137
+        - 3139
+        - 3278
+  - id: brief-retention
+    name: Choose dispatch brief retention
+    action: Select how future Warp briefs are retained and record the preference change as a signed event.
+    apps:
+      - kernel
+    services:
+      - jin
+    entry_points:
+      ui:
+        - /jin/brief-settings
+      api:
+        - GET /jin/api/brief-settings
+        - PUT /jin/api/brief-settings
+      sdk: []
+    audience:
+      value: org admin
+      rationale: "org admin: Select how future Warp briefs are retained and record the preference change as a signed
+        event. The cited entrypoints identify the acting role, not an observed user count."
+      paths: &a20
+        - apps/kernel/app/jin/brief-settings/page.tsx
+        - apps/kernel/src/lib/warp/brief.ts
+    maturity:
+      value: works
+      rationale: The settings page and ledger tests exist, but discoverability is a settings deep-link rather than a
+        primary navigation capability.
+      paths:
+        - apps/kernel/app/jin/brief-settings/page.tsx
+        - apps/kernel/src/lib/warp/brief.ts
+        - apps/kernel/src/lib/warp/__tests__/brief-ledger.test.ts
+    business_weight:
+      value: supporting
+      rationale: "Helps a business deploy or use authorized agents but is not itself the identity-and-authority
+        promise: choose dispatch brief retention."
+      paths: *a20
+    evidence:
+      paths:
+        - apps/kernel/app/jin/brief-settings/page.tsx
+        - apps/kernel/src/lib/warp/brief.ts
+        - apps/kernel/src/lib/warp/__tests__/brief-ledger.test.ts
+        - apps/kernel/api-spec/jin.yaml
+      tests:
+        - apps/kernel/src/lib/warp/__tests__/brief-ledger.test.ts
+      last_touched:
+        date: 2026-11-04
+        commit: a3884c9239748723d30ea030d60f5839456ebff3
+        path: apps/kernel/src/lib/warp/__tests__/brief-ledger.test.ts
+      open_issues: []
+  - id: discover-authority
+    name: Discover an agent identity and usable models
+    action: Ask who the signing agent is, which connectors it can use and which sealed models its authority permits.
+    apps:
+      - kernel
+    services:
+      - infer
+    entry_points:
+      ui: []
+      api:
+        - GET /infer/v1/self
+        - GET /infer/v1/models/usable
+      sdk:
+        - package: auth
+          path: packages/auth/package.json
+    audience:
+      value: agent (machine)
+      rationale: "agent (machine): Ask who the signing agent is, which connectors it can use and which sealed models
+        its authority permits. The cited entrypoints identify the acting role, not an observed user count."
+      paths: &a21
+        - apps/kernel/app/infer/v1/self/route.ts
+        - apps/kernel/api-spec/infer.yaml
+    maturity:
+      value: works
+      rationale: Machine discovery has executable contracts and personal-versus-org integration proof; it is
+        deliberately not a human navigation page.
+      paths:
+        - apps/kernel/app/infer/v1/self/route.ts
+        - apps/kernel/api-spec/infer.yaml
+        - apps/kernel/src/lib/inference/__tests__/org-held-inference.integration.test.ts
+        - apps/kernel/app/infer/api/spec/__tests__/route.test.ts
+    business_weight:
+      value: core
+      rationale: "Directly supports agent identity, scoped authority, custody, approvals or signed spend/action
+        accountability: discover an agent identity and usable models."
+      paths: *a21
+    evidence:
+      paths:
+        - apps/kernel/app/infer/v1/self/route.ts
+        - apps/kernel/api-spec/infer.yaml
+        - apps/kernel/src/lib/inference/__tests__/org-held-inference.integration.test.ts
+        - apps/kernel/app/infer/api/spec/__tests__/route.test.ts
+        - packages/auth/package.json
+      tests:
+        - apps/kernel/src/lib/inference/__tests__/org-held-inference.integration.test.ts
+        - apps/kernel/app/infer/api/spec/__tests__/route.test.ts
+      last_touched:
+        date: 2026-11-06
+        commit: b9d02a0b4673996179c49b2bc5569efea04eed9b
+        path: apps/kernel/src/lib/inference/__tests__/org-held-inference.integration.test.ts
+      open_issues:
+        - 3215
+        - 3246
+  - id: sealed-inference
+    name: Run inference without exporting provider keys
+    action: Send model requests under scoped agent authority while the kernel injects the eligible sealed
+      credential and enforces spend caps.
+    apps:
+      - kernel
+    services:
+      - infer
+    entry_points:
+      ui: []
+      api:
+        - POST /infer/v1/messages
+        - POST /infer/v1/chat/completions
+        - GET /infer/v1/models
+      sdk:
+        - package: openclaw-infer-passthrough
+          path: packages/openclaw-infer-passthrough/package.json
+        - package: llm
+          path: packages/llm/package.json
+    audience:
+      value: agent (machine)
+      rationale: "agent (machine): Send model requests under scoped agent authority while the kernel injects the
+        eligible sealed credential and enforces spend caps. The cited entrypoints identify the acting role,
+        not an observed user count."
+      paths: &a22
+        - apps/kernel/app/infer/v1/messages/route.ts
+        - apps/kernel/src/lib/inference/brain.ts
+        - packages/openclaw-infer-passthrough/src/server.ts
+    maturity:
+      value: works
+      rationale: Tests distinguish personal and assigned-org callers, reject unauthorized selectors and check usage
+        attribution. Hosted-provider and local configurations are conditional, not verified production
+        traffic.
+      paths:
+        - apps/kernel/app/infer/v1/messages/route.ts
+        - apps/kernel/src/lib/inference/brain.ts
+        - packages/openclaw-infer-passthrough/src/server.ts
+        - apps/kernel/src/lib/inference/__tests__/org-held-inference.integration.test.ts
+        - packages/openclaw-infer-passthrough/tests/agent-auth.test.ts
+    business_weight:
+      value: core
+      rationale: "Directly supports agent identity, scoped authority, custody, approvals or signed spend/action
+        accountability: run inference without exporting provider keys."
+      paths: *a22
+    evidence:
+      paths:
+        - apps/kernel/app/infer/v1/messages/route.ts
+        - apps/kernel/src/lib/inference/brain.ts
+        - packages/openclaw-infer-passthrough/src/server.ts
+        - apps/kernel/src/lib/inference/__tests__/org-held-inference.integration.test.ts
+        - packages/openclaw-infer-passthrough/tests/agent-auth.test.ts
+        - packages/openclaw-infer-passthrough/package.json
+        - packages/llm/package.json
+        - apps/kernel/api-spec/infer.yaml
+      tests:
+        - apps/kernel/src/lib/inference/__tests__/org-held-inference.integration.test.ts
+        - packages/openclaw-infer-passthrough/tests/agent-auth.test.ts
+      last_touched:
+        date: 2026-11-06
+        commit: b9d02a0b4673996179c49b2bc5569efea04eed9b
+        path: apps/kernel/src/lib/inference/__tests__/org-held-inference.integration.test.ts
+      open_issues:
+        - 3329
+        - 3278
+        - 1929
+  - id: dispatch-agent
+    name: Dispatch and follow cloud agent work
+    action: Dispatch an agent using an authorized sealed execution credential, follow its output and cancel or
+      continue its run.
+    apps:
+      - kernel
+    services:
+      - warp
+      - jin
+    entry_points:
+      ui: []
+      api:
+        - POST /warp/api/dispatch
+        - GET /warp/api/runs/{runId}
+        - POST /warp/api/runs/{runId}/followups
+      sdk: []
+    audience:
+      value: agent (machine)
+      rationale: "agent (machine): Dispatch an agent using an authorized sealed execution credential, follow its
+        output and cancel or continue its run. The cited entrypoints identify the acting role, not an observed
+        user count."
+      paths: &a23
+        - apps/kernel/app/warp/api/dispatch/route.ts
+        - apps/kernel/src/lib/warp/dispatch.ts
+    maturity:
+      value: works
+      rationale: Dispatch routes and corpus-context handling are tested; the credential and run principal determine
+        access, not a globally shared execution account.
+      paths:
+        - apps/kernel/app/warp/api/dispatch/route.ts
+        - apps/kernel/src/lib/warp/dispatch.ts
+        - apps/kernel/app/warp/api/dispatch/__tests__/route.test.ts
+        - apps/kernel/src/lib/warp/__tests__/corpus-context.test.ts
+    business_weight:
+      value: core
+      rationale: "Directly supports agent identity, scoped authority, custody, approvals or signed spend/action
+        accountability: dispatch and follow cloud agent work."
+      paths: *a23
+    evidence:
+      paths:
+        - apps/kernel/app/warp/api/dispatch/route.ts
+        - apps/kernel/src/lib/warp/dispatch.ts
+        - apps/kernel/app/warp/api/dispatch/__tests__/route.test.ts
+        - apps/kernel/src/lib/warp/__tests__/corpus-context.test.ts
+        - apps/kernel/api-spec/jin.yaml
+      tests:
+        - apps/kernel/app/warp/api/dispatch/__tests__/route.test.ts
+        - apps/kernel/src/lib/warp/__tests__/corpus-context.test.ts
+      last_touched:
+        date: 2026-11-04
+        commit: f9ea074f192d5a919681caa9aa642df234482c8a
+      open_issues:
+        - 3137
+  - id: mcp-tools
+    name: Use delegated platform tools through MCP
+    action: Authorize an MCP client and invoke only the platform tools allowed by its live scopes and agent binding.
+    apps:
+      - kernel
+    services:
+      - mcp
+      - auth
+    entry_points:
+      ui:
+        - /auth/authorize
+        - /auth/connectors/mcp
+      api:
+        - POST /mcp
+        - POST /oauth/authorize
+      sdk:
+        - package: auth
+          path: packages/auth/package.json
+    audience:
+      value: agent (machine)
+      rationale: "agent (machine): Authorize an MCP client and invoke only the platform tools allowed by its live
+        scopes and agent binding. The cited entrypoints identify the acting role, not an observed user count."
+      paths: &a24
+        - apps/kernel/app/mcp/route.ts
+        - apps/kernel/src/lib/mcp/server.ts
+    maturity:
+      value: works
+      rationale: Protocol, scope-gate and binding tests prove a machine entry point with human consent UI; there is
+        no general human tool-execution page.
+      paths:
+        - apps/kernel/app/mcp/route.ts
+        - apps/kernel/src/lib/mcp/server.ts
+        - apps/kernel/src/lib/mcp/__tests__/scope-gate.test.ts
+        - apps/kernel/src/lib/mcp/__tests__/agent-binding-authority.test.ts
+    business_weight:
+      value: core
+      rationale: "Directly supports agent identity, scoped authority, custody, approvals or signed spend/action
+        accountability: use delegated platform tools through mcp."
+      paths: *a24
+    evidence:
+      paths:
+        - apps/kernel/app/mcp/route.ts
+        - apps/kernel/src/lib/mcp/server.ts
+        - apps/kernel/src/lib/mcp/__tests__/scope-gate.test.ts
+        - apps/kernel/src/lib/mcp/__tests__/agent-binding-authority.test.ts
+        - apps/kernel/app/auth/authorize/page.tsx
+        - packages/auth/package.json
+        - apps/kernel/api-spec/auth.yaml
+      tests:
+        - apps/kernel/src/lib/mcp/__tests__/scope-gate.test.ts
+        - apps/kernel/src/lib/mcp/__tests__/agent-binding-authority.test.ts
+      last_touched:
+        date: 2026-11-05
+        commit: 1d89f402ab72d46f1537545f69dabeb18db7511f
+        path: apps/kernel/src/lib/mcp/__tests__/agent-binding-authority.test.ts
+      open_issues:
+        - 3237
+        - 3321
+  - id: reach-agent
+    name: Reach an identity through its agent
+    action: Discover a public reach card, submit a gated message and retrieve a signed reply or receipt.
+    apps:
+      - kernel
+    services:
+      - auth
+      - jin
+    entry_points:
+      ui:
+        - /{handle}/reach
+        - /jin
+      api:
+        - GET /.well-known/agent/{id}
+        - POST /auth/api/agents/{did}/reach
+        - POST /jin/api/reach/{reachId}/reply
+      sdk:
+        - package: bus
+          path: packages/bus/package.json
+    audience:
+      value: agent (machine)
+      rationale: "agent (machine): Discover a public reach card, submit a gated message and retrieve a signed reply
+        or receipt. The cited entrypoints identify the acting role, not an observed user count."
+      paths: &a25
+        - apps/kernel/app/[handle]/reach/page.tsx
+        - apps/kernel/src/lib/auth/reach-discovery.ts
+    maturity:
+      value: works
+      rationale: The public page, reach-only MCP and delivery tests exist; delivery still depends on the configured
+        gate, and discovery is not blanket permission to contact anyone.
+      paths:
+        - apps/kernel/app/[handle]/reach/page.tsx
+        - apps/kernel/src/lib/auth/reach-discovery.ts
+        - apps/kernel/app/auth/api/agents/[did]/reach/__tests__/delivery.test.ts
+        - apps/kernel/app/reach/[handle]/mcp/__tests__/route.test.ts
+    business_weight:
+      value: core
+      rationale: "Directly supports agent identity, scoped authority, custody, approvals or signed spend/action
+        accountability: reach an identity through its agent."
+      paths: *a25
+    evidence:
+      paths:
+        - apps/kernel/app/[handle]/reach/page.tsx
+        - apps/kernel/src/lib/auth/reach-discovery.ts
+        - apps/kernel/app/auth/api/agents/[did]/reach/__tests__/delivery.test.ts
+        - apps/kernel/app/reach/[handle]/mcp/__tests__/route.test.ts
+        - apps/kernel/app/jin/page.tsx
+        - packages/bus/package.json
+        - apps/kernel/api-spec/auth.yaml
+        - apps/kernel/api-spec/jin.yaml
+      tests:
+        - apps/kernel/app/auth/api/agents/[did]/reach/__tests__/delivery.test.ts
+        - apps/kernel/app/reach/[handle]/mcp/__tests__/route.test.ts
+      last_touched:
+        date: 2026-10-18
+        commit: 84efad4a5a23cb5588ebc6aa5fd9923c62f42a94
+        path: apps/kernel/app/auth/api/agents/[did]/reach/__tests__/delivery.test.ts
+      open_issues: []
+  - id: verify-turn
+    name: Verify committed agent tool evidence
+    action: Ingest signed turn evidence and independently check the tool-call boundary of a claimed agent turn.
+    apps:
+      - kernel
+    services:
+      - auth
+    entry_points:
+      ui: []
+      api:
+        - POST /auth/api/attestations/turn-evidence
+        - GET /auth/api/verify/turn/{hash}
+      sdk:
+        - package: auth
+          path: packages/auth/package.json
+    audience:
+      value: developer
+      rationale: "developer: Ingest signed turn evidence and independently check the tool-call boundary of a claimed
+        agent turn. The cited entrypoints identify the acting role, not an observed user count."
+      paths: &a26
+        - packages/auth/src/turn-evidence.ts
+        - apps/kernel/api-spec/auth.yaml
+    maturity:
+      value: works
+      rationale: Signed evidence helpers and a public verification contract are tested; they attest tool I/O, not
+        correctness of private reasoning.
+      paths:
+        - packages/auth/src/turn-evidence.ts
+        - apps/kernel/api-spec/auth.yaml
+        - packages/auth/tests/turn-evidence.test.ts
+    business_weight:
+      value: core
+      rationale: "Directly supports agent identity, scoped authority, custody, approvals or signed spend/action
+        accountability: verify committed agent tool evidence."
+      paths: *a26
+    evidence:
+      paths:
+        - packages/auth/src/turn-evidence.ts
+        - apps/kernel/api-spec/auth.yaml
+        - packages/auth/tests/turn-evidence.test.ts
+        - packages/auth/package.json
+      tests:
+        - packages/auth/tests/turn-evidence.test.ts
+      last_touched:
+        date: 2026-11-05
+        commit: e45df42b04d7148a953817d294751389800d7717
+        path: apps/kernel/api-spec/auth.yaml
+      open_issues: []
+  - id: register-app
+    name: Register an owned developer app
+    action: Register or revoke an app, configure its presentation and manage it under the effective personal or
+      organization owner.
+    apps:
+      - kernel
+    services:
+      - registry
+      - auth
+    entry_points:
+      ui:
+        - /auth/developer/apps
+        - /auth/developer/apps/{appId}
+      api:
+        - POST /api/registry/apps
+        - PATCH /api/registry/apps/{appId}
+      sdk:
+        - package: auth-client
+          path: packages/auth-client/package.json
+    audience:
+      value: developer
+      rationale: "developer: Register or revoke an app, configure its presentation and manage it under the effective
+        personal or organization owner. The cited entrypoints identify the acting role, not an observed user
+        count."
+      paths: &a27
+        - apps/kernel/app/auth/developer/apps/page.tsx
+        - apps/kernel/app/api/registry/apps/route.ts
+    maturity:
+      value: live
+      rationale: Developer Apps is linked in identity navigation and owner-checked routes have tests; operator
+        provisioning approval is a separate step.
+      paths:
+        - apps/kernel/app/auth/developer/apps/page.tsx
+        - apps/kernel/app/api/registry/apps/route.ts
+        - apps/kernel/app/api/registry/apps/__tests__/route.test.ts
+        - apps/kernel/app/api/registry/apps/[appId]/__tests__/route.test.ts
+        - packages/ui/src/nav-bar.tsx
+        - apps/kernel/app/auth/layout.tsx
+    business_weight:
+      value: core
+      rationale: "Directly supports agent identity, scoped authority, custody, approvals or signed spend/action
+        accountability: register an owned developer app."
+      paths: *a27
+    evidence:
+      paths:
+        - apps/kernel/app/auth/developer/apps/page.tsx
+        - apps/kernel/app/api/registry/apps/route.ts
+        - apps/kernel/app/api/registry/apps/__tests__/route.test.ts
+        - apps/kernel/app/api/registry/apps/[appId]/__tests__/route.test.ts
+        - apps/kernel/app/auth/developer/apps/[appId]/page.tsx
+        - packages/auth-client/package.json
+        - packages/ui/src/nav-bar.tsx
+        - apps/kernel/app/auth/layout.tsx
+        - apps/kernel/api-spec/registry.yaml
+        - apps/kernel/api-spec/auth.yaml
+      tests:
+        - apps/kernel/app/api/registry/apps/__tests__/route.test.ts
+        - apps/kernel/app/api/registry/apps/[appId]/__tests__/route.test.ts
+      last_touched:
+        date: 2026-10-20
+        commit: 1fae7463b9e5db86dfd1b2b50c7bdc465175a4cd
+        path: apps/kernel/app/api/registry/apps/[appId]/__tests__/route.test.ts
+      open_issues:
+        - 3353
+  - id: app-consent
+    name: Authorize and revoke an app sign-in
+    action: Review app scopes, exchange a single-use sign-in code and revoke an app without confusing navigation
+      membership with authorization.
+    apps:
+      - kernel
+    services:
+      - auth
+    entry_points:
+      ui:
+        - /auth/authorize
+        - /auth/apps
+      api:
+        - POST /api/auth/authorize
+        - POST /api/auth/revoke
+        - POST /auth/api/apps/token
+      sdk:
+        - package: auth
+          path: packages/auth/package.json
+        - package: auth-client
+          path: packages/auth-client/package.json
+    audience:
+      value: end user/consumer
+      rationale: "end user/consumer: Review app scopes, exchange a single-use sign-in code and revoke an app without
+        confusing navigation membership with authorization. The cited entrypoints identify the acting role,
+        not an observed user count."
+      paths: &a28
+        - apps/kernel/app/auth/authorize/page.tsx
+        - apps/kernel/app/api/auth/authorize/route.ts
+    maturity:
+      value: live
+      rationale: Consent UI and callback exchange tests exist; authorization and Add-app membership remain different
+        state.
+      paths:
+        - apps/kernel/app/auth/authorize/page.tsx
+        - apps/kernel/app/api/auth/authorize/route.ts
+        - apps/kernel/app/api/auth/authorize/__tests__/private-consent.test.ts
+        - packages/auth-client/tests/callback-exchange.test.ts
+        - packages/ui/src/nav-bar.tsx
+        - apps/kernel/app/auth/layout.tsx
+    business_weight:
+      value: core
+      rationale: "Directly supports agent identity, scoped authority, custody, approvals or signed spend/action
+        accountability: authorize and revoke an app sign-in."
+      paths: *a28
+    evidence:
+      paths:
+        - apps/kernel/app/auth/authorize/page.tsx
+        - apps/kernel/app/api/auth/authorize/route.ts
+        - apps/kernel/app/api/auth/authorize/__tests__/private-consent.test.ts
+        - packages/auth-client/tests/callback-exchange.test.ts
+        - apps/kernel/app/auth/apps/page.tsx
+        - packages/auth/package.json
+        - packages/auth-client/package.json
+        - packages/ui/src/nav-bar.tsx
+        - apps/kernel/app/auth/layout.tsx
+        - apps/kernel/api-spec/auth.yaml
+      tests:
+        - apps/kernel/app/api/auth/authorize/__tests__/private-consent.test.ts
+        - packages/auth-client/tests/callback-exchange.test.ts
+      last_touched:
+        date: 2026-11-03
+        commit: b436c5f9354d32c1b95213718cadd2e9b70df33f
+        path: apps/kernel/app/auth/authorize/page.tsx
+      open_issues:
+        - 3023
+        - 3353
+  - id: app-directory
+    name: Choose apps for an identity workspace
+    action: Browse active registered apps and add or remove their navigation placements for the acting identity.
+    apps:
+      - kernel
+    services:
+      - auth
+      - registry
+    entry_points:
+      ui:
+        - /auth/app-directory
+        - /auth/{app}
+      api:
+        - GET /auth/api/apps/directory
+        - PUT /auth/api/apps/{slug}
+      sdk:
+        - package: ui
+          path: packages/ui/package.json
+        - package: config
+          path: packages/config/package.json
+    audience:
+      value: org admin
+      rationale: "org admin: Browse active registered apps and add or remove their navigation placements for the
+        acting identity. The cited entrypoints identify the acting role, not an observed user count."
+      paths: &a29
+        - apps/kernel/app/auth/app-directory/page.tsx
+        - apps/kernel/src/lib/kernel/app-nav.ts
+    maturity:
+      value: live
+      rationale: The registry-backed hub and launcher resolve current placements; static service ports are not
+        evidence that an extracted app is installed.
+      paths:
+        - apps/kernel/app/auth/app-directory/page.tsx
+        - apps/kernel/src/lib/kernel/app-nav.ts
+        - apps/kernel/app/auth/api/apps/[slug]/__tests__/route.test.ts
+        - apps/kernel/src/lib/kernel/__tests__/app-nav.test.ts
+        - packages/ui/src/nav-bar.tsx
+        - apps/kernel/app/auth/layout.tsx
+    business_weight:
+      value: supporting
+      rationale: "Helps a business deploy or use authorized agents but is not itself the identity-and-authority
+        promise: choose apps for an identity workspace."
+      paths: *a29
+    evidence:
+      paths:
+        - apps/kernel/app/auth/app-directory/page.tsx
+        - apps/kernel/src/lib/kernel/app-nav.ts
+        - apps/kernel/app/auth/api/apps/[slug]/__tests__/route.test.ts
+        - apps/kernel/src/lib/kernel/__tests__/app-nav.test.ts
+        - apps/kernel/app/auth/[app]/page.tsx
+        - packages/ui/package.json
+        - packages/config/package.json
+        - packages/ui/src/nav-bar.tsx
+        - apps/kernel/app/auth/layout.tsx
+        - apps/kernel/api-spec/auth.yaml
+        - apps/kernel/api-spec/registry.yaml
+      tests:
+        - apps/kernel/app/auth/api/apps/[slug]/__tests__/route.test.ts
+        - apps/kernel/src/lib/kernel/__tests__/app-nav.test.ts
+      last_touched:
+        date: 2026-10-18
+        commit: 0050eb34e2986c4523ddeff6f42472e76d8e92f6
+      open_issues: []
+  - id: integrate-sdk
+    name: Integrate identity and app bootstrapping
+    action: Use SDK helpers for session callbacks, scoped app tokens, signed webhooks and vault-backed service
+      bootstrap.
+    apps:
+      - kernel
+    services:
+      - auth
+      - vault
+    entry_points:
+      ui:
+        - /developer-guide
+        - /registry/docs
+      api:
+        - POST /auth/api/apps/token/service
+        - GET /auth/.well-known/kernel-signing-key
+      sdk:
+        - package: auth
+          path: packages/auth/package.json
+        - package: auth-client
+          path: packages/auth-client/package.json
+        - package: provision-bootstrap
+          path: packages/provision-bootstrap/package.json
+    audience:
+      value: developer
+      rationale: "developer: Use SDK helpers for session callbacks, scoped app tokens, signed webhooks and
+        vault-backed service bootstrap. The cited entrypoints identify the acting role, not an observed user
+        count."
+      paths: &a30
+        - packages/auth-client/src/index.ts
+        - packages/auth/src/kernel-webhook.ts
+        - packages/provision-bootstrap/package.json
+    maturity:
+      value: works
+      rationale: Published workspace entrypoints and isolated callback/bootstrap/webhook tests provide integration
+        proof; no deployment or customer adoption is inferred.
+      paths:
+        - packages/auth-client/src/index.ts
+        - packages/auth/src/kernel-webhook.ts
+        - packages/provision-bootstrap/package.json
+        - packages/auth-client/tests/vault-boot.test.ts
+        - packages/auth/tests/kernel-webhook.test.ts
+    business_weight:
+      value: core
+      rationale: "Directly supports agent identity, scoped authority, custody, approvals or signed spend/action
+        accountability: integrate identity and app bootstrapping."
+      paths: *a30
+    evidence:
+      paths:
+        - packages/auth-client/src/index.ts
+        - packages/auth/src/kernel-webhook.ts
+        - packages/provision-bootstrap/package.json
+        - packages/auth-client/tests/vault-boot.test.ts
+        - packages/auth/tests/kernel-webhook.test.ts
+        - apps/kernel/app/developer-guide/page.tsx
+        - apps/kernel/app/registry/docs/page.tsx
+        - packages/auth/package.json
+        - packages/auth-client/package.json
+        - apps/kernel/api-spec/auth.yaml
+        - apps/kernel/api-spec/vault.yaml
+      tests:
+        - packages/auth-client/tests/vault-boot.test.ts
+        - packages/auth/tests/kernel-webhook.test.ts
+      last_touched:
+        date: 2026-11-06
+        commit: f0618ed9d22258cd874daa1442e6bb5401288e5b
+        path: packages/provision-bootstrap/package.json
+      open_issues: []
+  - id: provision-runtime
+    name: Generate and provision an agent runtime
+    action: Render a scoped OpenClaw or NanoClaw envelope and run a provision attempt with retraceable identity
+      and grant references.
+    apps:
+      - kernel
+    services:
+      - auth
+    entry_points:
+      ui:
+        - /auth/agents
+      api:
+        - POST /auth/api/agents/provision
+        - GET /auth/api/agents/provision/{id}/bundle
+      sdk:
+        - package: claw-envelope
+          path: packages/claw-envelope/package.json
+        - package: claw-provisioner
+          path: packages/claw-provisioner/package.json
+    audience:
+      value: org admin
+      rationale: "org admin: Render a scoped OpenClaw or NanoClaw envelope and run a provision attempt with
+        retraceable identity and grant references. The cited entrypoints identify the acting role, not an
+        observed user count."
+      paths: &a31
+        - apps/kernel/app/auth/agents/page.tsx
+        - packages/claw-envelope/src/generate.ts
+        - packages/claw-provisioner/src/runner.ts
+    maturity:
+      value: live
+      rationale: Agents navigation exposes provisioning and bundle/retrace UI with runner tests; a successful local
+        fixture is not a running hosted customer agent.
+      paths:
+        - apps/kernel/app/auth/agents/page.tsx
+        - packages/claw-envelope/src/generate.ts
+        - packages/claw-provisioner/src/runner.ts
+        - apps/kernel/app/auth/agents/__tests__/provisioner-ui.test.tsx
+        - packages/claw-provisioner/tests/runner.test.ts
+        - packages/ui/src/nav-bar.tsx
+        - apps/kernel/app/auth/layout.tsx
+    business_weight:
+      value: core
+      rationale: "Directly supports agent identity, scoped authority, custody, approvals or signed spend/action
+        accountability: generate and provision an agent runtime."
+      paths: *a31
+    evidence:
+      paths:
+        - apps/kernel/app/auth/agents/page.tsx
+        - packages/claw-envelope/src/generate.ts
+        - packages/claw-provisioner/src/runner.ts
+        - apps/kernel/app/auth/agents/__tests__/provisioner-ui.test.tsx
+        - packages/claw-provisioner/tests/runner.test.ts
+        - packages/claw-envelope/package.json
+        - packages/claw-provisioner/package.json
+        - packages/ui/src/nav-bar.tsx
+        - apps/kernel/app/auth/layout.tsx
+        - apps/kernel/api-spec/auth.yaml
+      tests:
+        - apps/kernel/app/auth/agents/__tests__/provisioner-ui.test.tsx
+        - packages/claw-provisioner/tests/runner.test.ts
+      last_touched:
+        date: 2026-11-05
+        commit: e149bf453ac24eb61895dd29ea00b332a2f063c6
+        path: apps/kernel/app/auth/agents/page.tsx
+      open_issues:
+        - 3118
+  - id: nanoclaw-channel
+    name: Connect a NanoClaw agent to Imajin chat
+    action: Authenticate a channel adapter, receive messages and reconnect while mapping agent usage into the
+      accounting rail.
+    apps:
+      - kernel
+    services:
+      - chat
+      - usage
+    entry_points:
+      ui: []
+      api: []
+      sdk:
+        - package: nanoclaw-imajin-channel
+          path: packages/nanoclaw-imajin-channel/package.json
+    audience:
+      value: developer
+      rationale: "developer: Authenticate a channel adapter, receive messages and reconnect while mapping agent
+        usage into the accounting rail. The cited entrypoints identify the acting role, not an observed user
+        count."
+      paths: &a32
+        - packages/nanoclaw-imajin-channel/src/index.ts
+    maturity:
+      value: partial
+      rationale: Adapter and emitter code have tests, but deployment and registration of the built-but-idle
+        integration are explicitly unproven.
+      paths:
+        - packages/nanoclaw-imajin-channel/src/index.ts
+        - packages/nanoclaw-imajin-channel/tests/channel-adapter.test.ts
+        - packages/nanoclaw-imajin-channel/tests/usage-emitter/index.test.ts
+    business_weight:
+      value: supporting
+      rationale: "Helps a business deploy or use authorized agents but is not itself the identity-and-authority
+        promise: connect a nanoclaw agent to imajin chat."
+      paths: *a32
+    evidence:
+      paths:
+        - packages/nanoclaw-imajin-channel/src/index.ts
+        - packages/nanoclaw-imajin-channel/tests/channel-adapter.test.ts
+        - packages/nanoclaw-imajin-channel/tests/usage-emitter/index.test.ts
+        - packages/nanoclaw-imajin-channel/package.json
+        - apps/kernel/api-spec/chat.yaml
+        - apps/kernel/api-spec/usage.yaml
+      tests:
+        - packages/nanoclaw-imajin-channel/tests/channel-adapter.test.ts
+        - packages/nanoclaw-imajin-channel/tests/usage-emitter/index.test.ts
+      last_touched:
+        date: 2026-10-07
+        commit: e02ea90d9f1a77068bb336dcdc5b2ce5cebbd173
+        path: packages/nanoclaw-imajin-channel/tests/usage-emitter/index.test.ts
+      open_issues:
+        - 3140
+  - id: guard-agent-output
+    name: Guard and audit outbound agent actions
+    action: Apply configured reflex warrants and injection checks to outbound actions and retain a structured
+      audit log.
+    apps:
+      - kernel
+    services:
+      - auth
+    entry_points:
+      ui: []
+      api: []
+      sdk:
+        - package: openclaw-reflex-guard
+          path: packages/openclaw-reflex-guard/package.json
+    audience:
+      value: developer
+      rationale: "developer: Apply configured reflex warrants and injection checks to outbound actions and retain a
+        structured audit log. The cited entrypoints identify the acting role, not an observed user count."
+      paths: &a33
+        - packages/openclaw-reflex-guard/src/outbound-guard-hooks.ts
+    maturity:
+      value: works
+      rationale: SDK hooks and negative warrant tests exist; no UI, deployment coverage or claim that all agent
+        egress passes these hooks is established.
+      paths:
+        - packages/openclaw-reflex-guard/src/outbound-guard-hooks.ts
+        - packages/openclaw-reflex-guard/tests/outbound-guard-hooks.test.ts
+        - packages/openclaw-reflex-guard/tests/reflex-warrant-gate.test.ts
+    business_weight:
+      value: core
+      rationale: "Directly supports agent identity, scoped authority, custody, approvals or signed spend/action
+        accountability: guard and audit outbound agent actions."
+      paths: *a33
+    evidence:
+      paths:
+        - packages/openclaw-reflex-guard/src/outbound-guard-hooks.ts
+        - packages/openclaw-reflex-guard/tests/outbound-guard-hooks.test.ts
+        - packages/openclaw-reflex-guard/tests/reflex-warrant-gate.test.ts
+        - packages/openclaw-reflex-guard/package.json
+        - apps/kernel/api-spec/auth.yaml
+      tests:
+        - packages/openclaw-reflex-guard/tests/outbound-guard-hooks.test.ts
+        - packages/openclaw-reflex-guard/tests/reflex-warrant-gate.test.ts
+      last_touched:
+        date: 2026-09-01
+        commit: 752acedd8fc145347a91fc02e4bc6a6f30a3e5d6
+        path: packages/openclaw-reflex-guard/src/outbound-guard-hooks.ts
+      open_issues: []
+  - id: issue-attestations
+    name: Issue and verify identity attestations
+    action: Sign, countersign, decline or revoke a typed claim and verify its identity chain or witness record.
+    apps:
+      - kernel
+    services:
+      - auth
+      - registry
+    entry_points:
+      ui:
+        - /auth/attestations
+      api:
+        - POST /auth/api/attestations
+        - POST /auth/api/attestations/countersign
+        - GET /auth/api/identity/{did}/chain
+      sdk:
+        - package: auth
+          path: packages/auth/package.json
+        - package: dfos
+          path: packages/dfos/package.json
+        - package: cid
+          path: packages/cid/package.json
+    audience:
+      value: developer
+      rationale: "developer: Sign, countersign, decline or revoke a typed claim and verify its identity chain or
+        witness record. The cited entrypoints identify the acting role, not an observed user count."
+      paths: &a34
+        - packages/auth/src/emit-attestation.ts
+        - packages/dfos/src/bridge.ts
+    maturity:
+      value: works
+      rationale: Signing helpers and chain tests support the general API; the human UI concentrates on selected
+        document and identity claim types, not every registered attestation.
+      paths:
+        - packages/auth/src/emit-attestation.ts
+        - packages/dfos/src/bridge.ts
+        - packages/auth/tests/emit-attestation.test.ts
+        - packages/dfos/tests/bridge.test.ts
+    business_weight:
+      value: core
+      rationale: "Directly supports agent identity, scoped authority, custody, approvals or signed spend/action
+        accountability: issue and verify identity attestations."
+      paths: *a34
+    evidence:
+      paths:
+        - packages/auth/src/emit-attestation.ts
+        - packages/dfos/src/bridge.ts
+        - packages/auth/tests/emit-attestation.test.ts
+        - packages/dfos/tests/bridge.test.ts
+        - apps/kernel/app/auth/attestations/page.tsx
+        - packages/auth/package.json
+        - packages/dfos/package.json
+        - packages/cid/package.json
+        - apps/kernel/api-spec/auth.yaml
+        - apps/kernel/api-spec/registry.yaml
+      tests:
+        - packages/auth/tests/emit-attestation.test.ts
+        - packages/dfos/tests/bridge.test.ts
+      last_touched:
+        date: 2026-11-05
+        commit: a173706edc1227678f6083ee190e09eb75911ccf
+        path: packages/dfos/src/bridge.ts
+      open_issues: []
+  - id: request-payment
+    name: Issue and settle a business payment request
+    action: Create a tax-aware invoice, share its opaque pay link and settle as an authorized personal or
+      organization payer.
+    apps:
+      - kernel
+    services:
+      - pay
+      - auth
+    entry_points:
+      ui:
+        - /auth/money
+        - /auth/tax
+        - /pay/r/{handle}
+      api:
+        - POST /pay/api/payment-requests
+        - POST /pay/api/payment-requests/{id}/checkout
+        - POST /pay/api/payment-requests/{id}/settle
+      sdk:
+        - package: fair
+          path: packages/fair/package.json
+        - package: money
+          path: packages/money/package.json
+    audience:
+      value: org admin
+      rationale: "org admin: Create a tax-aware invoice, share its opaque pay link and settle as an authorized
+        personal or organization payer. The cited entrypoints identify the acting role, not an observed user
+        count."
+      paths: &a35
+        - apps/kernel/app/auth/money/page.tsx
+        - apps/kernel/src/lib/pay/payment-requests/service.ts
+    maturity:
+      value: live
+      rationale: Identity money navigation, public invoice pages and payer-identity integration tests exist;
+        available rails depend on the issuer connection and explicit authority.
+      paths:
+        - apps/kernel/app/auth/money/page.tsx
+        - apps/kernel/src/lib/pay/payment-requests/service.ts
+        - apps/kernel/app/auth/money/__tests__/page.test.tsx
+        - apps/kernel/src/lib/pay/payment-requests/__tests__/payer-did-integration.test.ts
+        - packages/ui/src/nav-bar.tsx
+        - apps/kernel/app/auth/layout.tsx
+    business_weight:
+      value: core
+      rationale: "Directly supports agent identity, scoped authority, custody, approvals or signed spend/action
+        accountability: issue and settle a business payment request."
+      paths: *a35
+    evidence:
+      paths:
+        - apps/kernel/app/auth/money/page.tsx
+        - apps/kernel/src/lib/pay/payment-requests/service.ts
+        - apps/kernel/app/auth/money/__tests__/page.test.tsx
+        - apps/kernel/src/lib/pay/payment-requests/__tests__/payer-did-integration.test.ts
+        - apps/kernel/app/auth/tax/page.tsx
+        - apps/kernel/app/pay/r/[handle]/page.tsx
+        - packages/fair/package.json
+        - packages/money/package.json
+        - packages/ui/src/nav-bar.tsx
+        - apps/kernel/app/auth/layout.tsx
+        - apps/kernel/api-spec/pay.yaml
+        - apps/kernel/api-spec/auth.yaml
+      tests:
+        - apps/kernel/app/auth/money/__tests__/page.test.tsx
+        - apps/kernel/src/lib/pay/payment-requests/__tests__/payer-did-integration.test.ts
+      last_touched:
+        date: 2026-10-26
+        commit: 4ae96b1d874a4d425254af1a2c232891646a9bcd
+        path: apps/kernel/src/lib/pay/payment-requests/__tests__/payer-did-integration.test.ts
+      open_issues:
+        - 3352
+        - 3077
+  - id: bank-disclosure
+    name: Seal and revoke payment bank details
+    action: Maintain an identity-owned bank document and revoke its disclosure grants while retaining provenance.
+    apps:
+      - kernel
+    services:
+      - auth
+      - vault
+    entry_points:
+      ui:
+        - /auth/money
+      api:
+        - PUT /auth/api/bank-details
+        - DELETE /auth/api/bank-details
+      sdk:
+        - package: vault-core
+          path: packages/vault-core/package.json
+    audience:
+      value: org admin
+      rationale: "org admin: Maintain an identity-owned bank document and revoke its disclosure grants while
+        retaining provenance. The cited entrypoints identify the acting role, not an observed user count."
+      paths: &a36
+        - apps/kernel/api-spec/auth.yaml
+        - apps/kernel/src/lib/vault/index.ts
+    maturity:
+      value: works
+      rationale: Bank-details custody has a tested contract; request-and-payer-specific disclosure expiry remains
+        separate unfinished work.
+      paths:
+        - apps/kernel/api-spec/auth.yaml
+        - apps/kernel/src/lib/vault/index.ts
+        - apps/kernel/src/lib/vault/__tests__/bank-details-spec.test.ts
+    business_weight:
+      value: supporting
+      rationale: "Helps a business deploy or use authorized agents but is not itself the identity-and-authority
+        promise: seal and revoke payment bank details."
+      paths: *a36
+    evidence:
+      paths:
+        - apps/kernel/api-spec/auth.yaml
+        - apps/kernel/src/lib/vault/index.ts
+        - apps/kernel/src/lib/vault/__tests__/bank-details-spec.test.ts
+        - apps/kernel/app/auth/money/page.tsx
+        - packages/vault-core/package.json
+        - apps/kernel/api-spec/vault.yaml
+      tests:
+        - apps/kernel/src/lib/vault/__tests__/bank-details-spec.test.ts
+      last_touched:
+        date: 2026-11-05
+        commit: e0e4952686a3ee65a8b2676745303b921c2891e3
+      open_issues:
+        - 3077
+  - id: wallet
+    name: Fund a wallet and inspect its history
+    action: View balances, top up by an available rail, transfer credits and inspect transactions.
+    apps:
+      - kernel
+    services:
+      - pay
+    entry_points:
+      ui:
+        - /pay
+        - /pay/history
+        - /pay/topup
+      api:
+        - POST /pay/api/topup/stripe
+        - POST /pay/api/balance/transfer
+        - GET /pay/api/transactions/{did}
+      sdk:
+        - package: money
+          path: packages/money/package.json
+    audience:
+      value: end user/consumer
+      rationale: "end user/consumer: View balances, top up by an available rail, transfer credits and inspect
+        transactions. The cited entrypoints identify the acting role, not an observed user count."
+      paths: &a37
+        - apps/kernel/app/pay/page.tsx
+        - apps/kernel/app/pay/topup/page.tsx
+    maturity:
+      value: live
+      rationale: Wallet navigation and balance/transfer tests exist; issuance schedules and fiat redemption are not
+        inferred from a displayed balance.
+      paths:
+        - apps/kernel/app/pay/page.tsx
+        - apps/kernel/app/pay/topup/page.tsx
+        - apps/kernel/src/lib/pay/__tests__/transfer-withdraw-concurrency.test.ts
+        - packages/ui/src/nav-bar.tsx
+        - apps/kernel/app/auth/layout.tsx
+    business_weight:
+      value: supporting
+      rationale: "Helps a business deploy or use authorized agents but is not itself the identity-and-authority
+        promise: fund a wallet and inspect its history."
+      paths: *a37
+    evidence:
+      paths:
+        - apps/kernel/app/pay/page.tsx
+        - apps/kernel/app/pay/topup/page.tsx
+        - apps/kernel/src/lib/pay/__tests__/transfer-withdraw-concurrency.test.ts
+        - apps/kernel/app/pay/history/page.tsx
+        - packages/money/package.json
+        - packages/ui/src/nav-bar.tsx
+        - apps/kernel/app/auth/layout.tsx
+        - apps/kernel/api-spec/pay.yaml
+      tests:
+        - apps/kernel/src/lib/pay/__tests__/transfer-withdraw-concurrency.test.ts
+      last_touched:
+        date: 2026-11-05
+        commit: a5b51f60f5b5eed9eaed8f6b6fa5143692bf3c82
+        path: apps/kernel/app/pay/page.tsx
+      open_issues:
+        - 2012
+  - id: app-checkout
+    name: Collect and settle app payments
+    action: Create an app-owned checkout, refund or settle its order and verify signed kernel callbacks.
+    apps:
+      - kernel
+    services:
+      - pay
+    entry_points:
+      ui: []
+      api:
+        - POST /pay/api/checkout
+        - POST /pay/api/settle
+        - POST /pay/api/refund
+        - POST /pay/api/charge-pledges
+      sdk:
+        - package: fair
+          path: packages/fair/package.json
+        - package: money
+          path: packages/money/package.json
+        - package: auth
+          path: packages/auth/package.json
+    audience:
+      value: developer
+      rationale: "developer: Create an app-owned checkout, refund or settle its order and verify signed kernel
+        callbacks. The cited entrypoints identify the acting role, not an observed user count."
+      paths: &a38
+        - apps/kernel/api-spec/pay.yaml
+        - packages/auth/src/kernel-webhook.ts
+    maturity:
+      value: works
+      rationale: App-auth payment contracts and signed webhook tests exist; selling a ticket is an extracted-app
+        job, not an in-repo ticketing UI.
+      paths:
+        - apps/kernel/api-spec/pay.yaml
+        - packages/auth/src/kernel-webhook.ts
+        - apps/kernel/src/lib/pay/__tests__/app-money-routes.test.ts
+        - packages/auth/tests/kernel-webhook.test.ts
+    business_weight:
+      value: core
+      rationale: "Directly supports agent identity, scoped authority, custody, approvals or signed spend/action
+        accountability: collect and settle app payments."
+      paths: *a38
+    evidence:
+      paths:
+        - apps/kernel/api-spec/pay.yaml
+        - packages/auth/src/kernel-webhook.ts
+        - apps/kernel/src/lib/pay/__tests__/app-money-routes.test.ts
+        - packages/auth/tests/kernel-webhook.test.ts
+        - packages/fair/package.json
+        - packages/money/package.json
+        - packages/auth/package.json
+      tests:
+        - apps/kernel/src/lib/pay/__tests__/app-money-routes.test.ts
+        - packages/auth/tests/kernel-webhook.test.ts
+      last_touched:
+        date: 2026-10-20
+        commit: 60f86a15e245750864b58d71d240d62a3a44fe70
+        path: apps/kernel/src/lib/pay/__tests__/app-money-routes.test.ts
+      open_issues: []
+  - id: escrow
+    name: Hold and release escrow
+    action: Create a hold and release or refund it through the payment API.
+    apps:
+      - kernel
+    services:
+      - pay
+    entry_points:
+      ui: []
+      api:
+        - POST /pay/api/escrow
+        - PUT /pay/api/escrow
+      sdk:
+        - package: money
+          path: packages/money/package.json
+    audience:
+      value: developer
+      rationale: "developer: Create a hold and release or refund it through the payment API. The cited entrypoints
+        identify the acting role, not an observed user count."
+      paths: &a39
+        - apps/kernel/app/pay/api/escrow/route.ts
+    maturity:
+      value: works
+      rationale: The API is implemented with app-money authorization tests; there is no demonstrated dedicated
+        escrow navigation or business adoption proof.
+      paths:
+        - apps/kernel/app/pay/api/escrow/route.ts
+        - apps/kernel/src/lib/pay/__tests__/app-money-routes.test.ts
+    business_weight:
+      value: supporting
+      rationale: "Helps a business deploy or use authorized agents but is not itself the identity-and-authority
+        promise: hold and release escrow."
+      paths: *a39
+    evidence:
+      paths:
+        - apps/kernel/app/pay/api/escrow/route.ts
+        - apps/kernel/src/lib/pay/__tests__/app-money-routes.test.ts
+        - packages/money/package.json
+        - apps/kernel/api-spec/pay.yaml
+      tests:
+        - apps/kernel/src/lib/pay/__tests__/app-money-routes.test.ts
+      last_touched:
+        date: 2026-10-20
+        commit: 60f86a15e245750864b58d71d240d62a3a44fe70
+        path: apps/kernel/src/lib/pay/__tests__/app-money-routes.test.ts
+      open_issues: []
+  - id: fair-settlement
+    name: Verify attribution and settlement manifests
+    action: Build, sign and verify a .fair manifest and compute its multi-party fees, taxes and settlement
+      distribution.
+    apps:
+      - kernel
+    services:
+      - pay
+      - media
+    entry_points:
+      ui: []
+      api: []
+      sdk:
+        - package: fair
+          path: packages/fair/package.json
+    audience:
+      value: developer
+      rationale: "developer: Build, sign and verify a .fair manifest and compute its multi-party fees, taxes and
+        settlement distribution. The cited entrypoints identify the acting role, not an observed user count."
+      paths: &a40
+        - packages/fair/src/index.ts
+        - packages/fair/src/settlement.ts
+    maturity:
+      value: works
+      rationale: Deterministic settlement and signature invariants are tested; manifest validity does not prove
+        downstream payment completion.
+      paths:
+        - packages/fair/src/index.ts
+        - packages/fair/src/settlement.ts
+        - packages/fair/tests/settlement-invariants.test.ts
+        - packages/fair/tests/crypto-invariants.test.ts
+    business_weight:
+      value: core
+      rationale: "Directly supports agent identity, scoped authority, custody, approvals or signed spend/action
+        accountability: verify attribution and settlement manifests."
+      paths: *a40
+    evidence:
+      paths:
+        - packages/fair/src/index.ts
+        - packages/fair/src/settlement.ts
+        - packages/fair/tests/settlement-invariants.test.ts
+        - packages/fair/tests/crypto-invariants.test.ts
+        - packages/fair/package.json
+        - apps/kernel/api-spec/pay.yaml
+        - apps/kernel/api-spec/media.yaml
+      tests:
+        - packages/fair/tests/settlement-invariants.test.ts
+        - packages/fair/tests/crypto-invariants.test.ts
+      last_touched:
+        date: 2026-10-14
+        commit: d969099aa52114e941bd4d85a2cdd549175330bc
+        path: packages/fair/src/index.ts
+      open_issues: []
+  - id: money-fx
+    name: Calculate precise money and signed FX
+    action: Compute minor-unit amounts, convert currencies using a signed FX snapshot and reject mixed-currency
+      arithmetic.
+    apps:
+      - kernel
+    services:
+      - pay
+    entry_points:
+      ui: []
+      api: []
+      sdk:
+        - package: money
+          path: packages/money/package.json
+    audience:
+      value: developer
+      rationale: "developer: Compute minor-unit amounts, convert currencies using a signed FX snapshot and reject
+        mixed-currency arithmetic. The cited entrypoints identify the acting role, not an observed user
+        count."
+      paths: &a41
+        - packages/money/src/index.ts
+    maturity:
+      value: works
+      rationale: The SDK has arithmetic and signed-snapshot tests; it is an integration building block, not a
+        separately navigable product.
+      paths:
+        - packages/money/src/index.ts
+        - packages/money/tests/money.test.ts
+        - packages/money/tests/fx-snapshot.test.ts
+    business_weight:
+      value: supporting
+      rationale: "Helps a business deploy or use authorized agents but is not itself the identity-and-authority
+        promise: calculate precise money and signed fx."
+      paths: *a41
+    evidence:
+      paths:
+        - packages/money/src/index.ts
+        - packages/money/tests/money.test.ts
+        - packages/money/tests/fx-snapshot.test.ts
+        - packages/money/package.json
+        - apps/kernel/api-spec/pay.yaml
+      tests:
+        - packages/money/tests/money.test.ts
+        - packages/money/tests/fx-snapshot.test.ts
+      last_touched:
+        date: 2026-09-09
+        commit: 038c086d3c9b022eb5387e80108d75d823197e96
+        path: packages/money/src/index.ts
+      open_issues: []
+  - id: corpus-search
+    name: Index and search DID-owned knowledge
+    action: Load workspace or GitHub sources, sync them and retrieve evidence excerpts from authorized owner
+      partitions.
+    apps:
+      - corpus
+      - kernel
+    services:
+      - corpus
+      - auth
+    entry_points:
+      ui:
+        - /auth/corpus
+      api:
+        - POST /corpus/{did}/search
+        - POST /corpus/{did}/sources
+        - POST /auth/corpus/api/load
+      sdk: []
+    audience:
+      value: org admin
+      rationale: "org admin: Load workspace or GitHub sources, sync them and retrieve evidence excerpts from
+        authorized owner partitions. The cited entrypoints identify the acting role, not an observed user
+        count."
+      paths: &a42
+        - apps/corpus/src/routes.ts
+        - apps/corpus/README.md
+        - apps/corpus/api-spec/openapi.yaml
+        - apps/kernel/app/auth/corpus/page.tsx
+    maturity:
+      value: live
+      rationale: The identity hub links Corpus management; daemon owner-claim and manager tests exist. Membership
+        alone is not a read grant, and automatic continuous sync is unfinished.
+      paths:
+        - apps/corpus/src/routes.ts
+        - apps/corpus/README.md
+        - apps/corpus/api-spec/openapi.yaml
+        - apps/kernel/app/auth/corpus/page.tsx
+        - apps/corpus/src/__tests__/routes.owner.test.ts
+        - apps/kernel/app/auth/corpus/__tests__/CorpusManagerShell.test.tsx
+        - packages/ui/src/nav-bar.tsx
+        - apps/kernel/app/auth/layout.tsx
+    business_weight:
+      value: supporting
+      rationale: "Helps a business deploy or use authorized agents but is not itself the identity-and-authority
+        promise: index and search did-owned knowledge."
+      paths: *a42
+    evidence:
+      paths:
+        - apps/corpus/src/routes.ts
+        - apps/corpus/README.md
+        - apps/corpus/api-spec/openapi.yaml
+        - apps/kernel/app/auth/corpus/page.tsx
+        - apps/corpus/src/__tests__/routes.owner.test.ts
+        - apps/kernel/app/auth/corpus/__tests__/CorpusManagerShell.test.tsx
+        - packages/ui/src/nav-bar.tsx
+        - apps/kernel/app/auth/layout.tsx
+        - apps/kernel/api-spec/auth.yaml
+      tests:
+        - apps/corpus/src/__tests__/routes.owner.test.ts
+        - apps/kernel/app/auth/corpus/__tests__/CorpusManagerShell.test.tsx
+      last_touched:
+        date: 2026-10-24
+        commit: f1fb3659c49ecad472a57c6b7ceb212f49767908
+        path: apps/corpus/README.md
+      open_issues:
+        - 3085
+        - 3100
+        - 3101
+        - 3091
+  - id: corpus-dispatch-context
+    name: Attach authorized corpus context to agent work
+    action: Search authorized source-owner partitions and optionally attach bounded evidence to a dispatched agent
+      brief.
+    apps:
+      - kernel
+    services:
+      - corpus
+      - mcp
+      - warp
+    entry_points:
+      ui: []
+      api:
+        - POST /warp/api/dispatch
+        - POST /mcp
+      sdk: []
+    audience:
+      value: agent (machine)
+      rationale: "agent (machine): Search authorized source-owner partitions and optionally attach bounded evidence
+        to a dispatched agent brief. The cited entrypoints identify the acting role, not an observed user
+        count."
+      paths: &a43
+        - apps/kernel/src/lib/warp/corpus-context.ts
+        - apps/kernel/src/lib/kernel/corpus-client.ts
+    maturity:
+      value: partial
+      rationale: Proxy and opt-in dispatch tests exist; full agent onBehalfOf, layered organization search and
+        real-consumer proof remain open, so the broader experience is partial.
+      paths:
+        - apps/kernel/src/lib/warp/corpus-context.ts
+        - apps/kernel/src/lib/kernel/corpus-client.ts
+        - apps/kernel/src/lib/warp/__tests__/corpus-context.test.ts
+        - apps/kernel/src/lib/mcp/__tests__/corpus-tools.test.ts
+    business_weight:
+      value: supporting
+      rationale: "Helps a business deploy or use authorized agents but is not itself the identity-and-authority
+        promise: attach authorized corpus context to agent work."
+      paths: *a43
+    evidence:
+      paths:
+        - apps/kernel/src/lib/warp/corpus-context.ts
+        - apps/kernel/src/lib/kernel/corpus-client.ts
+        - apps/kernel/src/lib/warp/__tests__/corpus-context.test.ts
+        - apps/kernel/src/lib/mcp/__tests__/corpus-tools.test.ts
+      tests:
+        - apps/kernel/src/lib/warp/__tests__/corpus-context.test.ts
+        - apps/kernel/src/lib/mcp/__tests__/corpus-tools.test.ts
+      last_touched:
+        date: 2026-10-27
+        commit: 8341500b6b52deb556c22a431bd3fe11cb3835e3
+        path: apps/kernel/src/lib/kernel/corpus-client.ts
+      open_issues:
+        - 3086
+        - 3101
+        - 3091
+  - id: notify
+    name: Deliver scoped notifications
+    action: Send authorized notifications or interest broadcasts, deliver configured email or push and honor
+      recipient preferences.
+    apps:
+      - kernel
+    services:
+      - notify
+    entry_points:
+      ui:
+        - /auth/notifications
+        - /notify/settings
+      api:
+        - POST /notify/api/send
+        - POST /notify/api/broadcast
+        - PUT /notify/api/preferences
+      sdk:
+        - package: notify
+          path: packages/notify/package.json
+        - package: email
+          path: packages/email/package.json
+    audience:
+      value: developer
+      rationale: "developer: Send authorized notifications or interest broadcasts, deliver configured email or push
+        and honor recipient preferences. The cited entrypoints identify the acting role, not an observed user
+        count."
+      paths: &a44
+        - packages/notify/src/index.ts
+        - apps/kernel/api-spec/notify.yaml
+    maturity:
+      value: works
+      rationale: Transport and app-auth tests exist; /notify itself is a placeholder rather than a notification
+        inbox. Delivery requires configured transports and recipient consent.
+      paths:
+        - packages/notify/src/index.ts
+        - apps/kernel/api-spec/notify.yaml
+        - packages/notify/tests/client.test.ts
+        - apps/kernel/app/notify/api/__tests__/registered-app-auth.test.ts
+    business_weight:
+      value: supporting
+      rationale: "Helps a business deploy or use authorized agents but is not itself the identity-and-authority
+        promise: deliver scoped notifications."
+      paths: *a44
+    evidence:
+      paths:
+        - packages/notify/src/index.ts
+        - apps/kernel/api-spec/notify.yaml
+        - packages/notify/tests/client.test.ts
+        - apps/kernel/app/notify/api/__tests__/registered-app-auth.test.ts
+        - apps/kernel/app/auth/notifications/page.tsx
+        - apps/kernel/app/notify/settings/page.tsx
+        - packages/notify/package.json
+        - packages/email/package.json
+      tests:
+        - packages/notify/tests/client.test.ts
+        - apps/kernel/app/notify/api/__tests__/registered-app-auth.test.ts
+      last_touched:
+        date: 2026-10-22
+        commit: 032c14e3d324273d02ff6a8d492fec165e982e19
+        path: apps/kernel/api-spec/notify.yaml
+      open_issues: []
+  - id: chat
+    name: Exchange direct and group messages
+    action: Create an authorized conversation, send text or attachments, react, invite participants and track
+      unread messages.
+    apps:
+      - kernel
+    services:
+      - chat
+      - connections
+    entry_points:
+      ui:
+        - /chat/conversations
+        - /chat/conversations/{type}/{slug}
+      api:
+        - POST /chat/api/conversations
+        - POST /chat/api/conversations/{id}/messages
+        - POST /chat/api/invites
+      sdk:
+        - package: chat
+          path: packages/chat/package.json
+        - package: input
+          path: packages/input/package.json
+    audience:
+      value: end user/consumer
+      rationale: "end user/consumer: Create an authorized conversation, send text or attachments, react, invite
+        participants and track unread messages. The cited entrypoints identify the acting role, not an
+        observed user count."
+      paths: &a45
+        - apps/kernel/app/chat/conversations/page.tsx
+        - packages/chat/src/index.ts
+        - apps/kernel/api-spec/chat.yaml
+    maturity:
+      value: live
+      rationale: Messages is in shared navigation and chat API/tool tests exist. Current storage is plaintext at
+        rest; public key bundles are not proof of end-to-end encryption.
+      paths:
+        - apps/kernel/app/chat/conversations/page.tsx
+        - packages/chat/src/index.ts
+        - apps/kernel/api-spec/chat.yaml
+        - apps/kernel/app/chat/api/spec/__tests__/route.test.ts
+        - apps/kernel/src/lib/mcp/__tests__/messages.test.ts
+        - packages/ui/src/nav-bar.tsx
+        - apps/kernel/app/auth/layout.tsx
+    business_weight:
+      value: supporting
+      rationale: "Helps a business deploy or use authorized agents but is not itself the identity-and-authority
+        promise: exchange direct and group messages."
+      paths: *a45
+    evidence:
+      paths:
+        - apps/kernel/app/chat/conversations/page.tsx
+        - packages/chat/src/index.ts
+        - apps/kernel/api-spec/chat.yaml
+        - apps/kernel/app/chat/api/spec/__tests__/route.test.ts
+        - apps/kernel/src/lib/mcp/__tests__/messages.test.ts
+        - apps/kernel/app/chat/conversations/[type]/[slug]/page.tsx
+        - packages/chat/package.json
+        - packages/input/package.json
+        - packages/ui/src/nav-bar.tsx
+        - apps/kernel/app/auth/layout.tsx
+        - apps/kernel/api-spec/connections.yaml
+      tests:
+        - apps/kernel/app/chat/api/spec/__tests__/route.test.ts
+        - apps/kernel/src/lib/mcp/__tests__/messages.test.ts
+      last_touched:
+        date: 2026-10-26
+        commit: bbde85736ff44ba5b1bbc2244e9db6118192b29d
+        path: apps/kernel/api-spec/chat.yaml
+      open_issues: []
+  - id: media
+    name: Store and share attributed assets
+    action: Upload a file, organize folders, set access, transfer ownership and retrieve its signed attribution
+      manifest.
+    apps:
+      - kernel
+    services:
+      - media
+    entry_points:
+      ui:
+        - /media
+      api:
+        - POST /media/api/assets
+        - PATCH /media/api/assets/{id}/access
+        - POST /media/api/assets/{id}/transfer
+      sdk:
+        - package: media
+          path: packages/media/package.json
+        - package: fair
+          path: packages/fair/package.json
+    audience:
+      value: org admin
+      rationale: "org admin: Upload a file, organize folders, set access, transfer ownership and retrieve its signed
+        attribution manifest. The cited entrypoints identify the acting role, not an observed user count."
+      paths: &a46
+        - apps/kernel/app/media/page.tsx
+        - apps/kernel/api-spec/media.yaml
+        - packages/media/src/index.ts
+    maturity:
+      value: works
+      rationale: "Acting-DID page and asset contracts have tests; dynamic app placement is not proof every identity
+        currently has Media navigation. The spec still advertises hard deletion: a gap, not a new
+        recommendation."
+      paths:
+        - apps/kernel/app/media/page.tsx
+        - apps/kernel/api-spec/media.yaml
+        - packages/media/src/index.ts
+        - apps/kernel/src/lib/mcp/__tests__/media-write.test.ts
+        - apps/kernel/app/media/api/spec/__tests__/route.test.ts
+    business_weight:
+      value: supporting
+      rationale: "Helps a business deploy or use authorized agents but is not itself the identity-and-authority
+        promise: store and share attributed assets."
+      paths: *a46
+    evidence:
+      paths:
+        - apps/kernel/app/media/page.tsx
+        - apps/kernel/api-spec/media.yaml
+        - packages/media/src/index.ts
+        - apps/kernel/src/lib/mcp/__tests__/media-write.test.ts
+        - apps/kernel/app/media/api/spec/__tests__/route.test.ts
+        - packages/media/package.json
+        - packages/fair/package.json
+      tests:
+        - apps/kernel/src/lib/mcp/__tests__/media-write.test.ts
+        - apps/kernel/app/media/api/spec/__tests__/route.test.ts
+      last_touched:
+        date: 2026-10-18
+        commit: f1c90100dd0660d77c60f720757696231b2b17c4
+        path: apps/kernel/api-spec/media.yaml
+      open_issues: []
+  - id: transcribe
+    name: Transcribe audio or video
+    action: Submit an authorized media asset or upload and obtain text transcription.
+    apps:
+      - kernel
+    services:
+      - media
+    entry_points:
+      ui: []
+      api:
+        - POST /media/api/transcribe
+        - POST /media/api/assets/{id}/transcribe
+      sdk: []
+    audience:
+      value: agent (machine)
+      rationale: "agent (machine): Submit an authorized media asset or upload and obtain text transcription. The
+        cited entrypoints identify the acting role, not an observed user count."
+      paths: &a47
+        - apps/kernel/app/media/api/transcribe/route.ts
+    maturity:
+      value: works
+      rationale: Route and MCP tests exist; service availability and local compute accounting are not established by
+        those tests.
+      paths:
+        - apps/kernel/app/media/api/transcribe/route.ts
+        - apps/kernel/app/media/api/transcribe/__tests__/route.test.ts
+        - apps/kernel/src/lib/mcp/__tests__/media-transcribe.test.ts
+    business_weight:
+      value: supporting
+      rationale: "Helps a business deploy or use authorized agents but is not itself the identity-and-authority
+        promise: transcribe audio or video."
+      paths: *a47
+    evidence:
+      paths:
+        - apps/kernel/app/media/api/transcribe/route.ts
+        - apps/kernel/app/media/api/transcribe/__tests__/route.test.ts
+        - apps/kernel/src/lib/mcp/__tests__/media-transcribe.test.ts
+        - apps/kernel/api-spec/media.yaml
+      tests:
+        - apps/kernel/app/media/api/transcribe/__tests__/route.test.ts
+        - apps/kernel/src/lib/mcp/__tests__/media-transcribe.test.ts
+      last_touched:
+        date: 2026-10-07
+        commit: 69a9fc0b14a0e94a53f709fb077450d2a43c9b99
+        path: apps/kernel/app/media/api/transcribe/__tests__/route.test.ts
+      open_issues:
+        - 3139
+  - id: calendar
+    name: Manage visibility-scoped calendar entries
+    action: Create and update temporal entries and read another identity calendar only through its visibility and
+      broker gate.
+    apps:
+      - kernel
+    services:
+      - calendar
+    entry_points:
+      ui: []
+      api:
+        - POST /calendar/api/entries
+        - GET /calendar/api/d/{did}/entries
+      sdk: []
+    audience:
+      value: developer
+      rationale: "developer: Create and update temporal entries and read another identity calendar only through its
+        visibility and broker gate. The cited entrypoints identify the acting role, not an observed user
+        count."
+      paths: &a48
+        - apps/kernel/app/calendar/api/entries/route.ts
+        - apps/kernel/api-spec/calendar.yaml
+    maturity:
+      value: works
+      rationale: API and spec tests exist without a calendar page; private and sealed entries are not publicly
+        queryable.
+      paths:
+        - apps/kernel/app/calendar/api/entries/route.ts
+        - apps/kernel/api-spec/calendar.yaml
+        - apps/kernel/app/calendar/api/spec/__tests__/route.test.ts
+    business_weight:
+      value: supporting
+      rationale: "Helps a business deploy or use authorized agents but is not itself the identity-and-authority
+        promise: manage visibility-scoped calendar entries."
+      paths: *a48
+    evidence:
+      paths:
+        - apps/kernel/app/calendar/api/entries/route.ts
+        - apps/kernel/api-spec/calendar.yaml
+        - apps/kernel/app/calendar/api/spec/__tests__/route.test.ts
+      tests:
+        - apps/kernel/app/calendar/api/spec/__tests__/route.test.ts
+      last_touched:
+        date: 2026-09-09
+        commit: dea4cff24599d5fd321b1634549e78fa051f94f1
+        path: apps/kernel/app/calendar/api/spec/__tests__/route.test.ts
+      open_issues: []
+  - id: availability
+    name: Match sealed availability intentions
+    action: Set an expiring private intention and receive a match only when independently declared availability
+      overlaps.
+    apps:
+      - kernel
+      - broker-agent
+    services:
+      - calendar
+      - broker-agent
+    entry_points:
+      ui: []
+      api:
+        - POST /calendar/api/availability
+        - GET /calendar/api/availability/matches
+      sdk:
+        - package: bus
+          path: packages/bus/package.json
+    audience:
+      value: end user/consumer
+      rationale: "end user/consumer: Set an expiring private intention and receive a match only when independently
+        declared availability overlaps. The cited entrypoints identify the acting role, not an observed user
+        count."
+      paths: &a49
+        - apps/kernel/api-spec/calendar.yaml
+        - packages/bus/src/match/engine.ts
+        - apps/broker-agent/src/tools.ts
+    maturity:
+      value: partial
+      rationale: The match engine has tests, but broker response and default-reach tools only acknowledge values and
+        do not persist them. Do not present a completed social coordination workflow.
+      paths:
+        - apps/kernel/api-spec/calendar.yaml
+        - packages/bus/src/match/engine.ts
+        - apps/broker-agent/src/tools.ts
+        - packages/bus/tests/match-engine-broker.test.ts
+    business_weight:
+      value: side-effect
+      rationale: "Consumer, community or project-background outcome rather than the B2B identity-and-authority front
+        door: match sealed availability intentions."
+      paths: *a49
+    evidence:
+      paths:
+        - apps/kernel/api-spec/calendar.yaml
+        - packages/bus/src/match/engine.ts
+        - apps/broker-agent/src/tools.ts
+        - packages/bus/tests/match-engine-broker.test.ts
+        - packages/bus/package.json
+      tests:
+        - packages/bus/tests/match-engine-broker.test.ts
+      last_touched:
+        date: 2026-10-14
+        commit: 041f458543ace02726ec7495d438f4abdccb43d9
+        path: packages/bus/tests/match-engine-broker.test.ts
+      open_issues: []
+  - id: broker-agent
+    name: Coordinate intentions in Telegram
+    action: Use conversational tools to set, list or cancel your own sealed intentions without exposing another
+      person availability.
+    apps:
+      - broker-agent
+      - kernel
+    services:
+      - broker-agent
+      - calendar
+    entry_points:
+      ui: []
+      api: []
+      sdk: []
+    audience:
+      value: end user/consumer
+      rationale: "end user/consumer: Use conversational tools to set, list or cancel your own sealed intentions
+        without exposing another person availability. The cited entrypoints identify the acting role, not an
+        observed user count."
+      paths: &a50
+        - apps/broker-agent/src/tools.ts
+        - apps/broker-agent/README.md
+        - apps/broker-agent/src/bot.ts
+    maturity:
+      value: partial
+      rationale: Tool-loop and bot-delivery tests exist, but match-response/reach preference tools are stubs and the
+        README says this daemon is absent from the production process list.
+      paths:
+        - apps/broker-agent/src/tools.ts
+        - apps/broker-agent/README.md
+        - apps/broker-agent/src/bot.ts
+        - apps/broker-agent/src/__tests__/agent.test.ts
+        - apps/broker-agent/src/__tests__/bot-delivery.test.ts
+    business_weight:
+      value: side-effect
+      rationale: "Consumer, community or project-background outcome rather than the B2B identity-and-authority front
+        door: coordinate intentions in telegram."
+      paths: *a50
+    evidence:
+      paths:
+        - apps/broker-agent/src/tools.ts
+        - apps/broker-agent/README.md
+        - apps/broker-agent/src/bot.ts
+        - apps/broker-agent/src/__tests__/agent.test.ts
+        - apps/broker-agent/src/__tests__/bot-delivery.test.ts
+        - apps/kernel/api-spec/calendar.yaml
+      tests:
+        - apps/broker-agent/src/__tests__/agent.test.ts
+        - apps/broker-agent/src/__tests__/bot-delivery.test.ts
+      last_touched:
+        date: 2026-10-17
+        commit: aba1a2fde61df02a019cb2cb9698494313ad77ee
+        path: apps/broker-agent/src/__tests__/agent.test.ts
+      open_issues: []
+  - id: profile
+    name: Publish an identity profile
+    action: Claim a handle and edit a personal or business profile, discover enabled apps and maintain a place stub.
+    apps:
+      - kernel
+    services:
+      - profile
+      - auth
+    entry_points:
+      ui:
+        - /profile
+        - /profile/edit
+        - /profile/p/{handle}
+        - /auth/stubs/new
+        - /auth/stubs/{did}
+      api:
+        - POST /profile/api/profile
+        - PUT /profile/api/profile/{id}
+        - POST /profile/api/stubs
+      sdk: []
+    audience:
+      value: end user/consumer
+      rationale: "end user/consumer: Claim a handle and edit a personal or business profile, discover enabled apps
+        and maintain a place stub. The cited entrypoints identify the acting role, not an observed user
+        count."
+      paths: &a51
+        - apps/kernel/app/profile/edit/page.tsx
+        - apps/kernel/app/profile/p/[handle]/page.tsx
+    maturity:
+      value: works
+      rationale: Profile pages and registry-app link tests exist; they do not demonstrate every profile edit or stub
+        ceremony end to end.
+      paths:
+        - apps/kernel/app/profile/edit/page.tsx
+        - apps/kernel/app/profile/p/[handle]/page.tsx
+        - apps/kernel/app/profile/lib/__tests__/registry-app-links.test.ts
+    business_weight:
+      value: supporting
+      rationale: "Helps a business deploy or use authorized agents but is not itself the identity-and-authority
+        promise: publish an identity profile."
+      paths: *a51
+    evidence:
+      paths:
+        - apps/kernel/app/profile/edit/page.tsx
+        - apps/kernel/app/profile/p/[handle]/page.tsx
+        - apps/kernel/app/profile/lib/__tests__/registry-app-links.test.ts
+        - apps/kernel/app/profile/page.tsx
+        - apps/kernel/app/auth/stubs/new/page.tsx
+        - apps/kernel/app/auth/stubs/[did]/page.tsx
+        - apps/kernel/api-spec/profile.yaml
+        - apps/kernel/api-spec/auth.yaml
+      tests:
+        - apps/kernel/app/profile/lib/__tests__/registry-app-links.test.ts
+      last_touched:
+        date: 2026-10-18
+        commit: 0050eb34e2986c4523ddeff6f42472e76d8e92f6
+      open_issues: []
+  - id: presence
+    name: Query an opt-in AI presence
+    action: Ask a permitted identity presence for a streamed or non-streamed answer subject to trust and inference
+      availability.
+    apps:
+      - kernel
+    services:
+      - profile
+      - infer
+    entry_points:
+      ui:
+        - /profile/p/{handle}
+      api:
+        - POST /profile/api/profile/{id}/query
+        - POST /profile/api/profile/{id}/stream
+      sdk:
+        - package: llm
+          path: packages/llm/package.json
+    audience:
+      value: end user/consumer
+      rationale: "end user/consumer: Ask a permitted identity presence for a streamed or non-streamed answer subject
+        to trust and inference availability. The cited entrypoints identify the acting role, not an observed
+        user count."
+      paths: &a52
+        - apps/kernel/api-spec/profile.yaml
+        - packages/llm/src/index.ts
+    maturity:
+      value: works
+      rationale: Query usage and settlement tests exist; a configured presence and valid trust path are
+        prerequisites, not buyer proof.
+      paths:
+        - apps/kernel/api-spec/profile.yaml
+        - packages/llm/src/index.ts
+        - apps/kernel/src/lib/inference/__tests__/presence-query-usage.test.ts
+        - apps/kernel/src/lib/profile/__tests__/presence-query-settle.test.ts
+    business_weight:
+      value: side-effect
+      rationale: "Consumer, community or project-background outcome rather than the B2B identity-and-authority front
+        door: query an opt-in ai presence."
+      paths: *a52
+    evidence:
+      paths:
+        - apps/kernel/api-spec/profile.yaml
+        - packages/llm/src/index.ts
+        - apps/kernel/src/lib/inference/__tests__/presence-query-usage.test.ts
+        - apps/kernel/src/lib/profile/__tests__/presence-query-settle.test.ts
+        - apps/kernel/app/profile/p/[handle]/page.tsx
+        - packages/llm/package.json
+        - apps/kernel/api-spec/infer.yaml
+      tests:
+        - apps/kernel/src/lib/inference/__tests__/presence-query-usage.test.ts
+        - apps/kernel/src/lib/profile/__tests__/presence-query-settle.test.ts
+      last_touched:
+        date: 2026-11-04
+        commit: 15f275242bff8c93c352e9fa870a1bda1513f572
+        path: apps/kernel/src/lib/inference/__tests__/presence-query-usage.test.ts
+      open_issues: []
+  - id: connections
+    name: Manage bilateral and group relationships
+    action: Invite and accept a connection, label an organization relationship, manage a pod and resolve
+      authorized members.
+    apps:
+      - kernel
+    services:
+      - connections
+      - auth
+    entry_points:
+      ui:
+        - /connections
+        - /connections/pods/{id}
+        - /bump
+      api:
+        - POST /connections/api/invites
+        - POST /connections/api/invites/{code}/accept
+        - POST /connections/api/pods
+      sdk:
+        - package: trust-graph
+          path: packages/trust-graph/package.json
+    audience:
+      value: end user/consumer
+      rationale: "end user/consumer: Invite and accept a connection, label an organization relationship, manage a
+        pod and resolve authorized members. The cited entrypoints identify the acting role, not an observed
+        user count."
+      paths: &a53
+        - apps/kernel/app/connections/page.tsx
+        - packages/trust-graph/src/index.ts
+    maturity:
+      value: live
+      rationale: Shared navigation links Connections and Bump; relationship and acting-identity tests exist. A
+        connection is not authorization to use another identity account.
+      paths:
+        - apps/kernel/app/connections/page.tsx
+        - packages/trust-graph/src/index.ts
+        - apps/kernel/src/lib/connections/__tests__/relationship-spec.test.ts
+        - packages/auth/tests/effective-did-services.test.ts
+        - packages/ui/src/nav-bar.tsx
+        - apps/kernel/app/auth/layout.tsx
+    business_weight:
+      value: supporting
+      rationale: "Helps a business deploy or use authorized agents but is not itself the identity-and-authority
+        promise: manage bilateral and group relationships."
+      paths: *a53
+    evidence:
+      paths:
+        - apps/kernel/app/connections/page.tsx
+        - packages/trust-graph/src/index.ts
+        - apps/kernel/src/lib/connections/__tests__/relationship-spec.test.ts
+        - packages/auth/tests/effective-did-services.test.ts
+        - apps/kernel/app/connections/pods/[id]/page.tsx
+        - apps/kernel/app/bump/page.tsx
+        - packages/trust-graph/package.json
+        - packages/ui/src/nav-bar.tsx
+        - apps/kernel/app/auth/layout.tsx
+        - apps/kernel/api-spec/connections.yaml
+        - apps/kernel/api-spec/auth.yaml
+      tests:
+        - apps/kernel/src/lib/connections/__tests__/relationship-spec.test.ts
+        - packages/auth/tests/effective-did-services.test.ts
+      last_touched:
+        date: 2026-10-21
+        commit: 80771b37a8711953dde9810fdbad69eafb976825
+        path: apps/kernel/src/lib/connections/__tests__/relationship-spec.test.ts
+      open_issues: []
+  - id: disclosures
+    name: Review and withdraw data disclosures
+    action: Inspect broker-mediated disclosures and revoke one or all outstanding consent grants.
+    apps:
+      - kernel
+    services:
+      - auth
+      - connections
+    entry_points:
+      ui:
+        - /disclosures
+      api:
+        - DELETE /api/broker/consent/{id}
+        - POST /api/broker/consent/revoke-all
+      sdk:
+        - package: auth
+          path: packages/auth/package.json
+    audience:
+      value: end user/consumer
+      rationale: "end user/consumer: Inspect broker-mediated disclosures and revoke one or all outstanding consent
+        grants. The cited entrypoints identify the acting role, not an observed user count."
+      paths: &a54
+        - apps/kernel/app/disclosures/page.tsx
+        - apps/kernel/app/api/broker/consent/route.ts
+    maturity:
+      value: works
+      rationale: Disclosure UI and revocation tests exist; no broad claim of automatic external data recall follows
+        from withdrawing a grant.
+      paths:
+        - apps/kernel/app/disclosures/page.tsx
+        - apps/kernel/app/api/broker/consent/route.ts
+        - apps/kernel/src/lib/broker/__tests__/revoke-all.test.ts
+        - apps/kernel/app/api/broker/consent/__tests__/acting-for.test.ts
+    business_weight:
+      value: core
+      rationale: "Directly supports agent identity, scoped authority, custody, approvals or signed spend/action
+        accountability: review and withdraw data disclosures."
+      paths: *a54
+    evidence:
+      paths:
+        - apps/kernel/app/disclosures/page.tsx
+        - apps/kernel/app/api/broker/consent/route.ts
+        - apps/kernel/src/lib/broker/__tests__/revoke-all.test.ts
+        - apps/kernel/app/api/broker/consent/__tests__/acting-for.test.ts
+        - packages/auth/package.json
+        - apps/kernel/api-spec/auth.yaml
+        - apps/kernel/api-spec/connections.yaml
+      tests:
+        - apps/kernel/src/lib/broker/__tests__/revoke-all.test.ts
+        - apps/kernel/app/api/broker/consent/__tests__/acting-for.test.ts
+      last_touched:
+        date: 2026-07-28
+        commit: e25e6f9e2631ebbd3f374978b3366666f69c5dd3
+      open_issues: []
+  - id: github-work
+    name: Read and propose GitHub work
+    action: Connect a GitHub OAuth slot, read allowed repositories and stage scoped writes for approval.
+    apps:
+      - kernel
+    services:
+      - github
+      - mcp
+    entry_points:
+      ui:
+        - /auth/connectors/github
+      api:
+        - GET /github/api/connect
+        - POST /github/api/scope-manifest
+        - POST /mcp
+      sdk: []
+    audience:
+      value: agent (machine)
+      rationale: "agent (machine): Connect a GitHub OAuth slot, read allowed repositories and stage scoped writes
+        for approval. The cited entrypoints identify the acting role, not an observed user count."
+      paths: &a55
+        - apps/kernel/src/lib/github/connector.ts
+        - apps/kernel/api-spec/github.yaml
+    maturity:
+      value: works
+      rationale: OAuth, scope and proposal execution tests exist; a connected account alone does not grant access to
+        every repository or write action.
+      paths:
+        - apps/kernel/src/lib/github/connector.ts
+        - apps/kernel/api-spec/github.yaml
+        - apps/kernel/src/lib/mcp/__tests__/github-tools.test.ts
+        - apps/kernel/src/lib/github/__tests__/approvals-execution.test.ts
+    business_weight:
+      value: supporting
+      rationale: "Helps a business deploy or use authorized agents but is not itself the identity-and-authority
+        promise: read and propose github work."
+      paths: *a55
+    evidence:
+      paths:
+        - apps/kernel/src/lib/github/connector.ts
+        - apps/kernel/api-spec/github.yaml
+        - apps/kernel/src/lib/mcp/__tests__/github-tools.test.ts
+        - apps/kernel/src/lib/github/__tests__/approvals-execution.test.ts
+      tests:
+        - apps/kernel/src/lib/mcp/__tests__/github-tools.test.ts
+        - apps/kernel/src/lib/github/__tests__/approvals-execution.test.ts
+      last_touched:
+        date: 2026-10-27
+        commit: 53a30f97158908a884d9740663cd3c5ba72ee27c
+        path: apps/kernel/api-spec/github.yaml
+      open_issues: []
+  - id: google-work
+    name: Use consented Workspace data and actions
+    action: Connect a Workspace slot and use scoped Gmail, Calendar, Drive or Meet tools under sealed
+      refresh-token custody.
+    apps:
+      - kernel
+    services:
+      - google
+      - mcp
+    entry_points:
+      ui:
+        - /auth/connectors/google
+      api:
+        - GET /google/api/connect
+        - POST /google/api/scope-manifest
+        - POST /mcp
+      sdk: []
+    audience:
+      value: agent (machine)
+      rationale: "agent (machine): Connect a Workspace slot and use scoped Gmail, Calendar, Drive or Meet tools
+        under sealed refresh-token custody. The cited entrypoints identify the acting role, not an observed
+        user count."
+      paths: &a56
+        - apps/kernel/api-spec/google.yaml
+        - apps/kernel/src/lib/google/connector.ts
+    maturity:
+      value: works
+      rationale: Per-slot OAuth and data-tool tests exist; Search Console setup is conditional and Business Profile
+        needs upstream approval. Organization-wide delegation is not delivered by personal OAuth.
+      paths:
+        - apps/kernel/api-spec/google.yaml
+        - apps/kernel/src/lib/google/connector.ts
+        - apps/kernel/src/lib/mcp/tools/__tests__/google-tools.test.ts
+        - apps/kernel/src/lib/google/__tests__/readers.test.ts
+    business_weight:
+      value: supporting
+      rationale: "Helps a business deploy or use authorized agents but is not itself the identity-and-authority
+        promise: use consented workspace data and actions."
+      paths: *a56
+    evidence:
+      paths:
+        - apps/kernel/api-spec/google.yaml
+        - apps/kernel/src/lib/google/connector.ts
+        - apps/kernel/src/lib/mcp/tools/__tests__/google-tools.test.ts
+        - apps/kernel/src/lib/google/__tests__/readers.test.ts
+      tests:
+        - apps/kernel/src/lib/mcp/tools/__tests__/google-tools.test.ts
+        - apps/kernel/src/lib/google/__tests__/readers.test.ts
+      last_touched:
+        date: 2026-11-04
+        commit: 5156937abd23c1714c5b1bc1437f680bbfc846b8
+        path: apps/kernel/src/lib/google/connector.ts
+      open_issues:
+        - 2364
+  - id: accounting-connector
+    name: Connect accounting and reconcile invoices
+    action: Authorize a QuickBooks realm, invoke permitted invoice operations and reconcile signed payment events.
+    apps:
+      - kernel
+    services:
+      - quickbooks
+    entry_points:
+      ui:
+        - /auth/connectors/quickbooks
+      api:
+        - GET /quickbooks/api/connect
+        - POST /quickbooks/api/invoice
+      sdk: []
+    audience:
+      value: org admin
+      rationale: "org admin: Authorize a QuickBooks realm, invoke permitted invoice operations and reconcile signed
+        payment events. The cited entrypoints identify the acting role, not an observed user count."
+      paths: &a57
+        - apps/kernel/api-spec/quickbooks.yaml
+        - apps/kernel/src/lib/quickbooks/connector.ts
+    maturity:
+      value: works
+      rationale: OAuth realm isolation and invoice/settlement tests exist; a dedicated accounting workspace and real
+        bookkeeping outcome are not evidenced.
+      paths:
+        - apps/kernel/api-spec/quickbooks.yaml
+        - apps/kernel/src/lib/quickbooks/connector.ts
+        - apps/kernel/app/quickbooks/api/invoice/__tests__/route.test.ts
+        - apps/kernel/src/lib/quickbooks/__tests__/settlement.test.ts
+    business_weight:
+      value: supporting
+      rationale: "Helps a business deploy or use authorized agents but is not itself the identity-and-authority
+        promise: connect accounting and reconcile invoices."
+      paths: *a57
+    evidence:
+      paths:
+        - apps/kernel/api-spec/quickbooks.yaml
+        - apps/kernel/src/lib/quickbooks/connector.ts
+        - apps/kernel/app/quickbooks/api/invoice/__tests__/route.test.ts
+        - apps/kernel/src/lib/quickbooks/__tests__/settlement.test.ts
+      tests:
+        - apps/kernel/app/quickbooks/api/invoice/__tests__/route.test.ts
+        - apps/kernel/src/lib/quickbooks/__tests__/settlement.test.ts
+      last_touched:
+        date: 2026-10-27
+        commit: 53a30f97158908a884d9740663cd3c5ba72ee27c
+        path: apps/kernel/api-spec/quickbooks.yaml
+      open_issues: []
+  - id: discord-channel
+    name: Connect a Discord bot channel
+    action: Seal a Discord bot credential and authorize channel reads or message delivery.
+    apps:
+      - kernel
+    services:
+      - discord
+    entry_points:
+      ui:
+        - /auth/connectors/discord
+      api:
+        - POST /discord/api/token
+        - POST /discord/api/scope-manifest
+      sdk: []
+    audience:
+      value: org admin
+      rationale: "org admin: Seal a Discord bot credential and authorize channel reads or message delivery. The
+        cited entrypoints identify the acting role, not an observed user count."
+      paths: &a58
+        - apps/kernel/src/lib/kernel/connector-registry.ts
+        - apps/kernel/src/lib/discord/connector.ts
+    maturity:
+      value: works
+      rationale: The connector and messaging-tool tests exist; the credential alone does not attest organization
+        speaker membership.
+      paths:
+        - apps/kernel/src/lib/kernel/connector-registry.ts
+        - apps/kernel/src/lib/discord/connector.ts
+        - apps/kernel/src/lib/mcp/__tests__/messages.test.ts
+    business_weight:
+      value: supporting
+      rationale: "Helps a business deploy or use authorized agents but is not itself the identity-and-authority
+        promise: connect a discord bot channel."
+      paths: *a58
+    evidence:
+      paths:
+        - apps/kernel/src/lib/kernel/connector-registry.ts
+        - apps/kernel/src/lib/discord/connector.ts
+        - apps/kernel/src/lib/mcp/__tests__/messages.test.ts
+      tests:
+        - apps/kernel/src/lib/mcp/__tests__/messages.test.ts
+      last_touched:
+        date: 2026-10-27
+        commit: 1cf2f98ccd1bda576bbf25996b73e9a646ff5a05
+        path: apps/kernel/src/lib/kernel/connector-registry.ts
+      open_issues: []
+  - id: link-channel-speaker
+    name: Bind a channel speaker to an organization bot
+    action: Approve an account link and check the channel sender membership before allowing the organization bot
+      to act.
+    apps:
+      - kernel
+    services:
+      - auth
+    entry_points:
+      ui:
+        - /auth/channel-link/{token}
+      api:
+        - POST /auth/api/channel-link/agent
+        - POST /auth/api/channel-link/speaker
+        - POST /auth/api/channel-link/approve
+      sdk: []
+    audience:
+      value: org admin
+      rationale: "org admin: Approve an account link and check the channel sender membership before allowing the
+        organization bot to act. The cited entrypoints identify the acting role, not an observed user count."
+      paths: &a59
+        - apps/kernel/api-spec/auth.yaml
+        - apps/kernel/app/auth/channel-link/[token]/page.tsx
+    maturity:
+      value: works
+      rationale: Channel approval and org-speaker gates have integration tests; the complete deployed members-only
+        org bot experience is still open.
+      paths:
+        - apps/kernel/api-spec/auth.yaml
+        - apps/kernel/app/auth/channel-link/[token]/page.tsx
+        - apps/kernel/src/lib/auth/__tests__/channel-speaker.integration.test.ts
+        - apps/kernel/src/lib/auth/__tests__/channel-link-approval.test.ts
+    business_weight:
+      value: core
+      rationale: "Directly supports agent identity, scoped authority, custody, approvals or signed spend/action
+        accountability: bind a channel speaker to an organization bot."
+      paths: *a59
+    evidence:
+      paths:
+        - apps/kernel/api-spec/auth.yaml
+        - apps/kernel/app/auth/channel-link/[token]/page.tsx
+        - apps/kernel/src/lib/auth/__tests__/channel-speaker.integration.test.ts
+        - apps/kernel/src/lib/auth/__tests__/channel-link-approval.test.ts
+      tests:
+        - apps/kernel/src/lib/auth/__tests__/channel-speaker.integration.test.ts
+        - apps/kernel/src/lib/auth/__tests__/channel-link-approval.test.ts
+      last_touched:
+        date: 2026-11-05
+        commit: e45df42b04d7148a953817d294751389800d7717
+        path: apps/kernel/api-spec/auth.yaml
+      open_issues:
+        - 3231
+        - 3117
+  - id: calibrated-decisions
+    name: Request a typed probabilistic decision
+    action: Call a calibrated TypeSafe decision service with a sealed credential and record its metered result.
+    apps:
+      - kernel
+    services:
+      - typesafe
+    entry_points:
+      ui:
+        - /auth/connectors/typesafe
+      api:
+        - POST /typesafe/api/decide
+      sdk: []
+    audience:
+      value: agent (machine)
+      rationale: "agent (machine): Call a calibrated TypeSafe decision service with a sealed credential and record
+        its metered result. The cited entrypoints identify the acting role, not an observed user count."
+      paths: &a60
+        - apps/kernel/app/typesafe/api/decide/route.ts
+        - apps/kernel/src/lib/typesafe/client.ts
+    maturity:
+      value: works
+      rationale: Typed decision and usage tests exist; this is a service connector, not a chat model exposed through
+        /infer.
+      paths:
+        - apps/kernel/app/typesafe/api/decide/route.ts
+        - apps/kernel/src/lib/typesafe/client.ts
+        - apps/kernel/app/typesafe/api/decide/__tests__/route.test.ts
+        - apps/kernel/src/lib/typesafe/__tests__/usage.test.ts
+    business_weight:
+      value: supporting
+      rationale: "Helps a business deploy or use authorized agents but is not itself the identity-and-authority
+        promise: request a typed probabilistic decision."
+      paths: *a60
+    evidence:
+      paths:
+        - apps/kernel/app/typesafe/api/decide/route.ts
+        - apps/kernel/src/lib/typesafe/client.ts
+        - apps/kernel/app/typesafe/api/decide/__tests__/route.test.ts
+        - apps/kernel/src/lib/typesafe/__tests__/usage.test.ts
+      tests:
+        - apps/kernel/app/typesafe/api/decide/__tests__/route.test.ts
+        - apps/kernel/src/lib/typesafe/__tests__/usage.test.ts
+      last_touched:
+        date: 2026-11-04
+        commit: 4fbe9c30c53c22fc4680615b3589af59d03219c0
+        path: apps/kernel/src/lib/typesafe/__tests__/usage.test.ts
+      open_issues: []
+  - id: cloudflare
+    name: Delegate verified-zone edge operations
+    action: Grant DNS, SSL or cache operations for a verified zone and approve bulk mutations with signed history.
+    apps:
+      - kernel
+    services:
+      - cloudflare
+      - jin
+    entry_points:
+      ui:
+        - /jin
+      api:
+        - POST /cloudflare/api/zones/{zoneId}/dns
+        - POST /cloudflare/api/zones/{zoneId}/bulk
+        - GET /cloudflare/api/zones/{zoneId}/history
+      sdk: []
+    audience:
+      value: org admin
+      rationale: "org admin: Grant DNS, SSL or cache operations for a verified zone and approve bulk mutations with
+        signed history. The cited entrypoints identify the acting role, not an observed user count."
+      paths: &a61
+        - apps/kernel/api-spec/cloudflare.yaml
+        - apps/kernel/app/jin/cloudflare-panel.tsx
+    maturity:
+      value: works
+      rationale: Zone grants and approval details have tests; canonical domain verification and external zone access
+        are prerequisites, and general provider-independent DNS is not delivered.
+      paths:
+        - apps/kernel/api-spec/cloudflare.yaml
+        - apps/kernel/app/jin/cloudflare-panel.tsx
+        - apps/kernel/src/lib/cloudflare/__tests__/zone-grants.test.ts
+        - apps/kernel/app/jin/__tests__/cloudflare-approval-detail.test.tsx
+    business_weight:
+      value: supporting
+      rationale: "Helps a business deploy or use authorized agents but is not itself the identity-and-authority
+        promise: delegate verified-zone edge operations."
+      paths: *a61
+    evidence:
+      paths:
+        - apps/kernel/api-spec/cloudflare.yaml
+        - apps/kernel/app/jin/cloudflare-panel.tsx
+        - apps/kernel/src/lib/cloudflare/__tests__/zone-grants.test.ts
+        - apps/kernel/app/jin/__tests__/cloudflare-approval-detail.test.tsx
+        - apps/kernel/app/jin/page.tsx
+        - apps/kernel/api-spec/jin.yaml
+      tests:
+        - apps/kernel/src/lib/cloudflare/__tests__/zone-grants.test.ts
+        - apps/kernel/app/jin/__tests__/cloudflare-approval-detail.test.tsx
+      last_touched:
+        date: 2026-10-23
+        commit: 71c77c161104ad9f6213d0d74540f87bd58e43eb
+        path: apps/kernel/api-spec/cloudflare.yaml
+      open_issues:
+        - 3104
+        - 2920
+  - id: federation
+    name: Register and relay verifiable identities
+    action: Register a node, resolve identities, publish chain content and relay authorized DFOS operations.
+    apps:
+      - kernel
+    services:
+      - registry
+    entry_points:
+      ui:
+        - /registry
+        - /admin/federation
+      api:
+        - POST /registry/api/node/register
+        - GET /registry/api/node/resolve/{did}
+        - GET /registry/relay/{path}
+      sdk:
+        - package: dfos
+          path: packages/dfos/package.json
+    audience:
+      value: operator
+      rationale: "operator: Register a node, resolve identities, publish chain content and relay authorized DFOS
+        operations. The cited entrypoints identify the acting role, not an observed user count."
+      paths: &a62
+        - apps/kernel/api-spec/registry.yaml
+        - packages/dfos/src/content-publish.ts
+    maturity:
+      value: works
+      rationale: Relay authentication and content publication have tests; the 0.55 authority/admission upgrade is
+        not complete.
+      paths:
+        - apps/kernel/api-spec/registry.yaml
+        - packages/dfos/src/content-publish.ts
+        - apps/kernel/src/lib/registry/relay/__tests__/dfos-write-auth.test.ts
+        - packages/dfos/tests/content-publish.test.ts
+    business_weight:
+      value: supporting
+      rationale: "Helps a business deploy or use authorized agents but is not itself the identity-and-authority
+        promise: register and relay verifiable identities."
+      paths: *a62
+    evidence:
+      paths:
+        - apps/kernel/api-spec/registry.yaml
+        - packages/dfos/src/content-publish.ts
+        - apps/kernel/src/lib/registry/relay/__tests__/dfos-write-auth.test.ts
+        - packages/dfos/tests/content-publish.test.ts
+        - apps/kernel/app/registry/page.tsx
+        - apps/kernel/app/admin/federation/page.tsx
+        - packages/dfos/package.json
+      tests:
+        - apps/kernel/src/lib/registry/relay/__tests__/dfos-write-auth.test.ts
+        - packages/dfos/tests/content-publish.test.ts
+      last_touched:
+        date: 2026-11-05
+        commit: a173706edc1227678f6083ee190e09eb75911ccf
+        path: apps/kernel/src/lib/registry/relay/__tests__/dfos-write-auth.test.ts
+      open_issues:
+        - 3305
+        - 3307
+  - id: operate-node
+    name: Inspect node health and operational traces
+    action: Check services, migrations, storage, logs and correlated request or event traces from the operator
+      console.
+    apps:
+      - kernel
+    services:
+      - kernel
+      - registry
+    entry_points:
+      ui:
+        - /admin
+        - /admin/services
+        - /admin/logs
+        - /admin/telemetry
+        - /admin/events
+        - /admin/storage
+        - /health
+      api:
+        - GET /api/admin/services/health
+        - GET /api/health
+      sdk:
+        - package: db
+          path: packages/db/package.json
+        - package: logger
+          path: packages/logger/package.json
+        - package: emit
+          path: packages/emit/package.json
+    audience:
+      value: operator
+      rationale: "operator: Check services, migrations, storage, logs and correlated request or event traces from
+        the operator console. The cited entrypoints identify the acting role, not an observed user count."
+      paths: &a63
+        - apps/kernel/app/admin/admin-nav.tsx
+        - apps/kernel/app/admin/services/page.tsx
+        - packages/db/src/health-route.ts
+    maturity:
+      value: live
+      rationale: Admin navigation and health tests exist; status panels are code-level observability, not measured
+        service uptime.
+      paths:
+        - apps/kernel/app/admin/admin-nav.tsx
+        - apps/kernel/app/admin/services/page.tsx
+        - packages/db/src/health-route.ts
+        - apps/kernel/app/api/admin/services/health/__tests__/route.test.ts
+        - packages/db/tests/health-route.test.ts
+        - packages/ui/src/nav-bar.tsx
+        - apps/kernel/app/auth/layout.tsx
+    business_weight:
+      value: supporting
+      rationale: "Helps a business deploy or use authorized agents but is not itself the identity-and-authority
+        promise: inspect node health and operational traces."
+      paths: *a63
+    evidence:
+      paths:
+        - apps/kernel/app/admin/admin-nav.tsx
+        - apps/kernel/app/admin/services/page.tsx
+        - packages/db/src/health-route.ts
+        - apps/kernel/app/api/admin/services/health/__tests__/route.test.ts
+        - packages/db/tests/health-route.test.ts
+        - apps/kernel/app/admin/page.tsx
+        - apps/kernel/app/admin/logs/page.tsx
+        - apps/kernel/app/admin/telemetry/page.tsx
+        - apps/kernel/app/admin/events/page.tsx
+        - apps/kernel/app/admin/storage/page.tsx
+        - apps/kernel/app/health/page.tsx
+        - packages/db/package.json
+        - packages/logger/package.json
+        - packages/emit/package.json
+        - packages/ui/src/nav-bar.tsx
+        - apps/kernel/app/auth/layout.tsx
+        - apps/kernel/api-spec/registry.yaml
+      tests:
+        - apps/kernel/app/api/admin/services/health/__tests__/route.test.ts
+        - packages/db/tests/health-route.test.ts
+      last_touched:
+        date: 2026-10-17
+        commit: 9252c6934b88467e59f9b2cfb7e9ca8d90a1576d
+        path: apps/kernel/app/api/admin/services/health/__tests__/route.test.ts
+      open_issues: []
+  - id: operate-key-custody
+    name: Operate node key custody and recovery
+    action: Inspect node keys and vault state and perform reviewed key rotation or withdrawal reconciliation.
+    apps:
+      - kernel
+    services:
+      - vault
+      - pay
+    entry_points:
+      ui:
+        - /admin/keys
+        - /admin/vault
+        - /admin/deposits
+        - /admin/withdrawals
+      api:
+        - POST /api/admin/keys/rotation
+        - GET /pay/api/admin/reconciliation
+      sdk:
+        - package: vault-core
+          path: packages/vault-core/package.json
+    audience:
+      value: operator
+      rationale: "operator: Inspect node keys and vault state and perform reviewed key rotation or withdrawal
+        reconciliation. The cited entrypoints identify the acting role, not an observed user count."
+      paths: &a64
+        - apps/kernel/app/admin/keys/page.tsx
+        - apps/kernel/app/admin/vault/page.tsx
+        - apps/kernel/app/admin/withdrawals/page.tsx
+    maturity:
+      value: works
+      rationale: Operator pages and key/withdrawal tests exist; remaining rotation ergonomics and vault adoption
+        proof are explicitly not treated as completed.
+      paths:
+        - apps/kernel/app/admin/keys/page.tsx
+        - apps/kernel/app/admin/vault/page.tsx
+        - apps/kernel/app/admin/withdrawals/page.tsx
+        - apps/kernel/app/admin/keys/__tests__/page.test.tsx
+        - apps/kernel/src/lib/pay/__tests__/withdraw-intent.test.ts
+    business_weight:
+      value: core
+      rationale: "Directly supports agent identity, scoped authority, custody, approvals or signed spend/action
+        accountability: operate node key custody and recovery."
+      paths: *a64
+    evidence:
+      paths:
+        - apps/kernel/app/admin/keys/page.tsx
+        - apps/kernel/app/admin/vault/page.tsx
+        - apps/kernel/app/admin/withdrawals/page.tsx
+        - apps/kernel/app/admin/keys/__tests__/page.test.tsx
+        - apps/kernel/src/lib/pay/__tests__/withdraw-intent.test.ts
+        - apps/kernel/app/admin/deposits/page.tsx
+        - packages/vault-core/package.json
+        - apps/kernel/api-spec/vault.yaml
+        - apps/kernel/api-spec/pay.yaml
+      tests:
+        - apps/kernel/app/admin/keys/__tests__/page.test.tsx
+        - apps/kernel/src/lib/pay/__tests__/withdraw-intent.test.ts
+      last_touched:
+        date: 2026-10-20
+        commit: 98fe4807e627afa2f2e2349137c7fcfd84549521
+        path: apps/kernel/app/admin/keys/__tests__/page.test.tsx
+      open_issues:
+        - 2987
+        - 1979
+  - id: operate-community
+    name: Administer users, moderation and mailing lists
+    action: Inspect identity records, moderate flagged content and manage subscribed mailing audiences.
+    apps:
+      - kernel
+    services:
+      - kernel
+      - notify
+    entry_points:
+      ui:
+        - /admin/users
+        - /admin/moderation
+        - /admin/subscribers
+        - /admin/newsletter
+        - /admin/config
+      api:
+        - GET /api/admin/subscribers/export
+      sdk:
+        - package: email
+          path: packages/email/package.json
+    audience:
+      value: operator
+      rationale: "operator: Inspect identity records, moderate flagged content and manage subscribed mailing
+        audiences. The cited entrypoints identify the acting role, not an observed user count."
+      paths: &a65
+        - apps/kernel/app/admin/moderation/page.tsx
+        - apps/kernel/app/admin/subscribers/page.tsx
+        - apps/kernel/app/admin/newsletter/page.tsx
+    maturity:
+      value: works
+      rationale: Admin navigation and user detail tests exist; coverage of the whole moderation/newsletter workflow
+        is thin, so it is not graded live.
+      paths:
+        - apps/kernel/app/admin/moderation/page.tsx
+        - apps/kernel/app/admin/subscribers/page.tsx
+        - apps/kernel/app/admin/newsletter/page.tsx
+        - apps/kernel/app/admin/users/[did]/__tests__/page.test.ts
+    business_weight:
+      value: side-effect
+      rationale: "Consumer, community or project-background outcome rather than the B2B identity-and-authority front
+        door: administer users, moderation and mailing lists."
+      paths: *a65
+    evidence:
+      paths:
+        - apps/kernel/app/admin/moderation/page.tsx
+        - apps/kernel/app/admin/subscribers/page.tsx
+        - apps/kernel/app/admin/newsletter/page.tsx
+        - apps/kernel/app/admin/users/[did]/__tests__/page.test.ts
+        - apps/kernel/app/admin/users/page.tsx
+        - apps/kernel/app/admin/config/page.tsx
+        - packages/email/package.json
+        - apps/kernel/api-spec/notify.yaml
+      tests:
+        - apps/kernel/app/admin/users/[did]/__tests__/page.test.ts
+      last_touched:
+        date: 2026-09-09
+        commit: 1d6ca59a609e030ea9aab74136886f70a08f7bf0
+        path: apps/kernel/app/admin/users/[did]/__tests__/page.test.ts
+      open_issues: []
+  - id: report-bug
+    name: Report and triage a platform problem
+    action: Submit a bug report, view its state and import an authorized report into GitHub.
+    apps:
+      - kernel
+    services:
+      - kernel
+      - github
+    entry_points:
+      ui:
+        - /bugs
+        - /bugs/admin
+      api:
+        - POST /api/bugs/{id}/import
+      sdk: []
+    audience:
+      value: end user/consumer
+      rationale: "end user/consumer: Submit a bug report, view its state and import an authorized report into
+        GitHub. The cited entrypoints identify the acting role, not an observed user count."
+      paths: &a66
+        - apps/kernel/app/bugs/page.tsx
+        - apps/kernel/app/bugs/admin/page.tsx
+    maturity:
+      value: works
+      rationale: Report pages and import authorization tests exist; this is a support function rather than the
+        business product front door.
+      paths:
+        - apps/kernel/app/bugs/page.tsx
+        - apps/kernel/app/bugs/admin/page.tsx
+        - apps/kernel/app/api/bugs/[id]/import/__tests__/route.test.ts
+    business_weight:
+      value: supporting
+      rationale: "Helps a business deploy or use authorized agents but is not itself the identity-and-authority
+        promise: report and triage a platform problem."
+      paths: *a66
+    evidence:
+      paths:
+        - apps/kernel/app/bugs/page.tsx
+        - apps/kernel/app/bugs/admin/page.tsx
+        - apps/kernel/app/api/bugs/[id]/import/__tests__/route.test.ts
+        - apps/kernel/api-spec/github.yaml
+      tests:
+        - apps/kernel/app/api/bugs/[id]/import/__tests__/route.test.ts
+      last_touched:
+        date: 2026-09-22
+        commit: 3f4de38a4d1babf031c4bbe42643a375ec1bb875
+        path: apps/kernel/app/api/bugs/[id]/import/__tests__/route.test.ts
+      open_issues: []
+  - id: read-project
+    name: Read project background and updates
+    action: Read essays, the whitepaper and build log or subscribe to launch updates.
+    apps:
+      - kernel
+    services:
+      - kernel
+    entry_points:
+      ui:
+        - /project
+        - /whitepaper
+        - /articles
+        - /build
+        - /privacy
+        - /subscribe
+      api:
+        - POST /api/subscribe
+      sdk: []
+    audience:
+      value: end user/consumer
+      rationale: "end user/consumer: Read essays, the whitepaper and build log or subscribe to launch updates. The
+        cited entrypoints identify the acting role, not an observed user count."
+      paths: &a67
+        - apps/kernel/app/articles/page.tsx
+        - apps/kernel/app/subscribe/page.tsx
+        - apps/kernel/app/privacy/page.tsx
+    maturity:
+      value: partial
+      rationale: Read-only content and subscription form exist; no production readership or subscription delivery
+        proof is claimed. Keep the thesis behind Company rather than the buyer hero.
+      paths:
+        - apps/kernel/app/articles/page.tsx
+        - apps/kernel/app/subscribe/page.tsx
+        - apps/kernel/app/privacy/page.tsx
+    business_weight:
+      value: side-effect
+      rationale: "Consumer, community or project-background outcome rather than the B2B identity-and-authority front
+        door: read project background and updates."
+      paths: *a67
+    evidence:
+      paths:
+        - apps/kernel/app/articles/page.tsx
+        - apps/kernel/app/subscribe/page.tsx
+        - apps/kernel/app/privacy/page.tsx
+        - apps/kernel/app/project/page.tsx
+        - apps/kernel/app/whitepaper/page.tsx
+        - apps/kernel/app/build/page.tsx
+      tests: []
+      last_touched:
+        date: 2026-10-17
+        commit: 203d42ee183a94cbca7118c1793a48799d68c311
+        path: apps/kernel/app/subscribe/page.tsx
+      open_issues:
+        - 3284
+  - id: emit-local-usage
+    name: Report local coding-agent usage
+    action: Tail local coding-agent usage, deduplicate signed accounting input and advance the cursor only after
+      successful delivery.
+    apps:
+      - kernel
+    services:
+      - usage
+    entry_points:
+      ui: []
+      api: []
+      sdk:
+        - package: usage-emitter-claude-code
+          path: packages/usage-emitter-claude-code/package.json
+    audience:
+      value: developer
+      rationale: "developer: Tail local coding-agent usage, deduplicate signed accounting input and advance the
+        cursor only after successful delivery. The cited entrypoints identify the acting role, not an observed
+        user count."
+      paths: &a68
+        - packages/usage-emitter-claude-code/src/index.ts
+    maturity:
+      value: partial
+      rationale: CLI and cursor tests exist, but deploy/register proof is missing. Recent code means partial, not
+        dormant merely because an issue calls the emitter idle.
+      paths:
+        - packages/usage-emitter-claude-code/src/index.ts
+        - packages/usage-emitter-claude-code/tests/index.test.ts
+        - packages/usage-emitter-claude-code/tests/client.test.ts
+    business_weight:
+      value: core
+      rationale: "Directly supports agent identity, scoped authority, custody, approvals or signed spend/action
+        accountability: report local coding-agent usage."
+      paths: *a68
+    evidence:
+      paths:
+        - packages/usage-emitter-claude-code/src/index.ts
+        - packages/usage-emitter-claude-code/tests/index.test.ts
+        - packages/usage-emitter-claude-code/tests/client.test.ts
+        - packages/usage-emitter-claude-code/package.json
+        - apps/kernel/api-spec/usage.yaml
+      tests:
+        - packages/usage-emitter-claude-code/tests/index.test.ts
+        - packages/usage-emitter-claude-code/tests/client.test.ts
+      last_touched:
+        date: 2026-10-06
+        commit: b4f4155d588c77133434a71b02d959b3fc8e43e1
+        path: packages/usage-emitter-claude-code/src/index.ts
+      open_issues:
+        - 3140
+        - 3138
+  - id: compose-ui
+    name: Embed shared platform controls
+    action: Compose identity-aware navigation, chat inputs, media pickers and onboarding gates in an integrating app.
+    apps:
+      - kernel
+    services:
+      - auth
+      - chat
+      - media
+    entry_points:
+      ui: []
+      api: []
+      sdk:
+        - package: ui
+          path: packages/ui/package.json
+        - package: input
+          path: packages/input/package.json
+        - package: chat
+          path: packages/chat/package.json
+        - package: media
+          path: packages/media/package.json
+        - package: onboard
+          path: packages/onboard/package.json
+        - package: tokens
+          path: packages/tokens/package.json
+    audience:
+      value: developer
+      rationale: "developer: Compose identity-aware navigation, chat inputs, media pickers and onboarding gates in
+        an integrating app. The cited entrypoints identify the acting role, not an observed user count."
+      paths: &a69
+        - packages/ui/src/index.ts
+        - packages/input/src/index.ts
+        - packages/chat/src/index.ts
+        - packages/onboard/src/index.tsx
+    maturity:
+      value: partial
+      rationale: Reusable exports and some boundary tests exist, but direct test coverage for all chat/input
+        controls is thin. Design tokens are styling support, not a separate buyer capability.
+      paths:
+        - packages/ui/src/index.ts
+        - packages/input/src/index.ts
+        - packages/chat/src/index.ts
+        - packages/onboard/src/index.tsx
+        - packages/ui/tests/server.test.ts
+        - packages/onboard/tests/index.test.ts
+    business_weight:
+      value: supporting
+      rationale: "Helps a business deploy or use authorized agents but is not itself the identity-and-authority
+        promise: embed shared platform controls."
+      paths: *a69
+    evidence:
+      paths:
+        - packages/ui/src/index.ts
+        - packages/input/src/index.ts
+        - packages/chat/src/index.ts
+        - packages/onboard/src/index.tsx
+        - packages/ui/tests/server.test.ts
+        - packages/onboard/tests/index.test.ts
+        - packages/ui/package.json
+        - packages/input/package.json
+        - packages/chat/package.json
+        - packages/media/package.json
+        - packages/onboard/package.json
+        - packages/tokens/package.json
+        - apps/kernel/api-spec/auth.yaml
+        - apps/kernel/api-spec/chat.yaml
+        - apps/kernel/api-spec/media.yaml
+      tests:
+        - packages/ui/tests/server.test.ts
+        - packages/onboard/tests/index.test.ts
+      last_touched:
+        date: 2026-10-09
+        commit: c8edb55594b2f95659d37bf9c61e6a35f6a2b167
+        path: packages/ui/src/index.ts
+      open_issues: []
+  - id: publish-events
+    name: Publish signed events and react to them
+    action: Emit app events and project signed action, usage and settlement records through the event bus.
+    apps:
+      - kernel
+    services:
+      - kernel
+      - usage
+    entry_points:
+      ui: []
+      api: []
+      sdk:
+        - package: bus
+          path: packages/bus/package.json
+        - package: emit
+          path: packages/emit/package.json
+    audience:
+      value: developer
+      rationale: "developer: Emit app events and project signed action, usage and settlement records through the
+        event bus. The cited entrypoints identify the acting role, not an observed user count."
+      paths: &a70
+        - packages/bus/src/publish-app-event.ts
+        - packages/emit/src/index.ts
+    maturity:
+      value: works
+      rationale: Event authorization and usage-projection tests exist; event-name drift and remaining direct
+        accounting inserts limit claims of universal event parity.
+      paths:
+        - packages/bus/src/publish-app-event.ts
+        - packages/emit/src/index.ts
+        - packages/bus/tests/publish-app-event.test.ts
+        - packages/bus/tests/usage-projection.test.ts
+    business_weight:
+      value: core
+      rationale: "Directly supports agent identity, scoped authority, custody, approvals or signed spend/action
+        accountability: publish signed events and react to them."
+      paths: *a70
+    evidence:
+      paths:
+        - packages/bus/src/publish-app-event.ts
+        - packages/emit/src/index.ts
+        - packages/bus/tests/publish-app-event.test.ts
+        - packages/bus/tests/usage-projection.test.ts
+        - packages/bus/package.json
+        - packages/emit/package.json
+        - apps/kernel/api-spec/usage.yaml
+      tests:
+        - packages/bus/tests/publish-app-event.test.ts
+        - packages/bus/tests/usage-projection.test.ts
+      last_touched:
+        date: 2026-11-04
+        commit: 4fbe9c30c53c22fc4680615b3589af59d03219c0
+        path: packages/bus/tests/usage-projection.test.ts
+      open_issues:
+        - 3322
+        - 3263
+        - 3278
+  - id: preview-controls
+    name: Inspect development-only control fixtures
+    action: Preview agreement, secret, grant, DNS and run controls using development fixtures without treating
+      them as customer journeys.
+    apps:
+      - kernel
+    services:
+      - kernel
+    entry_points:
+      ui:
+        - /dev/agreement-preview
+        - /dev/app-secrets-preview
+        - /dev/cloudflare-preview
+        - /dev/grants-preview
+        - /dev/org-connections-preview
+        - /dev/runs-preview
+      api: []
+      sdk: []
+    audience:
+      value: developer
+      rationale: "developer: Preview agreement, secret, grant, DNS and run controls using development fixtures
+        without treating them as customer journeys. The cited entrypoints identify the acting role, not an
+        observed user count."
+      paths: &a71
+        - apps/kernel/app/dev/grants-preview/page.tsx
+    maturity:
+      value: partial
+      rationale: Development-only pages refuse production use and supply fixture previews. They are not proof that
+        the associated full workflow is live.
+      paths:
+        - apps/kernel/app/dev/grants-preview/page.tsx
+        - apps/kernel/app/dev/grants-preview/__tests__/preview.test.ts
+    business_weight:
+      value: supporting
+      rationale: "Helps a business deploy or use authorized agents but is not itself the identity-and-authority
+        promise: inspect development-only control fixtures."
+      paths: *a71
+    evidence:
+      paths:
+        - apps/kernel/app/dev/grants-preview/page.tsx
+        - apps/kernel/app/dev/grants-preview/__tests__/preview.test.ts
+        - apps/kernel/app/dev/agreement-preview/page.tsx
+        - apps/kernel/app/dev/app-secrets-preview/page.tsx
+        - apps/kernel/app/dev/cloudflare-preview/page.tsx
+        - apps/kernel/app/dev/org-connections-preview/page.tsx
+        - apps/kernel/app/dev/runs-preview/page.tsx
+      tests:
+        - apps/kernel/app/dev/grants-preview/__tests__/preview.test.ts
+      last_touched:
+        date: 2026-10-21
+        commit: 44b031a88d69c09d471c1c69142ee5467ac1e9d7
+        path: apps/kernel/app/dev/grants-preview/__tests__/preview.test.ts
+      open_issues: []
+coverage:
+  pages:
+    - path: apps/kernel/app/admin/config/page.tsx
+      capabilities:
+        - operate-community
+    - path: apps/kernel/app/admin/deposits/page.tsx
+      capabilities:
+        - operate-key-custody
+    - path: apps/kernel/app/admin/events/page.tsx
+      capabilities:
+        - operate-node
+    - path: apps/kernel/app/admin/events/trace/[correlationId]/page.tsx
+      capabilities:
+        - operate-node
+    - path: apps/kernel/app/admin/federation/page.tsx
+      capabilities:
+        - federation
+    - path: apps/kernel/app/admin/keys/page.tsx
+      capabilities:
+        - operate-key-custody
+    - path: apps/kernel/app/admin/logs/page.tsx
+      capabilities:
+        - operate-node
+    - path: apps/kernel/app/admin/moderation/page.tsx
+      capabilities:
+        - operate-community
+    - path: apps/kernel/app/admin/newsletter/page.tsx
+      capabilities:
+        - operate-community
+    - path: apps/kernel/app/admin/page.tsx
+      capabilities:
+        - operate-node
+    - path: apps/kernel/app/admin/services/page.tsx
+      capabilities:
+        - operate-node
+    - path: apps/kernel/app/admin/storage/page.tsx
+      capabilities:
+        - operate-node
+    - path: apps/kernel/app/admin/subscribers/page.tsx
+      capabilities:
+        - operate-community
+    - path: apps/kernel/app/admin/telemetry/page.tsx
+      capabilities:
+        - operate-node
+    - path: apps/kernel/app/admin/telemetry/trace/[correlationId]/page.tsx
+      capabilities:
+        - operate-node
+    - path: apps/kernel/app/admin/users/page.tsx
+      capabilities:
+        - operate-community
+    - path: apps/kernel/app/admin/users/[did]/page.tsx
+      capabilities:
+        - operate-community
+    - path: apps/kernel/app/admin/vault/page.tsx
+      capabilities:
+        - operate-key-custody
+    - path: apps/kernel/app/admin/withdrawals/page.tsx
+      capabilities:
+        - operate-key-custody
+    - path: apps/kernel/app/articles/page.tsx
+      capabilities:
+        - read-project
+    - path: apps/kernel/app/articles/[handle]/page.tsx
+      capabilities:
+        - read-project
+    - path: apps/kernel/app/articles/[handle]/[slug]/page.tsx
+      capabilities:
+        - read-project
+    - path: apps/kernel/app/auth/agents/page.tsx
+      capabilities:
+        - manage-agents
+        - delegate-authority
+        - provision-runtime
+    - path: apps/kernel/app/auth/app-directory/page.tsx
+      capabilities:
+        - app-directory
+    - path: apps/kernel/app/auth/apps/page.tsx
+      capabilities:
+        - app-consent
+    - path: apps/kernel/app/auth/attestations/page.tsx
+      capabilities:
+        - signed-documents
+        - issue-attestations
+    - path: apps/kernel/app/auth/authorize/page.tsx
+      capabilities:
+        - mcp-tools
+        - app-consent
+    - path: apps/kernel/app/auth/channel-link/[token]/page.tsx
+      capabilities:
+        - link-channel-speaker
+    - path: apps/kernel/app/auth/connectors/page.tsx
+      capabilities:
+        - org-held-keys
+        - connector-consent
+    - path: apps/kernel/app/auth/connectors/[id]/page.tsx
+      capabilities:
+        - org-held-keys
+        - connector-consent
+        - account-spend
+    - path: apps/kernel/app/auth/corpus/page.tsx
+      capabilities:
+        - corpus-search
+    - path: apps/kernel/app/auth/developer/apps/page.tsx
+      capabilities:
+        - register-app
+    - path: apps/kernel/app/auth/developer/apps/[appId]/page.tsx
+      capabilities:
+        - register-app
+    - path: apps/kernel/app/auth/documents/[id]/page.tsx
+      capabilities:
+        - signed-documents
+    - path: apps/kernel/app/auth/groups/new/page.tsx
+      capabilities:
+        - manage-org
+    - path: apps/kernel/app/auth/groups/page.tsx
+      capabilities:
+        - create-account
+    - path: apps/kernel/app/auth/groups/[groupDid]/ownership/page.tsx
+      capabilities:
+        - manage-org
+    - path: apps/kernel/app/auth/groups/[groupDid]/settings/page.tsx
+      capabilities:
+        - manage-org
+    - path: apps/kernel/app/auth/legal-entity/page.tsx
+      capabilities:
+        - signed-documents
+    - path: apps/kernel/app/auth/login/page.tsx
+      capabilities:
+        - create-account
+    - path: apps/kernel/app/auth/members/page.tsx
+      capabilities:
+        - manage-org
+    - path: apps/kernel/app/auth/money/page.tsx
+      capabilities:
+        - request-payment
+        - bank-disclosure
+    - path: apps/kernel/app/auth/notifications/page.tsx
+      capabilities:
+        - notify
+    - path: apps/kernel/app/auth/onboard/page.tsx
+      capabilities:
+        - create-account
+    - path: apps/kernel/app/auth/page.tsx
+      capabilities:
+        - manage-org
+    - path: apps/kernel/app/auth/recover/page.tsx
+      capabilities:
+        - create-account
+    - path: apps/kernel/app/auth/register/page.tsx
+      capabilities:
+        - create-account
+    - path: apps/kernel/app/auth/security/page.tsx
+      capabilities:
+        - create-account
+    - path: apps/kernel/app/auth/settings/page.tsx
+      capabilities:
+        - manage-org
+        - verify-domains
+    - path: apps/kernel/app/auth/settings/security/page.tsx
+      capabilities:
+        - create-account
+    - path: apps/kernel/app/auth/stubs/new/page.tsx
+      capabilities:
+        - profile
+    - path: apps/kernel/app/auth/stubs/[did]/page.tsx
+      capabilities:
+        - profile
+    - path: apps/kernel/app/auth/tax/page.tsx
+      capabilities:
+        - request-payment
+    - path: apps/kernel/app/auth/[app]/page.tsx
+      capabilities:
+        - app-directory
+    - path: apps/kernel/app/bugs/admin/page.tsx
+      capabilities:
+        - report-bug
+    - path: apps/kernel/app/bugs/page.tsx
+      capabilities:
+        - report-bug
+    - path: apps/kernel/app/build/page.tsx
+      capabilities:
+        - read-project
+    - path: apps/kernel/app/bump/page.tsx
+      capabilities:
+        - connections
+    - path: apps/kernel/app/chat/conversations/page.tsx
+      capabilities:
+        - chat
+    - path: apps/kernel/app/chat/conversations/[type]/[slug]/page.tsx
+      capabilities:
+        - chat
+    - path: apps/kernel/app/chat/page.tsx
+      capabilities:
+        - chat
+    - path: apps/kernel/app/connections/invite/[did]/[code]/page.tsx
+      capabilities:
+        - connections
+    - path: apps/kernel/app/connections/page.tsx
+      capabilities:
+        - connections
+    - path: apps/kernel/app/connections/pods/[id]/page.tsx
+      capabilities:
+        - connections
+    - path: apps/kernel/app/dev/agreement-preview/page.tsx
+      capabilities:
+        - preview-controls
+    - path: apps/kernel/app/dev/app-secrets-preview/page.tsx
+      capabilities:
+        - preview-controls
+    - path: apps/kernel/app/dev/cloudflare-preview/page.tsx
+      capabilities:
+        - preview-controls
+    - path: apps/kernel/app/dev/grants-preview/page.tsx
+      capabilities:
+        - preview-controls
+    - path: apps/kernel/app/dev/org-connections-preview/page.tsx
+      capabilities:
+        - preview-controls
+    - path: apps/kernel/app/dev/runs-preview/page.tsx
+      capabilities:
+        - preview-controls
+    - path: apps/kernel/app/developer-guide/page.tsx
+      capabilities:
+        - evaluate-platform
+        - integrate-sdk
+    - path: apps/kernel/app/disclosures/page.tsx
+      capabilities:
+        - disclosures
+    - path: apps/kernel/app/docs/page.tsx
+      capabilities:
+        - integrate-sdk
+    - path: apps/kernel/app/health/page.tsx
+      capabilities:
+        - operate-node
+    - path: apps/kernel/app/jin/brief-settings/page.tsx
+      capabilities:
+        - brief-retention
+    - path: apps/kernel/app/jin/org-settings/page.tsx
+      capabilities:
+        - org-mail
+    - path: apps/kernel/app/jin/page.tsx
+      capabilities:
+        - delegate-authority
+        - approve-actions
+        - import-secrets
+        - mint-service-keys
+        - track-runs
+        - audit-record
+        - account-spend
+        - reach-agent
+        - cloudflare
+    - path: apps/kernel/app/jin/vault/renew/page.tsx
+      capabilities:
+        - org-held-keys
+    - path: apps/kernel/app/media/page.tsx
+      capabilities:
+        - media
+    - path: apps/kernel/app/notify/page.tsx
+      capabilities:
+        - notify
+    - path: apps/kernel/app/notify/settings/page.tsx
+      capabilities:
+        - notify
+    - path: apps/kernel/app/page.tsx
+      capabilities:
+        - evaluate-platform
+    - path: apps/kernel/app/pay/history/page.tsx
+      capabilities:
+        - wallet
+    - path: apps/kernel/app/pay/page.tsx
+      capabilities:
+        - wallet
+    - path: apps/kernel/app/pay/r/[handle]/page.tsx
+      capabilities:
+        - request-payment
+    - path: apps/kernel/app/pay/topup/page.tsx
+      capabilities:
+        - wallet
+    - path: apps/kernel/app/pay/topup/success/page.tsx
+      capabilities:
+        - wallet
+    - path: apps/kernel/app/privacy/page.tsx
+      capabilities:
+        - read-project
+    - path: apps/kernel/app/profile/edit/page.tsx
+      capabilities:
+        - profile
+    - path: apps/kernel/app/profile/keys/page.tsx
+      capabilities:
+        - create-account
+    - path: apps/kernel/app/profile/login/page.tsx
+      capabilities:
+        - profile
+    - path: apps/kernel/app/profile/p/[handle]/page.tsx
+      capabilities:
+        - profile
+        - presence
+    - path: apps/kernel/app/profile/page.tsx
+      capabilities:
+        - profile
+    - path: apps/kernel/app/profile/register/page.tsx
+      capabilities:
+        - create-account
+    - path: apps/kernel/app/profile/[handle]/page.tsx
+      capabilities:
+        - profile
+    - path: apps/kernel/app/project/page.tsx
+      capabilities:
+        - evaluate-platform
+        - read-project
+    - path: apps/kernel/app/register/page.tsx
+      capabilities:
+        - evaluate-platform
+    - path: apps/kernel/app/registry/docs/page.tsx
+      capabilities:
+        - evaluate-platform
+        - integrate-sdk
+    - path: apps/kernel/app/registry/page.tsx
+      capabilities:
+        - federation
+    - path: apps/kernel/app/subscribe/page.tsx
+      capabilities:
+        - read-project
+    - path: apps/kernel/app/whitepaper/page.tsx
+      capabilities:
+        - evaluate-platform
+        - read-project
+    - path: apps/kernel/app/[handle]/reach/page.tsx
+      capabilities:
+        - reach-agent
+  specs:
+    - path: apps/corpus/api-spec/openapi.yaml
+      capabilities:
+        - corpus-search
+    - path: apps/kernel/api-spec/auth.yaml
+      capabilities:
+        - create-account
+        - manage-org
+        - manage-agents
+        - delegate-authority
+        - signed-documents
+        - verify-domains
+        - connector-consent
+        - mcp-tools
+        - reach-agent
+        - verify-turn
+        - register-app
+        - app-consent
+        - app-directory
+        - integrate-sdk
+        - provision-runtime
+        - guard-agent-output
+        - issue-attestations
+        - request-payment
+        - bank-disclosure
+        - corpus-search
+        - profile
+        - connections
+        - disclosures
+        - link-channel-speaker
+        - compose-ui
+    - path: apps/kernel/api-spec/calendar.yaml
+      capabilities:
+        - calendar
+        - availability
+        - broker-agent
+    - path: apps/kernel/api-spec/chat.yaml
+      capabilities:
+        - nanoclaw-channel
+        - chat
+        - compose-ui
+    - path: apps/kernel/api-spec/cloudflare.yaml
+      capabilities:
+        - cloudflare
+    - path: apps/kernel/api-spec/connections.yaml
+      capabilities:
+        - org-held-keys
+        - connector-consent
+        - upstream-credentials
+        - postman-mcp
+        - chat
+        - connections
+        - disclosures
+    - path: apps/kernel/api-spec/github.yaml
+      capabilities:
+        - github-work
+        - report-bug
+    - path: apps/kernel/api-spec/google.yaml
+      capabilities:
+        - google-work
+    - path: apps/kernel/api-spec/infer.yaml
+      capabilities:
+        - org-held-keys
+        - discover-authority
+        - sealed-inference
+        - presence
+    - path: apps/kernel/api-spec/jin.yaml
+      capabilities:
+        - delegate-authority
+        - approve-actions
+        - import-secrets
+        - mint-service-keys
+        - org-mail
+        - track-runs
+        - audit-record
+        - account-spend
+        - brief-retention
+        - dispatch-agent
+        - reach-agent
+        - cloudflare
+    - path: apps/kernel/api-spec/media.yaml
+      capabilities:
+        - signed-documents
+        - fair-settlement
+        - media
+        - transcribe
+        - compose-ui
+    - path: apps/kernel/api-spec/notify.yaml
+      capabilities:
+        - approve-actions
+        - org-mail
+        - notify
+        - operate-community
+    - path: apps/kernel/api-spec/pay.yaml
+      capabilities:
+        - request-payment
+        - wallet
+        - app-checkout
+        - escrow
+        - fair-settlement
+        - money-fx
+        - operate-key-custody
+    - path: apps/kernel/api-spec/profile.yaml
+      capabilities:
+        - create-account
+        - profile
+        - presence
+    - path: apps/kernel/api-spec/quickbooks.yaml
+      capabilities:
+        - accounting-connector
+    - path: apps/kernel/api-spec/registry.yaml
+      capabilities:
+        - evaluate-platform
+        - verify-domains
+        - register-app
+        - app-directory
+        - issue-attestations
+        - federation
+        - operate-node
+    - path: apps/kernel/api-spec/usage.yaml
+      capabilities:
+        - account-spend
+        - nanoclaw-channel
+        - emit-local-usage
+        - publish-events
+    - path: apps/kernel/api-spec/vault.yaml
+      capabilities:
+        - org-held-keys
+        - import-secrets
+        - mint-service-keys
+        - ssh-authority
+        - integrate-sdk
+        - bank-disclosure
+        - operate-key-custody
+    - path: apps/kernel/app/api/spec/route.ts
+      capabilities:
+        - evaluate-platform
+        - read-project
+    - path: apps/kernel/app/auth/api/spec/route.ts
+      capabilities:
+        - create-account
+        - manage-org
+        - manage-agents
+        - delegate-authority
+        - signed-documents
+        - verify-domains
+        - connector-consent
+        - mcp-tools
+        - reach-agent
+        - verify-turn
+        - register-app
+        - app-consent
+        - app-directory
+        - integrate-sdk
+        - provision-runtime
+        - guard-agent-output
+        - issue-attestations
+        - request-payment
+        - bank-disclosure
+        - corpus-search
+        - profile
+        - connections
+        - disclosures
+        - link-channel-speaker
+        - compose-ui
+    - path: apps/kernel/app/calendar/api/spec/route.ts
+      capabilities:
+        - calendar
+        - availability
+        - broker-agent
+    - path: apps/kernel/app/chat/api/spec/route.ts
+      capabilities:
+        - nanoclaw-channel
+        - chat
+        - compose-ui
+    - path: apps/kernel/app/cloudflare/api/spec/route.ts
+      capabilities:
+        - cloudflare
+    - path: apps/kernel/app/connections/api/spec/route.ts
+      capabilities:
+        - org-held-keys
+        - connector-consent
+        - upstream-credentials
+        - postman-mcp
+        - chat
+        - connections
+        - disclosures
+    - path: apps/kernel/app/github/api/spec/route.ts
+      capabilities:
+        - github-work
+        - report-bug
+    - path: apps/kernel/app/infer/api/spec/route.ts
+      capabilities:
+        - org-held-keys
+        - discover-authority
+        - sealed-inference
+        - presence
+    - path: apps/kernel/app/jin/api/spec/route.ts
+      capabilities:
+        - delegate-authority
+        - approve-actions
+        - import-secrets
+        - mint-service-keys
+        - org-mail
+        - track-runs
+        - audit-record
+        - account-spend
+        - brief-retention
+        - dispatch-agent
+        - reach-agent
+        - cloudflare
+    - path: apps/kernel/app/media/api/spec/route.ts
+      capabilities:
+        - signed-documents
+        - fair-settlement
+        - media
+        - transcribe
+        - compose-ui
+    - path: apps/kernel/app/notify/api/spec/route.ts
+      capabilities:
+        - approve-actions
+        - org-mail
+        - notify
+        - operate-community
+    - path: apps/kernel/app/pay/api/spec/route.ts
+      capabilities:
+        - request-payment
+        - wallet
+        - app-checkout
+        - escrow
+        - fair-settlement
+        - money-fx
+        - operate-key-custody
+    - path: apps/kernel/app/profile/api/spec/route.ts
+      capabilities:
+        - create-account
+        - profile
+        - presence
+    - path: apps/kernel/app/quickbooks/api/spec/route.ts
+      capabilities:
+        - accounting-connector
+    - path: apps/kernel/app/registry/api/spec/route.ts
+      capabilities:
+        - evaluate-platform
+        - verify-domains
+        - register-app
+        - app-directory
+        - issue-attestations
+        - federation
+        - operate-node
+    - path: apps/kernel/app/usage/api/spec/route.ts
+      capabilities:
+        - account-spend
+        - nanoclaw-channel
+        - emit-local-usage
+        - publish-events
+    - path: apps/kernel/app/vault/api/spec/route.ts
+      capabilities:
+        - org-held-keys
+        - import-secrets
+        - mint-service-keys
+        - ssh-authority
+        - integrate-sdk
+        - bank-disclosure
+        - operate-key-custody
+  packages:
+    - path: packages/auth/package.json
+      capabilities:
+        - create-account
+        - manage-org
+        - manage-agents
+        - delegate-authority
+        - signed-documents
+        - connector-consent
+        - discover-authority
+        - mcp-tools
+        - verify-turn
+        - app-consent
+        - integrate-sdk
+        - issue-attestations
+        - app-checkout
+        - disclosures
+      note: Implementation SDK; grade the linked actions, not the number of exports.
+    - path: packages/auth-client/package.json
+      capabilities:
+        - mint-service-keys
+        - register-app
+        - app-consent
+        - integrate-sdk
+      note: Implementation SDK; grade the linked actions, not the number of exports.
+    - path: packages/bus/package.json
+      capabilities:
+        - track-runs
+        - audit-record
+        - reach-agent
+        - availability
+        - publish-events
+      note: Implementation SDK; grade the linked actions, not the number of exports.
+    - path: packages/chat/package.json
+      capabilities:
+        - chat
+        - compose-ui
+      note: Implementation SDK; grade the linked actions, not the number of exports.
+    - path: packages/cid/package.json
+      capabilities:
+        - audit-record
+        - issue-attestations
+      note: Implementation SDK; grade the linked actions, not the number of exports.
+    - path: packages/claw-envelope/package.json
+      capabilities:
+        - provision-runtime
+      note: Implementation SDK; grade the linked actions, not the number of exports.
+    - path: packages/claw-provisioner/package.json
+      capabilities:
+        - provision-runtime
+      note: Implementation SDK; grade the linked actions, not the number of exports.
+    - path: packages/config/package.json
+      capabilities:
+        - app-directory
+      note: Implementation SDK; grade the linked actions, not the number of exports.
+    - path: packages/db/package.json
+      capabilities:
+        - operate-node
+      note: Implementation SDK; grade the linked actions, not the number of exports.
+    - path: packages/dfos/package.json
+      capabilities:
+        - audit-record
+        - issue-attestations
+        - federation
+      note: Implementation SDK; grade the linked actions, not the number of exports.
+    - path: packages/email/package.json
+      capabilities:
+        - org-mail
+        - notify
+        - operate-community
+      note: Implementation SDK; grade the linked actions, not the number of exports.
+    - path: packages/emit/package.json
+      capabilities:
+        - operate-node
+        - publish-events
+      note: Implementation SDK; grade the linked actions, not the number of exports.
+    - path: packages/eslint-config-imajin/package.json
+      capabilities: []
+      note: Build-time lint configuration, not a person/agent product action.
+    - path: packages/fair/package.json
+      capabilities:
+        - request-payment
+        - app-checkout
+        - fair-settlement
+        - media
+      note: Implementation SDK; grade the linked actions, not the number of exports.
+    - path: packages/input/package.json
+      capabilities:
+        - chat
+        - compose-ui
+      note: Implementation SDK; grade the linked actions, not the number of exports.
+    - path: packages/llm/package.json
+      capabilities:
+        - sealed-inference
+        - presence
+      note: Implementation SDK; grade the linked actions, not the number of exports.
+    - path: packages/logger/package.json
+      capabilities:
+        - operate-node
+      note: Implementation SDK; grade the linked actions, not the number of exports.
+    - path: packages/media/package.json
+      capabilities:
+        - media
+        - compose-ui
+      note: Implementation SDK; grade the linked actions, not the number of exports.
+    - path: packages/money/package.json
+      capabilities:
+        - request-payment
+        - wallet
+        - app-checkout
+        - escrow
+        - money-fx
+      note: Implementation SDK; grade the linked actions, not the number of exports.
+    - path: packages/nanoclaw-imajin-channel/package.json
+      capabilities:
+        - nanoclaw-channel
+      note: Implementation SDK; grade the linked actions, not the number of exports.
+    - path: packages/notify/package.json
+      capabilities:
+        - notify
+      note: Implementation SDK; grade the linked actions, not the number of exports.
+    - path: packages/onboard/package.json
+      capabilities:
+        - create-account
+        - compose-ui
+      note: Implementation SDK; grade the linked actions, not the number of exports.
+    - path: packages/openclaw-infer-passthrough/package.json
+      capabilities:
+        - sealed-inference
+      note: Implementation SDK; grade the linked actions, not the number of exports.
+    - path: packages/openclaw-reflex-guard/package.json
+      capabilities:
+        - guard-agent-output
+      note: Implementation SDK; grade the linked actions, not the number of exports.
+    - path: packages/provision-bootstrap/package.json
+      capabilities:
+        - integrate-sdk
+      note: Implementation SDK; grade the linked actions, not the number of exports.
+    - path: packages/tokens/package.json
+      capabilities:
+        - compose-ui
+      note: Implementation SDK; grade the linked actions, not the number of exports.
+    - path: packages/trust-graph/package.json
+      capabilities:
+        - connections
+      note: Implementation SDK; grade the linked actions, not the number of exports.
+    - path: packages/ui/package.json
+      capabilities:
+        - manage-org
+        - app-directory
+        - compose-ui
+      note: Implementation SDK; grade the linked actions, not the number of exports.
+    - path: packages/usage-emitter-claude-code/package.json
+      capabilities:
+        - account-spend
+        - emit-local-usage
+      note: Implementation SDK; grade the linked actions, not the number of exports.
+    - path: packages/vault-core/package.json
+      capabilities:
+        - org-held-keys
+        - import-secrets
+        - mint-service-keys
+        - ssh-authority
+        - bank-disclosure
+        - operate-key-custody
+      note: Implementation SDK; grade the linked actions, not the number of exports.
+  external:
+    - service: events
+      capabilities:
+        - create events
+        - sell tickets
+        - check in attendees
+      evidence:
+        - packages/config/src/services.ts
+        - README.md
+      grade: "not graded: implementation extracted from this checkout; payment callbacks do not prove ticketing."
+    - service: market
+      capabilities:
+        - list goods
+        - buy goods
+      evidence:
+        - packages/config/src/services.ts
+        - README.md
+      grade: "not graded: implementation extracted from this checkout; static port rows do not prove a deployed
+        marketplace."
+    - service: learn
+      capabilities:
+        - publish courses
+        - track learning
+      evidence:
+        - packages/config/src/services.ts
+      grade: "not graded: implementation extracted from this checkout."
