@@ -9,6 +9,8 @@
  */
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { randomUUID } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import postgres from 'postgres';
 import { drizzle, type PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import { and, eq, isNull, SQL } from 'drizzle-orm';
@@ -70,6 +72,7 @@ function createTable(table: PgTable): string {
 }
 
 const adminUrl = process.env.CONSENT_TEST_DATABASE_URL;
+const uniqueGrantMigration = readFileSync(resolve('migrations/0239_unique_unrevoked_app_grant.sql'), 'utf8');
 const databaseName = `consent_test_${randomUUID().replaceAll('-', '')}`;
 let admin: ReturnType<typeof postgres>;
 let client: ReturnType<typeof postgres>;
@@ -160,6 +163,7 @@ describe.skipIf(!adminUrl)('shared app consent — disposable real PostgreSQL (#
   });
   beforeEach(async () => {
     h.failSigningType = '';
+    await client.unsafe('DROP INDEX IF EXISTS auth.uniq_auth_attestations_unrevoked_app_grant');
     await client.unsafe('TRUNCATE auth.attestations, auth.channel_links, auth.oauth_refresh_tokens');
   });
 
@@ -335,4 +339,83 @@ describe.skipIf(!adminUrl)('shared app consent — disposable real PostgreSQL (#
     expect(proofs).toHaveLength(changed ? 1 : 0);
     expect(await projection()).toMatchObject({ status: 'active', scopes: (survivors[0].payload as { scopes: string[] }).scopes });
   }, 15000);
+  describe('with the unique unrevoked grant constraint (#3023)', () => {
+    beforeEach(async () => {
+      await client.unsafe(uniqueGrantMigration);
+    });
+
+    it.each(['did:imajin:owner', 'did:imajin:org'])('refuses a writer bypassing consent while the first insert is uncommitted (%s)', async ownerDid => {
+      const first = await client.reserve();
+      await first`BEGIN`;
+      await first`
+        INSERT INTO auth.attestations (id, issuer_did, subject_did, type, signature)
+        VALUES ('first', ${ownerDid}, ${consent.appDid}, 'app.authorized', 'retained-first-proof')
+      `;
+      // No advisory lock: the UNIQUE index itself must make the second
+      // connection wait for the first transaction, then refuse its write.
+      const second = client`
+        INSERT INTO auth.attestations (id, issuer_did, subject_did, type, signature)
+        VALUES ('second', ${ownerDid}, ${consent.appDid}, 'app.authorized', 'second-proof')
+      `.then(() => null, (error: unknown) => error);
+      try {
+        const deadline = Date.now() + 5000;
+        let blocked = false;
+        while (Date.now() < deadline) {
+          const rows = await admin`
+            SELECT count(*)::int AS count FROM pg_stat_activity
+            WHERE datname = ${databaseName} AND wait_event = 'transactionid'
+          `;
+          if (rows[0].count > 0) {
+            blocked = true;
+            break;
+          }
+          await new Promise(resolve => setTimeout(resolve, 20));
+        }
+        expect(blocked).toBe(true);
+      } finally {
+        await first`COMMIT`;
+        first.release();
+      }
+      expect(await second).toMatchObject({
+        code: '23505', constraint_name: 'uniq_auth_attestations_unrevoked_app_grant',
+      });
+      const rows = await client`SELECT id, signature FROM auth.attestations`;
+      expect([...rows]).toEqual([{ id: 'first', signature: 'retained-first-proof' }]);
+    }, 15000);
+
+    it.each([false, true])('keeps contending consent semantics (changed scopes=%s)', async changed => {
+      const ids = await Promise.all([
+        upsertAppAuthorization(consent),
+        upsertAppAuthorization({ ...consent, scopes: changed ? ['profile:read'] : ['media:read', 'media:read'] }),
+      ]);
+      expect(new Set(ids).size).toBe(changed ? 2 : 1);
+      const survivors = await live();
+      expect(survivors).toHaveLength(1);
+      await verifyProofs(changed ? ids.filter(id => id !== survivors[0].id) : []);
+      expect(await client`SELECT id FROM auth.attestations WHERE type = 'app.authorized'`)
+        .toHaveLength(changed ? 2 : 1);
+    });
+
+    it('retains expired history and rolls back consent rather than silently cleaning it up', async () => {
+      await seed('expired', ['media:read'], { expiresAt: new Date(0) });
+      const before = await state();
+      await expect(upsertAppAuthorization(consent)).rejects.toMatchObject({ code: '23505' });
+      expect(await state()).toEqual(before);
+      await verifyProofs([]);
+    });
+
+    it('permits re-grant after explicit signed revocation and retains verifiable history', async () => {
+      await seed('expired', ['media:read'], { expiresAt: new Date(0) });
+      expect(await revokeAppAuthorization({
+        ownerDid: consent.ownerDid, appDid: consent.appDid,
+        privateKey: consent.privateKey, attestationId: 'expired',
+      })).toMatchObject({ revoked: true });
+      const id = await upsertAppAuthorization(consent);
+      expect((await live()).map(row => row.id)).toEqual([id]);
+      await verifyProofs(['expired']);
+      const [expired] = await client`SELECT signature, revoked_at FROM auth.attestations WHERE id = 'expired'`;
+      expect(expired.signature).toBe('historical-fixture');
+      expect(expired.revoked_at).toBeInstanceOf(Date);
+    });
+  });
 });

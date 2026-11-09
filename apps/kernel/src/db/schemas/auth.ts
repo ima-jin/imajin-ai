@@ -161,6 +161,9 @@ export const attestations = authSchema.table('attestations', {
   subjectIdx: index('idx_auth_attestations_subject').on(table.subjectDid),
   issuerIdx: index('idx_auth_attestations_issuer').on(table.issuerDid),
   typeIdx: index('idx_auth_attestations_type').on(table.type),
+  unrevokedAppGrantIdx: uniqueIndex('uniq_auth_attestations_unrevoked_app_grant')
+    .on(table.issuerDid, table.subjectDid)
+    .where(sql`${table.type} = 'app.authorized' AND ${table.revokedAt} IS NULL`),
   statusIdx: index('idx_auth_attestations_status').on(table.attestationStatus),
   expiresIdx: index('idx_auth_attestations_expires').on(table.expiresAt).where(sql`${table.expiresAt} IS NOT NULL`),
   prevEventRefIdx: index('idx_auth_attestations_prev_event_ref').on(table.prevEventRef).where(sql`${table.prevEventRef} IS NOT NULL`),
