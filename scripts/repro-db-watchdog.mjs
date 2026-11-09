@@ -19,18 +19,19 @@ export async function reproduceDatabaseWatchdog() {
   let now = 0;
   let saved = {};
   try {
-    for (let tick = 0; tick < 4; tick++) {
+    await [0, 1, 2, 3].reduce(async (pending, tick) => {
+      await pending;
       // New probe each minute, like the cron entry: counters survive exit.
       const probe = createProbe(saved, {
         now: () => now, pid: async () => 123,
         restart: async app => { restarts.push(app); healthy = true; },
         deliver: async () => true,
-        persist: async state => { saved = JSON.parse(JSON.stringify(state)); },
+        persist: async state => { saved = structuredClone(state); },
       }, POLICY);
       await probe.tick([target], { execute: true, kernelPort: target.port });
       assert.equal(restarts.length, tick < 2 ? 0 : 1);
       now += 60_000;
-    }
+    }, Promise.resolve());
     assert.deepEqual(restarts, ['prod-jin']);
     assert.equal(saved.apps['prod-jin'].failures, 0);
     return { failures: 3, restarts: restarts.length, recovered: healthy };
