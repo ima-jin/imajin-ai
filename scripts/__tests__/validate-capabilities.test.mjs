@@ -66,6 +66,15 @@ describe('capability map acceptance', () => {
     expect(guide).toContain('not a reference-customer');
   });
 
+  it('ranks every core-weight capability exactly once with an evidence link', () => {
+    const ranking = guide.split('<!-- core-ranking:start -->')[1].split('<!-- core-ranking:end -->')[0];
+    const rows = [...ranking.matchAll(/^(\d+)\. `([^`]+)` — \[[^\]]+\]\(([^)]+)\)\.$/gm)];
+    const core = document.capabilities.filter(c => c.business_weight.value === 'core');
+    expect(rows.map(row => row[2]).sort()).toEqual(core.map(c => c.id).sort());
+    expect(rows.map(row => Number(row[1]))).toEqual(core.map((_c, i) => i + 1));
+    for (const row of rows) expect(() => evidenceFile(ROOT, row[3].slice('../../'.length))).not.toThrow();
+  });
+
   it('spot-checks five independent implementation citations and their exact git dates when history is available', () => {
     const samples = ['manage-agents', 'approve-actions', 'sealed-inference', 'corpus-search', BROKER];
     for (const id of samples) {

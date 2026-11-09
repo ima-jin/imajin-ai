@@ -324,6 +324,54 @@ Rank by the identity-and-authority promise, then strength of available proof:
    are current proof; complete cross-surface metering and production
    reconciliation are not. Keep this promise qualified until the gaps below land.
 
+### Complete core capability order
+
+The themes above are the short sales cut. The complete proposed order below
+covers **every core-weight action**, with its current test proof. Rank expresses
+buyer relevance, not revenue, usage or a promise of equal readiness. Consult the
+audience table and YAML for each grade and its limits.
+
+<!-- core-ranking:start -->
+1. `manage-agents` — [identity creation proof](../../apps/kernel/app/auth/api/agents/__tests__/route.test.ts).
+2. `manage-org` — [organization authority proof](../../apps/kernel/src/lib/auth/__tests__/org-grants.integration.test.ts).
+3. `delegate-authority` — [grant lifecycle proof](../../apps/kernel/app/auth/api/grants/__tests__/route.test.ts).
+4. `discover-authority` — [personal/org discovery proof](../../apps/kernel/src/lib/inference/__tests__/org-held-inference.integration.test.ts).
+5. `approve-actions` — [principal decision proof](../../apps/kernel/app/jin/api/operator-approvals/[proposalId]/decision/__tests__/route-mode-countersign.test.ts).
+6. `audit-record` — [organization record proof](../../apps/kernel/app/jin/api/events/__tests__/org-record.integration.test.ts).
+7. `verify-turn` — [turn evidence proof](../../packages/auth/tests/turn-evidence.test.ts).
+8. `org-held-keys` — [custody/attribution fixture proof, partial parity](../../apps/kernel/src/lib/inference/__tests__/org-held-inference.integration.test.ts).
+9. `sealed-inference` — [agent authentication proof](../../packages/openclaw-infer-passthrough/tests/agent-auth.test.ts).
+10. `connector-consent` — [scoped consent proof](../../apps/kernel/src/lib/github/__tests__/scope-manifest.test.ts).
+11. `import-secrets` — [reviewed import proof](../../apps/kernel/app/jin/__tests__/vault-import-approval.test.tsx).
+12. `mint-service-keys` — [vault mint proof](../../apps/kernel/app/api/vault/mint/__tests__/route.test.ts).
+13. `mcp-tools` — [tool scope boundary proof](../../apps/kernel/src/lib/mcp/__tests__/scope-gate.test.ts).
+14. `track-runs` — [run lifecycle proof](../../apps/kernel/app/api/loops/__tests__/route.test.ts).
+15. `dispatch-agent` — [authorized dispatch proof](../../apps/kernel/app/warp/api/dispatch/__tests__/route.test.ts).
+16. `provision-runtime` — [runtime provision proof](../../packages/claw-provisioner/tests/runner.test.ts).
+17. `link-channel-speaker` — [organization speaker gate proof](../../apps/kernel/src/lib/auth/__tests__/channel-speaker.integration.test.ts).
+18. `reach-agent` — [gated delivery proof](../../apps/kernel/app/auth/api/agents/[did]/reach/__tests__/delivery.test.ts).
+19. `request-consent` — [external consent decision proof](../../apps/kernel/app/consent/api/requests/[requestId]/decision/__tests__/route.test.ts).
+20. `access-bearers` — [scoped bearer proof, personal-list limit](../../apps/kernel/src/lib/access/__tests__/delegate-grant.test.ts).
+21. `disclosures` — [withdrawal of disclosure proof](../../apps/kernel/src/lib/broker/__tests__/revoke-all.test.ts).
+22. `guard-agent-output` — [warrant enforcement proof](../../packages/openclaw-reflex-guard/tests/reflex-warrant-gate.test.ts).
+23. `issue-attestations` — [signed claim proof](../../packages/auth/tests/emit-attestation.test.ts).
+24. `upstream-credentials` — [destination-bound integration proof](../../apps/kernel/src/lib/kernel/__tests__/external-mcp.integration.test.ts).
+25. `register-app` — [effective-owner registration proof](../../apps/kernel/app/api/registry/apps/__tests__/route.test.ts).
+26. `integrate-sdk` — [bootstrap proof](../../packages/auth-client/tests/vault-boot.test.ts).
+27. `app-consent` — [private app consent proof](../../apps/kernel/app/api/auth/authorize/__tests__/private-consent.test.ts).
+28. `publish-events` — [authorized event proof](../../packages/bus/tests/publish-app-event.test.ts).
+29. `subscribe-events` — [event subscription proof](../../packages/bus/tests/event-subscription.test.ts).
+30. `request-payment` — [personal/organization payer proof](../../apps/kernel/src/lib/pay/payment-requests/__tests__/payer-did-integration.test.ts).
+31. `app-checkout` — [app-owned payment boundary proof](../../apps/kernel/src/lib/pay/__tests__/app-money-routes.test.ts).
+32. `fair-settlement` — [settlement invariant proof](../../packages/fair/tests/settlement-invariants.test.ts).
+33. `account-spend` — [Spend presentation proof, incomplete accounting](../../apps/kernel/app/jin/__tests__/spend-panel.test.tsx).
+34. `register-emitter` — [emitter scope proof](../../packages/auth/tests/usage-emitter-scopes.test.ts).
+35. `emit-local-usage` — [local emitter proof, deployment unverified](../../packages/usage-emitter-claude-code/tests/client.test.ts).
+36. `ssh-authority` — [certificate contract proof](../../apps/kernel/src/lib/vault/__tests__/ssh-ca-spec.test.ts).
+37. `operate-key-custody` — [operator key surface proof](../../apps/kernel/app/admin/keys/__tests__/page.test.tsx).
+38. `evaluate-platform` — [API docs rendering only, buyer journey partial](../../apps/kernel/app/registry/docs/__tests__/page.s9383.test.tsx).
+<!-- core-ranking:end -->
+
 Suggested positioning: **“Identity and authority for AI agents. Give each agent
 an identity, grant only the authority it needs, and inspect signed approvals and
 action records.”** This is a proposal for #3284, not an approved DECISION.
