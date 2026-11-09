@@ -228,7 +228,7 @@ export async function listDiscoveryConnectorMetadata(context: InferenceAuthConte
     ...await upstreamRows(context),
   );
   const known = new Set([...brains, ...rows.map(row => row.provider)]);
-  await forEachSequential(registrations, async registration => {
+  registrations.forEach(registration => {
     const vendor = connectorVendor(registration);
     if (known.has(vendor) || isUpstreamConnection(registration) || connectorPurpose(registration) === 'billing'
       || !isHeldBy(registration, actorDid)) return;
