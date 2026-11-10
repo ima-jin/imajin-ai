@@ -18,6 +18,7 @@ import { FrontDoorPanel } from './front-door-panel';
 import { PushSubscribeButton } from './push-subscribe-button';
 import { RecordPanel } from './record-panel';
 import { AgentIdentityPanel } from './agent-identity-panel';
+import { AlphaSubmissionsPanel } from './alpha-submissions-panel';
 
 // ─── Main page ────────────────────────────────────────────────────────────────
 //
@@ -52,6 +53,7 @@ export default function JinPage() {
 
       <main className="px-6 py-4">
         <AgentIdentityPanel />
+        <AlphaSubmissionsPanel />
         <DecisionsPanel />
         {/* Vault key cards (#2247) — mint/grant/rotate/revoke as signed
             canvas proposals; renders nothing for a non-admin. Rendered

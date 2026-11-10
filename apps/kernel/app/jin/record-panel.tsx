@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import type { RecordEventRow, RecordEventsPage } from '@/src/lib/jin/record-events';
+import { JinList, JinListPages } from './jin-list';
 
 const defaultTransport: typeof fetch = (...args) => fetch(...args);
 const PAGE_SIZE = 50;
@@ -138,16 +139,11 @@ export function RecordPanel({ transport = defaultTransport }: Readonly<{ transpo
       {page && (
         <>
           {page.events.length === 0 && <p className="text-sm text-gray-500">No matching events.</p>}
-          <ul className="space-y-3 min-w-0">{page.events.map(event => <RecordRow key={event.id} event={event} />)}</ul>
-          <nav aria-label="Record pages" className="mt-3 flex flex-wrap items-center gap-3 text-xs text-gray-400">
-            <button type="button" disabled={page.offset === 0} onClick={() => setOffset(Math.max(0, page.offset - page.limit))} className="min-h-11 px-2 disabled:opacity-40">
-              Newer events
-            </button>
+          <JinList>{page.events.map(event => <RecordRow key={event.id} event={event} />)}</JinList>
+          <JinListPages label="Record pages" offset={page.offset} hasMore={page.offset + page.limit < page.total}
+            onOffset={setOffset} newer="Newer events" older="Older events">
             <span>{page.total} matching events</span>
-            <button type="button" disabled={page.offset + page.limit >= page.total} onClick={() => setOffset(page.offset + page.limit)} className="min-h-11 px-2 disabled:opacity-40">
-              Older events
-            </button>
-          </nav>
+          </JinListPages>
         </>
       )}
     </section>

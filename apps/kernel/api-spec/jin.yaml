@@ -1060,6 +1060,35 @@ components:
         errorMessage: { type: string, nullable: true }
 
 paths:
+  /jin/api/alpha-submissions:
+    get:
+      servers:
+        - url: https://{node}.imajin.ai
+          variables:
+            node: { default: jin }
+        - url: http://localhost:3000
+      tags: [jin]
+      operationId: listAlphaSubmissions
+      summary: Private alpha requests, newest first
+      description: >-
+        Direct human node operator in personal context only; no delegated or
+        org acting-as access. Read-only, no deletion or account creation.
+        Returns up to 50 submissions and hasMore, ordered by createdAt and ID
+        descending. No-store. Contact details and agent descriptions stay private.
+      security: [{ cookieAuth: [] }, { bearerAuth: [] }]
+      parameters:
+        - in: query
+          name: intent
+          schema: { type: string, enum: [tester, integrator, partner, demo] }
+        - in: query
+          name: offset
+          schema: { type: integer, minimum: 0, maximum: 999999999, default: 0 }
+      responses:
+        "200": { description: Submissions and hasMore }
+        "400": { description: Invalid intent or offset }
+        "401": { description: Sign-in required }
+        "403": { description: Direct node operator in personal context required }
+        "503": { description: Intake read unavailable }
   /api/brief-settings:
     get:
       tags: [jin]
