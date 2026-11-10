@@ -46,25 +46,27 @@ export function AlphaForm({ initialIntent }: Readonly<{ initialIntent: AlphaInte
 
   return (
     <form method="post" action="/api/alpha" onSubmit={submit} className="space-y-5">
-      <label className="block text-sm font-medium" htmlFor="alpha-name">Name
+      <label className="block text-sm font-medium" htmlFor="alpha-name">Name{' '}
         <input className={INPUT_CLASS} id="alpha-name" name="name" autoComplete="name" maxLength={ALPHA_LIMITS.name} required />
       </label>
-      <label className="block text-sm font-medium" htmlFor="alpha-email">Work email
+      <label className="block text-sm font-medium" htmlFor="alpha-email">Work email{' '}
         <input className={INPUT_CLASS} id="alpha-email" name="email" type="email" autoComplete="email" maxLength={ALPHA_LIMITS.email} required />
       </label>
-      <label className="block text-sm font-medium" htmlFor="alpha-company">Company
+      <label className="block text-sm font-medium" htmlFor="alpha-company">Company{' '}
         <input className={INPUT_CLASS} id="alpha-company" name="company" autoComplete="organization" maxLength={ALPHA_LIMITS.company} required />
       </label>
       <fieldset className="space-y-2">
         <legend className="mb-2 text-sm font-medium">What would you like to do?</legend>
-        {ALPHA_CHOICES.map(choice => <label key={choice.value} className="flex min-h-11 cursor-pointer items-start gap-3 rounded border border-gray-200 p-3 dark:border-gray-700">
-          <input type="radio" className="mt-1 accent-orange-600" name="intent" value={choice.value}
+        {ALPHA_CHOICES.map(choice => <div key={choice.value} className="flex min-h-11 items-start gap-3 rounded border border-gray-200 p-3 dark:border-gray-700">
+          <input id={`alpha-intent-${choice.value}`} type="radio" className="mt-1 accent-orange-600" name="intent" value={choice.value}
             checked={intent === choice.value} onChange={() => setIntent(choice.value)} required />
-          <span><span className="block text-sm font-semibold">{choice.label}</span>
-            <span className="text-sm text-gray-600 dark:text-gray-400">{choice.description}</span></span>
-        </label>)}
+          <label htmlFor={`alpha-intent-${choice.value}`} className="cursor-pointer">
+            <span className="block text-sm font-semibold">{choice.label}</span>
+            <span className="text-sm text-gray-600 dark:text-gray-400">{choice.description}</span>
+          </label>
+        </div>)}
       </fieldset>
-      <label className="block text-sm font-medium" htmlFor="alpha-purpose">What will your agents do for people?
+      <label className="block text-sm font-medium" htmlFor="alpha-purpose">What will your agents do for people?{' '}
         <textarea id="alpha-purpose" name="purpose" className={INPUT_CLASS} rows={3} maxLength={ALPHA_LIMITS.purpose}
           aria-describedby="alpha-purpose-help" required />
       </label>

@@ -114,12 +114,24 @@ describe('/jin alpha operator list', () => {
     fireEvent(globalThis, new StorageEvent('storage', { key: null }));
     await waitFor(() => expect(transport).toHaveBeenCalledTimes(2));
   });
-  it('ignores a response and error after unmount', async () => {
+  it.each(['response', 'error'])('aborts the request and ignores a late %s after unmount', async outcome => {
     const transport = install();
+    let finish!: (response: Response) => void;
     let fail!: (error: Error) => void;
-    transport.mockImplementationOnce(() => new Promise<Response>((_resolve, reject) => { fail = reject; }));
-    const { unmount } = render(<AlphaSubmissionsPanel />);
+    const { container, unmount } = render(<AlphaSubmissionsPanel />);
+    await screen.findByText(row.email);
+    transport.mockImplementationOnce(() => new Promise<Response>((resolve, reject) => { finish = resolve; fail = reject; }));
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh alpha requests' }));
+    const signal = transport.mock.calls.at(-1)?.[1].signal as AbortSignal;
     unmount();
-    await act(async () => { fail(new Error('late error')); });
+    expect(signal.aborted).toBe(true);
+    const json = vi.fn().mockResolvedValue({ submissions: [row], hasMore: false });
+    await act(async () => {
+      if (outcome === 'response') finish({ ok: true, status: 200, json } as unknown as Response);
+      else fail(new Error('late error'));
+    });
+    expect(json).not.toHaveBeenCalled();
+    expect(container.childElementCount).toBe(0);
+    expect(transport).toHaveBeenCalledTimes(2);
   });
 });

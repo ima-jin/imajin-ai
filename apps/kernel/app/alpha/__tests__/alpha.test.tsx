@@ -21,6 +21,19 @@ function fill() {
   fireEvent.change(screen.getByLabelText('What will your agents do for people?'), { target: { value: 'Book travel.' } });
 }
 describe('/alpha public page', () => {
+  it('associates each intent radio with its visible choice label and description', async () => {
+    await mount();
+    for (const choice of ALPHA_CHOICES) {
+      const radio = screen.getByRole('radio', { name: new RegExp(choice.label) }) as HTMLInputElement;
+      expect(radio.id).toBe(`alpha-intent-${choice.value}`);
+      expect(radio.labels).toHaveLength(1);
+      expect(radio.labels?.[0].htmlFor).toBe(radio.id);
+      expect(radio.labels?.[0].textContent).toContain(choice.label);
+      expect(radio.labels?.[0].textContent).toContain(choice.description);
+      fireEvent.click(radio.labels![0]);
+      expect(radio.checked).toBe(true);
+    }
+  });
   it.each(ALPHA_INTENTS)('preselects %s from query and submits without auth', async intent => {
     const send = vi.fn().mockResolvedValue(Response.json({}, { status: 201 }));
     vi.stubGlobal('fetch', send);

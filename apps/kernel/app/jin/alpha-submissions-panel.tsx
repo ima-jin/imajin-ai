@@ -68,7 +68,7 @@ export function AlphaSubmissionsPanel() {
     <div className="flex flex-wrap items-center justify-between gap-3">
       <div><h2 className="text-base font-semibold">Alpha requests</h2>
         <p className="text-xs text-gray-400">Newest first · private operator intake</p></div>
-      <label className="text-xs text-gray-400">Request type
+      <label className="text-xs text-gray-400">Request type{' '}
         <select className="ml-2 min-h-11 rounded border border-gray-700 bg-gray-900 px-2 text-gray-100"
           value={intent} onChange={event => { setIntent(event.target.value); setOffset(0); }}>
           <option value="">All requests</option>
