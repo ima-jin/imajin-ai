@@ -103,53 +103,71 @@ function directories(root, directory) {
   return readdirSync(resolve(root, directory), { withFileTypes: true }).filter(entry => entry.isDirectory()).map(entry => entry.name);
 }
 
-/** Validate structure AND coverage; adding an app, package or service spec cannot silently escape the map. */
-export function validateCapabilities(document, root) {
-  const errors = [];
+function validateHeader(document, errors) {
   if (!requireFields(document, ['schema_version', 'as_of', 'source_commit', 'capabilities'], 'map', errors)) return errors;
   if (document.schema_version !== 1) errors.push('map: unsupported schema_version');
   if (!nonempty(document.as_of) || !day(document.as_of)) errors.push('map: invalid as_of date');
   if (!/^[a-f0-9]{40}$/.test(document.source_commit ?? '')) errors.push('map: invalid source_commit');
-  if (!Array.isArray(document.capabilities) || document.capabilities.length === 0) return [...errors, 'map: capabilities must be nonempty'];
-  const ids = new Set();
-  const coveredApps = new Set();
-  const coveredPackages = new Set();
-  const coveredSpecs = new Set();
-  const knownApps = new Set(directories(root, 'apps'));
-  const knownPackages = new Set(directories(root, 'packages'));
-  for (const [index, capability] of document.capabilities.entries()) {
-    const label = `capabilities[${index}]`;
-    if (!requireFields(capability, fields, label, errors)) continue;
-    for (const field of ['id', 'name', 'action', 'grade_reason']) {
-      if (!nonempty(capability[field])) errors.push(`${label}: ${field} must be nonempty`);
-    }
-    if (!/^[a-z][a-z0-9-]*$/.test(capability.id ?? '') || ids.has(capability.id)) errors.push(`${label}: invalid or duplicate id`);
-    ids.add(capability.id);
-    strings(capability.services, `${label}.services`, errors);
-    for (const [field, known, covered] of [['apps', knownApps, coveredApps], ['packages', knownPackages, coveredPackages]]) {
-      strings(capability[field], `${label}.${field}`, errors, field === 'packages');
-      for (const name of Array.isArray(capability[field]) ? capability[field] : []) {
-        if (!known.has(name)) errors.push(`${label}: unknown ${field} ${name}`);
-        covered.add(name);
-      }
-    }
-    validateEntries(capability.entry_points, `${label}.entry_points`, root, errors);
-    validateEvidence(capability.evidence, `${label}.evidence`, root, errors);
-    validateGrade(capability, label, errors);
-    for (const spec of array(capability.entry_points?.specs)) coveredSpecs.add(spec);
+  return errors;
+}
+
+function validateNames(capability, field, known, label, errors) {
+  strings(capability[field], `${label}.${field}`, errors, field === 'packages');
+  for (const name of array(capability[field])) {
+    if (!known.has(name)) errors.push(`${label}: unknown ${field} ${name}`);
   }
-  for (const [known, covered, label] of [[knownApps, coveredApps, 'app'], [knownPackages, coveredPackages, 'package']]) {
-    for (const name of known) if (!covered.has(name)) errors.push(`map: uncovered ${label} ${name}`);
+}
+
+function validateCapability(capability, index, context, errors) {
+  const { root, ids, knownApps, knownPackages } = context;
+  const label = `capabilities[${index}]`;
+  if (!requireFields(capability, fields, label, errors)) return;
+  for (const field of ['id', 'name', 'action', 'grade_reason']) {
+    if (!nonempty(capability[field])) errors.push(`${label}: ${field} must be nonempty`);
   }
-  for (const app of knownApps) {
-    const specDirectory = resolve(root, 'apps', app, 'api-spec');
-    let specs;
-    try { specs = readdirSync(specDirectory).filter(name => name.endsWith('.yaml')); } catch { specs = []; }
-    for (const name of specs) {
-      const path = `apps/${app}/api-spec/${name}`;
-      if (!coveredSpecs.has(path)) errors.push(`map: uncovered spec ${path}`);
+  if (!/^[a-z][a-z0-9-]*$/.test(capability.id ?? '') || ids.has(capability.id)) errors.push(`${label}: invalid or duplicate id`);
+  ids.add(capability.id);
+  strings(capability.services, `${label}.services`, errors);
+  validateNames(capability, 'apps', knownApps, label, errors);
+  validateNames(capability, 'packages', knownPackages, label, errors);
+  validateEntries(capability.entry_points, `${label}.entry_points`, root, errors);
+  validateEvidence(capability.evidence, `${label}.evidence`, root, errors);
+  validateGrade(capability, label, errors);
+}
+
+function localSpecs(root, apps) {
+  return [...apps].flatMap(app => {
+    try {
+      return readdirSync(resolve(root, 'apps', app, 'api-spec'))
+        .filter(name => name.endsWith('.yaml')).map(name => `apps/${app}/api-spec/${name}`);
+    } catch {
+      return [];
     }
+  });
+}
+
+function requireCoverage(known, covered, label, errors) {
+  for (const name of known) {
+    if (!covered.has(name)) errors.push(`map: uncovered ${label} ${name}`);
   }
+}
+
+/** Validate structure AND coverage; adding an app, package or service spec cannot silently escape the map. */
+export function validateCapabilities(document, root) {
+  const errors = validateHeader(document, []);
+  if (errors.length) return errors;
+  if (!Array.isArray(document.capabilities) || document.capabilities.length === 0) return ['map: capabilities must be nonempty'];
+  const context = {
+    root, ids: new Set(), knownApps: new Set(directories(root, 'apps')), knownPackages: new Set(directories(root, 'packages')),
+  };
+  document.capabilities.forEach((capability, index) => validateCapability(capability, index, context, errors));
+  const rows = document.capabilities.filter(record);
+  const coveredApps = new Set(rows.flatMap(row => array(row.apps)));
+  const coveredPackages = new Set(rows.flatMap(row => array(row.packages)));
+  const coveredSpecs = new Set(rows.flatMap(row => array(row.entry_points?.specs)));
+  requireCoverage(context.knownApps, coveredApps, 'app', errors);
+  requireCoverage(context.knownPackages, coveredPackages, 'package', errors);
+  requireCoverage(localSpecs(root, context.knownApps), coveredSpecs, 'spec', errors);
   return errors;
 }
 
@@ -163,7 +181,7 @@ export function checkCapabilities(root) {
   const document = readCapabilities(resolve(root, 'docs/capabilities/capabilities.yaml'));
   const errors = validateCapabilities(document, root);
   if (errors.length) return errors;
-  const readme = readFileSync(resolve(root, 'docs/capabilities/README.md'), 'utf8');
+  const readme = readFileSync(resolve(root, 'docs/capabilities/README.md'), 'utf8').replaceAll('\r\n', '\n');
   if (!readme.includes(renderCapabilityTables(document))) errors.push('README: audience tables differ from YAML');
   return errors;
 }

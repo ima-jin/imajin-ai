@@ -11,7 +11,7 @@ import {
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const document = readCapabilities(resolve(root, 'docs/capabilities/capabilities.yaml'));
-const readme = readFileSync(resolve(root, 'docs/capabilities/README.md'), 'utf8');
+const readme = readFileSync(resolve(root, 'docs/capabilities/README.md'), 'utf8').replaceAll('\r\n', '\n');
 const validateMutation = mutate => {
   const copy = structuredClone(document);
   mutate(copy, copy.capabilities[0]);

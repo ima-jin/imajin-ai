@@ -797,9 +797,9 @@ capabilities:
       ui:
         - /jin
       api:
-        - /jin/api/apps/provision
-        - /jin/api/apps/claim
-        - /jin/api/apps/service-scopes
+        - /api/apps/provision
+        - /api/apps/claim
+        - /api/apps/service-scopes
       sdk: []
       specs:
         - apps/kernel/api-spec/jin.yaml
@@ -839,7 +839,7 @@ capabilities:
         - /auth/authorize
         - /auth/apps
       api:
-        - /auth/api/auth/authorize
+        - /api/auth/authorize
         - /auth/api/apps/token
         - /auth/api/apps/token/verify
       sdk:
@@ -1006,10 +1006,11 @@ capabilities:
       code:
         - apps/kernel/src/lib/mcp/tools/index.ts
         - apps/kernel/src/lib/mcp/tools/discovery.ts
+        - apps/kernel/src/lib/mcp/server.ts
       tests:
         - apps/kernel/src/lib/mcp/__tests__/agent-gateway.integration.test.ts
       navigation: []
-      last_touched: 2026-10-17
+      last_touched: 2026-11-03
       open_issues:
         - https://github.com/ima-jin/imajin-ai/issues/3237
         - https://github.com/ima-jin/imajin-ai/issues/3321
@@ -1107,9 +1108,9 @@ capabilities:
       ui:
         - /jin
       api:
-        - /jin/api/loops
-        - /jin/api/loops/receipts
-        - /jin/api/loops/{loopId}
+        - /api/loops
+        - /api/loops/receipts
+        - /api/loops/{loopId}
       sdk: []
       specs:
         - apps/kernel/api-spec/jin.yaml
@@ -1308,7 +1309,7 @@ capabilities:
       api:
         - /auth/api/attestations
         - /auth/api/attestations/countersign
-        - /auth/api/attestations/{id}/revoke
+        - /auth/api/attestations/{did}/revoke
       sdk:
         - "@imajin/auth"
         - "@imajin/dfos"
@@ -1772,6 +1773,8 @@ capabilities:
         - apps/kernel/app/media/page.tsx
         - packages/input/src/index.ts
         - packages/llm/src/index.ts
+        - packages/input/src/index.ts
+        - packages/llm/src/index.ts
       tests:
         - apps/kernel/src/lib/media/__tests__/transcribe-asset.test.ts
       navigation: []
@@ -1953,6 +1956,7 @@ capabilities:
         - /auth/legal-entity
         - /auth/tax
       api:
+        - /auth/api/legal-entity
         - /profile/api/profile/{id}
       sdk: []
       specs:
@@ -1973,6 +1977,7 @@ capabilities:
       tests:
         - apps/kernel/src/lib/profile/__tests__/legal-entity.test.ts
         - apps/kernel/src/lib/profile/__tests__/tax-registrations.test.ts
+        - apps/kernel/app/auth/api/legal-entity/__tests__/route.test.ts
       navigation: []
       last_touched: 2026-10-27
       open_issues:
@@ -2358,14 +2363,12 @@ capabilities:
     packages:
       - claw-envelope
       - claw-provisioner
-      - provision-bootstrap
     entry_points:
       ui: []
       api: []
       sdk:
         - "@imajin/claw-envelope"
         - "@imajin/claw-provisioner"
-        - "@imajin/provision-bootstrap"
       specs: []
     audience: developer
     maturity: works
@@ -2503,7 +2506,8 @@ capabilities:
     business_weight: supporting
     pillars:
       - agent identity
-    grade_reason: Exported shared implementation with tests; consumed by apps, not a separately deployed service.
+    grade_reason: Shared controls, identity switching and onboarding are exported; tokens supplies DTCG design
+      tokens, not currency. No independent service is implied.
     evidence:
       code:
         - packages/ui/src/index.ts
@@ -2546,7 +2550,8 @@ capabilities:
       open_issues: []
   - id: shared-infrastructure
     name: Build on common operational primitives
-    action: Configure service URLs, run bounded DB clients, record logs and apply workspace lint conventions.
+    action: Configure services, run bounded DB clients, record logs and bootstrap service identities with shared
+      build conventions.
     apps:
       - kernel
     services:
@@ -2556,6 +2561,7 @@ capabilities:
       - db
       - logger
       - eslint-config-imajin
+      - provision-bootstrap
     entry_points:
       ui: []
       api: []
@@ -2564,6 +2570,7 @@ capabilities:
         - "@imajin/db"
         - "@imajin/logger"
         - eslint-config-imajin
+        - "@imajin/provision-bootstrap"
       specs: []
     audience: developer
     maturity: works
@@ -2576,8 +2583,14 @@ capabilities:
         - packages/config/src/index.ts
         - packages/db/src/index.ts
         - packages/logger/src/index.ts
+        - packages/eslint-config-imajin/index.js
+        - packages/db/src/client.ts
+        - packages/logger/src/index.ts
+        - packages/provision-bootstrap/tsup.config.ts
+        - scripts/lib/provision-service-bootstrap.ts
       tests:
         - packages/config/tests/services.test.ts
+        - scripts/__tests__/provision-service-bootstrap-entrypoint.test.mjs
       navigation: []
       last_touched: 2026-11-05
       open_issues: []
@@ -2828,8 +2841,9 @@ capabilities:
     entry_points:
       ui: []
       api:
-        - /broker/api/contacts
-        - /broker/api/grants
+        - /api/broker/contacts
+        - /api/broker/grants
+        - /api/broker/request
       sdk: []
       specs: []
     audience: developer
@@ -2845,6 +2859,7 @@ capabilities:
         - apps/kernel/src/lib/broker/routes/grants.ts
       tests:
         - packages/bus/tests/broker.test.ts
+        - apps/kernel/app/api/broker/consent/__tests__/acting-for.test.ts
       navigation: []
       last_touched: 2026-07-01
       open_issues: []

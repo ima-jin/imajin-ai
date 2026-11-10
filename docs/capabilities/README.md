@@ -40,6 +40,19 @@ No grades are based on roadmap prose, package names, customer names or the exist
 Tests listed are evidence of behavior, not a claim that this run re-executed every product test individually.
 Documented risks remain visible on live primitives; “live” does not mean feature-complete, compliant, highly available or universally append-only.
 
+<details>
+<summary>Five-row code + /spec spot-check</summary>
+
+1. **`delegation-grants`:** [`grants.ts`](../../apps/kernel/src/lib/auth/grants.ts) enforces finite leases, separate per-capability revocation and signed history; [`auth.yaml`](../../apps/kernel/api-spec/auth.yaml) exposes grant issue/list/revoke/renew and internal introspection. Organization-grant tests exercise the effective principal.
+2. **`signed-record`:** [`record-events.ts`](../../apps/kernel/src/lib/jin/record-events.ts) scopes personal and acting-org reads, includes exact grant evidence and distinguishes old mode signatures; [`jin.yaml`](../../apps/kernel/api-spec/jin.yaml) names `/api/events`, served at `/jin/api/events`. The record-spec test verifies discovery.
+3. **`org-held-keys`:** [`org-held-connection.ts`](../../apps/kernel/src/lib/kernel/org-held-connection.ts) and member-grant code implement custody/use separation; [`connections.yaml`](../../apps/kernel/api-spec/connections.yaml) explicitly documents no-read-back metadata and per-member grants. Org inference integration tests do not erase provider-parity gaps.
+4. **`corpus-retrieval`:** [`routes.ts`](../../apps/corpus/src/routes.ts) mounts access-claim middleware and source-owner checks on `/corpus/:did`, exposes search and source operations, and serves [`openapi.yaml`](../../apps/corpus/api-spec/openapi.yaml) at `/spec`. Owner/ref-pinned tests are implementation proof, not continuous-sync or deployment proof.
+5. **`calendar-intents` / broker boundary:** [`calendar/index.ts`](../../apps/kernel/src/lib/calendar/index.ts) and [`calendar.yaml`](../../apps/kernel/api-spec/calendar.yaml) provide availability/entries; [`broker-agent/src/tools.ts`](../../apps/broker-agent/src/tools.ts) actually calls set/list/cancel but only returns text for preference/match responses. Calendar can work while the conversational broker remains partial.
+
+**Spec drift found, not repaired here:** the `jin.yaml` server prefix combined with `/api/apps/*` and `/api/loops*` suggests `/jin/api/...`, while implementation handlers are under `/api/apps/*` and `/api/loops*`. Likewise auth's `/api/auth/authorize` is implemented at `/api/auth/authorize`, not `/auth/api/auth/authorize`. The map records actual code routes. Attestation revocation uses the implementation's `[did]` path name despite the spec's `{id}` name. Treat spec paths as discovery evidence, not a stronger truth than route code. No separate issue was filed.
+
+</details>
+
 ## Per-audience main jobs
 
 - **Business buyer:** Determine whether an agent can act as itself on your authority, show who authorized its actions, and account for the resulting cost and settlement.
@@ -115,9 +128,9 @@ The table projection is checked against YAML by the validator test so grades can
 | `reflex-guard` — Gate an outbound agent response | Match guard rules, stamp responses and retain audit output before outbound delivery. | shared; `@imajin/openclaw-reflex-guard` | works / supporting | delegated authority; signed record and settlement | [outbound-guard-hooks.ts](../../packages/openclaw-reflex-guard/src/outbound-guard-hooks.ts) · [outbound-guard-hooks.test.ts](../../packages/openclaw-reflex-guard/tests/outbound-guard-hooks.test.ts) |
 | `shared-ui` — Integrate identity-aware app controls | Compose navigation, identity switching, notifications and shared controls in an app. | shared; `@imajin/ui` | works / supporting | agent identity | [index.ts](../../packages/ui/src/index.ts) · [index.test.ts](../../packages/ui/tests/index.test.ts) |
 | `money-math` — Calculate exact amounts and FX | Convert decimal monetary amounts and apply cached FX rates without floating-point share drift. | shared; `@imajin/money` | works / supporting | signed record and settlement | [index.ts](../../packages/money/src/index.ts) · [fx-snapshot.test.ts](../../packages/money/tests/fx-snapshot.test.ts) |
-| `shared-infrastructure` — Build on common operational primitives | Configure service URLs, run bounded DB clients, record logs and apply workspace lint conventions. | shared; `@imajin/config` | works / supporting | none | [index.ts](../../packages/config/src/index.ts) · [services.test.ts](../../packages/config/tests/services.test.ts) |
+| `shared-infrastructure` — Build on common operational primitives | Configure services, run bounded DB clients, record logs and bootstrap service identities with shared build conventions. | shared; `@imajin/config` | works / supporting | none | [index.ts](../../packages/config/src/index.ts) · [services.test.ts](../../packages/config/tests/services.test.ts) |
 | `typesafe-evaluation` — Call a configured typed evaluator | Connect a TypeSafe endpoint and submit evaluation requests through the client. | typesafe; `/auth/connectors/typesafe` | partial / supporting | none | [client.ts](../../apps/kernel/src/lib/typesafe/client.ts) · [client.test.ts](../../apps/kernel/src/lib/typesafe/__tests__/client.test.ts) |
-| `contact-disclosure` — Release contact data through consent | Request contact fields through the broker and manage grants without granting unrestricted profile access. | broker; `/broker/api/contacts` | works / core | delegated authority; signed record and settlement | [contact-disclosures.ts](../../apps/kernel/src/lib/broker/routes/contact-disclosures.ts) · [broker.test.ts](../../packages/bus/tests/broker.test.ts) |
+| `contact-disclosure` — Release contact data through consent | Request contact fields through the broker and manage grants without granting unrestricted profile access. | broker; `/api/broker/contacts` | works / core | delegated authority; signed record and settlement | [contact-disclosures.ts](../../apps/kernel/src/lib/broker/routes/contact-disclosures.ts) · [broker.test.ts](../../packages/bus/tests/broker.test.ts) |
 
 </details>
 
