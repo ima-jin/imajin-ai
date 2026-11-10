@@ -96,7 +96,7 @@ The [vault SSH action](../deploy/vault-ssh-deploy.md) requires a repository/envi
 
 ## Health checks and liveness
 
-`scripts/pm2-health-check.sh` does more than read pm2 state. It also runs `deploy/liveness-probe.mjs --env <scope> --once --execute --watchdog` against the ecosystem file, so a process that pm2 reports as `online` but that has stopped answering HTTP fails the health check (#3206, #3361). The probe result counts toward the health check's exit code.
+`scripts/pm2-health-check.sh` does more than read pm2 state. It also runs `deploy/liveness-probe.mjs --env <scope> --once --execute --watchdog` against the ecosystem file, so a process that pm2 reports as `online` but that has stopped answering HTTP fails the health check. The probe result counts toward the health check's exit code.
 
 `PM2_HEALTH_LIVENESS=0` skips the HTTP probe. It exists only for test fixtures whose ecosystem declares no port. It is on by default; do not set it in dev or production.
 
