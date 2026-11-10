@@ -6,6 +6,41 @@ on:
     branches: [main]
 
 jobs:
+  app-grant-constraint:
+    name: App grant constraint and concurrent consent
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    services:
+      postgres:
+        image: postgres:16-bookworm@sha256:0ea6700a3b4f0ae6ce746519073558aed4d88a79d8d07622a9a644946c7319c4
+        env:
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 5432/tcp
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: pnpm/action-setup@eae0cfeb286e66ffb5155f1a79b90583a127a68b # v2
+        with:
+          version: 9
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile --ignore-scripts --loglevel=error
+      - name: Verify constraint and unchanged consent on disposable PostgreSQL
+        env:
+          CONSENT_TEST_DATABASE_URL: postgresql://postgres@localhost:${{ job.services.postgres.ports[5432] }}/postgres
+        run: >-
+          pnpm --silent test:agent
+          apps/kernel/src/lib/auth/__tests__/unique-app-grant-migration.test.ts
+          apps/kernel/src/lib/auth/__tests__/upsert-app-authorization.postgres.test.ts
   kernel-baseline:
     name: Kernel baseline equivalence and restore adoption
     runs-on: ubuntu-latest
