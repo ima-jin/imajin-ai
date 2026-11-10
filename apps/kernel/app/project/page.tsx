@@ -49,7 +49,7 @@ export default function ProjectPage() {
         <div className="space-y-3">
           <details className={disclosureClass}>
             <summary className={summaryClass}>
-              State of Imajin, November 2026
+              State of Imajin, November 2026{' '}
               <span className="mt-1 block text-sm font-normal text-gray-400">
                 Our own hardware; frontier judgment, local model work.
               </span>
@@ -73,7 +73,7 @@ export default function ProjectPage() {
 
           <details className={disclosureClass}>
             <summary className={summaryClass}>
-              What Imajin adds to an agent harness
+              What Imajin adds to an agent harness{' '}
               <span className="mt-1 block text-sm font-normal text-gray-400">
                 Identity, a signed record, human approval and cost per identity.
               </span>
@@ -94,7 +94,7 @@ export default function ProjectPage() {
 
           <details className={disclosureClass}>
             <summary className={summaryClass}>
-              Honest limits
+              Honest limits{' '}
               <span className="mt-1 block text-sm font-normal text-gray-400">
                 Early plugin, people in the loop, one server and few outside users.
               </span>

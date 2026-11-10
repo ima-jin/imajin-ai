@@ -84,6 +84,7 @@ describe('/project rationale and alpha state', () => {
     for (const disclosure of disclosures) {
       expect(disclosure.open).toBe(false);
       expect(disclosure.firstElementChild?.tagName).toBe('SUMMARY');
+      expect(disclosure.querySelector('summary')?.firstChild?.textContent).toMatch(/\s$/);
       expect(disclosure.querySelector('summary span')?.textContent?.trim()).toBeTruthy();
     }
     expect(page.querySelector('header a')?.getAttribute('href')).toBe('/whitepaper');
