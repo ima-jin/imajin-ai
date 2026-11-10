@@ -30,9 +30,7 @@ export async function POST(request: Request) {
   try {
     await storeAlphaSubmission({ name, email, company, intent, purpose });
     if (request.headers.get('content-type')?.startsWith('application/x-www-form-urlencoded')) {
-      const response = NextResponse.redirect(new URL('/alpha?received=1', request.url), 303);
-      response.headers.set('Cache-Control', 'no-store');
-      return response;
+      return new NextResponse(null, { status: 303, headers: { ...HEADERS, Location: '/alpha?received=1' } });
     }
     return NextResponse.json({ message: ALPHA_CONFIRMATION }, { status: 201, headers: HEADERS });
   } catch {

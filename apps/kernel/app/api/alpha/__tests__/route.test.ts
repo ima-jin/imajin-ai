@@ -20,7 +20,7 @@ describe('public alpha intake', () => {
       body: new URLSearchParams({ ...valid, website: '' }),
     }));
     expect(response.status).toBe(303);
-    expect(response.headers.get('location')).toBe('http://localhost/alpha?received=1');
+    expect(response.headers.get('location')).toBe('/alpha?received=1');
     expect(response.headers.get('Cache-Control')).toBe('no-store');
     expect(mocks.store).toHaveBeenCalledWith(valid);
   });
