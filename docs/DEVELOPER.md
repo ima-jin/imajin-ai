@@ -1,6 +1,7 @@
 # Developer Guide
 
 Getting started with the imajin-ai monorepo.
+
 Public copy: use the canonical [positioning](POSITIONING.md); change it there first.
 
 ## Prerequisites
