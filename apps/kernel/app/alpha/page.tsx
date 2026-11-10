@@ -32,10 +32,10 @@ export default async function AlphaPage({ searchParams }: Readonly<{
           and platforms and agencies running agents for many clients.
         </p>
       </details>
-      {received === '1' ? <div role="status" className="rounded border border-orange-300 p-6">
+      {received === '1' ? <section className="rounded border border-orange-300 p-6">
         <h2 className="text-xl font-semibold">Request received</h2>
-        <p className="mt-2">{ALPHA_CONFIRMATION}</p>
-      </div> : <AlphaForm key={initialAlphaIntent(intent)} initialIntent={initialAlphaIntent(intent)} />}
+        <output className="mt-2 block">{ALPHA_CONFIRMATION}</output>
+      </section> : <AlphaForm key={initialAlphaIntent(intent)} initialIntent={initialAlphaIntent(intent)} />}
     </main>
   );
 }

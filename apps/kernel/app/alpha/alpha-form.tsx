@@ -39,10 +39,10 @@ export function AlphaForm({ initialIntent }: Readonly<{ initialIntent: AlphaInte
     }
   }
 
-  if (status === 'sent') return <div role="status" className="rounded border border-orange-300 p-6">
+  if (status === 'sent') return <section className="rounded border border-orange-300 p-6">
     <h2 className="text-xl font-semibold">Request received</h2>
-    <p className="mt-2">{ALPHA_CONFIRMATION}</p>
-  </div>;
+    <output className="mt-2 block">{ALPHA_CONFIRMATION}</output>
+  </section>;
 
   return (
     <form method="post" action="/api/alpha" onSubmit={submit} className="space-y-5">
