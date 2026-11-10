@@ -2,6 +2,8 @@
 
 Getting started with the imajin-ai monorepo.
 
+Public copy: use the canonical [positioning](POSITIONING.md); change it there first.
+
 ## Prerequisites
 
 - **Node.js 22+** (use [nvm](https://github.com/nvm-sh/nvm))
