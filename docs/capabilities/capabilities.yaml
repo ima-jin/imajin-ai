@@ -1,0 +1,2850 @@
+# Snapshot of code, not a deployment guarantee. See README.md for rubric and limits.
+schema_version: 1
+as_of: 2026-11-10
+source_commit: 8907f741704737f56089968f63ec82a026f8bcf8
+capabilities:
+  - id: agent-provision
+    name: Give each agent its own identity
+    action: Create or adopt an agent DID for a personal or organization principal.
+    apps:
+      - kernel
+    services:
+      - auth
+    packages:
+      - auth
+    entry_points:
+      ui:
+        - /auth/agents
+      api:
+        - /auth/api/agents
+        - /auth/api/agents/provision
+        - /auth/api/agents/adopt
+      sdk:
+        - "@imajin/auth"
+      specs:
+        - apps/kernel/api-spec/auth.yaml
+    audience: org admin
+    maturity: live
+    business_weight: core
+    pillars:
+      - agent identity
+      - delegated authority
+    grade_reason: Provisioning and acting-org ownership are implemented and tested; hosted instance lifecycle is
+      separate unfinished work.
+    evidence:
+      code:
+        - apps/kernel/src/lib/auth/agent-provisioner.ts
+        - apps/kernel/src/lib/auth/agent-adoption.ts
+        - apps/kernel/app/auth/agents/page.tsx
+        - packages/auth/src/index.ts
+      tests:
+        - apps/kernel/src/lib/auth/__tests__/agent-provisioner.test.ts
+        - apps/kernel/src/lib/auth/__tests__/org-provision.integration.test.ts
+      navigation:
+        - apps/kernel/app/auth/components/IdentityTabBar.tsx
+        - apps/kernel/app/auth/layout.tsx
+      last_touched: 2026-11-05
+      open_issues:
+        - https://github.com/ima-jin/imajin-ai/issues/3115
+        - https://github.com/ima-jin/imajin-ai/issues/3119
+  - id: delegation-grants
+    name: Grant, renew and revoke authority
+    action: Give one agent bounded capabilities, audience and expiry without sharing the principal identity.
+    apps:
+      - kernel
+    services:
+      - auth
+    packages:
+      - auth
+    entry_points:
+      ui:
+        - /jin
+      api:
+        - /auth/api/grants
+        - /auth/api/grants/{grantId}
+        - /auth/api/grants/{grantId}/renew
+      sdk:
+        - "@imajin/auth"
+      specs:
+        - apps/kernel/api-spec/auth.yaml
+    audience: org admin
+    maturity: works
+    business_weight: core
+    pillars:
+      - delegated authority
+      - signed record and settlement
+    grade_reason: Grant lifecycle signs history and introspection fails closed; legacy membership delegation
+      remains an explicit authority-model gap.
+    evidence:
+      code:
+        - apps/kernel/src/lib/auth/grants.ts
+        - apps/kernel/app/jin/page.tsx
+        - packages/auth/src/index.ts
+      tests:
+        - packages/auth/tests/delegation-grant.test.ts
+        - apps/kernel/src/lib/auth/__tests__/org-grants.integration.test.ts
+      navigation: []
+      last_touched: 2026-11-04
+      open_issues:
+        - https://github.com/ima-jin/imajin-ai/issues/3012
+        - https://github.com/ima-jin/imajin-ai/issues/3334
+  - id: org-members
+    name: Manage organization authority
+    action: Create a group, scope human controllers, suspend member services and transfer ownership.
+    apps:
+      - kernel
+    services:
+      - auth
+    packages:
+      - auth
+    entry_points:
+      ui:
+        - /auth/groups
+        - /auth/members
+      api:
+        - /auth/api/groups
+        - /auth/api/groups/{groupDid}/controllers
+        - /auth/api/org-connections
+      sdk:
+        - "@imajin/auth"
+      specs:
+        - apps/kernel/api-spec/auth.yaml
+    audience: org admin
+    maturity: live
+    business_weight: core
+    pillars:
+      - delegated authority
+    grade_reason: Human membership and owner transfer have tested scope checks; agent membership is not a
+      substitute for a grant.
+    evidence:
+      code:
+        - apps/kernel/src/lib/auth/group-member-services.ts
+        - apps/kernel/src/lib/auth/ownership-transfer.ts
+        - apps/kernel/app/auth/groups/page.tsx
+        - apps/kernel/app/auth/members/page.tsx
+        - packages/auth/src/index.ts
+      tests:
+        - apps/kernel/src/lib/auth/__tests__/member-edit.integration.test.ts
+        - apps/kernel/src/lib/auth/__tests__/ownership-transfer.integration.test.ts
+      navigation:
+        - apps/kernel/app/auth/components/IdentityTabBar.tsx
+        - apps/kernel/app/auth/layout.tsx
+      last_touched: 2026-11-02
+      open_issues:
+        - https://github.com/ima-jin/imajin-ai/issues/3012
+  - id: org-held-keys
+    name: Seal organization provider keys
+    action: Load a shared provider credential once and grant or withdraw member use without reading the key back.
+    apps:
+      - kernel
+    services:
+      - connections
+    packages: []
+    entry_points:
+      ui:
+        - /auth/connectors
+        - /jin/org-settings
+      api:
+        - /connections/api/org-held/{provider}
+        - /connections/api/org-held/{provider}/grants
+      sdk: []
+      specs:
+        - apps/kernel/api-spec/connections.yaml
+    audience: org admin
+    maturity: partial
+    business_weight: core
+    pillars:
+      - delegated authority
+    grade_reason: Anthropic/Warp ownership and grants have integration tests; provider-specific management parity
+      and model-picker custody remain open.
+    evidence:
+      code:
+        - apps/kernel/src/lib/kernel/org-held-connection.ts
+        - apps/kernel/src/lib/kernel/org-connection-member-grants.ts
+        - apps/kernel/app/auth/connectors/page.tsx
+        - apps/kernel/app/jin/org-settings/page.tsx
+      tests:
+        - apps/kernel/src/lib/inference/__tests__/org-held-inference.integration.test.ts
+        - apps/kernel/src/lib/inference/__tests__/org-held-self-grant.integration.test.ts
+      navigation: []
+      last_touched: 2026-11-06
+      open_issues:
+        - https://github.com/ima-jin/imajin-ai/issues/3341
+        - https://github.com/ima-jin/imajin-ai/issues/3343
+        - https://github.com/ima-jin/imajin-ai/issues/3318
+  - id: connector-slots
+    name: Connect an account in a named slot
+    action: Keep credentials and consent isolated across multiple connections to the same provider.
+    apps:
+      - kernel
+    services:
+      - connections
+    packages: []
+    entry_points:
+      ui:
+        - /auth/connectors
+      api:
+        - /connections/api/connectors/{id}/connections
+      sdk: []
+      specs:
+        - apps/kernel/api-spec/connections.yaml
+    audience: org admin
+    maturity: live
+    business_weight: supporting
+    pillars:
+      - delegated authority
+    grade_reason: Signed slot selection and shared connector cards exist; this is credential setup, not proof that
+      every provider operation is usable.
+    evidence:
+      code:
+        - apps/kernel/src/lib/kernel/connection-slots.ts
+        - apps/kernel/src/lib/kernel/connector-registry.ts
+        - apps/kernel/app/auth/connectors/page.tsx
+      tests:
+        - apps/kernel/src/lib/kernel/__tests__/connector-signed-slots.test.ts
+      navigation:
+        - apps/kernel/app/auth/components/IdentityTabBar.tsx
+        - apps/kernel/app/auth/layout.tsx
+      last_touched: 2026-11-06
+      open_issues:
+        - https://github.com/ima-jin/imajin-ai/issues/3349
+  - id: google-workspace
+    name: Read a connected Google workspace
+    action: Connect Google and read Gmail, Calendar, Drive, Meet, Search Console and Business Profile within
+      granted scopes.
+    apps:
+      - kernel
+    services:
+      - google
+    packages: []
+    entry_points:
+      ui:
+        - /auth/connectors/google
+      api:
+        - /google/api/connect
+        - /google/api/scope-manifest
+        - /mcp
+      sdk: []
+      specs:
+        - apps/kernel/api-spec/google.yaml
+    audience: org admin
+    maturity: works
+    business_weight: supporting
+    pillars:
+      - delegated authority
+    grade_reason: Per-connection OAuth and readers are tested; organization-wide domain delegation is not delivered.
+    evidence:
+      code:
+        - apps/kernel/src/lib/google/connector.ts
+        - apps/kernel/src/lib/mcp/tools/google-gmail.ts
+        - apps/kernel/src/lib/mcp/tools/google-drive.ts
+      tests:
+        - apps/kernel/src/lib/google/__tests__/connector.test.ts
+        - apps/kernel/src/lib/google/__tests__/readers.test.ts
+      navigation: []
+      last_touched: 2026-11-04
+      open_issues:
+        - https://github.com/ima-jin/imajin-ai/issues/2364
+  - id: github-connector
+    name: Delegate GitHub repository work
+    action: Connect a GitHub account, read repository/PR data and request approval for protected operations.
+    apps:
+      - kernel
+    services:
+      - github
+    packages: []
+    entry_points:
+      ui:
+        - /auth/connectors/github
+      api:
+        - /github/api/connect
+        - /github/api/device/start
+        - /mcp
+      sdk: []
+      specs:
+        - apps/kernel/api-spec/github.yaml
+    audience: developer
+    maturity: works
+    business_weight: supporting
+    pillars:
+      - delegated authority
+    grade_reason: OAuth/device state, slots and connector operations have tests; credentials stay behind the connector.
+    evidence:
+      code:
+        - apps/kernel/src/lib/github/connector.ts
+        - apps/kernel/src/lib/mcp/tools/github.ts
+      tests:
+        - apps/kernel/src/lib/github/__tests__/connector.test.ts
+        - apps/kernel/src/lib/github/__tests__/oauth-state.test.ts
+      navigation: []
+      last_touched: 2026-10-27
+      open_issues: []
+  - id: quickbooks-connector
+    name: Connect accounting access
+    action: Authorize a QuickBooks realm in an owner-bound connection with explicit scope consent.
+    apps:
+      - kernel
+    services:
+      - quickbooks
+    packages: []
+    entry_points:
+      ui:
+        - /auth/connectors/quickbooks
+      api:
+        - /quickbooks/api/connect
+        - /quickbooks/api/scope-manifest
+      sdk: []
+      specs:
+        - apps/kernel/api-spec/quickbooks.yaml
+    audience: org admin
+    maturity: works
+    business_weight: supporting
+    pillars:
+      - delegated authority
+    grade_reason: Credential and realm lifecycle is tested; this row does not promise a complete accounting workflow.
+    evidence:
+      code:
+        - apps/kernel/src/lib/quickbooks/connector.ts
+      tests:
+        - apps/kernel/src/lib/quickbooks/__tests__/connector.test.ts
+        - apps/kernel/src/lib/quickbooks/__tests__/oauth-state.test.ts
+      navigation: []
+      last_touched: 2026-10-17
+      open_issues: []
+  - id: operator-approvals
+    name: Approve risky actions
+    action: Approve, deny or withdraw an addressed proposal and retain the signed decision and execution outcome.
+    apps:
+      - kernel
+    services:
+      - jin
+      - notify
+    packages: []
+    entry_points:
+      ui:
+        - /jin
+      api:
+        - /jin/api/operator-approvals
+        - /jin/api/operator-approvals/{proposalId}/decision
+      sdk: []
+      specs:
+        - apps/kernel/api-spec/jin.yaml
+        - apps/kernel/api-spec/notify.yaml
+    audience: operator
+    maturity: live
+    business_weight: core
+    pillars:
+      - delegated authority
+      - signed record and settlement
+    grade_reason: Named addressee, content-bound countersignatures and outcome tracking exist; orphan and degraded
+      bridge presentation remain gaps.
+    evidence:
+      code:
+        - apps/kernel/src/lib/notify/operator-approvals-service.ts
+        - apps/kernel/src/lib/notify/operator-countersign.ts
+        - apps/kernel/app/jin/page.tsx
+      tests:
+        - apps/kernel/src/lib/notify/__tests__/operator-approvals-service.test.ts
+      navigation:
+        - packages/ui/src/jin-nav-entry.tsx
+        - apps/kernel/app/jin/page.tsx
+      last_touched: 2026-11-04
+      open_issues:
+        - https://github.com/ima-jin/imajin-ai/issues/3019
+        - https://github.com/ima-jin/imajin-ai/issues/3020
+        - https://github.com/ima-jin/imajin-ai/issues/3348
+  - id: signed-record
+    name: Inspect who acted on whose authority
+    action: Read personal or acting-org signed events with exact grant and approval references.
+    apps:
+      - kernel
+    services:
+      - jin
+    packages: []
+    entry_points:
+      ui:
+        - /jin
+      api:
+        - /jin/api/events
+      sdk: []
+      specs:
+        - apps/kernel/api-spec/jin.yaml
+    audience: business buyer
+    maturity: live
+    business_weight: core
+    pillars:
+      - agent identity
+      - delegated authority
+      - signed record and settlement
+    grade_reason: Read scope is principal-bound; code distinguishes node-witnessed and operator-countersigned
+      records and preserves revoked-grant history.
+    evidence:
+      code:
+        - apps/kernel/src/lib/jin/record-events.ts
+        - apps/kernel/app/jin/page.tsx
+      tests:
+        - apps/kernel/app/jin/api/events/__tests__/record-spec.test.ts
+      navigation:
+        - packages/ui/src/jin-nav-entry.tsx
+        - apps/kernel/app/jin/page.tsx
+      last_touched: 2026-11-04
+      open_issues:
+        - https://github.com/ima-jin/imajin-ai/issues/3348
+  - id: usage-reconcile
+    name: Compare incurred and billed cost
+    action: Inspect per-identity incurred usage, counterparty bills, drift and signed rollups.
+    apps:
+      - kernel
+    services:
+      - usage
+      - jin
+    packages: []
+    entry_points:
+      ui:
+        - /jin
+      api:
+        - /usage/api/summary
+        - /usage/api/rollup/{did}/latest
+      sdk: []
+      specs:
+        - apps/kernel/api-spec/usage.yaml
+        - apps/kernel/api-spec/jin.yaml
+    audience: business buyer
+    maturity: partial
+    business_weight: core
+    pillars:
+      - signed record and settlement
+    grade_reason: Read models exist, but provider billed-source and emitter coverage are incomplete; no claim of
+      universal agent cost capture.
+    evidence:
+      code:
+        - apps/kernel/src/lib/usage/summary.ts
+        - apps/kernel/src/lib/usage/reconciliation.ts
+        - apps/kernel/src/lib/usage/rollup.ts
+        - apps/kernel/app/jin/page.tsx
+      tests:
+        - apps/kernel/src/lib/jin/__tests__/spend-shared.test.ts
+      navigation: []
+      last_touched: 2026-11-04
+      open_issues:
+        - https://github.com/ima-jin/imajin-ai/issues/3135
+        - https://github.com/ima-jin/imajin-ai/issues/3137
+        - https://github.com/ima-jin/imajin-ai/issues/3138
+        - https://github.com/ima-jin/imajin-ai/issues/3139
+        - https://github.com/ima-jin/imajin-ai/issues/3142
+        - https://github.com/ima-jin/imajin-ai/issues/3263
+  - id: billed-receipts
+    name: Record a counterparty bill
+    action: Confirm extracted receipt lines or backfill a manual billed statement with signed provenance.
+    apps:
+      - kernel
+    services:
+      - usage
+    packages: []
+    entry_points:
+      ui: []
+      api:
+        - /usage/api/billed
+        - /usage/api/receipts
+        - /usage/api/receipts/extract
+      sdk: []
+      specs:
+        - apps/kernel/api-spec/usage.yaml
+    audience: operator
+    maturity: works
+    business_weight: core
+    pillars:
+      - signed record and settlement
+    grade_reason: Human-confirmed receipt ingestion is separate from the untrusted extraction draft; Warp/Kimi
+      automatic statements remain open.
+    evidence:
+      code:
+        - apps/kernel/src/lib/usage/billed/manual.ts
+        - apps/kernel/src/lib/usage/billed/receipt.ts
+        - apps/kernel/src/lib/usage/billed/receipt-extract.ts
+      tests:
+        - apps/kernel/src/lib/usage/billed/__tests__/receipt-extract.test.ts
+        - apps/kernel/src/lib/usage/billed/__tests__/receipt-fx-aggregate.test.ts
+      navigation: []
+      last_touched: 2026-10-24
+      open_issues:
+        - https://github.com/ima-jin/imajin-ai/issues/3137
+  - id: inference-passthrough
+    name: Use a sealed inference connection
+    action: Run a completion as an agent under principal-owned credentials with bounded inference scopes.
+    apps:
+      - kernel
+    services:
+      - infer
+    packages:
+      - openclaw-infer-passthrough
+    entry_points:
+      ui: []
+      api:
+        - /infer/v1/chat/completions
+        - /infer/v1/messages
+      sdk:
+        - "@imajin/openclaw-infer-passthrough"
+      specs:
+        - apps/kernel/api-spec/infer.yaml
+    audience: agent (machine)
+    maturity: partial
+    business_weight: core
+    pillars:
+      - agent identity
+      - delegated authority
+      - signed record and settlement
+    grade_reason: Agent/principal authorization is tested, but bypass/direct-provider traffic and signed metering
+      completeness still need production proof.
+    evidence:
+      code:
+        - apps/kernel/src/lib/inference/resolve.ts
+        - apps/kernel/src/lib/inference/auth.ts
+        - apps/kernel/src/lib/inference/completions/openai-compatible-adapter.ts
+      tests:
+        - apps/kernel/src/lib/inference/__tests__/assigned-org-bot.integration.test.ts
+      navigation: []
+      last_touched: 2026-11-04
+      open_issues:
+        - https://github.com/ima-jin/imajin-ai/issues/3329
+        - https://github.com/ima-jin/imajin-ai/issues/3278
+        - https://github.com/ima-jin/imajin-ai/issues/3263
+        - https://github.com/ima-jin/imajin-ai/issues/3118
+  - id: agent-self-discovery
+    name: Discover your identity and authority
+    action: Ask as the signing agent which principal, connectors and models are actually usable.
+    apps:
+      - kernel
+    services:
+      - infer
+    packages: []
+    entry_points:
+      ui: []
+      api:
+        - /infer/v1/self
+        - /infer/v1/models/usable
+      sdk: []
+      specs:
+        - apps/kernel/api-spec/infer.yaml
+    audience: agent (machine)
+    maturity: works
+    business_weight: core
+    pillars:
+      - agent identity
+      - delegated authority
+    grade_reason: Read-only discovery evaluates connector authority instead of exposing credential values.
+    evidence:
+      code:
+        - apps/kernel/src/lib/inference/self-discovery.ts
+        - apps/kernel/src/lib/inference/self-discovery-connectors.ts
+      tests:
+        - apps/kernel/src/lib/inference/__tests__/self-discovery-connectors.test.ts
+      navigation: []
+      last_touched: 2026-11-05
+      open_issues: []
+  - id: vault-mint-import
+    name: Custody and rotate service credentials
+    action: Mint a service key or import a static secret through an explicit operator proposal.
+    apps:
+      - kernel
+    services:
+      - vault
+    packages:
+      - vault-core
+    entry_points:
+      ui:
+        - /jin
+        - /admin/vault
+      api:
+        - /api/vault/mint
+        - /api/vault/import
+        - /jin/api/vault-proposals
+      sdk:
+        - "@imajin/vault-core"
+      specs:
+        - apps/kernel/api-spec/vault.yaml
+    audience: operator
+    maturity: live
+    business_weight: core
+    pillars:
+      - agent identity
+      - delegated authority
+      - signed record and settlement
+    grade_reason: Custody, approval execution and revocation are implemented; production adoption and operator
+      rotation drill are not inferred from tests.
+    evidence:
+      code:
+        - apps/kernel/src/lib/vault/mint.ts
+        - apps/kernel/src/lib/vault/import.ts
+        - apps/kernel/src/lib/vault/approvals-execution.ts
+        - apps/kernel/app/jin/page.tsx
+        - apps/kernel/app/admin/vault/page.tsx
+        - packages/vault-core/src/index.ts
+      tests:
+        - apps/kernel/src/lib/vault/__tests__/mint.test.ts
+        - apps/kernel/src/lib/vault/__tests__/import.integration.test.ts
+      navigation:
+        - packages/ui/src/jin-nav-entry.tsx
+        - apps/kernel/app/jin/page.tsx
+      last_touched: 2026-11-05
+      open_issues:
+        - https://github.com/ima-jin/imajin-ai/issues/1979
+        - https://github.com/ima-jin/imajin-ai/issues/2683
+  - id: vault-delegation
+    name: Deliver a recipient-bound secret grant
+    action: Discover, fetch and acknowledge credentials already delegated to the intended recipient.
+    apps:
+      - kernel
+    services:
+      - vault
+    packages:
+      - vault-core
+    entry_points:
+      ui: []
+      api:
+        - /api/vault/delegation/grants
+        - /api/vault/delegation/grants/{grantId}/fetch
+        - /api/vault/delegation/grants/{grantId}/ack
+      sdk:
+        - "@imajin/vault-core"
+      specs:
+        - apps/kernel/api-spec/vault.yaml
+    audience: agent (machine)
+    maturity: works
+    business_weight: core
+    pillars:
+      - delegated authority
+      - signed record and settlement
+    grade_reason: Grant fetch and acknowledgement are existing recipient-authorized rails, not a general secret export API.
+    evidence:
+      code:
+        - apps/kernel/src/lib/vault/grant.ts
+        - apps/kernel/src/lib/vault/authorization.ts
+        - packages/vault-core/src/index.ts
+      tests:
+        - packages/vault-core/tests/delegation.test.ts
+      navigation: []
+      last_touched: 2026-10-23
+      open_issues:
+        - https://github.com/ima-jin/imajin-ai/issues/3319
+  - id: ssh-certificates
+    name: Delegate short-lived SSH access
+    action: Mint and rotate a custodied CA and issue constrained throwaway user certificates under grants.
+    apps:
+      - kernel
+    services:
+      - vault
+    packages: []
+    entry_points:
+      ui:
+        - /jin
+      api:
+        - /api/vault/ssh-ca
+        - /api/vault/ssh-ca/sign
+        - /api/vault/ssh-ca/grants
+      sdk: []
+      specs:
+        - apps/kernel/api-spec/vault.yaml
+    audience: operator
+    maturity: works
+    business_weight: core
+    pillars:
+      - delegated authority
+      - signed record and settlement
+    grade_reason: CA lifecycle and constrained signing have integration tests; host installation remains operator work.
+    evidence:
+      code:
+        - apps/kernel/src/lib/vault/ssh-ca.ts
+        - apps/kernel/src/lib/vault/ssh-cert.ts
+        - apps/kernel/app/jin/page.tsx
+      tests:
+        - apps/kernel/src/lib/vault/__tests__/ssh-ca.integration.test.ts
+      navigation: []
+      last_touched: 2026-11-04
+      open_issues: []
+  - id: cloudflare-operations
+    name: Delegate zone operations
+    action: Preview or approve DNS, proxy and cache mutations and inspect signed zone history.
+    apps:
+      - kernel
+    services:
+      - cloudflare
+    packages: []
+    entry_points:
+      ui:
+        - /jin
+      api:
+        - /cloudflare/api/grants
+        - /cloudflare/api/zones/{zoneId}/dns
+        - /cloudflare/api/zones/{zoneId}/history
+      sdk: []
+      specs:
+        - apps/kernel/api-spec/cloudflare.yaml
+    audience: operator
+    maturity: live
+    business_weight: supporting
+    pillars:
+      - delegated authority
+      - signed record and settlement
+    grade_reason: Zone-scoped grants and approval paths are tested; infrastructure automation is a supporting
+      example, not the category.
+    evidence:
+      code:
+        - apps/kernel/src/lib/cloudflare/routes.ts
+        - apps/kernel/src/lib/cloudflare/operations.ts
+        - apps/kernel/src/lib/cloudflare/authority.ts
+        - apps/kernel/app/jin/page.tsx
+      tests:
+        - apps/kernel/src/lib/cloudflare/__tests__/delegation-acceptance.integration.test.ts
+      navigation:
+        - packages/ui/src/jin-nav-entry.tsx
+        - apps/kernel/app/jin/page.tsx
+      last_touched: 2026-11-04
+      open_issues:
+        - https://github.com/ima-jin/imajin-ai/issues/3104
+  - id: domain-mail
+    name: Send as a verified organization domain
+    action: Prove domain ownership, provision Postal sending and choose purpose-specific sender addresses.
+    apps:
+      - kernel
+    services:
+      - auth
+      - jin
+    packages: []
+    entry_points:
+      ui:
+        - /jin/org-settings
+      api:
+        - /auth/api/identities/{did}/domains
+        - /jin/api/orgs/{ownerDid}/mail-domains
+        - /jin/api/orgs/{ownerDid}/mail-senders
+      sdk: []
+      specs:
+        - apps/kernel/api-spec/auth.yaml
+        - apps/kernel/api-spec/jin.yaml
+    audience: org admin
+    maturity: works
+    business_weight: supporting
+    pillars:
+      - agent identity
+      - delegated authority
+    grade_reason: Ownership and sender resolution are implemented; automatic DNS-provider writes and app-host
+      attachment remain separate gaps.
+    evidence:
+      code:
+        - apps/kernel/src/lib/domains/service.ts
+        - apps/kernel/src/lib/mail/postal-domains.ts
+        - apps/kernel/src/lib/mail/resolver.ts
+        - apps/kernel/app/jin/org-settings/page.tsx
+      tests:
+        - apps/kernel/src/lib/domains/__tests__/service.test.ts
+        - apps/kernel/src/lib/mail/__tests__/signed-resolution.test.ts
+      navigation: []
+      last_touched: 2026-11-04
+      open_issues:
+        - https://github.com/ima-jin/imajin-ai/issues/2917
+        - https://github.com/ima-jin/imajin-ai/issues/2920
+        - https://github.com/ima-jin/imajin-ai/issues/3057
+  - id: app-registration
+    name: Register an identity-owned app
+    action: Register, update or revoke an app and publish safe presentation declarations under the acting owner.
+    apps:
+      - kernel
+    services:
+      - registry
+    packages:
+      - auth-client
+    entry_points:
+      ui:
+        - /auth/developer/apps
+      api:
+        - /api/registry/apps
+        - /api/registry/apps/{appId}
+      sdk:
+        - "@imajin/auth-client"
+      specs:
+        - apps/kernel/api-spec/registry.yaml
+    audience: developer
+    maturity: live
+    business_weight: core
+    pillars:
+      - agent identity
+      - delegated authority
+    grade_reason: Acting-owner checks and lifecycle exist; directory visibility is a declaration, not automatic permission.
+    evidence:
+      code:
+        - apps/kernel/src/lib/kernel/app-registry.ts
+        - apps/kernel/src/lib/kernel/app-registrant.ts
+        - apps/kernel/app/auth/developer/apps/page.tsx
+        - packages/auth-client/src/index.ts
+      tests:
+        - apps/kernel/src/lib/kernel/__tests__/registry-app-expiry-spec.test.ts
+      navigation:
+        - apps/kernel/app/auth/components/IdentityTabBar.tsx
+        - apps/kernel/app/auth/layout.tsx
+      last_touched: 2026-10-27
+      open_issues:
+        - https://github.com/ima-jin/imajin-ai/issues/2867
+  - id: app-provisioning
+    name: Provision and claim a registered app
+    action: Request operator-approved app setup, service scopes and a one-time signing-key claim.
+    apps:
+      - kernel
+    services:
+      - jin
+    packages: []
+    entry_points:
+      ui:
+        - /jin
+      api:
+        - /jin/api/apps/provision
+        - /jin/api/apps/claim
+        - /jin/api/apps/service-scopes
+      sdk: []
+      specs:
+        - apps/kernel/api-spec/jin.yaml
+    audience: operator
+    maturity: live
+    business_weight: supporting
+    pillars:
+      - agent identity
+      - delegated authority
+    grade_reason: Proposal, claim and abandoned-client expiry are implemented; no claim of frictionless self-serve
+      onboarding.
+    evidence:
+      code:
+        - apps/kernel/src/lib/apps/provision.ts
+        - apps/kernel/src/lib/apps/registry-app-expiry.ts
+        - apps/kernel/app/jin/page.tsx
+      tests:
+        - apps/kernel/src/lib/apps/__tests__/provision.test.ts
+        - apps/kernel/src/lib/apps/__tests__/registry-app-expiry.test.ts
+      navigation:
+        - packages/ui/src/jin-nav-entry.tsx
+        - apps/kernel/app/jin/page.tsx
+      last_touched: 2026-11-04
+      open_issues: []
+  - id: app-consent
+    name: Authorize an app without sharing a login
+    action: Consent to scoped app access and exchange single-use codes for audience-bound tokens.
+    apps:
+      - kernel
+    services:
+      - auth
+    packages:
+      - auth
+      - auth-client
+    entry_points:
+      ui:
+        - /auth/authorize
+        - /auth/apps
+      api:
+        - /auth/api/auth/authorize
+        - /auth/api/apps/token
+        - /auth/api/apps/token/verify
+      sdk:
+        - "@imajin/auth"
+        - "@imajin/auth-client"
+      specs:
+        - apps/kernel/api-spec/auth.yaml
+    audience: end user/consumer
+    maturity: live
+    business_weight: core
+    pillars:
+      - agent identity
+      - delegated authority
+    grade_reason: Token/callback and scope contracts are tested; this is app authorization, not alpha website
+      self-serve sign-up.
+    evidence:
+      code:
+        - apps/kernel/src/lib/auth/app-authorization-code.ts
+        - apps/kernel/src/lib/kernel/app-consent.ts
+        - apps/kernel/app/auth/authorize/page.tsx
+        - apps/kernel/app/auth/apps/page.tsx
+        - packages/auth/src/index.ts
+        - packages/auth-client/src/index.ts
+      tests:
+        - packages/auth-client/tests/callback-exchange.test.ts
+        - packages/auth/tests/app-token.test.ts
+      navigation:
+        - apps/kernel/app/auth/components/IdentityTabBar.tsx
+        - apps/kernel/app/auth/layout.tsx
+      last_touched: 2026-11-03
+      open_issues:
+        - https://github.com/ima-jin/imajin-ai/issues/2400
+  - id: app-directory
+    name: Choose apps for your identity
+    action: Browse discoverable registered apps and add them to identity-scoped navigation.
+    apps:
+      - kernel
+    services:
+      - auth
+      - registry
+    packages: []
+    entry_points:
+      ui:
+        - /auth/app-directory
+        - /auth/apps
+      api:
+        - /auth/api/apps/directory
+        - /auth/api/apps/{slug}
+      sdk: []
+      specs:
+        - apps/kernel/api-spec/auth.yaml
+        - apps/kernel/api-spec/registry.yaml
+    audience: end user/consumer
+    maturity: live
+    business_weight: supporting
+    pillars:
+      - delegated authority
+    grade_reason: Navigation resolves registry state, placement, visibility and effective-identity authorization;
+      no default app entitlement.
+    evidence:
+      code:
+        - apps/kernel/src/lib/kernel/app-nav.ts
+        - apps/kernel/src/lib/kernel/app-membership.ts
+        - apps/kernel/app/auth/app-directory/page.tsx
+        - apps/kernel/app/auth/apps/page.tsx
+      tests:
+        - apps/kernel/src/lib/kernel/__tests__/operational-apps.test.ts
+      navigation:
+        - apps/kernel/app/auth/components/IdentityTabBar.tsx
+        - apps/kernel/app/auth/layout.tsx
+      last_touched: 2026-10-18
+      open_issues:
+        - https://github.com/ima-jin/imajin-ai/issues/2867
+  - id: upstream-connections
+    name: Call a reviewed app upstream
+    action: Seal a personal key for a declared app destination and call it with kernel credential injection.
+    apps:
+      - kernel
+    services:
+      - connections
+    packages: []
+    entry_points:
+      ui: []
+      api:
+        - /connections/api/upstreams
+        - /connections/api/upstreams/connection
+        - /connections/api/upstreams/call
+      sdk: []
+      specs:
+        - apps/kernel/api-spec/connections.yaml
+    audience: developer
+    maturity: works
+    business_weight: core
+    pillars:
+      - delegated authority
+    grade_reason: Destination-bound policy is implemented; review outbound declarations before connecting a credential.
+    evidence:
+      code:
+        - apps/kernel/src/lib/kernel/app-upstream.ts
+        - apps/kernel/src/lib/kernel/app-upstream-policy.ts
+      tests:
+        - apps/kernel/src/lib/kernel/__tests__/external-mcp.integration.test.ts
+      navigation: []
+      last_touched: 2026-10-28
+      open_issues: []
+  - id: postman-mcp
+    name: Use a delegated external MCP connection
+    action: Seal a personal Postman key and call allowlisted read-only tools through the kernel.
+    apps:
+      - kernel
+    services:
+      - connections
+    packages: []
+    entry_points:
+      ui:
+        - /auth/connectors
+      api:
+        - /connections/api/external-mcp/postman
+        - /connections/api/external-mcp/postman/rpc
+      sdk: []
+      specs:
+        - apps/kernel/api-spec/connections.yaml
+    audience: agent (machine)
+    maturity: works
+    business_weight: supporting
+    pillars:
+      - delegated authority
+    grade_reason: Postman is the implemented bounded external-MCP example, not arbitrary remote MCP execution.
+    evidence:
+      code:
+        - apps/kernel/src/lib/kernel/external-mcp.ts
+        - apps/kernel/src/lib/kernel/external-mcp-policy.ts
+        - apps/kernel/app/auth/connectors/page.tsx
+      tests:
+        - apps/kernel/src/lib/kernel/__tests__/external-mcp.integration.test.ts
+      navigation: []
+      last_touched: 2026-11-06
+      open_issues:
+        - https://github.com/ima-jin/imajin-ai/issues/3163
+  - id: mcp-tools
+    name: Call scoped kernel tools
+    action: Use the registered MCP tools for discovery, messages, media, connections and delegated integrations.
+    apps:
+      - kernel
+    services:
+      - mcp
+    packages: []
+    entry_points:
+      ui: []
+      api:
+        - /mcp
+        - /api/spec
+      sdk: []
+      specs: []
+    audience: agent (machine)
+    maturity: works
+    business_weight: core
+    pillars:
+      - agent identity
+      - delegated authority
+    grade_reason: Tool registry and gateway enforce caller identity and per-tool scopes; unsupported tools are not
+      manufactured.
+    evidence:
+      code:
+        - apps/kernel/src/lib/mcp/tools/index.ts
+        - apps/kernel/src/lib/mcp/tools/discovery.ts
+      tests:
+        - apps/kernel/src/lib/mcp/__tests__/agent-gateway.integration.test.ts
+      navigation: []
+      last_touched: 2026-10-17
+      open_issues:
+        - https://github.com/ima-jin/imajin-ai/issues/3237
+        - https://github.com/ima-jin/imajin-ai/issues/3321
+  - id: reach
+    name: Reach a person through their agent
+    action: Discover a public reach card, submit a gated message and read the principal-signed reply receipt.
+    apps:
+      - kernel
+    services:
+      - auth
+      - jin
+    packages: []
+    entry_points:
+      ui:
+        - /[handle]/reach
+        - /jin
+      api:
+        - /.well-known/agent/{id}
+        - /auth/api/agents/{did}/reach
+        - /jin/api/reach
+      sdk: []
+      specs:
+        - apps/kernel/api-spec/auth.yaml
+        - apps/kernel/api-spec/jin.yaml
+    audience: agent (machine)
+    maturity: works
+    business_weight: supporting
+    pillars:
+      - agent identity
+      - delegated authority
+      - signed record and settlement
+    grade_reason: Gate, recipient reply and foreign-agent status checks are tested; protocol/conformance
+      follow-ons remain open.
+    evidence:
+      code:
+        - apps/kernel/src/lib/auth/agent-reach.ts
+        - apps/kernel/src/lib/auth/reach-status.ts
+        - apps/kernel/src/lib/auth/reach-reply-service.ts
+        - apps/kernel/app/[handle]/reach/page.tsx
+        - apps/kernel/app/jin/page.tsx
+      tests:
+        - apps/kernel/src/lib/auth/__tests__/reach-authority.integration.test.ts
+        - apps/kernel/src/lib/auth/__tests__/reach-status-foreign.integration.test.ts
+      navigation: []
+      last_touched: 2026-11-04
+      open_issues:
+        - https://github.com/ima-jin/imajin-ai/issues/2587
+        - https://github.com/ima-jin/imajin-ai/issues/2592
+        - https://github.com/ima-jin/imajin-ai/issues/2594
+        - https://github.com/ima-jin/imajin-ai/issues/2600
+  - id: channel-speaker
+    name: Bind a channel speaker to a principal
+    action: Approve a channel link and admit an organization bot speaker only when current membership allows it.
+    apps:
+      - kernel
+    services:
+      - auth
+    packages: []
+    entry_points:
+      ui:
+        - /auth/channel-link/[token]
+      api:
+        - /auth/api/channel-link/approve
+        - /auth/api/channel-link/speaker
+      sdk: []
+      specs:
+        - apps/kernel/api-spec/auth.yaml
+    audience: org admin
+    maturity: works
+    business_weight: core
+    pillars:
+      - agent identity
+      - delegated authority
+    grade_reason: Speaker membership is checked separately from bot authority and organization payment attribution.
+    evidence:
+      code:
+        - apps/kernel/src/lib/auth/channel-speaker.ts
+        - apps/kernel/src/lib/auth/channel-link-approval.ts
+        - apps/kernel/app/auth/channel-link/[token]/page.tsx
+      tests:
+        - apps/kernel/src/lib/auth/__tests__/channel-speaker.integration.test.ts
+      navigation: []
+      last_touched: 2026-11-05
+      open_issues:
+        - https://github.com/ima-jin/imajin-ai/issues/3231
+  - id: signed-loops
+    name: Follow a signed agent run
+    action: Publish lifecycle and horizon observations and reconcile receipts without reading runtime transcripts.
+    apps:
+      - kernel
+    services:
+      - jin
+    packages: []
+    entry_points:
+      ui:
+        - /jin
+      api:
+        - /jin/api/loops
+        - /jin/api/loops/receipts
+        - /jin/api/loops/{loopId}
+      sdk: []
+      specs:
+        - apps/kernel/api-spec/jin.yaml
+    audience: operator
+    maturity: live
+    business_weight: core
+    pillars:
+      - agent identity
+      - signed record and settlement
+    grade_reason: Signed observations and run projection are implemented; the kernel learns through events, not
+      session-key custody.
+    evidence:
+      code:
+        - apps/kernel/src/lib/loops/cycle.ts
+        - apps/kernel/src/lib/jin/runs-lane.ts
+        - apps/kernel/src/lib/warp/loop-emit.ts
+        - apps/kernel/app/jin/page.tsx
+      tests:
+        - apps/kernel/src/lib/loops/__tests__/horizon-binding.test.ts
+        - apps/kernel/src/lib/warp/__tests__/warp-run-loop-bridge.test.ts
+      navigation:
+        - packages/ui/src/jin-nav-entry.tsx
+        - apps/kernel/app/jin/page.tsx
+      last_touched: 2026-11-04
+      open_issues:
+        - https://github.com/ima-jin/imajin-ai/issues/3257
+        - https://github.com/ima-jin/imajin-ai/issues/2881
+        - https://github.com/ima-jin/imajin-ai/issues/3374
+  - id: runtime-commands
+    name: Authorize a command to a connected run
+    action: Prepare or dispatch a principal-signed command over the authenticated runtime session binding.
+    apps:
+      - kernel
+    services:
+      - jin
+    packages: []
+    entry_points:
+      ui:
+        - /jin
+      api:
+        - /jin/api/runs/{loopId}/commands
+      sdk: []
+      specs:
+        - apps/kernel/api-spec/jin.yaml
+    audience: operator
+    maturity: works
+    business_weight: core
+    pillars:
+      - delegated authority
+      - signed record and settlement
+    grade_reason: Command authority and session outcomes are tested; this is a command rail, not kernel access to
+      runtime sessions.
+    evidence:
+      code:
+        - apps/kernel/src/lib/jin/session-commands.ts
+        - apps/kernel/src/lib/jin/session-command-authority.ts
+        - apps/kernel/app/jin/page.tsx
+      tests:
+        - apps/kernel/src/lib/jin/__tests__/session-commands.test.ts
+      navigation: []
+      last_touched: 2026-11-04
+      open_issues:
+        - https://github.com/ima-jin/imajin-ai/issues/3374
+  - id: warp-dispatch
+    name: Dispatch a delegated cloud task
+    action: Launch and watch a Warp task under a sealed connection and record its signed loop observations.
+    apps:
+      - kernel
+    services:
+      - warp
+    packages: []
+    entry_points:
+      ui: []
+      api:
+        - /mcp
+      sdk: []
+      specs: []
+    audience: agent (machine)
+    maturity: works
+    business_weight: supporting
+    pillars:
+      - delegated authority
+      - signed record and settlement
+    grade_reason: Delegated dispatch and watchers exist; environment read routes are still tracked and no generic
+      runtime orchestration is promised.
+    evidence:
+      code:
+        - apps/kernel/src/lib/warp/dispatch.ts
+        - apps/kernel/src/lib/warp/run-watch-sweep.ts
+        - apps/kernel/src/lib/mcp/tools/warp.ts
+      tests:
+        - apps/kernel/src/lib/warp/__tests__/dispatch.test.ts
+      navigation: []
+      last_touched: 2026-11-04
+      open_issues:
+        - https://github.com/ima-jin/imajin-ai/issues/3191
+        - https://github.com/ima-jin/imajin-ai/issues/3374
+  - id: cycle-preview
+    name: Preview a sprint cycle
+    action: Start a scoped cycle rail and emit decision previews; phases currently record skipped, not work
+      performed.
+    apps:
+      - kernel
+    services:
+      - jin
+      - mcp
+    packages: []
+    entry_points:
+      ui:
+        - /jin
+      api:
+        - /mcp
+      sdk: []
+      specs:
+        - apps/kernel/api-spec/jin.yaml
+    audience: operator
+    maturity: partial
+    business_weight: supporting
+    pillars:
+      - delegated authority
+      - signed record and settlement
+    grade_reason: runCyclePhaseStub explicitly skips every phase; cannot claim automatic merge, filing,
+      provisioning or review.
+    evidence:
+      code:
+        - apps/kernel/src/lib/mcp/tools/cycle.ts
+        - apps/kernel/app/jin/page.tsx
+      tests:
+        - apps/kernel/src/lib/mcp/__tests__/cycle-tools.test.ts
+      navigation: []
+      last_touched: 2026-11-04
+      open_issues:
+        - https://github.com/ima-jin/imajin-ai/issues/2313
+        - https://github.com/ima-jin/imajin-ai/issues/2883
+  - id: signed-documents
+    name: Sign and verify a document
+    action: Create, review, countersign, decline or amend a hash-bound document as the effective identity.
+    apps:
+      - kernel
+    services:
+      - auth
+    packages:
+      - auth
+      - dfos
+    entry_points:
+      ui:
+        - /auth/attestations
+        - /auth/documents/[id]
+      api:
+        - /auth/api/documents
+        - /auth/api/documents/{id}/sign
+        - /auth/api/documents/{id}/verify
+      sdk:
+        - "@imajin/auth"
+        - "@imajin/dfos"
+      specs:
+        - apps/kernel/api-spec/auth.yaml
+    audience: org admin
+    maturity: live
+    business_weight: core
+    pillars:
+      - agent identity
+      - delegated authority
+      - signed record and settlement
+    grade_reason: Signature and file-hash verification exist for parties; not a claim of external legal certification.
+    evidence:
+      code:
+        - apps/kernel/src/lib/auth/document-signatures.ts
+        - apps/kernel/src/lib/auth/verify-document.ts
+        - apps/kernel/src/lib/auth/document-authorization.ts
+        - apps/kernel/app/auth/attestations/page.tsx
+        - apps/kernel/app/auth/documents/[id]/page.tsx
+        - packages/auth/src/index.ts
+        - packages/dfos/src/index.ts
+      tests:
+        - apps/kernel/src/lib/auth/__tests__/org-agreement.integration.test.ts
+        - apps/kernel/src/lib/auth/__tests__/verify-document.test.ts
+      navigation:
+        - apps/kernel/app/auth/components/IdentityTabBar.tsx
+        - apps/kernel/app/auth/layout.tsx
+      last_touched: 2026-11-05
+      open_issues: []
+  - id: attestations
+    name: Issue and revoke signed claims
+    action: Discover types, issue a claim, countersign it or revoke it while retaining history.
+    apps:
+      - kernel
+    services:
+      - auth
+    packages:
+      - auth
+      - dfos
+    entry_points:
+      ui:
+        - /auth/attestations
+      api:
+        - /auth/api/attestations
+        - /auth/api/attestations/countersign
+        - /auth/api/attestations/{id}/revoke
+      sdk:
+        - "@imajin/auth"
+        - "@imajin/dfos"
+      specs:
+        - apps/kernel/api-spec/auth.yaml
+    audience: developer
+    maturity: live
+    business_weight: core
+    pillars:
+      - agent identity
+      - delegated authority
+      - signed record and settlement
+    grade_reason: Type vocabulary, delegated signing and revocation are code-backed; browser signing and anonymous
+      respondents have known gaps.
+    evidence:
+      code:
+        - apps/kernel/src/lib/auth/emit-mechanical-attestation.ts
+        - apps/kernel/src/lib/auth/revoke-attestation.ts
+        - apps/kernel/app/auth/attestations/page.tsx
+        - packages/auth/src/index.ts
+        - packages/dfos/src/index.ts
+      tests:
+        - packages/auth/tests/attestation-types.test.ts
+        - packages/auth/tests/delegated-attestation-client.test.ts
+      navigation:
+        - apps/kernel/app/auth/components/IdentityTabBar.tsx
+        - apps/kernel/app/auth/layout.tsx
+      last_touched: 2026-11-02
+      open_issues:
+        - https://github.com/ima-jin/imajin-ai/issues/517
+        - https://github.com/ima-jin/imajin-ai/issues/2720
+        - https://github.com/ima-jin/imajin-ai/issues/2536
+  - id: turn-evidence
+    name: Verify a recorded tool turn
+    action: Ingest signed tool-call evidence and publicly verify a turn claim against its hash.
+    apps:
+      - kernel
+    services:
+      - auth
+    packages:
+      - auth
+    entry_points:
+      ui: []
+      api:
+        - /auth/api/attestations/turn-evidence
+        - /auth/api/verify/turn/{hash}
+      sdk:
+        - "@imajin/auth"
+      specs:
+        - apps/kernel/api-spec/auth.yaml
+    audience: developer
+    maturity: works
+    business_weight: core
+    pillars:
+      - signed record and settlement
+    grade_reason: Public verification exists for this specific record contract; a general Verify a record landing
+      flow is follow-on work.
+    evidence:
+      code:
+        - apps/kernel/src/lib/turn-evidence/authorize-publisher.ts
+        - packages/auth/src/index.ts
+      tests:
+        - packages/auth/tests/turn-evidence.test.ts
+      navigation: []
+      last_touched: 2026-11-02
+      open_issues:
+        - https://github.com/ima-jin/imajin-ai/issues/3364
+  - id: identity-keys
+    name: Authenticate and rotate identity keys
+    action: Prove a DID with a signed challenge, resolve its chain and rotate current keys.
+    apps:
+      - kernel
+    services:
+      - auth
+    packages:
+      - auth
+      - auth-client
+      - dfos
+    entry_points:
+      ui:
+        - /auth/login
+        - /profile/keys
+      api:
+        - /auth/api/challenge
+        - /auth/api/authenticate
+        - /auth/api/identity/{did}/rotate
+      sdk:
+        - "@imajin/auth"
+        - "@imajin/auth-client"
+        - "@imajin/dfos"
+      specs:
+        - apps/kernel/api-spec/auth.yaml
+    audience: developer
+    maturity: works
+    business_weight: core
+    pillars:
+      - agent identity
+    grade_reason: Challenge/chain/rotation primitives are tested; operator key drill and recovery follow-ons are distinct.
+    evidence:
+      code:
+        - apps/kernel/src/lib/auth/crypto.ts
+        - apps/kernel/src/lib/auth/dfos.ts
+        - apps/kernel/app/auth/login/page.tsx
+        - apps/kernel/app/profile/keys/page.tsx
+        - packages/auth/src/index.ts
+        - packages/auth-client/src/index.ts
+        - packages/dfos/src/index.ts
+      tests:
+        - packages/auth/tests/key-rotation.test.ts
+        - packages/auth/tests/crypto.test.ts
+      navigation: []
+      last_touched: 2026-11-05
+      open_issues:
+        - https://github.com/ima-jin/imajin-ai/issues/2683
+        - https://github.com/ima-jin/imajin-ai/issues/1250
+  - id: onboarding-security
+    name: Sign in and protect an account
+    action: Verify email, claim a soft session and manage devices, MFA and recovery codes.
+    apps:
+      - kernel
+    services:
+      - auth
+    packages:
+      - onboard
+    entry_points:
+      ui:
+        - /auth/onboard
+        - /auth/security
+        - /auth/recover
+      api:
+        - /auth/api/onboard
+        - /auth/api/devices
+        - /auth/api/mfa/totp/setup
+      sdk:
+        - "@imajin/onboard"
+      specs:
+        - apps/kernel/api-spec/auth.yaml
+    audience: end user/consumer
+    maturity: live
+    business_weight: supporting
+    pillars:
+      - agent identity
+    grade_reason: Account primitives exist, but the alpha website must not imply open self-serve commercial sign-up.
+    evidence:
+      code:
+        - apps/kernel/src/lib/auth/onboard.ts
+        - apps/kernel/src/lib/auth/recovery-codes.ts
+        - apps/kernel/src/lib/auth/email-mfa-codes.ts
+        - apps/kernel/app/auth/onboard/page.tsx
+        - apps/kernel/app/auth/security/page.tsx
+        - apps/kernel/app/auth/recover/page.tsx
+        - packages/onboard/src/index.tsx
+      tests:
+        - apps/kernel/src/lib/auth/__tests__/onboard.test.ts
+      navigation:
+        - apps/kernel/app/auth/components/IdentityTabBar.tsx
+        - apps/kernel/app/auth/layout.tsx
+      last_touched: 2026-10-18
+      open_issues:
+        - https://github.com/ima-jin/imajin-ai/issues/1250
+        - https://github.com/ima-jin/imajin-ai/issues/3364
+  - id: payments-settlement
+    name: Collect and settle an app payment
+    action: Create hosted checkout, settle an app-owned payment, refund it and retain payment attribution.
+    apps:
+      - kernel
+    services:
+      - pay
+    packages:
+      - fair
+      - money
+    entry_points:
+      ui:
+        - /pay
+      api:
+        - /pay/api/checkout
+        - /pay/api/settle
+        - /pay/api/refund
+      sdk:
+        - "@imajin/fair"
+        - "@imajin/money"
+      specs:
+        - apps/kernel/api-spec/pay.yaml
+    audience: developer
+    maturity: works
+    business_weight: core
+    pillars:
+      - signed record and settlement
+    grade_reason: Owner/app payment rails and settlement invariants have tests; not a promise that every token or
+      bank rail is deployed.
+    evidence:
+      code:
+        - apps/kernel/src/lib/pay/hosted-checkout.ts
+        - apps/kernel/src/lib/pay/app-settle.ts
+        - apps/kernel/src/lib/pay/refund.ts
+        - apps/kernel/app/pay/page.tsx
+        - packages/fair/src/index.ts
+        - packages/money/src/index.ts
+      tests:
+        - apps/kernel/src/lib/pay/__tests__/settlement-invariants.test.ts
+        - apps/kernel/src/lib/pay/__tests__/refund-route.test.ts
+      navigation: []
+      last_touched: 2026-11-05
+      open_issues:
+        - https://github.com/ima-jin/imajin-ai/issues/2003
+  - id: payment-requests
+    name: Issue and pay a money request
+    action: Issue a request, share an opaque pay link, select an authorized payer and record settlement.
+    apps:
+      - kernel
+    services:
+      - pay
+    packages:
+      - money
+    entry_points:
+      ui:
+        - /auth/money
+        - /pay/r/[handle]
+      api:
+        - /pay/api/payment-requests
+        - /pay/api/payment-requests/{id}/payer-dids
+        - /pay/api/payment-requests/{id}/settle
+      sdk:
+        - "@imajin/money"
+      specs:
+        - apps/kernel/api-spec/pay.yaml
+    audience: org admin
+    maturity: live
+    business_weight: core
+    pillars:
+      - delegated authority
+      - signed record and settlement
+    grade_reason: Personal and acting-org payer choices are tested; full PDF, legal-entity snapshot and
+      bank-transfer flow remain unfinished.
+    evidence:
+      code:
+        - apps/kernel/src/lib/pay/payment-requests/service.ts
+        - apps/kernel/src/lib/pay/payment-requests/payer-dids.ts
+        - apps/kernel/app/auth/money/page.tsx
+        - apps/kernel/app/pay/r/[handle]/page.tsx
+        - packages/money/src/index.ts
+      tests:
+        - apps/kernel/src/lib/pay/payment-requests/__tests__/payer-did-integration.test.ts
+        - apps/kernel/src/lib/pay/payment-requests/__tests__/service.test.ts
+      navigation:
+        - apps/kernel/app/auth/components/IdentityTabBar.tsx
+        - apps/kernel/app/auth/layout.tsx
+      last_touched: 2026-10-26
+      open_issues:
+        - https://github.com/ima-jin/imajin-ai/issues/2661
+        - https://github.com/ima-jin/imajin-ai/issues/3072
+        - https://github.com/ima-jin/imajin-ai/issues/3073
+        - https://github.com/ima-jin/imajin-ai/issues/3074
+  - id: wallet
+    name: Manage identity balances
+    action: Read balances and transactions, top up, transfer or gift credit to another DID.
+    apps:
+      - kernel
+    services:
+      - pay
+    packages:
+      - money
+    entry_points:
+      ui:
+        - /pay
+        - /pay/history
+        - /pay/topup
+      api:
+        - /pay/api/balance/{did}
+        - /pay/api/balance/topup
+        - /pay/api/balance/transfer
+        - /pay/api/transactions/{did}
+      sdk:
+        - "@imajin/money"
+      specs:
+        - apps/kernel/api-spec/pay.yaml
+    audience: end user/consumer
+    maturity: works
+    business_weight: supporting
+    pillars:
+      - signed record and settlement
+    grade_reason: Wallet and receipt-backed topup logic exist; token economics and public minting claims stay off
+      the alpha front door.
+    evidence:
+      code:
+        - apps/kernel/src/lib/pay/ledger.ts
+        - apps/kernel/src/lib/pay/node-topup-settlement.ts
+        - apps/kernel/app/pay/page.tsx
+        - apps/kernel/app/pay/history/page.tsx
+        - apps/kernel/app/pay/topup/page.tsx
+        - packages/money/src/index.ts
+      tests:
+        - apps/kernel/src/lib/pay/__tests__/app-money-routes.test.ts
+      navigation: []
+      last_touched: 2026-11-05
+      open_issues:
+        - https://github.com/ima-jin/imajin-ai/issues/738
+        - https://github.com/ima-jin/imajin-ai/issues/2011
+  - id: fair-attribution
+    name: Verify attribution and payment shares
+    action: Build and verify a signed .fair manifest with contributor shares and settlement receipts.
+    apps:
+      - kernel
+    services:
+      - media
+      - pay
+    packages:
+      - fair
+      - cid
+      - money
+    entry_points:
+      ui:
+        - /media
+      api:
+        - /media/api/assets/{id}/fair
+      sdk:
+        - "@imajin/fair"
+        - "@imajin/cid"
+        - "@imajin/money"
+      specs:
+        - apps/kernel/api-spec/media.yaml
+        - apps/kernel/api-spec/pay.yaml
+    audience: developer
+    maturity: works
+    business_weight: core
+    pillars:
+      - signed record and settlement
+    grade_reason: Manifest crypto and settlement invariants are executable proof, not proof of paid customer adoption.
+    evidence:
+      code:
+        - packages/fair/src/index.ts
+        - apps/kernel/app/media/page.tsx
+        - packages/cid/src/index.ts
+        - packages/money/src/index.ts
+      tests:
+        - packages/fair/tests/crypto-invariants.test.ts
+        - packages/fair/tests/settlement-invariants.test.ts
+      navigation: []
+      last_touched: 2026-10-17
+      open_issues:
+        - https://github.com/ima-jin/imajin-ai/issues/1530
+        - https://github.com/ima-jin/imajin-ai/issues/1531
+        - https://github.com/ima-jin/imajin-ai/issues/3080
+  - id: sealed-bank-details
+    name: Seal bank details for an identity
+    action: Write or revoke a bank-details record and inspect masked metadata without exposing secret fields.
+    apps:
+      - kernel
+    services:
+      - auth
+      - vault
+    packages: []
+    entry_points:
+      ui: []
+      api:
+        - /auth/api/bank-details
+      sdk: []
+      specs:
+        - apps/kernel/api-spec/auth.yaml
+        - apps/kernel/api-spec/vault.yaml
+    audience: org admin
+    maturity: partial
+    business_weight: core
+    pillars:
+      - delegated authority
+      - signed record and settlement
+    grade_reason: Sealed storage is tested; issuer settings UI, request-scoped payer disclosure and bank-transfer
+      reconciliation are still missing.
+    evidence:
+      code:
+        - apps/kernel/src/lib/vault/bank-details.ts
+        - apps/kernel/src/lib/vault/bank-details-schema.ts
+      tests:
+        - apps/kernel/src/lib/vault/__tests__/bank-details.integration.test.ts
+      navigation: []
+      last_touched: 2026-10-24
+      open_issues:
+        - https://github.com/ima-jin/imajin-ai/issues/3076
+        - https://github.com/ima-jin/imajin-ai/issues/3077
+        - https://github.com/ima-jin/imajin-ai/issues/3079
+  - id: media-assets
+    name: Store and share attributed files
+    action: Upload, find, rename, transfer and grant access to identity-owned media with .fair manifests.
+    apps:
+      - kernel
+    services:
+      - media
+    packages:
+      - media
+      - fair
+      - cid
+    entry_points:
+      ui:
+        - /media
+      api:
+        - /media/api/assets
+        - /media/api/assets/{id}/transfer
+        - /media/api/assets/{id}/access
+      sdk:
+        - "@imajin/media"
+        - "@imajin/fair"
+        - "@imajin/cid"
+      specs:
+        - apps/kernel/api-spec/media.yaml
+    audience: end user/consumer
+    maturity: works
+    business_weight: supporting
+    pillars:
+      - delegated authority
+      - signed record and settlement
+    grade_reason: Owner/read gates and asset transfer are tested; not an assertion that all historical content
+      mutation paths are append-only.
+    evidence:
+      code:
+        - apps/kernel/src/lib/media/create-asset.ts
+        - apps/kernel/src/lib/media/read-access.ts
+        - apps/kernel/src/lib/media/update-asset.ts
+        - apps/kernel/app/media/page.tsx
+        - packages/media/src/index.ts
+        - packages/fair/src/index.ts
+        - packages/cid/src/index.ts
+      tests:
+        - apps/kernel/src/lib/media/__tests__/assets-upload-route.test.ts
+        - apps/kernel/src/lib/media/__tests__/transfer-route.test.ts
+      navigation: []
+      last_touched: 2026-10-27
+      open_issues:
+        - https://github.com/ima-jin/imajin-ai/issues/2461
+  - id: media-transcription
+    name: Transcribe an audio asset
+    action: Create a transcript from owned audio/video and read it through the existing media access rules.
+    apps:
+      - kernel
+    services:
+      - media
+    packages:
+      - input
+      - llm
+    entry_points:
+      ui:
+        - /media
+      api:
+        - /media/api/assets/{id}/transcribe
+        - /media/api/transcribe
+        - /mcp
+      sdk:
+        - "@imajin/input"
+        - "@imajin/llm"
+      specs:
+        - apps/kernel/api-spec/media.yaml
+    audience: agent (machine)
+    maturity: works
+    business_weight: supporting
+    pillars:
+      - none
+    grade_reason: Transcription is implemented; local compute metering is not yet complete.
+    evidence:
+      code:
+        - apps/kernel/src/lib/media/transcribe-asset.ts
+        - apps/kernel/src/lib/mcp/tools/media-transcribe.ts
+        - apps/kernel/app/media/page.tsx
+        - packages/input/src/index.ts
+        - packages/llm/src/index.ts
+      tests:
+        - apps/kernel/src/lib/media/__tests__/transcribe-asset.test.ts
+      navigation: []
+      last_touched: 2026-10-24
+      open_issues:
+        - https://github.com/ima-jin/imajin-ai/issues/3139
+  - id: articles
+    name: Publish an attributed article
+    action: Publish and read articles backed by the media control-document and .fair machinery.
+    apps:
+      - kernel
+    services:
+      - media
+    packages:
+      - media
+    entry_points:
+      ui:
+        - /articles
+        - /articles/[handle]/[slug]
+      api:
+        - /media/api/assets
+      sdk:
+        - "@imajin/media"
+      specs:
+        - apps/kernel/api-spec/media.yaml
+    audience: end user/consumer
+    maturity: works
+    business_weight: side-effect
+    pillars:
+      - signed record and settlement
+    grade_reason: Article implementation exists; it is not the business-buyer front door.
+    evidence:
+      code:
+        - apps/kernel/src/lib/media/article-core.ts
+        - apps/kernel/src/lib/media/routes/article.ts
+        - apps/kernel/app/articles/page.tsx
+        - apps/kernel/app/articles/[handle]/[slug]/page.tsx
+        - packages/media/src/index.ts
+      tests:
+        - apps/kernel/src/lib/media/__tests__/article-route.test.ts
+      navigation: []
+      last_touched: 2026-10-23
+      open_issues: []
+  - id: chat
+    name: Message a trusted connection or group
+    action: Send, edit, react to and read DID-keyed messages and shared media under conversation access checks.
+    apps:
+      - kernel
+    services:
+      - chat
+    packages:
+      - chat
+    entry_points:
+      ui:
+        - /chat
+      api:
+        - /chat/api/conversations
+        - /chat/api/d/{did}/messages
+        - /chat/api/ws-token
+      sdk:
+        - "@imajin/chat"
+      specs:
+        - apps/kernel/api-spec/chat.yaml
+    audience: end user/consumer
+    maturity: works
+    business_weight: side-effect
+    pillars:
+      - none
+    grade_reason: Messaging and DM access are tested; do not claim forward-secret ratcheting E2EE.
+    evidence:
+      code:
+        - apps/kernel/src/lib/chat/message-helpers.ts
+        - apps/kernel/src/lib/chat/dm-guard.ts
+        - apps/kernel/src/lib/chat/ws-tokens.ts
+        - apps/kernel/app/chat/page.tsx
+        - packages/chat/src/index.ts
+      tests:
+        - apps/kernel/src/lib/chat/__tests__/send-message-dm-guard.test.ts
+        - apps/kernel/src/lib/chat/__tests__/message-helpers.test.ts
+      navigation: []
+      last_touched: 2026-11-05
+      open_issues:
+        - https://github.com/ima-jin/imajin-ai/issues/1070
+        - https://github.com/ima-jin/imajin-ai/issues/2785
+        - https://github.com/ima-jin/imajin-ai/issues/3244
+  - id: connections-pods
+    name: Build a private connection graph
+    action: Invite a person, label a bilateral connection and manage scoped group pods.
+    apps:
+      - kernel
+    services:
+      - connections
+    packages:
+      - trust-graph
+    entry_points:
+      ui:
+        - /connections
+      api:
+        - /connections/api/invites
+        - /connections/api/groups
+        - /connections/api/pods/{id}/resolve
+      sdk:
+        - "@imajin/trust-graph"
+      specs:
+        - apps/kernel/api-spec/connections.yaml
+    audience: end user/consumer
+    maturity: works
+    business_weight: supporting
+    pillars:
+      - delegated authority
+    grade_reason: Bilateral and organization-private relationship flows are tested; trust graph membership alone
+      does not delegate agent authority.
+    evidence:
+      code:
+        - apps/kernel/src/lib/connections/payment-request-invite.ts
+        - apps/kernel/src/lib/kernel/app-pod-membership.ts
+        - apps/kernel/app/connections/page.tsx
+        - packages/trust-graph/src/index.ts
+      tests:
+        - apps/kernel/src/lib/connections/__tests__/direct-invites.test.ts
+        - apps/kernel/src/lib/connections/__tests__/relationship-labels.integration.test.ts
+      navigation: []
+      last_touched: 2026-10-18
+      open_issues: []
+  - id: profile-presence
+    name: Present an identity and its agent presence
+    action: Edit public identity metadata, claim a handle and query an authorized presence.
+    apps:
+      - kernel
+    services:
+      - profile
+    packages:
+      - llm
+    entry_points:
+      ui:
+        - /profile
+        - /profile/edit
+        - /profile/[handle]
+      api:
+        - /profile/api/profile/{id}
+        - /profile/api/profile/{id}/query
+        - /profile/api/resolve
+      sdk:
+        - "@imajin/llm"
+      specs:
+        - apps/kernel/api-spec/profile.yaml
+    audience: end user/consumer
+    maturity: works
+    business_weight: supporting
+    pillars:
+      - agent identity
+      - delegated authority
+    grade_reason: Identity display and presence access exist; incognito filtering is an explicit open gap.
+    evidence:
+      code:
+        - apps/kernel/src/lib/profile/index.ts
+        - apps/kernel/src/lib/profile/presence-query.ts
+        - apps/kernel/app/profile/page.tsx
+        - apps/kernel/app/profile/edit/page.tsx
+        - apps/kernel/app/profile/[handle]/page.tsx
+        - packages/llm/src/index.ts
+      tests:
+        - apps/kernel/src/lib/profile/__tests__/presence-query-settle.test.ts
+        - apps/kernel/src/lib/profile/__tests__/app-options.test.ts
+      navigation: []
+      last_touched: 2026-10-24
+      open_issues:
+        - https://github.com/ima-jin/imajin-ai/issues/151
+  - id: legal-entity-tax
+    name: Manage organization billing identity
+    action: Seal legal-entity details and manage tax registrations for an acting organization.
+    apps:
+      - kernel
+    services:
+      - profile
+    packages: []
+    entry_points:
+      ui:
+        - /auth/legal-entity
+        - /auth/tax
+      api:
+        - /profile/api/profile/{id}
+      sdk: []
+      specs:
+        - apps/kernel/api-spec/profile.yaml
+    audience: org admin
+    maturity: partial
+    business_weight: supporting
+    pillars:
+      - agent identity
+      - delegated authority
+    grade_reason: Storage/service code exists; invoice-bound disclosure and frozen legal-name snapshots are incomplete.
+    evidence:
+      code:
+        - apps/kernel/src/lib/profile/legal-entity.ts
+        - apps/kernel/src/lib/profile/tax-registrations.ts
+        - apps/kernel/app/auth/legal-entity/page.tsx
+        - apps/kernel/app/auth/tax/page.tsx
+      tests:
+        - apps/kernel/src/lib/profile/__tests__/legal-entity.test.ts
+        - apps/kernel/src/lib/profile/__tests__/tax-registrations.test.ts
+      navigation: []
+      last_touched: 2026-10-27
+      open_issues:
+        - https://github.com/ima-jin/imajin-ai/issues/3072
+        - https://github.com/ima-jin/imajin-ai/issues/3073
+  - id: notifications
+    name: Receive an identity-scoped notification
+    action: Read notifications, mark them read and choose delivery preferences.
+    apps:
+      - kernel
+    services:
+      - notify
+    packages:
+      - notify
+      - email
+    entry_points:
+      ui:
+        - /notify
+        - /notify/settings
+      api:
+        - /notify/api/notifications
+        - /notify/api/preferences
+      sdk:
+        - "@imajin/notify"
+        - "@imajin/email"
+      specs:
+        - apps/kernel/api-spec/notify.yaml
+    audience: end user/consumer
+    maturity: works
+    business_weight: supporting
+    pillars:
+      - none
+    grade_reason: Notification and socket delivery are implemented; connection-request SMTP transaction lifetime
+      is a known operational gap.
+    evidence:
+      code:
+        - apps/kernel/src/lib/notify/delivery.ts
+        - apps/kernel/src/lib/notify/template-renderer.ts
+        - apps/kernel/app/notify/page.tsx
+        - apps/kernel/app/notify/settings/page.tsx
+        - packages/notify/src/index.ts
+        - packages/email/src/index.ts
+      tests:
+        - apps/kernel/src/lib/notify/__tests__/ws-push.test.ts
+      navigation: []
+      last_touched: 2026-10-21
+      open_issues:
+        - https://github.com/ima-jin/imajin-ai/issues/3359
+  - id: calendar-intents
+    name: Declare availability without disclosing it
+    action: Set or cancel an availability intent and manage calendar entries under the broker gate.
+    apps:
+      - kernel
+    services:
+      - calendar
+    packages: []
+    entry_points:
+      ui: []
+      api:
+        - /calendar/api/availability
+        - /calendar/api/entries
+        - /calendar/api/d/{did}/entries
+      sdk: []
+      specs:
+        - apps/kernel/api-spec/calendar.yaml
+    audience: end user/consumer
+    maturity: works
+    business_weight: side-effect
+    pillars:
+      - delegated authority
+    grade_reason: Calendar API and bilateral matching exist without a dedicated nav UI; broker conversational
+      completion is separately partial.
+    evidence:
+      code:
+        - apps/kernel/src/lib/calendar/index.ts
+      tests:
+        - apps/kernel/app/calendar/api/spec/__tests__/route.test.ts
+        - packages/bus/tests/match-engine-broker.test.ts
+      navigation: []
+      last_touched: 2026-09-08
+      open_issues: []
+  - id: registry-relay
+    name: Discover nodes and relay signed chains
+    action: Register and heartbeat nodes, resolve DIDs and serve DFOS identity/content relay traffic.
+    apps:
+      - kernel
+    services:
+      - registry
+    packages:
+      - dfos
+    entry_points:
+      ui:
+        - /registry
+      api:
+        - /registry/api/node/register
+        - /registry/api/node/resolve/{did}
+        - /registry/relay/{path}
+      sdk:
+        - "@imajin/dfos"
+      specs:
+        - apps/kernel/api-spec/registry.yaml
+    audience: developer
+    maturity: partial
+    business_weight: core
+    pillars:
+      - agent identity
+      - signed record and settlement
+    grade_reason: Relay and identity chains exist; 0.55 admission/index/host conformance follow-ons prevent a
+      complete federation claim.
+    evidence:
+      code:
+        - apps/kernel/src/lib/registry/relay/postgres-store.ts
+        - apps/kernel/src/lib/registry/relay/dfos-write-auth.ts
+        - apps/kernel/app/registry/page.tsx
+        - packages/dfos/src/index.ts
+      tests:
+        - apps/kernel/src/lib/auth/__tests__/dfos-relay.test.ts
+        - packages/dfos/tests/dependency-pins.test.ts
+      navigation: []
+      last_touched: 2026-11-05
+      open_issues:
+        - https://github.com/ima-jin/imajin-ai/issues/3305
+        - https://github.com/ima-jin/imajin-ai/issues/3307
+        - https://github.com/ima-jin/imajin-ai/issues/3308
+        - https://github.com/ima-jin/imajin-ai/issues/3309
+  - id: node-operations
+    name: Inspect node health and history
+    action: Inspect service liveness, administrative event traces, logs, storage and reconciliation views.
+    apps:
+      - kernel
+    services:
+      - kernel
+      - registry
+    packages:
+      - db
+      - logger
+      - config
+    entry_points:
+      ui:
+        - /admin
+        - /health
+      api:
+        - /api/health
+        - /registry/api/health
+      sdk:
+        - "@imajin/db"
+        - "@imajin/logger"
+        - "@imajin/config"
+      specs:
+        - apps/kernel/api-spec/registry.yaml
+    audience: operator
+    maturity: works
+    business_weight: supporting
+    pillars:
+      - none
+    grade_reason: Health and bounded DB liveness have tests; warm standby and tested restore are gates before a
+      design-partner pilot.
+    evidence:
+      code:
+        - apps/kernel/src/lib/jin/ops-liveness.ts
+        - apps/kernel/src/lib/kernel/operational-apps.ts
+        - apps/kernel/app/admin/page.tsx
+        - apps/kernel/app/health/page.tsx
+        - packages/db/src/index.ts
+        - packages/logger/src/index.ts
+        - packages/config/src/index.ts
+      tests:
+        - packages/db/tests/health-route.test.ts
+        - packages/db/tests/liveness.test.ts
+      navigation: []
+      last_touched: 2026-11-05
+      open_issues:
+        - https://github.com/ima-jin/imajin-ai/issues/3206
+        - https://github.com/ima-jin/imajin-ai/issues/3357
+        - https://github.com/ima-jin/imajin-ai/issues/3358
+        - https://github.com/ima-jin/imajin-ai/issues/3365
+  - id: buyer-front-door
+    name: Understand Imajin and request access
+    action: Read project and developer material and submit the existing contact subscription form.
+    apps:
+      - kernel
+    services:
+      - kernel
+    packages: []
+    entry_points:
+      ui:
+        - /
+        - /project
+        - /developer-guide
+        - /subscribe
+      api: []
+      sdk: []
+      specs: []
+    audience: business buyer
+    maturity: partial
+    business_weight: supporting
+    pillars:
+      - none
+    grade_reason: Current copy and subscription are not the ruled alpha landing/intake experience; book-demo and
+      join-alpha work is pending.
+    evidence:
+      code:
+        - apps/kernel/app/page.tsx
+        - apps/kernel/src/components/www/LandingGrid.tsx
+        - apps/kernel/app/page.tsx
+        - apps/kernel/app/project/page.tsx
+        - apps/kernel/app/developer-guide/page.tsx
+        - apps/kernel/app/subscribe/page.tsx
+      tests:
+        - apps/kernel/src/components/www/__tests__/LandingGrid.test.tsx
+      navigation: []
+      last_touched: 2026-10-18
+      open_issues:
+        - https://github.com/ima-jin/imajin-ai/issues/3284
+        - https://github.com/ima-jin/imajin-ai/issues/3366
+        - https://github.com/ima-jin/imajin-ai/issues/3367
+        - https://github.com/ima-jin/imajin-ai/issues/3368
+        - https://github.com/ima-jin/imajin-ai/issues/3369
+        - https://github.com/ima-jin/imajin-ai/issues/3370
+        - https://github.com/ima-jin/imajin-ai/issues/3371
+        - https://github.com/ima-jin/imajin-ai/issues/3372
+  - id: extracted-app-boundary
+    name: Use an added external community app
+    action: Discover an added events, market or learning app and authorize it through kernel primitives.
+    apps:
+      - kernel
+    services:
+      - events
+      - market
+      - learn
+    packages: []
+    entry_points:
+      ui:
+        - /auth/app-directory
+        - /auth/[app]
+      api:
+        - /auth/api/apps/directory
+      sdk: []
+      specs: []
+    audience: end user/consumer
+    maturity: works
+    business_weight: side-effect
+    pillars:
+      - none
+    grade_reason: Only registry/payment integration is evidenced here. Ticket selling, commerce, surveys and
+      courses live in separate repos; their maturity cannot be graded from this checkout.
+    evidence:
+      code:
+        - apps/kernel/src/lib/kernel/app-nav.ts
+        - apps/kernel/src/lib/pay/checkout-notification-owner.ts
+        - apps/kernel/app/auth/app-directory/page.tsx
+        - apps/kernel/app/auth/[app]/page.tsx
+      tests:
+        - apps/kernel/src/lib/kernel/__tests__/operational-apps.test.ts
+        - apps/kernel/src/lib/pay/__tests__/notify-events-service.test.ts
+      navigation: []
+      last_touched: 2026-10-18
+      open_issues:
+        - https://github.com/ima-jin/imajin-ai/issues/1981
+        - https://github.com/ima-jin/imajin-ai/issues/1985
+        - https://github.com/ima-jin/imajin-ai/issues/1988
+        - https://github.com/ima-jin/imajin-ai/issues/2989
+  - id: corpus-retrieval
+    name: Search a DID-owned corpus
+    action: Ingest GitHub or local workspace sources, pin refs, search and fetch ingestion attestations.
+    apps:
+      - kernel
+      - corpus
+    services:
+      - corpus
+    packages: []
+    entry_points:
+      ui:
+        - /auth/corpus
+      api:
+        - /corpus/{did}/ingest
+        - /corpus/{did}/search
+        - /corpus/{did}/attestations/{id}
+        - /spec
+      sdk: []
+      specs:
+        - apps/corpus/api-spec/openapi.yaml
+    audience: developer
+    maturity: works
+    business_weight: supporting
+    pillars:
+      - delegated authority
+      - signed record and settlement
+    grade_reason: Owner-claim middleware and ref-pinned retrieval have tests; deployment consumer proof, scheduled
+      sync and organization-layered access remain open.
+    evidence:
+      code:
+        - apps/corpus/src/routes.ts
+        - apps/corpus/src/engine/index.ts
+        - apps/kernel/app/auth/corpus/page.tsx
+      tests:
+        - apps/corpus/src/__tests__/routes.owner.test.ts
+        - apps/corpus/src/__tests__/ref-pinned-integration.test.ts
+      navigation: []
+      last_touched: 2026-10-24
+      open_issues:
+        - https://github.com/ima-jin/imajin-ai/issues/2232
+        - https://github.com/ima-jin/imajin-ai/issues/3085
+        - https://github.com/ima-jin/imajin-ai/issues/3091
+        - https://github.com/ima-jin/imajin-ai/issues/3100
+        - https://github.com/ima-jin/imajin-ai/issues/3101
+  - id: broker-agent
+    name: Coordinate sealed social intentions
+    action: Use a Telegram broker to set, list and cancel your own availability intentions.
+    apps:
+      - broker-agent
+      - kernel
+    services:
+      - broker-agent
+      - calendar
+    packages: []
+    entry_points:
+      ui: []
+      api:
+        - Telegram broker tools (not HTTP)
+        - /calendar/api/availability
+      sdk: []
+      specs:
+        - apps/kernel/api-spec/calendar.yaml
+    audience: end user/consumer
+    maturity: partial
+    business_weight: side-effect
+    pillars:
+      - delegated authority
+    grade_reason: manage_reach only returns advisory text and respond_to_match is a stub; daemon deployment
+      remains tracked. Do not sell completed matching.
+    evidence:
+      code:
+        - apps/broker-agent/src/tools.ts
+        - apps/broker-agent/src/bot.ts
+      tests:
+        - apps/broker-agent/src/__tests__/agent.test.ts
+        - apps/broker-agent/src/__tests__/bot-delivery.test.ts
+      navigation: []
+      last_touched: 2026-10-05
+      open_issues:
+        - https://github.com/ima-jin/imajin-ai/issues/3092
+  - id: event-projections
+    name: Project signed events and settlement
+    action: Publish attested events and run declarative chain reactions for notifications, audit, usage and
+      settlement.
+    apps:
+      - kernel
+    services:
+      - shared
+    packages:
+      - bus
+      - emit
+    entry_points:
+      ui: []
+      api: []
+      sdk:
+        - "@imajin/bus"
+        - "@imajin/emit"
+      specs: []
+    audience: developer
+    maturity: works
+    business_weight: supporting
+    pillars:
+      - signed record and settlement
+    grade_reason: Exported shared implementation with tests; consumed by apps, not a separately deployed service.
+    evidence:
+      code:
+        - packages/bus/src/index.ts
+        - packages/emit/src/index.ts
+      tests:
+        - packages/bus/tests/publish-chain-log.test.ts
+      navigation: []
+      last_touched: 2026-11-05
+      open_issues: []
+  - id: runtime-envelope
+    name: Bootstrap a runtime identity
+    action: Render an identity-bound runtime envelope and provision a selected agent harness.
+    apps:
+      - kernel
+    services:
+      - shared
+    packages:
+      - claw-envelope
+      - claw-provisioner
+      - provision-bootstrap
+    entry_points:
+      ui: []
+      api: []
+      sdk:
+        - "@imajin/claw-envelope"
+        - "@imajin/claw-provisioner"
+        - "@imajin/provision-bootstrap"
+      specs: []
+    audience: developer
+    maturity: works
+    business_weight: supporting
+    pillars:
+      - agent identity
+      - delegated authority
+    grade_reason: Exported shared implementation with tests; consumed by apps, not a separately deployed service.
+    evidence:
+      code:
+        - packages/claw-envelope/src/index.ts
+        - packages/claw-provisioner/src/index.ts
+      tests:
+        - packages/claw-envelope/tests/bootstrap-identity.test.ts
+      navigation: []
+      last_touched: 2026-09-24
+      open_issues: []
+  - id: nanoclaw-channel
+    name: Connect a NanoClaw channel
+    action: Authenticate and dispatch messages through a scoped channel and emit mapped usage.
+    apps:
+      - kernel
+    services:
+      - shared
+    packages:
+      - nanoclaw-imajin-channel
+    entry_points:
+      ui: []
+      api: []
+      sdk:
+        - "@imajin/nanoclaw-imajin-channel"
+      specs: []
+    audience: developer
+    maturity: works
+    business_weight: supporting
+    pillars:
+      - agent identity
+      - delegated authority
+      - signed record and settlement
+    grade_reason: Channel adapter has tests; package presence does not establish a deployed hosted-agent product.
+    evidence:
+      code:
+        - packages/nanoclaw-imajin-channel/src/index.ts
+      tests:
+        - packages/nanoclaw-imajin-channel/tests/channel-adapter.test.ts
+      navigation: []
+      last_touched: 2026-09-02
+      open_issues: []
+  - id: claude-usage-emitter
+    name: Emit signed Claude Code usage
+    action: Tail local session usage, map it and send identity-bound incurred events.
+    apps:
+      - kernel
+    services:
+      - shared
+    packages:
+      - usage-emitter-claude-code
+    entry_points:
+      ui: []
+      api: []
+      sdk:
+        - "@imajin/usage-emitter-claude-code"
+      specs: []
+    audience: developer
+    maturity: partial
+    business_weight: core
+    pillars:
+      - signed record and settlement
+    grade_reason: Mapper/client tests exist; deploy and register idle emitters or demonstrate actual receipt flow
+      before claiming complete coverage.
+    evidence:
+      code:
+        - packages/usage-emitter-claude-code/src/index.ts
+      tests:
+        - packages/usage-emitter-claude-code/tests/mapper.test.ts
+      navigation: []
+      last_touched: 2026-10-06
+      open_issues:
+        - https://github.com/ima-jin/imajin-ai/issues/3140
+  - id: reflex-guard
+    name: Gate an outbound agent response
+    action: Match guard rules, stamp responses and retain audit output before outbound delivery.
+    apps:
+      - kernel
+    services:
+      - shared
+    packages:
+      - openclaw-reflex-guard
+    entry_points:
+      ui: []
+      api: []
+      sdk:
+        - "@imajin/openclaw-reflex-guard"
+      specs: []
+    audience: developer
+    maturity: works
+    business_weight: supporting
+    pillars:
+      - delegated authority
+      - signed record and settlement
+    grade_reason: Plugin hook and guard behavior are tested; calibrated typed evaluator and DECISION-card
+      judgement are follow-on work.
+    evidence:
+      code:
+        - packages/openclaw-reflex-guard/src/outbound-guard-hooks.ts
+        - packages/openclaw-reflex-guard/src/reflex-warrant-gate.ts
+      tests:
+        - packages/openclaw-reflex-guard/tests/outbound-guard-hooks.test.ts
+      navigation: []
+      last_touched: 2026-09-01
+      open_issues:
+        - https://github.com/ima-jin/imajin-ai/issues/2409
+        - https://github.com/ima-jin/imajin-ai/issues/2187
+  - id: shared-ui
+    name: Integrate identity-aware app controls
+    action: Compose navigation, identity switching, notifications and shared controls in an app.
+    apps:
+      - kernel
+    services:
+      - shared
+    packages:
+      - ui
+      - onboard
+      - tokens
+    entry_points:
+      ui: []
+      api: []
+      sdk:
+        - "@imajin/ui"
+        - "@imajin/onboard"
+        - "@imajin/tokens"
+      specs: []
+    audience: developer
+    maturity: works
+    business_weight: supporting
+    pillars:
+      - agent identity
+    grade_reason: Exported shared implementation with tests; consumed by apps, not a separately deployed service.
+    evidence:
+      code:
+        - packages/ui/src/index.ts
+        - packages/tokens/build.mjs
+        - packages/tokens/tokens.json
+        - packages/onboard/src/index.tsx
+      tests:
+        - packages/ui/tests/index.test.ts
+      navigation: []
+      last_touched: 2026-10-09
+      open_issues: []
+  - id: money-math
+    name: Calculate exact amounts and FX
+    action: Convert decimal monetary amounts and apply cached FX rates without floating-point share drift.
+    apps:
+      - kernel
+    services:
+      - shared
+    packages:
+      - money
+    entry_points:
+      ui: []
+      api: []
+      sdk:
+        - "@imajin/money"
+      specs: []
+    audience: developer
+    maturity: works
+    business_weight: supporting
+    pillars:
+      - signed record and settlement
+    grade_reason: Exported shared implementation with tests; consumed by apps, not a separately deployed service.
+    evidence:
+      code:
+        - packages/money/src/index.ts
+      tests:
+        - packages/money/tests/fx-snapshot.test.ts
+      navigation: []
+      last_touched: 2026-09-09
+      open_issues: []
+  - id: shared-infrastructure
+    name: Build on common operational primitives
+    action: Configure service URLs, run bounded DB clients, record logs and apply workspace lint conventions.
+    apps:
+      - kernel
+    services:
+      - shared
+    packages:
+      - config
+      - db
+      - logger
+      - eslint-config-imajin
+    entry_points:
+      ui: []
+      api: []
+      sdk:
+        - "@imajin/config"
+        - "@imajin/db"
+        - "@imajin/logger"
+        - eslint-config-imajin
+      specs: []
+    audience: developer
+    maturity: works
+    business_weight: supporting
+    pillars:
+      - none
+    grade_reason: Exported shared implementation with tests; consumed by apps, not a separately deployed service.
+    evidence:
+      code:
+        - packages/config/src/index.ts
+        - packages/db/src/index.ts
+        - packages/logger/src/index.ts
+      tests:
+        - packages/config/tests/services.test.ts
+      navigation: []
+      last_touched: 2026-11-05
+      open_issues: []
+  - id: discord-messages
+    name: Read and post Discord messages
+    action: Seal a bot token and read channels or post messages within explicitly granted Discord scopes.
+    apps:
+      - kernel
+    services:
+      - discord
+    packages: []
+    entry_points:
+      ui:
+        - /auth/connectors/discord
+      api:
+        - /discord/api/scope-manifest
+        - /mcp
+      sdk: []
+      specs: []
+    audience: agent (machine)
+    maturity: works
+    business_weight: supporting
+    pillars:
+      - delegated authority
+    grade_reason: Connector implementation and tests exist; Discord authorization is distinct from Imajin
+      conversation membership.
+    evidence:
+      code:
+        - apps/kernel/src/lib/discord/connector.ts
+        - apps/kernel/src/lib/mcp/tools/discord.ts
+      tests:
+        - apps/kernel/src/lib/discord/__tests__/connector.test.ts
+      navigation: []
+      last_touched: 2026-08-02
+      open_issues: []
+  - id: buzz-nostr
+    name: Publish a signed Nostr message
+    action: Generate a sealed Nostr keypair, inspect its public key and send a relay-confirmed group event.
+    apps:
+      - kernel
+    services:
+      - buzz
+    packages: []
+    entry_points:
+      ui: []
+      api:
+        - /mcp
+      sdk: []
+      specs: []
+    audience: agent (machine)
+    maturity: works
+    business_weight: side-effect
+    pillars:
+      - agent identity
+      - signed record and settlement
+    grade_reason: Sealed signing and relay send exist; consumer messaging is not the business category.
+    evidence:
+      code:
+        - apps/kernel/src/lib/buzz/connector.ts
+        - apps/kernel/src/lib/mcp/tools/buzz.ts
+      tests:
+        - apps/kernel/src/lib/buzz/__tests__/connector.test.ts
+      navigation: []
+      last_touched: 2026-08-02
+      open_issues: []
+  - id: agent-messages
+    name: Message on a principal grant
+    action: Read the principal conversations or send a message through explicit messages scopes.
+    apps:
+      - kernel
+    services:
+      - chat
+      - mcp
+    packages: []
+    entry_points:
+      ui: []
+      api:
+        - /mcp
+      sdk: []
+      specs:
+        - apps/kernel/api-spec/chat.yaml
+    audience: agent (machine)
+    maturity: works
+    business_weight: supporting
+    pillars:
+      - delegated authority
+    grade_reason: OAuth scope plus manifest grants gate tools; do not imply every message write has a separate
+      human countersignature.
+    evidence:
+      code:
+        - apps/kernel/src/lib/mcp/tools/messages.ts
+      tests:
+        - apps/kernel/src/lib/mcp/__tests__/messages.test.ts
+      navigation: []
+      last_touched: 2026-08-08
+      open_issues: []
+  - id: provider-credentials
+    name: Connect a model provider
+    action: Seal provider keys, select models and grant inference for Anthropic, OpenAI, Gemini, xAI, Moonshot,
+      Z.ai, OpenRouter or local inference.
+    apps:
+      - kernel
+    services:
+      - anthropic
+      - openai
+      - gemini
+      - xai
+      - moonshot
+      - zai
+      - openrouter
+      - local
+    packages: []
+    entry_points:
+      ui:
+        - /auth/connectors
+      api:
+        - /anthropic/api/scope-manifest
+        - /openai/api/scope-manifest
+        - /local/api/scope-manifest
+      sdk: []
+      specs: []
+    audience: org admin
+    maturity: works
+    business_weight: supporting
+    pillars:
+      - delegated authority
+    grade_reason: Registry and common sealing/model machinery are tested; connection status does not prove
+      completion or billing parity for every provider.
+    evidence:
+      code:
+        - apps/kernel/src/lib/kernel/connector-registry.ts
+        - apps/kernel/src/lib/kernel/connector-static-secret.ts
+        - apps/kernel/src/lib/inference/model-catalog.ts
+        - apps/kernel/app/auth/connectors/page.tsx
+      tests:
+        - apps/kernel/src/lib/kernel/__tests__/connector-oauth-split-config.test.ts
+        - apps/kernel/src/lib/inference/__tests__/model-catalog.test.ts
+      navigation: []
+      last_touched: 2026-11-06
+      open_issues:
+        - https://github.com/ima-jin/imajin-ai/issues/3341
+        - https://github.com/ima-jin/imajin-ai/issues/3220
+  - id: stripe-connector
+    name: Connect an owner payment rail
+    action: Seal seller Stripe credentials and verify checkout or webhook events against that owner connection.
+    apps:
+      - kernel
+    services:
+      - stripe
+      - pay
+    packages: []
+    entry_points:
+      ui:
+        - /auth/connectors/stripe
+      api:
+        - /stripe/api/scope-manifest
+        - /pay/api/webhook/did/{routingId}
+      sdk: []
+      specs:
+        - apps/kernel/api-spec/pay.yaml
+    audience: org admin
+    maturity: works
+    business_weight: supporting
+    pillars:
+      - delegated authority
+      - signed record and settlement
+    grade_reason: Seller-bound connector and routing have tests; no platform-owned shared seller key is implied.
+    evidence:
+      code:
+        - apps/kernel/src/lib/stripe/connector.ts
+        - apps/kernel/src/lib/pay/stripe-relay.ts
+      tests:
+        - apps/kernel/src/lib/stripe/__tests__/connector.test.ts
+        - apps/kernel/src/lib/pay/__tests__/stripe-relay.test.ts
+      navigation: []
+      last_touched: 2026-10-16
+      open_issues: []
+  - id: gcp-credential
+    name: Configure a Google Cloud connection
+    action: Load a scoped Google Cloud connection through the shared credential and scope-manifest contract.
+    apps:
+      - kernel
+    services:
+      - gcp
+    packages: []
+    entry_points:
+      ui:
+        - /auth/connectors/gcp
+      api:
+        - /gcp/api/scope-manifest
+      sdk: []
+      specs: []
+    audience: org admin
+    maturity: partial
+    business_weight: supporting
+    pillars:
+      - delegated authority
+    grade_reason: Common connection wiring exists; no evidence here of a complete resource-management toolset.
+    evidence:
+      code:
+        - apps/kernel/src/lib/kernel/connector-registry.ts
+      tests:
+        - apps/kernel/src/lib/kernel/__tests__/scope-manifest-route.test.ts
+      navigation: []
+      last_touched: 2026-10-27
+      open_issues: []
+  - id: typesafe-evaluation
+    name: Call a configured typed evaluator
+    action: Connect a TypeSafe endpoint and submit evaluation requests through the client.
+    apps:
+      - kernel
+    services:
+      - typesafe
+    packages: []
+    entry_points:
+      ui:
+        - /auth/connectors/typesafe
+      api:
+        - /typesafe/api/scope-manifest
+      sdk: []
+      specs: []
+    audience: developer
+    maturity: partial
+    business_weight: supporting
+    pillars:
+      - none
+    grade_reason: Client and connection code exist; calibrated typed evaluation and pre-send DECISION judgement
+      are unfinished.
+    evidence:
+      code:
+        - apps/kernel/src/lib/typesafe/client.ts
+        - apps/kernel/src/lib/kernel/connector-registry.ts
+      tests:
+        - apps/kernel/src/lib/typesafe/__tests__/client.test.ts
+      navigation: []
+      last_touched: 2026-10-27
+      open_issues:
+        - https://github.com/ima-jin/imajin-ai/issues/2187
+        - https://github.com/ima-jin/imajin-ai/issues/2409
+  - id: contact-disclosure
+    name: Release contact data through consent
+    action: Request contact fields through the broker and manage grants without granting unrestricted profile access.
+    apps:
+      - kernel
+    services:
+      - broker
+    packages: []
+    entry_points:
+      ui: []
+      api:
+        - /broker/api/contacts
+        - /broker/api/grants
+      sdk: []
+      specs: []
+    audience: developer
+    maturity: works
+    business_weight: core
+    pillars:
+      - delegated authority
+      - signed record and settlement
+    grade_reason: Broker consent and disclosure code exists; not an automatic release of every profile field.
+    evidence:
+      code:
+        - apps/kernel/src/lib/broker/routes/contact-disclosures.ts
+        - apps/kernel/src/lib/broker/routes/grants.ts
+      tests:
+        - packages/bus/tests/broker.test.ts
+      navigation: []
+      last_touched: 2026-07-01
+      open_issues: []
