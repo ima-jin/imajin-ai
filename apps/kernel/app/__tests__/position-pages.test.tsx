@@ -132,7 +132,7 @@ describe('public sitemap', () => {
   it('keeps the public pages discoverable when the article database is unavailable', async () => {
     getAllArticles.mockRejectedValue(new Error('database unavailable'));
     expect((await sitemap()).map((entry) => entry.url)).toEqual([
-      'https://imajin.ai', 'https://imajin.ai/articles', 'https://imajin.ai/how-it-works', 'https://imajin.ai/compare',
+      'https://imajin.ai', 'https://imajin.ai/alpha', 'https://imajin.ai/articles', 'https://imajin.ai/how-it-works', 'https://imajin.ai/compare',
     ]);
   });
 });
