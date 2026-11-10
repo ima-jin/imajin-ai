@@ -1,8 +1,9 @@
-import { and, eq, isNotNull, isNull, like, or } from 'drizzle-orm';
+import { and, eq, isNotNull, isNull } from 'drizzle-orm';
 import { db, connectors, identities, identityMembers } from '@/src/db';
 import { ExternalMcpError } from './external-mcp-policy';
 import { isAgentCapableSubtype } from './connection-principal-policy';
-import { ORG_HELD_PREFIX, type OrgConnectionActor } from './org-held-connection-policy';
+import type { OrgConnectionActor } from './org-held-connection-policy';
+import { connectorPurpose, connectorVendor, isHeldBy, isUpstreamConnection } from './connection-holding';
 
 /** Membership permits metadata only. It does not create a custody or member grant. */
 export function readOrgHeldStatus(actor: OrgConnectionActor) {
@@ -20,15 +21,18 @@ export function readOrgHeldStatus(actor: OrgConnectionActor) {
       || person?.scope !== 'actor' || isAgentCapableSubtype(person.subtype) || person.suspendedAt || !membership) {
       throw new ExternalMcpError(403, 'Active organization membership required');
     }
-    const rows = await tx.select({ provider: connectors.provider, loadedAt: connectors.loadedAt })
+    const rows = await tx.select({
+      ownerDid: connectors.ownerDid, provider: connectors.provider,
+      upstreamBinding: connectors.upstreamBinding, loadedAt: connectors.loadedAt,
+    })
       .from(connectors).where(and(
         eq(connectors.ownerDid, actor.orgDid),
-        or(eq(connectors.provider, 'anthropic'), like(connectors.provider, `${ORG_HELD_PREFIX}%`)),
         eq(connectors.slot, 'primary'), eq(connectors.status, 'active'),
         isNotNull(connectors.sealedKeyField), isNotNull(connectors.loadedAt), isNotNull(connectors.loadedByDid),
       )).orderBy(connectors.provider);
-    return { connections: rows.map(row => ({
-      provider: row.provider === 'anthropic' ? row.provider : row.provider.slice(ORG_HELD_PREFIX.length),
+    return { connections: rows.filter(row => isHeldBy(row, actor.orgDid)
+      && connectorPurpose(row) === 'inference' && !isUpstreamConnection(row)).map(row => ({
+      provider: connectorVendor(row),
       status: 'loaded' as const, loadedAt: row.loadedAt,
     })) };
   });

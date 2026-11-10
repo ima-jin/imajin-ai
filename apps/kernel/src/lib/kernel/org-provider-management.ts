@@ -43,7 +43,7 @@ export function loadOrgPickerCredentials(actor: OrgConnectionActor) {
     const lock = `org-held-connection:${actor.orgDid}`;
     await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${lock}, 0))`);
     await authorizeOrgConnectionAdmin(tx, actor);
-    const row = await findMemberConnection(tx, actor.orgDid, 'anthropic', true);
+    const row = await findMemberConnection(tx, actor.orgDid, 'anthropic');
     if (!row || !isLiveConnection(row) || !hasOrgConnectionProvenance(row) || !row.sealedKeyField
       || !(isExternalMcpField(row.sealedKeyField) || isOrgSealedAnthropicField(actor.orgDid, row.sealedKeyField))) {
       return undefined;

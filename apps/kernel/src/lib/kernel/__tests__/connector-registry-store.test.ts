@@ -84,6 +84,7 @@ vi.mock('drizzle-orm', () => ({
   and: (...args: unknown[]) => ({ and: args }),
   eq: (col: unknown, val: unknown) => ({ col, val }),
   ne: (col: unknown, val: unknown) => ({ col, ne: val }),
+  or: (...args: unknown[]) => ({ or: args }),
 }));
 
 vi.mock('@/src/db', () => ({
@@ -162,6 +163,16 @@ describe('connectorRegistryId', () => {
 // ── recordConnectorRegistration ───────────────────────────────────────────────
 
 describe('recordConnectorRegistration', () => {
+  it.each(['anthropic', 'openai'])('registers %s billing through the same vendor identity path', async vendor => {
+    await recordConnectorRegistration({
+      ownerDid: OWNER, provider: `${vendor}-billing`, sealedKeyField: `billing-reference:${OWNER}`,
+    });
+    expect(insertValues[0]).toMatchObject({
+      ownerDid: OWNER, provider: `${vendor}-billing`, channel: vendor,
+      connectorDid: `did:imajin:${vendor}-connector`, status: 'active',
+    });
+    expect(warnLog).not.toHaveBeenCalled();
+  });
   it('seals a billing key through the real connector and registers only its field reference without warning', async () => {
     const { sealBillingKey } = await import('@/src/lib/anthropic/billing-connector');
     const { sealAndStoreV2 } = await import('@/src/lib/vault');
@@ -266,6 +277,17 @@ describe('revokeConnectorRegistration', () => {
 // ── syncConnectorRegistrationScopes ───────────────────────────────────────────
 
 describe('syncConnectorRegistrationScopes', () => {
+  it.each(['anthropic', 'openai'])('mirrors and withdraws %s billing scopes identically', async vendor => {
+    await syncConnectorRegistrationScopes(OWNER, vendor, [`${vendor}:infer`, `${vendor}:billing`], 'work');
+    expect(insertValues).toEqual([
+      expect.objectContaining({ provider: `${vendor}-billing`, scopes: [`${vendor}:billing`], slot: 'work' }),
+      expect.objectContaining({ provider: vendor, scopes: [`${vendor}:infer`, `${vendor}:billing`], slot: 'work' }),
+    ]);
+    insertValues.length = 0;
+    await syncConnectorRegistrationScopes(OWNER, vendor, [], 'work');
+    expect(insertValues[0]).toMatchObject({ provider: `${vendor}-billing`, scopes: [] });
+    expect(warnLog).not.toHaveBeenCalled();
+  });
   it.each([
     { scopes: ['anthropic:infer', 'anthropic:billing'], expected: ['anthropic:billing'] },
     { scopes: ['anthropic:infer'], expected: [] },

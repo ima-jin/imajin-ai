@@ -398,7 +398,7 @@ describe('assigned org-bot discovery seeded by real writers (#3335, #3342)', () 
     const seed = await seedOrgWithAssignedBot({
       seal: 'org-held-card', cardProvider: 'warp', authenticate: identity => { h.identity = identity; },
     });
-    expect(await connection(seed)).toMatchObject({ ownerDid: seed.orgDid, provider: 'org-held-warp',
+    expect(await connection(seed)).toMatchObject({ ownerDid: seed.orgDid, provider: 'warp',
       loadedByDid: seed.humanDid, loadedAt: expect.any(Date), sealedKeyField: seed.field });
     expect(isExternalMcpField(seed.field)).toBe(true);
     const [custody] = await database.select().from(vaultDelegationGrants).where(eq(vaultDelegationGrants.field, seed.field));
