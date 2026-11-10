@@ -2,7 +2,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { randomUUID } from 'node:crypto';
 import { readFile, writeFile, rename, mkdir, open, unlink } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { homedir } from 'node:os';
 import { setTimeout, clearTimeout } from 'node:timers';
@@ -101,6 +101,21 @@ async function deliver(event, kernelPort) {
   } catch { return false; }
 }
 
+/** Cron inherits the existing watchdog webhook, not the kernel's secrets. */
+async function deliverWatchdog(event, kernelPort) {
+  if (process.env.AUTH_INTERNAL_API_KEY) return deliver(event, kernelPort);
+  const webhook = process.env.RESTART_ALERT_WEBHOOK || process.env.STATUS_ALERT_WEBHOOK;
+  if (!webhook) return false; // Durable outbox is retained for a later delivery.
+  try {
+    const response = await internalFetch(webhook, {
+      method: 'POST', redirect: 'error',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: `HTTP liveness: ${event.app} ${event.outcome}`, ...event }),
+    });
+    return response.ok;
+  } catch { return false; }
+}
+
 /** Sequential ticks; each app has independent counters and restart cooldown. */
 function createProbe(state, dependencies = {}, policy = POLICY) {
   const deps = {
@@ -145,6 +160,7 @@ function createProbe(state, dependencies = {}, policy = POLICY) {
     await deps.persist(state);
     try { await deps.restart(target.app); event.outcome = 'restarted'; }
     catch { event.outcome = 'restart-failed'; }
+    console.info(JSON.stringify({ service: 'liveness-probe', ...event }));
     await deps.persist(state);
   }
 
@@ -168,11 +184,24 @@ function createProbe(state, dependencies = {}, policy = POLICY) {
   };
 }
 
+function watchdogOptions(args) {
+  const watchdog = args.includes('--watchdog');
+  const hasEcosystem = args.includes('--ecosystem');
+  const ecosystem = hasEcosystem ? args[args.indexOf('--ecosystem') + 1] : undefined;
+  if (watchdog && (!args.includes('--once') || !args.includes('--execute'))) {
+    throw new Error('Watchdog requires --once --execute');
+  }
+  if (hasEcosystem && (!watchdog || !ecosystem || ecosystem.startsWith('--'))) {
+    throw new Error('Watchdog requires a valid ecosystem path');
+  }
+  return { ...(watchdog ? { watchdog: true } : {}), ...(ecosystem ? { ecosystem } : {}) };
+}
+
 function parseOptions(args) {
-  const allowed = new Set(['--env', '--once', '--execute', '--dry-run']);
+  const allowed = new Set(['--env', '--once', '--execute', '--dry-run', '--watchdog', '--ecosystem']);
   const flags = args.filter((arg) => allowed.has(arg));
   if (new Set(flags).size !== flags.length) throw new Error('Duplicate probe argument');
-  if (args.some((arg, index) => !allowed.has(arg) && args[index - 1] !== '--env')) {
+  if (args.some((arg, index) => !allowed.has(arg) && !['--env', '--ecosystem'].includes(args[index - 1]))) {
     throw new Error('Unknown probe argument');
   }
   const environment = args[args.indexOf('--env') + 1];
@@ -180,17 +209,28 @@ function parseOptions(args) {
     || (args.includes('--execute') && args.includes('--dry-run'))) {
     throw new Error('Use --env dev|prod and either --execute or --dry-run');
   }
-  return { environment, once: args.includes('--once'), execute: args.includes('--execute') };
+  return {
+    environment, once: args.includes('--once'), execute: args.includes('--execute'),
+    ...watchdogOptions(args),
+  };
 }
 
 async function main(args = process.argv.slice(2)) {
   const options = parseOptions(args);
-  const config = await import(`./ecosystem.${options.environment}.config.js`);
-  const targets = targetsFromConfig(config.default);
+  const config = await import(options.ecosystem
+    ? pathToFileURL(resolve(options.ecosystem)).href : `./ecosystem.${options.environment}.config.js`);
+  const targets = targetsFromConfig(config.default).filter(target => target.app.startsWith(`${options.environment}-`));
   const kernelPort = targets.find((target) => target.app === `${options.environment}-jin`)?.port;
+  if (options.watchdog && !kernelPort) {
+    console.info(JSON.stringify({
+      service: 'liveness-probe', environment: options.environment,
+      event: 'watchdog.skipped', reason: 'Kernel HTTP port is not configured',
+    }));
+    return true;
+  }
   if (!kernelPort) throw new Error('Kernel target is required');
-  if (options.execute && !process.env.AUTH_INTERNAL_API_KEY) throw new Error('Ops-event credential is required');
-  const path = join(homedir(), '.imajin', 'liveness', `${options.environment}.json`);
+  if (options.execute && !options.watchdog && !process.env.AUTH_INTERNAL_API_KEY) throw new Error('Ops-event credential is required');
+  const path = join(process.env.IMAJIN_LIVENESS_STATE_DIR || join(homedir(), '.imajin', 'liveness'), `${options.environment}.json`);
   await mkdir(dirname(path), { recursive: true, mode: 0o700 });
   const lock = await open(`${path}.lock`, 'wx', 0o600);
   const stop = new globalThis.AbortController();
@@ -209,7 +249,9 @@ async function main(args = process.argv.slice(2)) {
       await writeFile(`${path}.tmp`, JSON.stringify(value), { mode: 0o600 });
       await rename(`${path}.tmp`, path);
     };
-    const probe = createProbe(state, { persist });
+    const probe = createProbe(state, {
+      persist, ...(options.watchdog ? { deliver: deliverWatchdog } : {}),
+    });
     await runTicks(async () => {
       await probe.tick(targets, { ...options, kernelPort });
       console.info(JSON.stringify({
@@ -218,6 +260,10 @@ async function main(args = process.argv.slice(2)) {
         pendingEvents: state.events.filter((receipt) => !receipt.delivered).length,
       }));
     }, { once: options.once, signal: stop.signal });
+    return !options.watchdog || (
+      !Object.values(state.apps).some(app => app.failures > 0)
+      && !state.events.some(receipt => !receipt.delivered)
+    );
   } finally {
     process.removeListener('SIGTERM', shutdown);
     process.removeListener('SIGINT', shutdown);
@@ -227,10 +273,10 @@ async function main(args = process.argv.slice(2)) {
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  try { await main(); }
+  try { if (await main() === false) process.exitCode = 1; }
   catch {
     console.error('Liveness probe failed; inspect configuration, PM2 availability and state-file permissions');
     process.exitCode = 1;
   }
 }
-export { POLICY, targetsFromConfig, createProbe, checkHealth, parseOptions, runTicks, main };
+export { POLICY, targetsFromConfig, createProbe, checkHealth, parseOptions, runTicks, main, deliverWatchdog };

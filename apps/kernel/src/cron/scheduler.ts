@@ -12,13 +12,16 @@
  * All behaviour lives in ./runner.ts; this file only wires signals and turns a
  * config or vault error into a loud non-zero exit.
  */
-import { startScheduler } from './runner';
+import { jsonLineLog, startScheduler } from './runner';
 import { KERNEL_CRON_MANIFEST } from './schedule';
+import { startDatabaseReaper } from './db-reaper';
 
 startScheduler(KERNEL_CRON_MANIFEST)
   .then((scheduler) => {
+    const reaper = startDatabaseReaper(process.env, jsonLineLog);
     const shutdown = () => {
       scheduler.stop();
+      reaper.stop();
       process.exit(0);
     };
     process.on('SIGTERM', shutdown);
