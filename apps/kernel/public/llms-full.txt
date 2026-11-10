@@ -135,6 +135,10 @@ Each link corresponds to a service spec definition in the kernel source. Substit
 - [Concise agent entry point](https://jin.imajin.ai/llms.txt): Platform shape and integration starting points.
 - [Developer guide](https://jin.imajin.ai/developer-guide): Consumer-facing concepts and integration guidance.
 - [Whitepaper](https://jin.imajin.ai/whitepaper): Primitive grammar and economic model.
+- [How it works](https://jin.imajin.ai/how-it-works): The three pillars and how an agent runtime, the Imajin plugin and the kernel fit together.
+- [Compare](https://jin.imajin.ai/compare): Where Imajin sits next to identity providers, agent frameworks, hosted assistants and web3 agent projects.
+- [Why we built it this way](https://jin.imajin.ai/project): The reasoning behind the design, the current state and its honest limits.
+- [Join the alpha](https://jin.imajin.ai/alpha): Apply as a tester, integrator or partner, or book a demo.
 - [Canonical patterns](https://github.com/ima-jin/imajin-ai/blob/main/docs/guide/canonical-patterns.md): Shared implementation boundaries.
 - [Security disclosures](https://github.com/ima-jin/imajin-ai/blob/main/SECURITY.md): Trust assumptions and implementation limits.
 - [Repository](https://github.com/ima-jin/imajin-ai): Source, app/package READMEs and operator documentation.

@@ -66,5 +66,9 @@ Corpus has its own [service-owned runbook and spec source](https://github.com/im
 - [Developer guide](https://jin.imajin.ai/developer-guide): Consumer integration guidance.
 - [Contributor setup](https://github.com/ima-jin/imajin-ai/blob/main/docs/DEVELOPER.md): Local kernel setup, migrations and testing.
 - [Whitepaper](https://jin.imajin.ai/whitepaper): The six primitives and economic model.
+- [How it works](https://jin.imajin.ai/how-it-works): The three pillars and how an agent runtime, the Imajin plugin and the kernel fit together.
+- [Compare](https://jin.imajin.ai/compare): Where Imajin sits next to identity providers, agent frameworks, hosted assistants and web3 agent projects.
+- [Why we built it this way](https://jin.imajin.ai/project): The reasoning behind the design, the current state and its honest limits.
+- [Join the alpha](https://jin.imajin.ai/alpha): Apply as a tester, integrator or partner, or book a demo.
 - [Security disclosures](https://github.com/ima-jin/imajin-ai/blob/main/SECURITY.md): Trust boundaries and implementation limitations.
 - [Repository](https://github.com/ima-jin/imajin-ai): Source and service-owned documentation.
