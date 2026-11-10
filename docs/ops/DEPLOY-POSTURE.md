@@ -94,6 +94,14 @@ The [inference updater](../../deploy/infer-passthrough/README.md) is separate sy
 
 The [vault SSH action](../deploy/vault-ssh-deploy.md) requires a repository/environment-bound grant, verified GitHub OIDC, host CA/principal configuration, pinned public host keys and non-swappable ephemeral key storage. Credential-free dry runs validate the contract, not a live target or runner's trust configuration.
 
+## Health checks and liveness
+
+`scripts/pm2-health-check.sh` does more than read pm2 state. It also runs `deploy/liveness-probe.mjs --env <scope> --once --execute --watchdog` against the ecosystem file, so a process that pm2 reports as `online` but that has stopped answering HTTP fails the health check (#3206, #3361). The probe result counts toward the health check's exit code.
+
+`PM2_HEALTH_LIVENESS=0` skips the HTTP probe. It exists only for test fixtures whose ecosystem declares no port. It is on by default; do not set it in dev or production.
+
+The same release bounds database waits on the auth and session paths (they answer `503` with `Retry-After` instead of hanging) and reaps only stale `ClientRead` backends, so a stuck connection pool degrades into retryable errors rather than a hung kernel.
+
 ## Rollback and recovery
 
 Use [the rollback runbook](ROLLBACK.md) to redeploy the reviewed prior ref through the existing approved production workflow. Migration history remains forward-only. Code rollback is safe only if its schema contract is compatible with the already-applied migrations; otherwise use reviewed corrective forward migration or backup recovery.
