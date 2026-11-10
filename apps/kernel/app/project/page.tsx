@@ -1,4 +1,5 @@
 import Link from 'next/link';
+// Project rationale and dated alpha state.
 import Image from 'next/image';
 import { ImajinFooter } from '@imajin/ui';
 import { getClient } from '@imajin/db';
