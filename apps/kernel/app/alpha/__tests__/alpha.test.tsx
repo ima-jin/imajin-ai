@@ -36,6 +36,11 @@ describe('/alpha public page', () => {
     });
     expect(screen.queryByRole('button', { name: 'Send request' })).toBeNull();
   });
+  it('renders the native POST confirmation without requiring JavaScript', async () => {
+    render(await AlphaPage({ searchParams: Promise.resolve({ received: '1' }) }));
+    expect(screen.getByRole('status').textContent).toContain('someone from Imajin will reach out');
+    expect(screen.queryByRole('button', { name: 'Send request' })).toBeNull();
+  });
   it.each([undefined, 'unknown', ['demo', 'partner']])('uses tester for absent, unknown or repeated intent %j', async intent => {
     await mount(intent);
     expect((screen.getAllByRole('radio')[0] as HTMLInputElement).checked).toBe(true);
@@ -46,6 +51,8 @@ describe('/alpha public page', () => {
     expect(screen.getByText(/This is an alpha, not self-serve sign-up/)).toBeDefined();
     for (const choice of ALPHA_CHOICES) expect(screen.getByText(choice.description)).toBeDefined();
     expect(container.querySelector('details')?.open).toBe(false);
+    expect(container.querySelector('form')?.getAttribute('method')).toBe('post');
+    expect(container.querySelector('form')?.getAttribute('action')).toBe('/api/alpha');
     expect(screen.queryByText('Create account')).toBeNull();
     expect(metadata.description).toContain('trust layer for AI agents');
     expect(metadata.alternates).toEqual({ canonical: '/alpha' });

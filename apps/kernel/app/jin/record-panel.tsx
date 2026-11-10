@@ -141,7 +141,7 @@ export function RecordPanel({ transport = defaultTransport }: Readonly<{ transpo
           {page.events.length === 0 && <p className="text-sm text-gray-500">No matching events.</p>}
           <JinList>{page.events.map(event => <RecordRow key={event.id} event={event} />)}</JinList>
           <JinListPages label="Record pages" offset={page.offset} hasMore={page.offset + page.limit < page.total}
-            onOffset={setOffset} newer="Newer events" older="Older events">
+            onOffset={setOffset} newer="Newer events" older="Older events" pageSize={page.limit}>
             <span>{page.total} matching events</span>
           </JinListPages>
         </>

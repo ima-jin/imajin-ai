@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import { AlphaForm } from './alpha-form';
-import { initialAlphaIntent } from '@/src/lib/alpha/contract';
+import { ALPHA_CONFIRMATION, initialAlphaIntent } from '@/src/lib/alpha/contract';
 
 const description = 'Imajin is the trust layer for AI agents. Join the alpha as a tester, integrator or partner, or book a demo.';
 export const metadata: Metadata = {
@@ -12,9 +12,9 @@ export const metadata: Metadata = {
 };
 
 export default async function AlphaPage({ searchParams }: Readonly<{
-  searchParams: Promise<{ intent?: string | string[] }>;
+  searchParams: Promise<{ intent?: string | string[]; received?: string }>;
 }>) {
-  const { intent } = await searchParams;
+  const { intent, received } = await searchParams;
   return (
     <main className="mx-auto max-w-2xl px-5 py-12 sm:py-16">
       <p className="mb-3 text-sm font-semibold uppercase tracking-widest text-orange-600 dark:text-orange-400">Imajin · Alpha</p>
@@ -32,7 +32,10 @@ export default async function AlphaPage({ searchParams }: Readonly<{
           and platforms and agencies running agents for many clients.
         </p>
       </details>
-      <AlphaForm key={initialAlphaIntent(intent)} initialIntent={initialAlphaIntent(intent)} />
+      {received === '1' ? <div role="status" className="rounded border border-orange-300 p-6">
+        <h2 className="text-xl font-semibold">Request received</h2>
+        <p className="mt-2">{ALPHA_CONFIRMATION}</p>
+      </div> : <AlphaForm key={initialAlphaIntent(intent)} initialIntent={initialAlphaIntent(intent)} />}
     </main>
   );
 }

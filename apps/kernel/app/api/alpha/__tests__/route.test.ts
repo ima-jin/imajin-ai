@@ -14,6 +14,26 @@ beforeEach(() => { vi.clearAllMocks(); mocks.store.mockResolvedValue(undefined);
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
 
 describe('public alpha intake', () => {
+  it('accepts a native form POST before hydration and redirects without personal data in the URL', async () => {
+    const response = await route.POST(new Request('http://localhost/api/alpha', {
+      method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'x-forwarded-for': `native-${++ip}` },
+      body: new URLSearchParams({ ...valid, website: '' }),
+    }));
+    expect(response.status).toBe(303);
+    expect(response.headers.get('location')).toBe('http://localhost/alpha?received=1');
+    expect(response.headers.get('Cache-Control')).toBe('no-store');
+    expect(mocks.store).toHaveBeenCalledWith(valid);
+  });
+  it.each([{ email: 'invalid' }, { website: 'bot' }, { purpose: 'x'.repeat(1001) }])(
+    'uses the same validation and bot guard on native form POST %j', async patch => {
+      const response = await route.POST(new Request('http://localhost/api/alpha', {
+        method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'x-forwarded-for': `native-invalid-${++ip}` },
+        body: new URLSearchParams({ ...valid, ...patch }),
+      }));
+      expect(response.status).toBe(400);
+      expect(mocks.store).not.toHaveBeenCalled();
+    },
+  );
   it.each(ALPHA_INTENTS)('stores %s signed-out and confirms contact without creating an account', async intent => {
     const response = await route.POST(request({ ...valid, intent, name: ' Test Person ', email: ' Person@Example.com ', website: '' }));
     expect(response.status).toBe(201);

@@ -19,6 +19,9 @@ export async function readAlphaBody(request: Request): Promise<unknown> {
       text += decoder.decode(value, { stream: true });
     }
     text += decoder.decode();
+    if (request.headers.get('content-type')?.startsWith('application/x-www-form-urlencoded')) {
+      return Object.fromEntries(new URLSearchParams(text));
+    }
     return JSON.parse(text) as unknown;
   } finally {
     reader.releaseLock();

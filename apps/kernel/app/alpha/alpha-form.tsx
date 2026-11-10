@@ -45,7 +45,7 @@ export function AlphaForm({ initialIntent }: Readonly<{ initialIntent: AlphaInte
   </div>;
 
   return (
-    <form onSubmit={submit} className="space-y-5">
+    <form method="post" action="/api/alpha" onSubmit={submit} className="space-y-5">
       <label className="block text-sm font-medium" htmlFor="alpha-name">Name
         <input className={INPUT_CLASS} id="alpha-name" name="name" autoComplete="name" maxLength={ALPHA_LIMITS.name} required />
       </label>

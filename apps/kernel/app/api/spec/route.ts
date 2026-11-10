@@ -18,6 +18,9 @@ paths:
       description: >-
         Public intake. Five attempts per IP per hour (per kernel worker).
         Empty website honeypot required when supplied. Body limited to 16384 bytes.
+        Also accepts application/x-www-form-urlencoded native POST before
+        hydration, redirecting on success with 303 to /alpha?received=1 without
+        personal data in the URL.
         No submission content is logged. The configured operator receives a
         generic notification via the existing notify send path, without contact
         details, free text or a new email template.
@@ -38,6 +41,7 @@ paths:
                 website: { type: string, const: "" }
       responses:
         "201": { description: Stored; someone will reach out }
+        "303": { description: Native form stored; redirect to contact confirmation }
         "400": { description: Invalid fields, bot guard or oversized body }
         "429": { description: Rate limited; Retry-After header in seconds }
         "503": { description: Storage temporarily unavailable }
