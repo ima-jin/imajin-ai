@@ -69,6 +69,11 @@ with the framework you already run (OpenClaw today; the harness is swappable).
 The kernel only learns what an agent did through signed events: it never reaches
 into your runtime, holds session keys or reads transcripts. Hosted or self-run.
 
+Agent harnesses (ours included) run as apps on the trust layer, not as kernel
+features. The [kernel boundary map work (#3375)](https://github.com/ima-jin/imajin-ai/issues/3375)
+defines what stays in the trust layer and what moves to the agent ops app;
+its target document is `docs/architecture/KERNEL-BOUNDARY.md`.
+
 **Compared with:**
 
 - Identity incumbents (built for people logging in).

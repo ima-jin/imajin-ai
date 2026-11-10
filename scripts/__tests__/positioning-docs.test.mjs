@@ -1,13 +1,101 @@
-import { describe, expect, it } from 'vitest';
-import { existsSync, readFileSync } from 'node:fs';
-import { execFileSync } from 'node:child_process';
+import { afterEach, describe, expect, it } from 'vitest';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 
 const root = fileURLToPath(new URL('../../', import.meta.url));
 const read = (file) => readFileSync(join(root, file), 'utf8');
 const position = read('docs/POSITIONING.md');
 const plain = position.replaceAll('**', '').replaceAll(/\s+/g, ' ');
+
+// Match the repository's ignored dependency, build and local-only trees without
+// invoking git (CI checkouts need not have git-compatible ownership or metadata).
+const ignoredDirectories = new Set([
+  '.git', 'node_modules', 'coverage', '.pnpm-store', '__pycache__',
+  '.next', 'dist', '.turbo', '.vscode', '.idea', '.vercel',
+  'imajin-courses', 'memory', '.claire',
+]);
+const ignoredPaths = new Set([
+  'artifacts/sonar', 'apps/corpus/data', 'audit-report.txt',
+  'spikes/pq-mls/openmls/target', 'spikes/pq-mls/openmls/pkg',
+]);
+
+function documentFiles(directory, prefix = '') {
+  const files = [];
+  for (const entry of readdirSync(directory, { withFileTypes: true })) {
+    const file = `${prefix}${entry.name}`;
+    if (ignoredPaths.has(file) || file.endsWith('.raw.md')) continue;
+    if (entry.isDirectory() && !ignoredDirectories.has(entry.name)) {
+      files.push(...documentFiles(join(directory, entry.name), `${file}/`));
+    } else if (entry.isFile() && /\.(?:md|mdx|txt|html)$/i.test(entry.name)) {
+      files.push(file);
+    }
+  }
+  return files;
+}
+
+function assertNoAuditLinks(directory) {
+  for (const file of documentFiles(directory)) {
+    if (file === 'docs/MESSAGING-AUDIT.md') continue;
+    expect(readFileSync(join(directory, file), 'utf8'), file).not.toMatch(/MESSAGING-AUDIT\.md/i);
+  }
+}
+
+const temporaryDirectories = [];
+afterEach(() => {
+  for (const directory of temporaryDirectories.splice(0)) rmSync(directory, { recursive: true, force: true });
+});
+
+function fixture(files) {
+  const directory = mkdtempSync(join(tmpdir(), 'positioning-docs-'));
+  temporaryDirectories.push(directory);
+  for (const [file, content] of Object.entries(files)) {
+    mkdirSync(dirname(join(directory, file)), { recursive: true });
+    writeFileSync(join(directory, file), content);
+  }
+  return directory;
+}
+
+describe('git-independent document scan', () => {
+  it('scans the same document extensions throughout a tree without .git', () => {
+    const files = {
+      'README.md': 'Current guidance.',
+      'docs/nested/guide.MDX': 'Current guidance.',
+      'apps/example/public/llms.txt': 'Current guidance.',
+      'packages/example/guide.html': 'Current guidance.',
+      '.github/guide.MD': 'Current guidance.',
+      'scripts/example.mjs': 'Not a document.',
+    };
+    const directory = fixture(files);
+    expect(existsSync(join(directory, '.git'))).toBe(false);
+    expect(documentFiles(directory).sort()).toEqual(Object.keys(files).filter(file => !file.endsWith('.mjs')).sort());
+    expect(() => assertNoAuditLinks(directory)).not.toThrow();
+  });
+
+  it.each([
+    'README.md', 'docs/nested/guide.mdx', 'apps/example/public/llms.txt', 'packages/example/guide.HTML',
+  ])('rejects an audit reference in %s without git metadata', file => {
+    const directory = fixture({ [file]: '[Current guidance](MESSAGING-AUDIT.md)' });
+    expect(() => assertNoAuditLinks(directory)).toThrow(/MESSAGING-AUDIT/);
+  });
+
+  it('excludes only the historical pointer and ignored generated/local documents', () => {
+    const files = {
+      'docs/MESSAGING-AUDIT.md': 'Historical MESSAGING-AUDIT.md pointer.',
+      'docs/guide.md': 'Use POSITIONING.md.',
+      'docs/private.raw.md': 'Ignored MESSAGING-AUDIT.md draft.',
+      'audit-report.txt': 'Generated MESSAGING-AUDIT.md report.',
+    };
+    for (const directory of ignoredDirectories) files[`${directory}/guide.md`] = 'Ignored MESSAGING-AUDIT.md.';
+    for (const directory of ignoredPaths) {
+      if (directory !== 'audit-report.txt') files[`${directory}/guide.md`] = 'Ignored MESSAGING-AUDIT.md.';
+    }
+    const directory = fixture(files);
+    expect(documentFiles(directory).sort()).toEqual(['docs/MESSAGING-AUDIT.md', 'docs/guide.md']);
+    expect(() => assertNoAuditLinks(directory)).not.toThrow();
+  });
+});
 
 describe('canonical positioning (#3366)', () => {
   it.each([
@@ -66,12 +154,14 @@ describe('canonical positioning (#3366)', () => {
   });
 
   it('has no repository links to the audit as current guidance', () => {
-    const files = execFileSync('git', ['ls-files', '-z'], { cwd: root, encoding: 'utf8' })
-      .split('\0').filter((file) => /\.(?:md|mdx|txt|html)$/i.test(file));
-    for (const file of files) {
-      if (file === 'docs/MESSAGING-AUDIT.md') continue;
-      expect(read(file), file).not.toMatch(/MESSAGING-AUDIT\.md/i);
-    }
+    assertNoAuditLinks(root);
+  });
+
+  it('distinguishes the trust layer from harness apps and links the boundary map work', () => {
+    expect(plain).toContain(
+      'Agent harnesses (ours included) run as apps on the trust layer, not as kernel features.',
+    );
+    expect(position).toContain('https://github.com/ima-jin/imajin-ai/issues/3375');
   });
 
   it('links positioning from the developer entry point and any docs index', () => {
