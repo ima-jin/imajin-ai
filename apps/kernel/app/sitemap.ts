@@ -29,11 +29,21 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       priority: 1,
     },
     {
+      url: `${DOMAIN}/alpha`,
+      changeFrequency: 'monthly',
+      priority: 0.9,
+    },
+    {
       url: `${DOMAIN}/articles`,
       lastModified: new Date(),
       changeFrequency: 'weekly',
       priority: 0.9,
     },
+    ...['/how-it-works', '/compare'].map((path) => ({
+      url: `${DOMAIN}${path}`,
+      changeFrequency: 'monthly' as const,
+      priority: 0.8,
+    })),
     ...articleUrls,
   ];
 }

@@ -1,6 +1,22 @@
-import { uuid, text, timestamp, boolean, index, unique, pgSchema } from 'drizzle-orm/pg-core';
+import { uuid, text, timestamp, boolean, index, unique, pgSchema, varchar, check } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
 
 export const wwwSchema = pgSchema('www');
+
+/** Public alpha requests; private operator read, append-only, no account creation. */
+export const alphaSubmissions = wwwSchema.table('alpha_submissions', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  name: varchar('name', { length: 120 }).notNull(),
+  email: varchar('email', { length: 254 }).notNull(),
+  company: varchar('company', { length: 200 }).notNull(),
+  intent: varchar('intent', { length: 16 }).$type<'tester' | 'integrator' | 'partner' | 'demo'>().notNull(),
+  purpose: varchar('purpose', { length: 1000 }).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, table => [
+  check('alpha_submissions_intent_check', sql`${table.intent} IN ('tester', 'integrator', 'partner', 'demo')`),
+  index('idx_alpha_submissions_created').on(table.createdAt, table.id),
+  index('idx_alpha_submissions_intent_created').on(table.intent, table.createdAt, table.id),
+]);
 
 /**
  * Contacts - email addresses for updates/notifications

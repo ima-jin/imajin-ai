@@ -1,5 +1,7 @@
 # Imajin integration guide
 
+For public copy, use the canonical [positioning](POSITIONING.md); change it there first.
+
 Imajin supplies identity, relationships, attribution and payments through JSON over HTTPS. You can use the public contracts from any language; the published SDK supplies app sign-in and session helpers. This guide explains how to choose an integration flow, while each service's live spec defines its requests, authentication and errors.
 
 ## What you integrate with
