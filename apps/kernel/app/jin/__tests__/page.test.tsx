@@ -4,6 +4,7 @@ import { cleanup, render, screen } from '@testing-library/react';
 import JinPage from '../page';
 
 vi.mock('../usage-feed-panel', () => ({ UsageFeedPanel: () => null }));
+vi.mock('../alpha-submissions-panel', () => ({ AlphaSubmissionsPanel: () => <section aria-label="Alpha requests">Alpha fixture</section> }));
 vi.mock('../agent-identity-panel', () => ({ AgentIdentityPanel: () => <section aria-label="Agent identity cards">Identity cards fixture</section> }));
 vi.mock('../decisions-panel', () => ({ DecisionsPanel: () => <section aria-label="Decisions">Decisions fixture</section> }));
 vi.mock('../operator-approvals-panel', () => ({ OperatorApprovalsPanel: () => null }));
@@ -24,6 +25,8 @@ it('links organization mail sender settings from the jin header', () => {
   render(<JinPage />);
   expect(screen.getByRole('region', { name: 'Decisions' })).toBeDefined();
   expect(screen.getByRole('region', { name: 'Agent identity cards' }).nextElementSibling)
+    .toBe(screen.getByRole('region', { name: 'Alpha requests' }));
+  expect(screen.getByRole('region', { name: 'Alpha requests' }).nextElementSibling)
     .toBe(screen.getByRole('region', { name: 'Decisions' }));
   expect(screen.getByRole('link', { name: 'Organization settings' }).getAttribute('href')).toBe('/jin/org-settings');
   expect(screen.getByRole('region', { name: 'Registered apps' })).toBeDefined();

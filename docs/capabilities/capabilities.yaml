@@ -4711,6 +4711,9 @@ coverage:
     - path: apps/kernel/app/admin/withdrawals/page.tsx
       capabilities:
         - operate-key-custody
+    - path: apps/kernel/app/alpha/page.tsx
+      capabilities:
+        - evaluate-platform
     - path: apps/kernel/app/articles/page.tsx
       capabilities:
         - read-project

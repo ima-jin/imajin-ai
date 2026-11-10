@@ -18,6 +18,12 @@
     }
   },
   "tables": {
+    "www.alpha_submissions": {
+      "owner": "kernel",
+      "schema": "www",
+      "firstMigration": "0238_alpha_submissions.sql",
+      "notes": "Append-only private alpha requests; no account creation or public read."
+    },
     "kernel.mail_domains": {
       "owner": "kernel",
       "schema": "kernel",
