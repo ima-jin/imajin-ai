@@ -4846,6 +4846,9 @@ coverage:
     - path: apps/kernel/app/chat/page.tsx
       capabilities:
         - chat
+    - path: apps/kernel/app/compare/page.tsx
+      capabilities:
+        - evaluate-platform
     - path: apps/kernel/app/connections/invite/[did]/[code]/page.tsx
       capabilities:
         - connections
@@ -4886,6 +4889,9 @@ coverage:
     - path: apps/kernel/app/health/page.tsx
       capabilities:
         - operate-node
+    - path: apps/kernel/app/how-it-works/page.tsx
+      capabilities:
+        - evaluate-platform
     - path: apps/kernel/app/jin/brief-settings/page.tsx
       capabilities:
         - brief-retention
