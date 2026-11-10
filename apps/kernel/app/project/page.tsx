@@ -1,233 +1,134 @@
+import type { Metadata } from 'next';
 import Link from 'next/link';
-// Project rationale and dated alpha state.
-import Image from 'next/image';
 import { ImajinFooter } from '@imajin/ui';
-import { getClient } from '@imajin/db';
-import { PrimitiveMatrix } from '@/src/components/www/PrimitiveMatrix';
-import { toMatrixProps } from '@/src/components/www/matrix';
-import matrixData from '../../../../docs/matrix-status.json';
 
-// Revalidate stats every 15 minutes (ISR)
-export const revalidate = 900;
+const title = 'Why we built it this way';
+const description = 'Why Imajin is built around agent identity, signatures and a record you own. State of Imajin, November 2026: our hardware, what works and the limits of this alpha.';
 
-const MAX_PRESENCES = 1;
-const MAX_HUMANS = 5_000;
-const MAX_BUSINESSES = 200;
+export const metadata: Metadata = {
+  title,
+  description,
+  keywords: ['Imajin', 'AI agents', 'agent identity', 'signed record', 'alpha'],
+  alternates: { canonical: '/project' },
+  openGraph: {
+    title,
+    description,
+    url: '/project',
+    type: 'website',
+    images: [],
+  },
+  twitter: { card: 'summary', title, description, images: [] },
+};
 
-import { buildPublicUrl } from '@imajin/config';
+const disclosureClass = 'rounded-lg border border-gray-800 p-5';
+const summaryClass = 'cursor-pointer text-lg font-semibold text-gray-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-amber-400';
+const listClass = 'mt-4 list-disc space-y-3 pl-5 text-gray-300 leading-relaxed';
 
-async function getNetworkStats() {
-  try {
-    const sql = getClient();
-
-    const [presences] = await sql`
-      SELECT COUNT(*)::int as count
-      FROM profile.profiles p
-      JOIN auth.identities i ON i.id = p.did
-      WHERE i.scope = 'actor' AND i.subtype IN ('presence', 'agent', 'device')
-    `;
-
-    const [humans] = await sql`
-      SELECT COUNT(*)::int as count
-      FROM profile.profiles p
-      JOIN auth.identities i ON i.id = p.did
-      WHERE i.scope = 'actor' AND i.subtype = 'human'
-    `;
-
-    const [businesses] = await sql`
-      SELECT COUNT(*)::int as count
-      FROM profile.profiles p
-      JOIN auth.identities i ON i.id = p.did
-      WHERE i.scope IN ('business', 'community', 'family')
-    `;
-
-    const [lightningProfiles] = await sql`
-      SELECT COUNT(*)::int as count
-      FROM auth.identities
-      WHERE tier = 'soft'
-    `;
-
-    return {
-      presences: presences?.count ?? 0,
-      humans: humans?.count ?? 0,
-      businesses: businesses?.count ?? 0,
-      lightning: lightningProfiles?.count ?? 0,
-    };
-  } catch {
-    return { presences: 0, humans: 0, businesses: 0, lightning: 0 };
-  }
-}
-
-function StatCard({ emoji, count, max, label }: Readonly<{ emoji: string; count: number; max?: number | '∞'; label: string }>) {
-  const maxDisplay = max === '∞' ? '∞' : max?.toLocaleString();
+export default function ProjectPage() {
   return (
-    <div className="flex flex-col items-center gap-1.5">
-      <span className="text-2xl">{emoji}</span>
-      <p className="text-lg font-medium text-gray-300">
-        {count.toLocaleString()}{maxDisplay != null && <span className="text-gray-600"> / {maxDisplay}</span>}
-      </p>
-      <p className="text-xs text-gray-600">{label}</p>
-    </div>
-  );
-}
-
-export default async function ProjectPage() {
-  const stats = await getNetworkStats();
-
-  return (
-    <main className="min-h-screen flex flex-col items-center px-6 py-20 bg-gray-950">
-
-      {/* HERO */}
-      <section className="flex flex-col items-center text-center max-w-2xl mb-20">
-        <Image
-          src="/images/logo.svg"
-          alt="Imajin"
-          width={320}
-          height={88}
-          className="mb-10"
-          priority
-        />
-        <h1 className="text-3xl md:text-5xl font-bold text-gray-100 mb-6">
-          Imajin runs your community.
-        </h1>
-        <p className="text-base md:text-lg text-gray-400 leading-relaxed mb-10 max-w-lg">
-          Self-hosted software for communities, events, identity, and payments.
-          Open source. Your data, your keys, your domain.
-        </p>
-        <div className="flex flex-col sm:flex-row gap-4">
-          <Link
-            href="/whitepaper"
-            className="px-6 py-3 bg-amber-500 hover:bg-amber-400 text-gray-950 font-semibold rounded-md transition-colors"
-          >
-            Read the Whitepaper
+    <main className="min-h-screen bg-gray-950 px-6 py-12 text-gray-100">
+      <article className="mx-auto max-w-3xl">
+        <header className="mb-8">
+          <p className="mb-3 text-sm font-medium uppercase tracking-widest text-amber-400">
+            Imajin · Alpha
+          </p>
+          <h1 className="mb-4 text-3xl font-bold tracking-tight md:text-5xl">{title}</h1>
+          <p className="text-lg leading-relaxed text-gray-300">
+            An agent should carry its own identity. Trust should live in signatures, not a vendor.
+            You should be able to own the record and run it on hardware you own.
+          </p>
+          <p className="mt-3 text-sm leading-relaxed text-gray-400">
+            Imajin is the trust layer for AI agents. This is why we built it this way, not a promise
+            that the alpha is finished. The dated details and limits are below.
+          </p>
+          <Link href="/whitepaper" className="mt-4 inline-block text-amber-400 underline underline-offset-4 hover:text-amber-300">
+            Read the whitepaper for the reasoning
           </Link>
-          <Link
-            href="/articles"
-            className="px-6 py-3 border border-gray-700 hover:border-amber-500/60 text-gray-300 hover:text-amber-400 font-medium rounded-md transition-colors"
-          >
-            Read the Essays
-          </Link>
+        </header>
+
+        <div className="space-y-3">
+          <details className={disclosureClass}>
+            <summary className={summaryClass}>
+              State of Imajin, November 2026
+              <span className="mt-1 block text-sm font-normal text-gray-400">
+                Our own hardware; frontier judgment, local model work.
+              </span>
+            </summary>
+            <div className="mt-4 text-gray-300 leading-relaxed">
+              <p>We run on our own hardware:</p>
+              <ul className={listClass}>
+                <li>One GPU box with an RTX 5090 for local models.</li>
+                <li>One Grace Blackwell workstation with 128 GB unified memory for a 120B model plus embeddings and retrieval.</li>
+                <li>One platform server.</li>
+              </ul>
+              <p className="mt-4">
+                Frontier models do judgment work. Local models do coding, research, embeddings
+                and transcription.
+              </p>
+              <p className="mt-3">
+                This is how we operate today, not hardware you need to buy to use Imajin.
+              </p>
+            </div>
+          </details>
+
+          <details className={disclosureClass}>
+            <summary className={summaryClass}>
+              What Imajin adds to an agent harness
+              <span className="mt-1 block text-sm font-normal text-gray-400">
+                Identity, a signed record, human approval and cost per identity.
+              </span>
+            </summary>
+            <p className="mt-4 leading-relaxed text-gray-300">
+              The harness runs the agent. Imajin adds identity and authority for AI agents;
+              you use both. Our own operations agent uses this today.
+            </p>
+            <ul className={listClass}>
+              <li>Its own identity per agent: the agent acts as itself, not as the person.</li>
+              <li>A signed record of what the agent did and on whose authority.</li>
+              <li>Approval by a person: risky actions wait for a named human approver.</li>
+              <li>Several identities on one runtime, each for its own principal.</li>
+              <li>Events pushed to the agent.</li>
+              <li>Cost and credit recorded per identity (.fair).</li>
+            </ul>
+          </details>
+
+          <details className={disclosureClass}>
+            <summary className={summaryClass}>
+              Honest limits
+              <span className="mt-1 block text-sm font-normal text-gray-400">
+                Early plugin, people in the loop, one server and few outside users.
+              </span>
+            </summary>
+            <ul className={listClass}>
+              <li>The plugin is early (v0.1).</li>
+              <li>We depend on upstream for some harness paths.</li>
+              <li>Frontier models still do the judgment work.</li>
+              <li>A person is still in the dispatch loop.</li>
+              <li>One server, no redundancy yet.</li>
+              <li>Few outside users so far.</li>
+            </ul>
+          </details>
         </div>
-      </section>
 
-      {/* ABOUT */}
-      <section className="w-full max-w-xl mb-20 text-center">
-        <p className="text-base text-gray-400 leading-relaxed mb-6">
-          Imajin runs on{' '}
-          <span className="text-amber-400 font-medium">MJN</span>, an open protocol
-          for identity, attribution, consent, and settlement. The protocol is currency-agnostic.
-          Your node can settle in CAD, USD, community credits, or MJNx.
-          MJNx is to Imajin as USD is to SWIFT. SWIFT moves money. It doesn't BE money.
-        </p>
-        <p className="text-sm text-gray-500 leading-relaxed">
-          Today there is one dominant hosted kernel at imajin.ai.
-          Tomorrow, any community can run its own node on its own domain.
-          The architecture is already federated at the protocol layer.
-          The missing piece is node-to-node handshake and data migration tooling.
-        </p>
-      </section>
-
-      {/* THE MATRIX */}
-      <section className="w-full max-w-xl mb-20">
-        <div className="text-center mb-8">
-          <h2 className="text-xl font-semibold text-gray-200 mb-2">The Protocol Matrix</h2>
-          <p className="text-sm text-gray-500">
-            4 scopes × 6 primitives. Every problem is a cell. The protocol is the matrix.
+        <section aria-labelledby="try-it" className="mt-8 border-t border-gray-800 pt-6">
+          <h2 id="try-it" className="text-xl font-semibold">
+            Don&apos;t trust us; point your agent at it
+          </h2>
+          <p className="mt-2 text-sm leading-relaxed text-gray-300">
+            This is an alpha. Book a demo, or join the alpha as a tester, integrator or partner.
+            Joining the alpha is the sign-up path for now.
           </p>
-        </div>
-        <PrimitiveMatrix {...toMatrixProps(matrixData)} />
-      </section>
-
-      {/* NETWORK STATS */}
-      <section className="mb-20">
-        <p className="text-xs text-gray-600 uppercase tracking-widest text-center mb-6">Network</p>
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-8 md:gap-10">
-          <StatCard emoji="🖥️" count={1} max={1} label="Servers" />
-          <StatCard emoji="🟠" count={stats.presences} max={MAX_PRESENCES} label="Presences" />
-          <StatCard emoji="🧑" count={stats.humans} max={MAX_HUMANS} label="Humans" />
-          <StatCard emoji="🏢" count={stats.businesses} max={MAX_BUSINESSES} label="Businesses" />
-          <StatCard emoji="⚡" count={stats.lightning} max="∞" label="Lightning" />
-        </div>
-      </section>
-
-      {/* THE ESSAYS */}
-      <section className="w-full max-w-md mb-20 text-center">
-        <Link
-          href="/articles"
-          className="group block rounded-lg border border-gray-800 hover:border-amber-500/40 p-8 transition-colors"
-        >
-          <p className="text-4xl font-bold text-gray-100 mb-2 group-hover:text-amber-400 transition-colors">30</p>
-          <p className="text-lg font-semibold text-gray-300 mb-1">Essays</p>
-          <p className="text-sm text-gray-500">The complete manifesto.</p>
-          <p className="text-amber-400 text-sm mt-4 group-hover:text-amber-300 transition-colors">Read all essays →</p>
-        </Link>
-      </section>
-
-      {/* THE EVENT */}
-      <section className="w-full max-w-md mb-20">
-        <a
-          href={`${buildPublicUrl('events')}/jins-launch-party`}
-          className="group block rounded-lg border border-gray-800 hover:border-amber-500/40 p-8 transition-colors text-center"
-        >
-          <p className="text-xs text-gray-600 uppercase tracking-widest mb-3">April 1, 2026</p>
-          <p className="text-lg font-semibold text-gray-200 mb-1 group-hover:text-amber-400 transition-colors">
-            Jin's Launch Party
-          </p>
-          <p className="text-sm text-gray-500 mb-4">The network goes live.</p>
-          <p className="text-amber-400 text-sm group-hover:text-amber-300 transition-colors">Get your invite →</p>
-        </a>
-      </section>
-
-      {/* LINKS */}
-      <section className="w-full max-w-md mb-12">
-        <p className="text-xs text-gray-600 uppercase tracking-widest text-center mb-6">Explore</p>
-        <div className="flex flex-col gap-3 text-sm">
-          <Link href="/whitepaper" className="flex justify-between items-center text-gray-400 hover:text-amber-400 transition-colors py-1 border-b border-gray-900">
-            <span>Whitepaper</span>
-            <span className="text-gray-700">→</span>
-          </Link>
-          <a href="https://github.com/ima-jin/imajin-ai" target="_blank" rel="noopener noreferrer" className="flex justify-between items-center text-gray-400 hover:text-amber-400 transition-colors py-1 border-b border-gray-900">
-            <span>GitHub — imajin-ai</span>
-            <span className="text-gray-700">→</span>
-          </a>
-          <a href="https://github.com/ima-jin/mjn-protocol" target="_blank" rel="noopener noreferrer" className="flex justify-between items-center text-gray-400 hover:text-amber-400 transition-colors py-1 border-b border-gray-900">
-            <span>Protocol Spec — mjn-protocol</span>
-            <span className="text-gray-700">→</span>
-          </a>
-          <a href={`${buildPublicUrl('registry')}/docs`} className="flex justify-between items-center text-gray-400 hover:text-amber-400 transition-colors py-1 border-b border-gray-900">
-            <span>API Docs</span>
-            <span className="text-gray-700">→</span>
-          </a>
-          <a href={buildPublicUrl('market')} className="flex justify-between items-center text-gray-400 hover:text-amber-400 transition-colors py-1 border-b border-gray-900">
-            <span>Market</span>
-            <span className="text-gray-700">→</span>
-          </a>
-        </div>
-      </section>
-
-      {/* RFC CALLOUT */}
-      <section className="w-full max-w-md mb-16">
-        <a
-          href="https://github.com/ima-jin/imajin-ai/discussions/categories/ideas"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="group block rounded-lg border border-gray-700 hover:border-amber-500/50 p-6 transition-colors text-center"
-        >
-          <p className="text-lg font-semibold text-gray-200 mb-2 group-hover:text-amber-400 transition-colors">
-            Help us build this
-          </p>
-          <p className="text-sm text-gray-400 leading-relaxed">
-            We have open Requests for Comment on features we're building.
-            Read, discuss, and shape what comes next.
-          </p>
-          <p className="text-amber-400 text-sm mt-3 group-hover:text-amber-300 transition-colors">
-            Join the conversation →
-          </p>
-        </a>
-      </section>
-
-      {/* FOOTER */}
-      <footer className="mt-auto pt-4 pb-8">
+          <div className="mt-4 flex flex-col gap-3 sm:flex-row">
+            <Link href="/alpha?intent=demo" className="rounded-md bg-amber-500 px-5 py-3 text-center font-semibold text-gray-950 hover:bg-amber-400">
+              Book a demo
+            </Link>
+            <Link href="/alpha" className="rounded-md border border-gray-600 px-5 py-3 text-center font-semibold text-gray-100 hover:border-amber-400">
+              Join the alpha
+            </Link>
+          </div>
+        </section>
+      </article>
+      <footer className="mx-auto mt-12 max-w-3xl">
         <ImajinFooter />
       </footer>
     </main>
