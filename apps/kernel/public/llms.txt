@@ -1,6 +1,6 @@
 # Imajin
 
-> You compose. Imajin orchestrates. Signed. Legible. Imajin is Agentic Relation Management.
+> identity and authority for AI agents.
 
 Imajin records proof of history, not proof of work. A signature identifies an assertion's signer; it does not prove the assertion true. Actor signatures, node-witnessed actions and unsigned logs have different evidentiary strength.
 
