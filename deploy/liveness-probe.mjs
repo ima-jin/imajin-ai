@@ -61,8 +61,8 @@ function targetsFromConfig(config) {
   const kernel = config.apps.find(app => app.name?.endsWith('-jin'));
   return config.apps.flatMap((app) => {
     const kernelOwned = app === kernel || (kernel?.cwd && app.cwd === kernel.cwd);
-    const path = app.env?.LIVENESS_PATH === undefined
-      ? (kernelOwned ? '/api/health?liveness=1' : undefined) : app.env.LIVENESS_PATH;
+    const defaultPath = kernelOwned ? '/api/health?liveness=1' : undefined;
+    const path = app.env?.LIVENESS_PATH === undefined ? defaultPath : app.env.LIVENESS_PATH;
     if (path === undefined) return [];
     if (typeof path !== 'string' || !/^\/(?!\/)[^\s\\#]*$/.test(path)
       || new URL(path, 'http://localhost').origin !== 'http://localhost') {
