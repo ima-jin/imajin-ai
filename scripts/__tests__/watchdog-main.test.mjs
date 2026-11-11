@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import nodeConsole from 'node:console';
 import { afterEach, expect, it, vi } from 'vitest';
+import { main, deliverWatchdog } from '../../deploy/liveness-probe.mjs';
 
 const { command } = vi.hoisted(() => ({ command: vi.fn() }));
 vi.mock('node:child_process', () => {
@@ -86,8 +87,6 @@ it.each(['prod-jin', 'prod-declared'])('keeps a failing %s non-zero without exec
   expect(state.apps[app].failures).toBe(1);
   expect(state.events).toEqual([]);
 });
-import { main, deliverWatchdog } from '../../deploy/liveness-probe.mjs';
-
 let server;
 let work;
 afterEach(async () => {
