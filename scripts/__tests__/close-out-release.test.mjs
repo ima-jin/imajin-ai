@@ -211,7 +211,7 @@ describe('workflow and operator docs contract', () => {
 
   it('documents automatic notes, rollover and the missing-next warning', () => {
     const docs = readFileSync(new URL('../../docs/npm-publishing.md', import.meta.url), 'utf8');
-    expect(docs).toContain('Release close-out is automatic (#3093)');
+    expect(docs).toContain('Release close-out is automatic');
     expect(docs).toContain('creates the GitHub Release with generated notes');
     expect(docs).toContain('moves open issues and PRs to the lowest open patch milestone');
     expect(docs).toContain('no next patch milestone means a warning with no close');
