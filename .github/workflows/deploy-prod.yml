@@ -221,6 +221,8 @@ jobs:
       # Only apps already stopped before restart are exempt; restart failures
       # and errored apps still fail loudly.
       - name: Post-deploy pm2 health check
+        env:
+          PM2_ALERT_WEBHOOK_FILE: /home/jin/.config/imajin/pm2-alert-webhook.prod
         run: ./scripts/pm2-health-check.sh prod "$ECOSYSTEM_FILE"
 
       - name: Remove deploy stopped-process list

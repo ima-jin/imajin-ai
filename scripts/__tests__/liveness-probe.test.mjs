@@ -23,17 +23,54 @@ function fixture(overrides = {}, policy = {}) {
 }
 
 describe('PM2 HTTP watchdog', () => {
-  it('checks every configured HTTP app, excluding only the non-listening cron scheduler', () => {
+  it('keeps the kernel and every declared kernel service protected in both inventories', () => {
     for (const env of ['dev', 'prod']) {
       const config = require(`../../deploy/ecosystem.${env}.config.js`);
       const targets = targetsFromConfig(config);
       expect(targets.map(value => value.app)).toEqual(
-        config.apps.filter(value => !value.name.endsWith('-kernel-cron')).map(value => value.name),
+        config.apps.filter(value => value.name.endsWith('-jin') || value.env?.LIVENESS_PATH).map(value => value.name),
       );
       expect(targets.find(value => value.app === `${env}-jin`).port).toBe(env === 'prod' ? 7000 : 3000);
+      expect(targets).toHaveLength(env === 'prod' ? 8 : 1);
+      expect(targets.every(value => value.path === '/api/health?liveness=1')).toBe(true);
     }
-    expect(targetsFromConfig({ apps: [{ name: 'dev-test', args: ['start', '-p', '3001'] }] }))
-      .toEqual([{ app: 'dev-test', port: 3001 }]);
+    expect(targetsFromConfig({ apps: [{ name: 'dev-test', args: ['start', '-p', '3001'], env: { LIVENESS_PATH: '/health' } }] }))
+      .toEqual([{ app: 'dev-test', port: 3001, path: '/health' }]);
+  });
+
+  it('selects by kernel cwd or declaration, not independent names or workspace membership', async () => {
+    const config = { apps: [
+      { name: 'prod-jin', cwd: '/repo/apps/kernel', env: { PORT: 7000, LIVENESS_PATH: '/' } },
+      { name: 'prod-worker', cwd: '/repo/apps/kernel' },
+      { name: 'prod-owned-listener', cwd: '/repo/apps/kernel', env: { PORT: 7001 } },
+      { name: 'prod-declared', cwd: '/separate/repo', env: { PORT: 7400, LIVENESS_PATH: '/health' } },
+      { name: 'prod-undeclared', cwd: '/separate/repo', env: { PORT: 7401 } },
+      { name: 'prod-daemon', cwd: '/repo/apps/daemon', env: { PORT: 8013 } },
+    ] };
+    const targets = targetsFromConfig(config);
+    expect(targets.map(value => value.app)).toEqual(['prod-jin', 'prod-owned-listener', 'prod-declared']);
+    expect(targets[0].path).toBe('/api/health?liveness=1');
+    const f = fixture({ check: vi.fn(async () => true) });
+    for (let i = 0; i < 4; i++) await f.probe.tick(targets, { execute: true });
+    expect(f.deps.pid.mock.calls.map(([app]) => app)).not.toContain('prod-undeclared');
+    expect(f.deps.pid.mock.calls.map(([app]) => app)).not.toContain('prod-daemon');
+    expect(Object.keys(f.probe.state.apps)).toEqual(targets.map(value => value.app));
+    expect(f.deps.restart).not.toHaveBeenCalled();
+    expect(f.probe.state.events).toEqual([]);
+  });
+
+  it.each(['', 'health', '//remote.test/health', 'https://remote.test/health', '/\\remote', '/health#fragment', '/health\n', 42, null])(
+    'rejects an invalid declared path %j', path => {
+      expect(() => targetsFromConfig({ apps: [{ name: 'prod-declared', env: { PORT: 7400, LIVENESS_PATH: path } }] }))
+        .toThrow('Invalid liveness path');
+    },
+  );
+
+  it.each([200, 204, 302, 404, 503])('checks a declared route without softening HTTP %s', async status => {
+    const fetch = vi.fn(async () => new Response(null, { status }));
+    vi.stubGlobal('fetch', fetch);
+    expect(await checkHealth({ app: 'prod-declared', port: 7400, path: '/health' })).toBe(status < 300);
+    expect(fetch.mock.calls[0][0]).toBe('http://127.0.0.1:7400/health');
   });
 
   it.each([
@@ -43,7 +80,8 @@ describe('PM2 HTTP watchdog', () => {
     { name: 'prod-test', env: { PORT: 1.5 } },
     { name: 'unsafe;name', env: { PORT: 3000 } },
   ])('rejects invalid inventory instead of executing arbitrary PM2 names: %j', app => {
-    expect(() => targetsFromConfig({ apps: [app] })).toThrow('Invalid liveness target');
+    expect(() => targetsFromConfig({ apps: [{ ...app, env: { ...app.env, LIVENESS_PATH: '/health' } }] }))
+      .toThrow('Invalid liveness target');
   });
 
   it('restarts exactly the failed app on N consecutive misses and persists before restart', async () => {

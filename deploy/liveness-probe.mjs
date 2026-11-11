@@ -3,7 +3,7 @@ import { promisify } from 'node:util';
 import { randomUUID } from 'node:crypto';
 import { readFile, writeFile, rename, mkdir, open, unlink } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { pathToFileURL, URL } from 'node:url';
 import { homedir } from 'node:os';
 import { setTimeout, clearTimeout } from 'node:timers';
 import process from 'node:process';
@@ -19,6 +19,13 @@ const POLICY = Object.freeze({
 
 function sequential(items, operation) {
   return items.reduce((pending, item) => pending.then(() => operation(item)), Promise.resolve());
+}
+
+/** Retired targets cannot keep counters or an undeliverable pending outbox. */
+function pruneState(state, targets) {
+  const names = new Set(targets.map(target => target.app));
+  state.apps = Object.fromEntries(Object.entries(state.apps ?? {}).filter(([name]) => names.has(name)));
+  state.events = (state.events ?? []).filter(receipt => receipt.delivered || names.has(receipt.event.app));
 }
 
 /** One sweep at a time, with no retained recursive promise chain. */
@@ -51,7 +58,15 @@ function runTicks(tick, { once, signal, intervalMs = POLICY.intervalMs }) {
 
 /** Configs are the inventory; never read `pm2 jlist` (it exposes secrets). */
 function targetsFromConfig(config) {
+  const kernel = config.apps.find(app => app.name?.endsWith('-jin'));
   return config.apps.flatMap((app) => {
+    const kernelOwned = app === kernel || (kernel?.cwd && app.cwd === kernel.cwd);
+    const path = kernelOwned ? '/api/health?liveness=1' : app.env?.LIVENESS_PATH;
+    if (path === undefined) return [];
+    if (typeof path !== 'string' || !/^\/(?!\/)[^\s\\#]*$/.test(path)
+      || new URL(path, 'http://localhost').origin !== 'http://localhost') {
+      throw new Error('Invalid liveness path');
+    }
     const args = Array.isArray(app.args) ? app.args.join(' ') : app.args ?? '';
     const match = /(?:^|\s)-p\s+(\d+)(?:\s|$)/.exec(args);
     const configuredPort = app.env?.PORT ?? match?.[1];
@@ -61,14 +76,14 @@ function targetsFromConfig(config) {
     if (!Number.isSafeInteger(port) || port < 1 || port > 65535 || !/^(dev|prod)-[a-z0-9-]{1,60}$/.test(app.name)) {
       throw new Error('Invalid liveness target');
     }
-    return [{ app: app.name, port }];
+    return [{ app: app.name, port, path }];
   });
 }
 
 async function checkHealth(target) {
   try {
     const response = await internalFetch(
-      `http://127.0.0.1:${target.port}/api/health?liveness=1`,
+      `http://127.0.0.1:${target.port}${target.path ?? '/api/health?liveness=1'}`,
       { redirect: 'manual' }, POLICY.timeoutMs,
     );
     return response.ok;
@@ -188,8 +203,8 @@ function watchdogOptions(args) {
   const watchdog = args.includes('--watchdog');
   const hasEcosystem = args.includes('--ecosystem');
   const ecosystem = hasEcosystem ? args[args.indexOf('--ecosystem') + 1] : undefined;
-  if (watchdog && (!args.includes('--once') || !args.includes('--execute'))) {
-    throw new Error('Watchdog requires --once --execute');
+  if (watchdog && !args.includes('--once')) {
+    throw new Error('Watchdog requires --once');
   }
   if (hasEcosystem && (!watchdog || !ecosystem || ecosystem.startsWith('--'))) {
     throw new Error('Watchdog requires a valid ecosystem path');
@@ -245,6 +260,7 @@ async function main(args = process.argv.slice(2)) {
       if (error.code !== 'ENOENT') throw error; // Never silently discard counters/outbox.
       state = {};
     }
+    pruneState(state, targets);
     const persist = async (value) => {
       await writeFile(`${path}.tmp`, JSON.stringify(value), { mode: 0o600 });
       await rename(`${path}.tmp`, path);
