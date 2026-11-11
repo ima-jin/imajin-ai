@@ -39,7 +39,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       changeFrequency: 'weekly',
       priority: 0.9,
     },
-    ...['/how-it-works', '/compare'].map((path) => ({
+    ...['/how-it-works', '/compare', '/project'].map((path) => ({
       url: `${DOMAIN}${path}`,
       changeFrequency: 'monthly' as const,
       priority: 0.8,
