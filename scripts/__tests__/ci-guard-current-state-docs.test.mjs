@@ -103,6 +103,8 @@ describe('current-state consumer documentation guard', () => {
     expect(text).toContain('this is not self-serve onboarding');
     expect(text).toContain('https://jin.imajin.ai/alpha');
     expect(text).toContain('different evidentiary strength');
+    expect(text).toContain('Not publicly served at this origin');
+    expect(text).toContain('apps/kernel/api-spec/google.yaml');
     expect(text).not.toContain('You compose. Imajin orchestrates.');
   });
 

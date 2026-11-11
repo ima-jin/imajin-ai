@@ -325,6 +325,10 @@ bus.publish('listing.purchased', { issuer, subject, scope, payload })
 → notify reactor (send notifications)
 ```
 
+This illustrates a kernel-owned chain, not the public app-event ingestion path.
+An external app's emitted event can notify and audit only; it cannot invoke
+settlement, token emission or attestation issuance through this example.
+
 Built-in reactors: `attestation`, `mjn`, `settle`, `notify`, `emit`, `webhook`.
 Custom reactors via `registerReactor()`.
 

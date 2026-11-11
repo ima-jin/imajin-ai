@@ -52,7 +52,7 @@ These links correspond to the kernel's service spec definitions, not a deploymen
 - [Cloudflare API](https://jin.imajin.ai/cloudflare/api/spec): Authentication, schemas and operation contracts.
 - [Connections API](https://jin.imajin.ai/connections/api/spec): Authentication, schemas and operation contracts.
 - [Github API](https://jin.imajin.ai/github/api/spec): Authentication, schemas and operation contracts.
-- [Google API](https://jin.imajin.ai/google/api/spec): Authentication, schemas and operation contracts.
+- [Google API](https://jin.imajin.ai/google/api/spec): Not publicly served at this origin; consult the [spec source](https://github.com/ima-jin/imajin-ai/blob/main/apps/kernel/api-spec/google.yaml).
 - [Infer API](https://jin.imajin.ai/infer/api/spec): Authentication, schemas and operation contracts.
 - [Jin API](https://jin.imajin.ai/jin/api/spec): Authentication, schemas and operation contracts.
 - [Media API](https://jin.imajin.ai/media/api/spec): Authentication, schemas and operation contracts.

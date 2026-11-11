@@ -21,7 +21,7 @@ anyone outside the process can still verify what the old key produced.
 ## 2. Roles inventory
 
 Find direct references to `AUTH_PRIVATE_KEY` under `apps/ packages/ scripts/ deploy/
-.github/ docs/ migrations/`, then following the indirect consumers the grep
+.github/ docs/ migrations/`, then follow the indirect consumers the grep
 cannot see: `getNodeSigningIdentity()`, `getSealKey()`, `getNodeXPrivateKey()`,
 `getOwnerXPrivateKey()` (all in `apps/kernel/src/lib/vault/sealing.ts`). To
 re-run: `grep -rnE "AUTH_PRIVATE_KEY|getNodeSigningIdentity|getSealKey|getNodeX(Private|Public)Key|getOwnerX(Private|Public)Key"` excluding tests.
