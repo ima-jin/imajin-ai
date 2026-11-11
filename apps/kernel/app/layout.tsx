@@ -22,6 +22,8 @@ const domain = process.env.NEXT_PUBLIC_DOMAIN || 'imajin.ai';
 const isDev = prefix.includes('dev-');
 const envLabel = isDev ? ' [DEV]' : '';
 const wwwUrl = buildPublicUrl('www', prefix, domain);
+const title = `${APP_DISPLAY_NAME} — identity and authority for AI agents. · Alpha${envLabel}`;
+const description = 'your agents act as themselves, on your authority, and every action is signed.';
 
 export const viewport: Viewport = {
   width: 'device-width',
@@ -31,32 +33,32 @@ export const viewport: Viewport = {
 export const metadata: Metadata = {
   metadataBase: new URL(wwwUrl),
   title: {
-    default: `${APP_DISPLAY_NAME} runs your community${envLabel}`,
+    default: title,
     template: `%s | ${APP_DISPLAY_NAME}${envLabel}`,
   },
-  description: 'Self-hosted software for communities, events, identity, and payments. Open source. Your data, your keys, your domain.',
-  keywords: ['sovereign', 'decentralized', 'identity', 'self-hosted', 'no-subscription', 'imajin'],
+  description,
+  keywords: ['AI agents', 'agent identity', 'delegated authority', 'signed record', 'alpha', 'imajin'],
   authors: [{ name: APP_DISPLAY_NAME, url: wwwUrl }],
   openGraph: {
     type: 'website',
     locale: 'en_US',
     url: wwwUrl,
     siteName: `${APP_DISPLAY_NAME}${envLabel}`,
-    title: `${APP_DISPLAY_NAME} runs your community${envLabel}`,
-    description: 'Self-hosted software for communities, events, identity, and payments. Open source. Your data, your keys, your domain.',
+    title,
+    description,
     images: [
       {
         url: '/og-image.png',
         width: 1200,
         height: 630,
-        alt: `${APP_DISPLAY_NAME} runs your community`,
+        alt: 'Imajin · Alpha — identity and authority for AI agents.',
       },
     ],
   },
   twitter: {
     card: 'summary_large_image',
-    title: `${APP_DISPLAY_NAME} runs your community${envLabel}`,
-    description: 'Self-hosted software for communities, events, identity, and payments.',
+    title,
+    description,
     images: ['/og-image.png'],
   },
   robots: {
