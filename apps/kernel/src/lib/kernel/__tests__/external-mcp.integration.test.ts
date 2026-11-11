@@ -1349,6 +1349,22 @@ describe('registered app service → declared external API', () => {
     expect((await Promise.all(pending)).every(result => result.status === 200)).toBe(true);
     expect((await call(UPSTREAM, 'POST', upstreamCall(), serviceHeaders)).status).toBe(200);
   });
+  it('uses binding rather than vendor for upstream authority and refuses ambiguous binding rows', async () => {
+    await installUpstream();
+    const [original] = await database.select().from(connectors).where(eq(connectors.ownerDid, member));
+    await database.update(connectors).set({ provider: 'display-only.example.test' })
+      .where(eq(connectors.id, original.id));
+    expect((await call(UPSTREAM, 'POST', upstreamCall(), serviceHeaders)).status).toBe(200);
+    await database.insert(connectors).values({
+      ...original, id: `ambiguous_binding_${sequence}`, provider: 'another-label.example.test',
+    });
+    const readKey = vi.spyOn(vaultService, 'get');
+    try {
+      await expectUpstreamRefused(403);
+      expect(readKey).not.toHaveBeenCalled();
+    } finally { readKey.mockRestore(); }
+    expect(h.upstream).toHaveBeenCalledTimes(1);
+  });
   it('does not let an operator-approved app create audit records for a member who never consented', async () => {
     await installUpstream(false, true, false);
     await expectUpstreamRefused(403);

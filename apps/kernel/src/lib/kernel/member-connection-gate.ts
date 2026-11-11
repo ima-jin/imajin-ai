@@ -30,8 +30,8 @@ export async function findMemberConnection(
       ? [eq(connectors.provider, provider), eq(connectors.slot, 'primary')]
       : [eq(connectors.upstreamBinding, binding), eq(connectors.slot, binding)]),
   ));
-  return rows.find(row => row.provider === provider && isHeldBy(row, memberDid))
-    ?? rows.find(row => isHeldBy(row, memberDid));
+  if (rows.length !== 1) return undefined;
+  return isHeldBy(rows[0], memberDid) ? rows[0] : undefined;
 }
 async function activeIdentity(tx: Pick<ConnectionTransaction, 'select'>, did: string) {
   const [identity] = await tx.select({ id: identities.id }).from(identities)

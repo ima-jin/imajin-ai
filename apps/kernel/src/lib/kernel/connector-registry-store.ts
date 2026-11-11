@@ -41,8 +41,8 @@ const log = createLogger('kernel');
  *
  * Deterministic rather than random so the backfill and the application cannot
  * write two rows for the same installation: both land on the same primary key
- * and the unique `(owner_did, provider, slot)` index, whichever runs first.
- * Primary keeps the historical digest; other slots append their slug.
+ * and the unique `(owner_did, provider, purpose, slot)` index, whichever runs first.
+ * Inference keeps historical digests; billing purpose and non-primary slots are distinct.
  */
 export function connectorRegistryId(ownerDid: string, provider: string, slot?: string, purpose: ConnectionPurpose = 'inference'): string {
   const selected = connectionSlot(slot ?? currentConnectionSlot(provider, ownerDid));
