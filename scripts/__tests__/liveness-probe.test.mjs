@@ -40,7 +40,7 @@ describe('PM2 HTTP watchdog', () => {
 
   it('selects by kernel cwd or declaration, not independent names or workspace membership', async () => {
     const config = { apps: [
-      { name: 'prod-jin', cwd: '/repo/apps/kernel', env: { PORT: 7000 } },
+      { name: 'prod-jin', cwd: '/repo/apps/kernel', env: { PORT: 7000, LIVENESS_PATH: '/' } },
       { name: 'prod-worker', cwd: '/repo/apps/kernel' },
       { name: 'prod-owned-listener', cwd: '/repo/apps/kernel', env: { PORT: 7001 } },
       { name: 'prod-declared', cwd: '/separate/repo', env: { PORT: 7400, LIVENESS_PATH: '/health' } },
@@ -49,6 +49,7 @@ describe('PM2 HTTP watchdog', () => {
     ] };
     const targets = targetsFromConfig(config);
     expect(targets.map(value => value.app)).toEqual(['prod-jin', 'prod-owned-listener', 'prod-declared']);
+    expect(targets[0].path).toBe('/api/health?liveness=1');
     const f = fixture({ check: vi.fn(async () => true) });
     for (let i = 0; i < 4; i++) await f.probe.tick(targets, { execute: true });
     expect(f.deps.pid.mock.calls.map(([app]) => app)).not.toContain('prod-undeclared');

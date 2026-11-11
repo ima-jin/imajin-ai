@@ -16,11 +16,11 @@ vi.mock('node:child_process', () => {
   return { execFile };
 });
 
-async function inventoryFixture() {
+async function inventoryFixture(failurePath) {
   const requests = [];
   server = createServer((request, response) => {
     requests.push(request.url);
-    response.writeHead(request.url === '/missing' ? 404 : 200);
+    response.writeHead(request.url === '/missing' || request.url === failurePath ? 404 : 200);
     response.end('{}');
   });
   server.listen(0, '127.0.0.1');
@@ -71,7 +71,7 @@ it.each([false, true])('keeps real target receipts and returns delivery result %
 });
 
 it.each(['prod-jin', 'prod-declared'])('keeps a failing %s non-zero without executing in dry run', async app => {
-  const f = await inventoryFixture();
+  const f = await inventoryFixture(app === 'prod-jin' ? '/api/health?liveness=1' : undefined);
   const config = { apps: [
     { name: 'prod-jin', cwd: '/repo/apps/kernel', env: { PORT: f.port } },
     { name: 'prod-declared', cwd: '/elsewhere', env: { PORT: f.port, LIVENESS_PATH: '/health' } },
