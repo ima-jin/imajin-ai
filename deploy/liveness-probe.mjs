@@ -50,6 +50,7 @@ function runTicks(tick, { once, signal, intervalMs = POLICY.intervalMs }) {
 }
 
 /** Configs are the inventory; never read `pm2 jlist` (it exposes secrets). */
+// HTTP liveness targets must follow the ecosystem's ownership declarations.
 function targetsFromConfig(config) {
   return config.apps.flatMap((app) => {
     const args = Array.isArray(app.args) ? app.args.join(' ') : app.args ?? '';
