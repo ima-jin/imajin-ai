@@ -60,7 +60,7 @@ describe('read-only connector authority projection', () => {
   });
 
   it('does not infer org ownership from a provider prefix on a personal-owned registration', async () => {
-    h.registrations.mockResolvedValue([{ ownerDid: actor, provider: 'org-held-future', status: 'active' }]);
+    h.registrations.mockResolvedValue([{ ownerDid: actor, provider: 'future', status: 'active' }]);
     const rows = await listDiscoveryConnectorMetadata(context);
     expect(rows.find(row => row.provider === 'future')).toMatchObject({
       ownerDid: actor, usable: null, grantStatus: 'not-evaluated',
@@ -242,7 +242,7 @@ describe('read-only connector authority projection', () => {
       const rows = await listDiscoveryConnectorMetadata({
         ...context, appDid, toolAuth: { scopes, serviceToken: true },
       });
-      const upstreamRow = rows.find(row => row.provider === upstreamProvider(appDid, upstream.id));
+      const upstreamRow = rows.find(row => row.provider === upstreamProvider(upstream));
       expect(upstreamRow?.usable).toBe(!['revoked', 'changed-binding', 'no-declared-method'].includes(mode));
       const expectedScopes = mode === 'write' ? [UPSTREAM_WRITE_SCOPE] : scopes;
       expect(upstreamRow?.authorizedScopes).toEqual(upstreamRow?.usable ? expectedScopes : []);

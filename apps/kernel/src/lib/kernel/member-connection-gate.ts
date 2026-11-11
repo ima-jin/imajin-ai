@@ -4,12 +4,14 @@ import { isActiveGroupMember } from '@/src/lib/auth/group-membership';
 import { APP_AUTHORIZATION_CHANNEL } from '@/src/lib/auth/app-authorization-grant';
 import { ExternalMcpError, EXTERNAL_MCP_SCOPE, POSTMAN_PROVIDER, type ConnectionErrorCode } from './external-mcp-policy';
 import { missingConnection, resolveConnectionPrincipal, type ConnectionCaller } from './connection-principal';
-import { connectionProviderCondition, connectorPurpose, connectorVendor, isHeldBy } from './connection-holding';
+import { isHeldBy } from './connection-holding';
 import { orgConnectionRequiresReseal } from './connection-principal-policy';
 
 export type ConnectionTransaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
 export interface ExternalMcpCaller { memberDid: string; appDid?: string; serviceToken?: boolean; caller?: ConnectionCaller }
-export interface MemberConnectionTarget { provider: string; scope: string; binding?: string; service?: string }
+export interface MemberConnectionTarget {
+  provider: string; scope: string; binding?: string; service?: string; upstreamId?: string; connectionId?: string;
+}
 export const POSTMAN_CONNECTION = { provider: POSTMAN_PROVIDER, scope: EXTERNAL_MCP_SCOPE };
 export const connectionUnavailable = (code: ConnectionErrorCode = 'connection_not_loaded', fixActingDid?: string) =>
   new ExternalMcpError(403, 'No active personal external MCP connection or grant', code, fixActingDid);
@@ -18,11 +20,15 @@ export const isLiveConnection = (row: { status: string; expiresAt: Date | null; 
 export const hasOrgConnectionProvenance = (row: ConnectorRow) =>
   !!(row.loadedByDid && row.loadedAt);
 
-export async function findMemberConnection(tx: Pick<ConnectionTransaction, 'select'>, memberDid: string, provider: string) {
+export async function findMemberConnection(
+  tx: Pick<ConnectionTransaction, 'select'>, memberDid: string, provider: string, binding?: string,
+) {
   const rows = await tx.select().from(connectors).where(and(
     eq(connectors.ownerDid, memberDid),
-    connectionProviderCondition(connectors.provider, connectorVendor({ provider }), connectorPurpose({ provider })),
-    eq(connectors.slot, 'primary'),
+    eq(connectors.purpose, 'inference'),
+    ...(binding === undefined
+      ? [eq(connectors.provider, provider), eq(connectors.slot, 'primary')]
+      : [eq(connectors.upstreamBinding, binding), eq(connectors.slot, binding)]),
   ));
   return rows.find(row => row.provider === provider && isHeldBy(row, memberDid))
     ?? rows.find(row => isHeldBy(row, memberDid));
@@ -73,7 +79,7 @@ export async function authorizeMemberConnection(
       memberDid: orgContext.memberDid, orgDid: orgContext.orgDid, actingDid: orgContext.orgDid, provider: target.provider,
     }, tx);
   }
-  const row = await findMemberConnection(tx, principal.ownerDid, target.provider);
+  const row = await findMemberConnection(tx, principal.ownerDid, target.provider, target.binding);
   if (caller.caller && (!row || !isLiveConnection(row) || !row.sealedKeyField)) throw missingConnection(principal.ownerDid);
   if (!row || !isLiveConnection(row) || !row.sealedKeyField) throw connectionUnavailable();
   if (orgContext && !hasOrgConnectionProvenance(row)) throw orgConnectionRequiresReseal(principal.ownerDid);
@@ -84,7 +90,7 @@ export async function authorizeMemberConnection(
     const [suspension] = await tx.select({ provider: orgConnectionSuspensions.provider })
       .from(orgConnectionSuspensions).where(and(
         eq(orgConnectionSuspensions.orgDid, orgDid),
-        connectionProviderCondition(orgConnectionSuspensions.provider, connectorVendor(row), connectorPurpose(row)),
+        eq(orgConnectionSuspensions.provider, row.provider),
         isNotNull(orgConnectionSuspensions.suspendedAt),
         or(
           eq(orgConnectionSuspensions.memberDid, ''),

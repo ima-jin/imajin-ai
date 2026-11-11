@@ -24,6 +24,8 @@ export const OPENAI_BILLING_SCOPE = 'openai:billing';
 
 const openaiBilling = createConnectorTokenPaste({
   id: 'openai-billing',
+  provider: 'openai',
+  purpose: 'billing',
   displayName: 'OpenAI Billing',
   connectorDid: OPENAI_CONNECTOR_DID,
   channel: OPENAI_CHANNEL,

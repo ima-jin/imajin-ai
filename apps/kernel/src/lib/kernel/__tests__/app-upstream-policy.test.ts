@@ -1,12 +1,22 @@
 import { expect, it } from 'vitest';
 import {
   assertDeclaredCall, parseUpstream, upstreamBinding, upstreamCallInput, upstreamConnectionInput,
-  upstreamDeclarations, upstreamPermissions, UPSTREAM_READ_SCOPE, UPSTREAM_WRITE_SCOPE,
+  upstreamDeclarations, upstreamPermissions, upstreamProvider, UPSTREAM_READ_SCOPE, UPSTREAM_WRITE_SCOPE,
 } from '../app-upstream-policy';
 import { isServiceEligibleScope, scopeEntry } from '@imajin/auth/scope-vocabulary';
 
 const input = () => ({ id: 'catalog', origin: 'https://api.example', paths: [{ path: '/items', methods: ['GET'] }] });
 const call = () => ({ memberDid: 'did:imajin:fixture', upstreamId: 'catalog', path: '/items', method: 'GET' });
+it('derives a lowercase host without port or new declaration metadata, while bindings isolate apps on the same host', () => {
+  expect(upstreamProvider({ origin: 'https://API.example:8443' })).toBe('api.example');
+  const target = parseUpstream(upstreamDeclarations, { upstreams: [input()] }).upstreams[0];
+  const first = upstreamBinding('did:imajin:first', target);
+  const second = upstreamBinding('did:imajin:second', target);
+  expect(first).toMatch(/^[a-f0-9]{64}$/);
+  expect(first).not.toBe(second);
+  expect(upstreamProvider(target)).toBe('api.example');
+  expect(target).not.toHaveProperty('vendor');
+});
 it('defaults injection shape, not writes, and never self-grants service scopes', () => {
   const target = parseUpstream(upstreamDeclarations, { upstreams: [input()] }).upstreams[0];
   expect(target).toMatchObject({ credentialHeader: 'Authorization', credentialPrefix: 'Bearer ' });

@@ -69,7 +69,7 @@ function billingHandlers(request: NextRequest) {
     sealApiKey: sealBillingKey,
     orgSealProvenance: (_request, ownerDid) => resolveOrgSealProvenance(request, ownerDid),
     keySealed: async ownerDid => {
-      const row = await readConnectorRegistration(ownerDid, 'anthropic-billing');
+      const row = await readConnectorRegistration(ownerDid, 'anthropic', undefined, 'billing');
       return !!row && isLiveConnection(row) && hasOrgConnectionProvenance(row) && !!row.sealedKeyField
         && await billingKeySealed(ownerDid);
     },
@@ -122,7 +122,7 @@ async function dispatch(request: NextRequest, actor: OrgConnectionActor, provide
   const response = await handler(request);
   if (provider !== 'anthropic' || section !== 'billing-key' || request.method !== 'GET' || !response.ok) return response;
   const data = await response.json();
-  const row = await readConnectorRegistration(actor.orgDid, 'anthropic-billing');
+  const row = await readConnectorRegistration(actor.orgDid, 'anthropic', undefined, 'billing');
   return NextResponse.json({
     keySealed: data.keySealed === true, credentialPending: data.credentialPending === true,
     ...(data.keySealed && row ? { loadedByDid: row.loadedByDid, loadedAt: row.loadedAt } : {}),

@@ -51,6 +51,7 @@ export function removeConnectorConnection(
     const authority = await removalAuthority(tx, ownerDid, provider, actor);
     const tuple = and(
       eq(connectors.ownerDid, ownerDid), eq(connectors.provider, provider), eq(connectors.slot, selected),
+      eq(connectors.purpose, 'inference'),
     );
     const [row] = await tx.select().from(connectors).where(tuple).for('update');
     if (!row) throw new ConnectionRemovalError(404, 'Connection not found.');

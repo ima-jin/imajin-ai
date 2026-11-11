@@ -2,11 +2,11 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { requireAppAuth } from '@imajin/auth';
 import { corsHeaders } from './cors';
 import { externalConnectionBody, personalMember } from './external-mcp-route';
-import { connectExternalMcp, disconnectExternalMcp, externalMcpStatus } from './external-mcp';
+import { connectExternalMcp, externalMcpStatus } from './external-mcp';
 import { ExternalMcpError } from './external-mcp-policy';
-import { appConnectionTarget, declareAppUpstreams, invokeAppUpstream, resolveAppUpstream } from './app-upstream';
+import { appConnectionTarget, declareAppUpstreams, disconnectAppUpstream, invokeAppUpstream, resolveAppUpstream } from './app-upstream';
 import {
-  parseUpstream, upstreamCallInput, upstreamConnectionInput, upstreamPermissions, upstreamProvider, upstreamSelector,
+  parseUpstream, upstreamCallInput, upstreamConnectionInput, upstreamPermissions, upstreamSelector,
   UPSTREAM_READ_SCOPE,
 } from './app-upstream-policy';
 
@@ -32,9 +32,7 @@ async function personalConnection(request: NextRequest) {
   const input = parseUpstream(upstreamSelector, raw);
   // Personal revoke must work even after the app or its declaration was removed.
   if (request.method === 'DELETE') {
-    return disconnectExternalMcp(memberDid, {
-      provider: upstreamProvider(input.appDid, input.upstreamId), scope: UPSTREAM_READ_SCOPE,
-    }, input.appDid);
+    return disconnectAppUpstream(memberDid, input.appDid, input.upstreamId);
   }
   const target = await resolveAppUpstream(input.appDid, input.upstreamId);
   const status = await externalMcpStatus(memberDid, appConnectionTarget(input.appDid, target));

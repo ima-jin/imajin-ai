@@ -10,7 +10,7 @@ import { generateId } from './id';
 import { findMemberConnection, hasOrgConnectionProvenance, isLiveConnection, type ConnectionTransaction } from './member-connection-gate';
 import { missingConnection } from './connection-principal';
 import { authorizeOrgConnectionAdmin, type OrgConnectionActor } from './org-held-connection-policy';
-import { connectionProviderCondition, readConnectionGrant } from './connection-holding';
+import { readConnectionGrant } from './connection-holding';
 
 export interface MemberGrantInput { memberDid: string; reason: string }
 export function parseMemberGrantInput(raw: unknown): MemberGrantInput {
@@ -159,7 +159,7 @@ export async function requireOrgConnectionMemberGrant(context: OrgMemberGrantCon
   if (!grant) throw denied(provider);
   const [suspension] = await tx.select().from(orgConnectionSuspensions).where(and(
     eq(orgConnectionSuspensions.orgDid, orgDid),
-    connectionProviderCondition(orgConnectionSuspensions.provider, provider),
+    eq(orgConnectionSuspensions.provider, provider),
     isNotNull(orgConnectionSuspensions.suspendedAt),
     or(eq(orgConnectionSuspensions.memberDid, ''), and(
       eq(orgConnectionSuspensions.memberDid, memberDid),

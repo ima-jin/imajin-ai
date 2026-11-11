@@ -1,4 +1,4 @@
-import { pgSchema, text, jsonb, timestamp, index, uniqueIndex } from 'drizzle-orm/pg-core';
+import { check, pgSchema, text, jsonb, timestamp, index, uniqueIndex } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 
 /**
@@ -34,6 +34,7 @@ export const connectors = connectorsSchema.table('connectors', {
   ownerDid: text('owner_did').notNull(),
   /** `CONNECTOR_REGISTRY` id, e.g. `'gemini'` | `'anthropic'` | `'xai'`. */
   provider: text('provider').notNull(),
+  purpose: text('purpose').$type<'inference' | 'billing'>().notNull().default('inference'),
   slot: text('slot').notNull().default('primary'),
   /** Owner-facing metadata only; neither field grants credential access. */
   label: text('label'),
@@ -95,7 +96,8 @@ export const connectors = connectorsSchema.table('connectors', {
     .where(sql`${table.sealedKeyField} IS NOT NULL`),
   /** One registration per (owner, provider, slot) — the upsert target. */
   ownerProviderUniq: uniqueIndex('uniq_connectors_owner_provider_slot')
-    .on(table.ownerDid, table.provider, table.slot),
+    .on(table.ownerDid, table.provider, table.purpose, table.slot),
+  purposeCheck: check('connectors_purpose_check', sql`${table.purpose} IN ('inference', 'billing')`),
 }));
 
 export type ConnectorRow = typeof connectors.$inferSelect;

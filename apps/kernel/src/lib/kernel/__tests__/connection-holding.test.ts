@@ -10,7 +10,7 @@ vi.mock('@/src/db', async () => ({
 }));
 import { orgConnectionMemberGrants } from '@/src/db';
 import {
-  connectionProviderNames, connectionStorageProvider, connectorPurpose, connectorVendor,
+  connectorPurpose, connectorVendor,
   isGrantedTo, isHeldBy, isUpstreamConnection, readConnectionGrant,
 } from '../connection-holding';
 
@@ -93,27 +93,23 @@ describe('connection holder and live use authority', () => {
   });
 });
 
-describe('temporary legacy compatibility boundary', () => {
+describe('column-only connection vocabulary', () => {
   it.each([
     ['anthropic', 'anthropic', 'inference'],
-    ['org-held-anthropic', 'anthropic', 'inference'],
-    ['org-held-warp', 'warp', 'inference'],
-    ['anthropic-billing', 'anthropic', 'billing'],
-    ['openai-billing', 'openai', 'billing'],
-    ['org-held-openai-billing', 'openai', 'billing'],
+    ['org-held-anthropic', 'org-held-anthropic', 'inference'],
+    ['org-held-warp', 'org-held-warp', 'inference'],
+    ['anthropic-billing', 'anthropic-billing', 'inference'],
+    ['openai-billing', 'openai-billing', 'inference'],
   ] as const)('reads %s as vendor %s and purpose %s', (provider, vendor, purpose) => {
     expect(connectorVendor({ provider })).toBe(vendor);
     expect(connectorPurpose({ provider })).toBe(purpose);
-    expect(connectionProviderNames(vendor, purpose)).toContain(provider);
   });
 
   it('prefers the purpose column when present and never infers custody from names', () => {
     expect(connectorPurpose({ provider: 'anthropic-billing', purpose: 'inference' })).toBe('inference');
     expect(connectorPurpose({ provider: 'openai', purpose: 'billing' })).toBe('billing');
     expect(isUpstreamConnection({ provider: 'vendor', upstreamBinding: 'binding-digest' })).toBe(true);
-    expect(isUpstreamConnection({ provider: 'app-upstream:did:imajin:app:catalog' })).toBe(true);
+    expect(isUpstreamConnection({ provider: 'app-upstream:did:imajin:app:catalog' })).toBe(false);
     expect(isUpstreamConnection({ provider: 'warp' })).toBe(false);
-    expect(connectionStorageProvider('openai', 'billing')).toBe('openai-billing');
-    expect(connectionStorageProvider('warp', 'inference')).toBe('warp');
   });
 });

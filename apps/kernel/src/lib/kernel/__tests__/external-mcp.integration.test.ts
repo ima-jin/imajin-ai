@@ -2,7 +2,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { PGlite } from '@electric-sql/pglite';
 import { drizzle } from 'drizzle-orm/pglite';
 import { getTableConfig, type PgTable } from 'drizzle-orm/pg-core';
-import { eq, inArray } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
 import { NextRequest } from 'next/server';
 import type { Identity } from '@imajin/auth';
 import type { VaultFile } from '@imajin/vault-core';
@@ -62,7 +62,8 @@ vi.mock('../egress-fetch', () => ({ egressSafeFetch: h.upstream }));
 vi.mock('@/src/lib/kernel/node-identity', () => ({ getNodeDid: async () => h.nodeDid }));
 vi.mock('@/src/lib/kernel/connector-registry-store', async original => ({
   ...await original<typeof import('@/src/lib/kernel/connector-registry-store')>(),
-  connectorRegistryId: (memberDid: string, provider: string) => `conn_${memberDid}_${provider}`,
+  connectorRegistryId: (memberDid: string, provider: string, slot = 'primary', purpose = 'inference') =>
+    `conn_${memberDid}_${provider}${purpose === 'inference' ? '' : `_${purpose}`}${slot === 'primary' ? '' : `_${slot}`}`,
 }));
 vi.mock('@/src/lib/vault/vault-repository', () => ({
   getVaultRepository: () => ({
@@ -322,7 +323,7 @@ beforeAll(async () => {
   await client.exec('CREATE SCHEMA auth; CREATE SCHEMA kernel; CREATE SCHEMA registry;');
   for (const table of tables.filter(table => table !== orgConnectionMemberGrants)) await client.exec(tableSql(table));
   await client.exec(`
-    CREATE UNIQUE INDEX conn_tuple ON kernel.connectors (owner_did,provider,slot);
+    CREATE UNIQUE INDEX conn_tuple ON kernel.connectors (owner_did,provider,purpose,slot);
     CREATE UNIQUE INDEX owner_envelope ON kernel.vault_owner_envelopes (field,key_id);
     CREATE UNIQUE INDEX uniq_vault_delegation_active ON kernel.vault_delegation_grants (subject,granted_to,field,key_id) WHERE status='active';
   `);
@@ -476,25 +477,25 @@ describe('org provider management: real auth policy, SQL and vault crypto', () =
   });
   it('loads, rotates and revokes billing independently under the org DID with load provenance', async () => {
     await prepare();
-    const inferenceBefore = (await orgRows()).find(row => row.provider === 'anthropic');
+    const inferenceBefore = (await orgRows()).find(row => row.provider === 'anthropic' && row.purpose === 'inference');
     const value = orgKey().secret;
     expect((await section('anthropic', 'billing-key', 'POST', { token: value })).status).toBe(201);
     const read = await section('anthropic', 'billing-key');
     expect(read.body).toMatchObject({ keySealed: true, loadedByDid: member, loadedAt: expect.any(String) });
-    const billing = (await orgRows()).find(row => row.provider === 'anthropic-billing')!;
+    const billing = (await orgRows()).find(row => row.provider === 'anthropic' && row.purpose === 'billing')!;
     expect(billing).toMatchObject({ ownerDid: org, loadedByDid: member, loadedAt: expect.any(Date) });
     const [grant] = await database.select().from(vaultDelegationGrants).where(eq(vaultDelegationGrants.field, billing.sealedKeyField!));
     expect(grant.subject).toBe(org);
     expect((await section('anthropic', 'billing-key', 'POST', { token: orgKey().secret })).status).toBe(201);
     expect((await section('anthropic', 'billing-key', 'DELETE')).status).toBe(200);
     expect((await section('anthropic', 'billing-key')).body.keySealed).toBe(false);
-    expect((await orgRows()).find(row => row.provider === 'anthropic')).toEqual(inferenceBefore);
-    expect((await orgRows()).find(row => row.provider === 'anthropic-billing')?.status).toBe('revoked');
+    expect((await orgRows()).find(row => row.provider === 'anthropic' && row.purpose === 'inference')).toEqual(inferenceBefore);
+    expect((await orgRows()).find(row => row.provider === 'anthropic' && row.purpose === 'billing')?.status).toBe('revoked');
   });
   it('does not report a legacy billing credential loaded without its load record', async () => {
     await prepare();
     expect((await section('anthropic', 'billing-key', 'POST', { token: orgKey().secret })).status).toBe(201);
-    await database.update(connectors).set({ loadedAt: null }).where(eq(connectors.provider, 'anthropic-billing'));
+    await database.update(connectors).set({ loadedAt: null }).where(eq(connectors.purpose, 'billing'));
     expect((await section('anthropic', 'billing-key')).body).toMatchObject({ keySealed: false });
   });
   it.each([{}, { token: '' }, { token: 42 }])('refuses invalid org billing input %# without custody writes', async input => {
@@ -923,7 +924,7 @@ describe('org-admin suspension (#3167)', () => {
   it('refuses both proxy paths generically and service resume does not clear an individual suspension', async () => {
     await connect(); await installUpstream();
     const postman = await connectionRow('external-mcp-postman');
-    const upstream = await connectionRow(upstreamProvider(appDid, 'catalog'));
+    const upstream = await connectionRow(upstreamProvider(declaration()));
     await asAdmin();
     expect((await change({ connectionId: postman.id })).status).toBe(200);
     expect((await change({ connectionId: upstream.id })).status).toBe(200);
@@ -1352,6 +1353,41 @@ describe('registered app service → declared external API', () => {
     await installUpstream(false, true, false);
     await expectUpstreamRefused(403);
   });
+  it('isolates two apps on the same host by binding and permits only the owner to revoke after declarations disappear', async () => {
+    await installUpstream();
+    const otherApp = `${appDid}second`;
+    await database.insert(registryApps).values({
+      id: `second_app_${sequence}`, appDid: otherApp, name: 'Second same-host service',
+      ownerDid: org, publicKey: keys.publicKey, callbackUrl: 'https://artifact.test/callback',
+      approvedServiceScopes: [UPSTREAM_READ_SCOPE],
+    });
+    await database.insert(channelLinks).values({
+      id: `second_grant_${sequence}`, channel: 'app', channelUid: member, did: member,
+      appDid: otherApp, status: 'active', scopes: [UPSTREAM_READ_SCOPE],
+    });
+    h.app!.appDid = otherApp;
+    expect((await call(DECLARE, 'PUT', { upstreams: [declaration()] }, serviceHeaders)).status).toBe(200);
+    expect((await call(CONNECT_UPSTREAM, 'POST', {
+      ...selector(), appDid: otherApp, origin: upstreamOrigin, secret: fakeSecret(), orgContextDid: org,
+    })).status).toBe(201);
+    const held = await database.select().from(connectors).where(eq(connectors.ownerDid, member));
+    expect(held).toHaveLength(2);
+    expect(new Set(held.map(row => row.provider)).size).toBe(1);
+    expect(new Set(held.map(row => row.slot)).size).toBe(2);
+    expect(held.every(row => row.slot === row.upstreamBinding && row.purpose === 'inference')).toBe(true);
+    expect((await call(UPSTREAM, 'POST', upstreamCall(), serviceHeaders)).status).toBe(200);
+    expect((await call(DECLARE, 'PUT', { upstreams: [] }, serviceHeaders)).status).toBe(200);
+    h.identity.id = `${member}outsider`;
+    expect((await call(DISCONNECT_UPSTREAM, 'DELETE', { ...selector(), appDid: otherApp })).status).toBe(200);
+    expect((await database.select().from(connectors).where(eq(connectors.ownerDid, member)))
+      .every(row => row.status === 'active')).toBe(true);
+    h.identity.id = member;
+    expect((await call(DISCONNECT_UPSTREAM, 'DELETE', { ...selector(), appDid: otherApp })).status).toBe(200);
+    const after = await database.select().from(connectors).where(eq(connectors.ownerDid, member));
+    expect(after.filter(row => row.status === 'revoked')).toHaveLength(1);
+    h.app!.appDid = appDid;
+    expect((await call(UPSTREAM, 'POST', upstreamCall(), serviceHeaders)).status).toBe(200);
+  });
   it('refuses a different active, operator-approved app without writing against the selected member', async () => {
     await installUpstream();
     const otherAppDid = `did:imajin:otherapp${sequence}`;
@@ -1512,7 +1548,9 @@ describe('registered app service → declared external API', () => {
     await expectUpstreamRefused(403);
     const [app] = await database.select().from(registryApps).where(eq(registryApps.appDid, appDid));
     expect(app.upstreams).toEqual([]);
-    expect(await database.select().from(connectors).where(eq(connectors.provider, upstreamProvider(appDid, 'catalog')))).toHaveLength(1);
+    expect(await database.select().from(connectors).where(and(
+      eq(connectors.provider, upstreamProvider(declaration())), eq(connectors.ownerDid, member),
+    ))).toHaveLength(1);
   });
   it('exposes declarations and status only to a personal member, with no-store and CORS', async () => {
     await installUpstream();
@@ -1602,6 +1640,11 @@ function orgKey() {
   h.secrets.push(secret);
   return { secret };
 }
+async function migrateLegacyConnections() {
+  await client.transaction(async tx => {
+    await tx.exec(readFileSync('migrations/0240_connectors_purpose_normalise.sql', 'utf8'));
+  });
+}
 async function orgRows() {
   return database.select().from(connectors).where(eq(connectors.ownerDid, org));
 }
@@ -1663,11 +1706,12 @@ describe('org-held member grants: durable lifecycle and live metadata contract',
     await expectDenied();
   });
 
-  it.each(['anthropic', 'warp'])('dual-reads %s legacy rows and suspensions without a personal fallback', async provider => {
+  it.each(['anthropic', 'warp'])('migrates %s legacy rows before column-only reads without a personal fallback', async provider => {
     await prepare(provider);
     const [connection] = await orgRows();
     await database.update(connectors).set({ provider: `org-held-${provider}` })
       .where(eq(connectors.id, connection.id));
+    await migrateLegacyConnections();
     await database.insert(connectors).values({
       id: `personal_${sequence}`, ownerDid: grantee(), provider, slot: 'primary',
       channel: provider, connectorDid: h.nodeDid, sealedKeyField: 'personal-reference',
@@ -1678,7 +1722,7 @@ describe('org-held member grants: durable lifecycle and live metadata contract',
     expect(await store.readConnectorRegistration(org, provider, 'primary')).toMatchObject({
       id: connection.id, ownerDid: org,
     });
-    for (const spelling of [provider, `org-held-${provider}`]) {
+    for (const spelling of [provider]) {
       await database.insert(orgConnectionSuspensions).values({
         orgDid: org, memberDid: grantee(), provider: spelling, suspendedAt: new Date(),
       });
@@ -2105,18 +2149,19 @@ describe('/jin Anthropic seal human provenance (#3313)', () => {
 });
 
 describe('org-held service keys: real SQL, signatures and private vault custody', () => {
-  it.each(['anthropic', 'warp'])('keeps legacy %s rows readable, replaceable and revocable under the original id', async provider => {
+  it.each(['anthropic', 'warp'])('keeps migrated %s rows readable, replaceable and revocable under the original id', async provider => {
     await asOrg();
     await orgRequest('POST', provider, orgKey());
     const [original] = await orgRows();
     await database.update(connectors).set({ provider: `org-held-${provider}` })
       .where(eq(connectors.id, original.id));
+    await migrateLegacyConnections();
     expect(await orgRequest('GET', provider)).toMatchObject({ status: 200, body: { provider, status: 'loaded' } });
     expect(await memberStatus()).toMatchObject({
       status: 200, body: { connections: [expect.objectContaining({ provider, status: 'loaded' })] },
     });
     expect((await orgRequest('POST', provider, orgKey())).status).toBe(201);
-    expect(await orgRows()).toEqual([expect.objectContaining({ id: original.id, provider: `org-held-${provider}` })]);
+    expect(await orgRows()).toEqual([expect.objectContaining({ id: original.id, provider })]);
     expect((await orgRequest('DELETE', provider)).status).toBe(200);
     expect((await orgRequest('GET', provider)).status).toBe(404);
     expect(await orgRows()).toHaveLength(1);
@@ -2126,9 +2171,15 @@ describe('org-held service keys: real SQL, signatures and private vault custody'
     await asOrg();
     for (const provider of ['anthropic', 'warp', 'gemini']) await orgRequest('POST', provider, orgKey());
     const [source] = await orgRows();
-    for (const provider of ['anthropic-billing', 'openai-billing', 'app-upstream:did:imajin:app:catalog']) {
-      await database.insert(connectors).values({ ...source, id: `excluded_${provider}_${sequence}`, provider });
+    for (const provider of ['anthropic', 'openai']) {
+      await database.insert(connectors).values({
+        ...source, id: `excluded_${provider}_${sequence}`, provider, purpose: 'billing',
+      });
     }
+    await database.insert(connectors).values({
+      ...source, id: `excluded_upstream_${sequence}`, provider: 'api.example.test',
+      upstreamBinding: 'fixture-binding', slot: 'fixture-binding',
+    });
     expect((await call(ORG_LIST)).body.connections.map((row: { provider: string }) => row.provider).sort())
       .toEqual(['anthropic', 'gemini', 'warp']);
     expect((await memberStatus()).body.connections.map((row: { provider: string }) => row.provider).sort())
