@@ -284,6 +284,7 @@ export function NavBar({
   // Identities (group identities)
   const authUrl = buildUrl('auth', servicePrefix, domain, serviceUrls);
   const profileUrl = buildUrl('profile', servicePrefix, domain, serviceUrls);
+  const mobileLauncherAuthUrl = launcherTier === 'soft' ? undefined : authUrl;
   const { identities, activeIdentity, activeConfig, setActiveIdentity } = useIdentities(
     identity?.isLoggedIn && identity?.tier !== 'soft' ? authUrl : null,
     identity?.isLoggedIn && identity?.tier !== 'soft' ? profileUrl : null
@@ -623,7 +624,7 @@ export function NavBar({
             tier={launcherTier}
             inline
             variant="grid"
-            authUrl={identity?.isLoggedIn && identity?.tier !== 'soft' ? authUrl : undefined}
+            authUrl={mobileLauncherAuthUrl}
             enabledServices={activeConfig?.enabledServices}
           /> : <PublicNavigation homeUrl={homeUrl} />}
           {identity?.isLoggedIn && identity?.tier !== 'soft' && (

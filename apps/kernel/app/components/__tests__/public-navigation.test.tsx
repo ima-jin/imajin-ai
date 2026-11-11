@@ -114,6 +114,7 @@ describe('shared main navigation acceptance', () => {
     expect(screen.getByRole('link', { name: /Messages/ }).textContent).toContain('7');
     expect(screen.queryByText('Product')).toBeNull();
     expect(mocks.launcher).toHaveBeenCalledWith(expect.objectContaining({ tier: 'hard' }));
+    expect(mocks.launcher).toHaveBeenLastCalledWith(expect.objectContaining({ inline: true, authUrl: `${base}/auth` }));
   });
 
   it('does not expose hard-identity shortcuts to a soft session', async () => {
@@ -124,6 +125,8 @@ describe('shared main navigation acceptance', () => {
     expect(screen.getByRole('button', { name: 'Logout' })).toBeDefined();
     expect(mocks.launcher).toHaveBeenCalledWith(expect.objectContaining({ tier: 'soft' }));
     expect(screen.queryByText('Product')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Toggle navigation' }));
+    expect(mocks.launcher).toHaveBeenLastCalledWith(expect.objectContaining({ inline: true, authUrl: undefined }));
   });
 
   it.each([401, 503, 'network'])('keeps public navigation and no privileged controls when session lookup fails: %s', async status => {
