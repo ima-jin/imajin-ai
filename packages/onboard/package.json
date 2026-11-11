@@ -2,7 +2,7 @@
   "name": "@imajin/onboard",
   "version": "0.8.36",
   "private": true,
-  "description": "OnboardGate — React component that gates a page behind Imajin onboarding (handle/identity setup)",
+  "description": "identity and authority for AI agents. React onboarding gate for handle and identity setup in Imajin apps (alpha).",
   "license": "MIT",
   "repository": {
     "type": "git",

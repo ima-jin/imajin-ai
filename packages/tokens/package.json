@@ -2,7 +2,7 @@
   "name": "@imajin/tokens",
   "version": "0.8.36",
   "private": true,
-  "description": "Imajin design tokens — DTCG format, built with Style Dictionary v4",
+  "description": "identity and authority for AI agents. Design tokens for Imajin (alpha).",
   "license": "MIT",
   "repository": {
     "type": "git",

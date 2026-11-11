@@ -2,7 +2,7 @@
   "name": "@imajin/media",
   "version": "0.8.36",
   "private": true,
-  "description": "Media browser, asset display components, and resolveMediaRef/resolveAssetUrl helpers for Imajin apps",
+  "description": "identity and authority for AI agents. Media browser, asset display and reference resolution for Imajin apps (alpha).",
   "license": "MIT",
   "repository": {
     "type": "git",

@@ -2,7 +2,7 @@
   "name": "@imajin/cid",
   "version": "0.8.36",
   "private": true,
-  "description": "Deterministic CIDv1 (dag-cbor + SHA-256) helpers shared across Imajin services",
+  "description": "identity and authority for AI agents. Deterministic CIDv1 helpers for Imajin (alpha).",
   "license": "MIT",
   "repository": {
     "type": "git",
