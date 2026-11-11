@@ -101,11 +101,70 @@ describe('current-state consumer documentation guard', () => {
     expect(text).toContain('Point your agent at it:');
     expect(text).toContain('Imajin is alpha.');
     expect(text).toContain('this is not self-serve onboarding');
-    expect(text).toContain('https://jin.imajin.ai/alpha');
+    expect(text).toContain('https://imajin.ai/alpha');
     expect(text).toContain('different evidentiary strength');
     expect(text).toContain('Not publicly served at this origin');
     expect(text).toContain('apps/kernel/api-spec/google.yaml');
     expect(text).not.toContain('You compose. Imajin orchestrates.');
+  });
+
+  it.each(['llms.txt', 'llms-full.txt'])('%s puts agent integration before the app path', name => {
+    const text = readFileSync(join(root, 'apps/kernel/public', name), 'utf8');
+    const integration = text.slice(text.indexOf('## How to integrate'), text.indexOf('## Service specifications'));
+    const agent = integration.indexOf('### Connect an agent');
+    const app = integration.indexOf('### Build');
+    expect(agent).toBeGreaterThanOrEqual(0);
+    expect(app).toBeGreaterThan(agent);
+    const agentPath = integration.slice(agent, app);
+    for (const fact of ['own DID', 'scoped delegation', 'https://mcp.imajin.ai/mcp',
+      '/reach/<handle>/mcp', 'https://github.com/ima-jin/openclaw-imajin-plugin']) {
+      expect(agentPath).toContain(fact);
+    }
+    expect(text.indexOf('Imajin records proof of history')).toBeGreaterThan(text.indexOf('## Key concepts'));
+    expect(text).not.toMatch(/https:\/\/jin\.imajin\.ai\/(?:alpha|how-it-works|compare|project|whitepaper|developer-guide)(?=[)#\s])/);
+    for (const page of ['alpha', 'how-it-works', 'compare', 'project']) {
+      expect(text).toContain(`https://imajin.ai/${page}`);
+    }
+    expect(text).toContain('https://jin.imajin.ai/auth/api/spec');
+    if (name === 'llms.txt') {
+      expect(text).not.toContain('plaintext at rest');
+      expect(text).not.toContain('first 200 characters');
+      expect(text).toContain('https://imajin.ai/llms-full.txt#communication-and-security-limits');
+    } else {
+      expect(text).toContain('plaintext at rest');
+      expect(text).toContain('first 200 characters');
+    }
+  });
+
+  it('retains approval redelivery and the exact gateway exec request/decision contract', () => {
+    const text = readFileSync(join(root, 'docs/notify-operator-approvals-contract.md'), 'utf8');
+    for (const fact of ['## Redelivery', 'getNotificationBacklog', 'notification_ack',
+      'thirty-second', 'three attempts', '## `gateway-exec:command`',
+      '`command`', '`host`', '`cwd`', '`agentId`', '`requestedBy`', '`approvalId`',
+      '`expiresAt`', '`allow-once`', '`deny`', '`allow-always`', 'returns 409',
+      'internal outcome callback', 'outputHash', 'operator:approvals']) {
+      expect(text).toContain(fact);
+    }
+    expect(text).toContain('readable through the authenticated notifications API');
+    expect(text).toContain('never summarized or truncated');
+  });
+
+  it.each([
+    ['docs/REGISTRATION.md', '60 events/minute/app', 'plus/minus 300 seconds'],
+    ['docs/ENVIRONMENTS.md', 'rotateInternalSecret', 'atomic mode-0600'],
+    ['docs/DEVELOPER.md', '{did, document_hash}', 'legal-entity.disclosure'],
+    ['migrations/OWNERSHIP.md', 'public._migrations', 'Temporary scratch objects'],
+    ['packages/openclaw-infer-passthrough/README.md', 'X-Imajin-Run', 'sixty seconds'],
+    ['docs/warp-notification-chain.md', 'WATCH_POLL_INTERVALS_MS', 'skippedRace'],
+    ['docs/npm-publishing.md', 'prepublishOnly', 'NODE_AUTH_TOKEN'],
+    ['docs/mjn-whitepaper.md', '@imajin/money', 'usage.billed'],
+    ['docs/security/node-key-roles-and-rotation.md', 'key-rotation.sealed.lock', 'OPERATOR_COUNTERSIGN_REQUIRED=true'],
+    ['docs/agents/nanoclaw-first-boot.md', 'ChannelAdapter', 'instructions.prepend.md'],
+    ['docs/loops-rail-contract.md', 'loops:publish', 'loop.receipt'],
+  ])('retains audited operator facts in %s', (file, first, second) => {
+    const text = readFileSync(join(root, file), 'utf8');
+    expect(text).toContain(first);
+    expect(text).toContain(second);
   });
 
   it.each([

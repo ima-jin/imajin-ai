@@ -67,6 +67,14 @@ missing credentials are distinct from malformed credentials, which fail closed.
 Installation tokens are short-lived and cached in memory, not persisted or logged.
 Provisioning does not write GitHub Actions secrets.
 
+The App installation must cover repositories it creates as well as existing
+ones; an all-repositories installation supplies that prospective coverage.
+At call time the kernel signs an RS256 App JWT with a lifetime of at most ten
+minutes, exchanges it for a one-hour installation token and refreshes its
+in-memory cache five minutes before expiry. An ambiguous unauthenticated repo
+check can make an authenticated retry; a confirmed public-repo success does not
+need the App credential. Neither credential belongs in logs or Actions secrets.
+
 ## App signing-key bootstrap
 
 The app key stays on the vault/keystore path. Provisioning never reveals it in
@@ -155,7 +163,64 @@ signatures, the published overlapping key set, bounded timestamps and replay
 nonces. Multi-replica receivers need shared durable nonce storage and persistent
 pins. Individual standalone apps own their adoption and deployments; do not
 remove an existing compatibility credential until that receiver is verified.
+The webhook helper's timestamp window is plus/minus 300 seconds; replay nonces
+must be consumed atomically across replicas. The expected callback audience is
+the receiver's configured app DID, never a value copied from the incoming header.
 See [kernel webhook security](security/kernel-webhooks.md).
+
+## Provisioning and token operational details
+
+Provision results expose the slug, status, repo URL, app DID, attestation-type
+results and any failed step/error; a pending response exposes its proposal id.
+Claim plaintext appears only in the approval's one-time reveal, never status
+polling. Retry is slug-idempotent, reusing the minted key and completed steps;
+new valid app-owned attestation types can be seeded additively. A type outside
+`<slug>/` is refused per type without invalidating the rest of provisioning.
+
+A public existing repository needs no creation credential. If it is absent and
+the GitHub App credential is unavailable, create it through the authorized repo
+procedure and re-propose; never hand-insert a parallel app registration.
+Manifest metadata reads are best-effort when the credential is unsealed, but a
+malformed credential is an error, not an unauthenticated fallback. App JWTs used
+by registration integrations expire in ten minutes; they have no TTL-extension
+endpoint. Scope checks and fresh consent remain required on re-mint.
+
+An app with no slug cannot declare `providesScopes`. Each dependency audience
+must be active and each dependency scope must belong to the platform vocabulary.
+Minting adds only reached dependency audiences and clamps scopes to the app's
+own declarations plus scopes of those dependencies. Verification rechecks every
+audience; verifying a dependency reveals only that dependency's approved scopes.
+The stored approval is the ceiling for narrowing edits. An unassigned third-party
+app gets no scopes. Seeded first-party rows with an empty requested-scope list
+retain the implementation's compatibility exception; do not copy that exception
+into a new app's permissions.
+
+Act-as is false by default and operator-only per app. Group membership/role and
+service restrictions are checked at mint; they are not rechecked on every
+registered-app token use, so the ten-minute expiry bounds staleness. Registry
+verification does recheck act-as approval. A malformed selector is 400; missing
+app approval or group authority is 403, with no token and no personal fallback.
+
+App event requests require the app's own service-token audience `imajin:apps` or
+the kernel registry audience, not another app's host. Invalid/session/delegated
+credentials are 401. Event types are exact lowercase dotted names, no wildcards,
+with at most 50 approved entries and no kernel-owned namespace. The body has a
+DID subject and an object payload up to 16 KiB; `interestDids`, when supplied,
+is at most 25 DIDs. The rate limit is 60 events/minute/app with Retry-After on
+429. Invalid data is 400; unapproved/reserved types and inactive apps are 403.
+
+The event always writes audit first. Only the exact `apps`-scope chain can add
+notify; no such chain means audit without notification, not fallback to a kernel
+or node-default chain. `origin`, `originAppDid`, `preview` and `attestationId` are
+kernel-owned fields; supplied values cannot spoof or bypass the record.
+
+Claim redemption authenticates with the one-time code itself, not a human session.
+Its response includes app DID, public/private signing material for SDK memory,
+and the claim attestation id. An unavailable attestation forward can yield null
+without unspending the successful claim. Later fetches sign
+`canonicalize({appDid, nonce, timestamp})` with the bound bootstrap key; stale
+or replayed requests return 401. Mint, grant, claim and fetch events retain
+provenance without key bytes or claim codes.
 
 ## Declared app secrets
 

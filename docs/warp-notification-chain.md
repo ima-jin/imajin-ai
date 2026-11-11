@@ -16,6 +16,13 @@ The watcher polls with increasing intervals and has a thirty-minute budget.
 Budget exhaustion publishes `warp.run.still_running`, not a terminal timeout.
 The scheduler invokes the sweep every ten minutes.
 
+`WATCH_POLL_INTERVALS_MS` uses 5, 10, 30 and then 60 seconds, holding the final
+interval until `WATCH_TIMEOUT_MS`. `SWEEP_LOOKBACK_MS` is six hours measured
+from dispatch/resume activity, not from the current poll. The subscription log's
+fourteen-day retention bounds recovery history independently of that lookback.
+The sweep reads each stale candidate once more: a completed run is reported as
+completed, not relabelled timeout because its observation was late.
+
 The sweep derives candidates from durable `warp.agent.dispatched` and
 `warp.run.resumed` activity in `kernel.event_subscription_log`. A run is in
 flight when its latest activity is newer than its latest terminal record.
@@ -34,6 +41,14 @@ publishing a terminal outcome. The DB's conflict-safe insert is the race guard;
 a durable-log pre-check is only an optimization. Different resumed segments
 claim independently. Observation errors are logged and counted, not converted
 into invented successful outcomes.
+
+`publishTerminalRunOutcome`, `publishBlockedRunOutcome`,
+`publishRunStillRunning`, `publishTimeoutRunOutcome` and `publishRunResumed`
+provide the common outcome paths. Cancelled terminal runs follow the completion
+path; failed runs follow failure. The sweep counts checked, completed, failed,
+blockedNotified, stillInFlight, timedOut, skippedRace and errors separately.
+`hasTerminalEventForSegment` is a pre-check; the claim remains authoritative
+when both observers read before either durable event exists.
 
 Source: `apps/kernel/src/lib/warp/dispatch.ts`, `run-watch-sweep.ts`, the dispatch
 and follow-up route adapters, and `apps/kernel/src/cron/schedule.ts`.

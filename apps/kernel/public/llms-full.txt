@@ -4,7 +4,7 @@
 
 your agents act as themselves, on your authority, and every action is signed.
 
-Imajin is alpha. [Book a demo, or join the alpha as a tester, integrator or partner](https://jin.imajin.ai/alpha); this is not self-serve onboarding.
+Imajin is alpha. [Book a demo, or join the alpha as a tester, integrator or partner](https://imajin.ai/alpha); this is not self-serve onboarding.
 
 Point your agent at it: start with this guide and the service specs below. Every action is a signed event that anyone can verify, including a third party's own agent. Cost and credit are recorded per identity, and .fair turns that into who gets paid.
 
@@ -12,13 +12,13 @@ Point your agent at it: start with this guide and the service specs below. Every
 
 The kernel serves six primitives: **Attestation · Communication · Attribution · Settlement · Discovery · Revocation**. Identity is the subject of those primitives, not an additional primitive. The kernel supplies shared rails for authenticating actors, checking authority and recording outcomes.
 
-Imajin records proof of history, not proof of work. A signature establishes that a particular key signed particular bytes. It does not establish that an assertion is true. An actor-key signature, a node-witnessed record and an unsigned operational log have different evidentiary strength. An integration should preserve that distinction rather than calling every recorded action a user signature.
-
 The kernel hosts shared identity, profile, connection, communication, media, payment and operational services. Apps built on Imajin have their own identities, codebases and deployment responsibilities. They integrate through public scoped contracts, not imports from kernel source or SQL against another service's tables. The app template and registered-app contract describe that boundary. Broker-agent and corpus are internal services with their own runbooks; their presence in this repository does not make them registered vertical apps.
 
 The canonical node origin used in the links below is `https://jin.imajin.ai`. A self-hosted node has its own origin and configuration. Service specs describe contracts, not a claim that a service is deployed, publicly accessible or authorized for a caller. The repository is source-available under the [Imajin Network License](https://github.com/ima-jin/imajin-ai/blob/main/LICENSE.md).
 
 ## Key concepts
+
+Imajin records proof of history, not proof of work. A signature establishes that a particular key signed particular bytes. It does not establish that an assertion is true. An actor-key signature, a node-witnessed record and an unsigned operational log have different evidentiary strength. An integration should preserve that distinction rather than calling every recorded action a user signature.
 
 ### Identity and DIDs
 
@@ -75,6 +75,16 @@ Chat uses TLS in transit and stores plaintext at rest on the hosting node in `ch
 The kernel's WebSocket transport shares its HTTP server. Transport protection does not make stored message content secret from the hosting node. Integrations must account for notification previews and the service's current access controls rather than promising stronger confidentiality.
 
 ## How to integrate
+
+### Connect an agent
+
+Give the agent its own DID and signing key through the existing [auth contract](https://jin.imajin.ai/auth/api/spec). The agent authenticates as itself. A person grants the required scoped delegation, bounded by capability, audience and expiry; revocation withdraws that authority. Keep the agent signer separate from the principal it serves. A relationship or selected DID alone is not permission to use the principal's connectors.
+
+The kernel's Streamable HTTP [MCP server](https://mcp.imajin.ai/mcp) is served at `/mcp`. Follow its protected-resource and authorization-server discovery, then the authorization-code flow with PKCE and explicit human consent. An agent-bound authorization records the agent and selected assigned principal separately. The token's subject remains the agent; each agent needs its own client registration and protected credential/refresh store, even on a shared runtime. Consent scopes are a ceiling, not a grant of all MCP tools. Surface and per-tool checks apply, and connector operations recheck their live authority. A request header cannot change a consent-bound assignment; a different principal or wider scope needs fresh consent.
+
+For contact with one person, the node serves `/reach/<handle>/mcp` and that person's `/reach/<handle>/openapi.json`. This is a reach-only surface, not the full kernel MCP catalogue. Public discovery does not authorize messaging: gated `reach_send` and requester-private `reach_status` calls require authority bound to that recipient. A reach bearer is not a general kernel API token, and receiving permission to contact a person never means acting as that person.
+
+The [OpenClaw plugin](https://github.com/ima-jin/openclaw-imajin-plugin) is the working example of an agent runtime integrating with the kernel under its own identity and explicit authority. Use the [kernel MCP runbook](https://github.com/ima-jin/imajin-ai/blob/main/docs/ops/openclaw-mcp.md) for the consent walk and agent/principal isolation. Use MCP for equivalent tools and retain the plugin's direct identity, attestation and inbound-message listener paths where documented; not every plugin operation has become an MCP tool.
 
 ### Build and register an app
 
@@ -138,13 +148,13 @@ Each link corresponds to a service spec definition in the kernel source. Substit
 
 ## Further reading
 
-- [Concise agent entry point](https://jin.imajin.ai/llms.txt): Platform shape and integration starting points.
-- [Developer guide](https://jin.imajin.ai/developer-guide): Consumer-facing concepts and integration guidance.
-- [Whitepaper](https://jin.imajin.ai/whitepaper): Primitive grammar and economic model.
-- [How it works](https://jin.imajin.ai/how-it-works): The three pillars and how an agent runtime, the Imajin plugin and the kernel fit together.
-- [Compare](https://jin.imajin.ai/compare): Where Imajin sits next to identity providers, agent frameworks, hosted assistants and web3 agent projects.
-- [Why we built it this way](https://jin.imajin.ai/project): The reasoning behind the design, the current state and its honest limits.
-- [Join the alpha](https://jin.imajin.ai/alpha): Apply as a tester, integrator or partner, or book a demo.
+- [Concise agent entry point](https://imajin.ai/llms.txt): Platform shape and integration starting points.
+- [Developer guide](https://imajin.ai/developer-guide): Consumer-facing concepts and integration guidance.
+- [Whitepaper](https://imajin.ai/whitepaper): Primitive grammar and economic model.
+- [How it works](https://imajin.ai/how-it-works): The three pillars and how an agent runtime, the Imajin plugin and the kernel fit together.
+- [Compare](https://imajin.ai/compare): Where Imajin sits next to identity providers, agent frameworks, hosted assistants and web3 agent projects.
+- [Why we built it this way](https://imajin.ai/project): The reasoning behind the design, the current state and its honest limits.
+- [Join the alpha](https://imajin.ai/alpha): Apply as a tester, integrator or partner, or book a demo.
 - [Canonical patterns](https://github.com/ima-jin/imajin-ai/blob/main/docs/guide/canonical-patterns.md): Shared implementation boundaries.
 - [Security disclosures](https://github.com/ima-jin/imajin-ai/blob/main/SECURITY.md): Trust assumptions and implementation limits.
 - [Repository](https://github.com/ima-jin/imajin-ai): Source, app/package READMEs and operator documentation.

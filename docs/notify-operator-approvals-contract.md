@@ -25,6 +25,13 @@ explicit internal provider; unavailable app credentials never fall back to the
 more privileged internal lane. Delivery is best-effort/logged, not thrown as an
 application failure. See the [notify package](../packages/notify/README.md).
 
+Registry audience/contact reads, interest creation and email-unsubscribe writes
+use the kernel's internal vault Bearer, never a forwarded app token. Session
+preference writes enforce DID ownership. The internal preference lane accepts
+only `{marketing: false, email: false}`: it cannot opt someone in. The SDK skips
+delivery when credentials are unavailable; it does not read a shared-secret env
+variable or silently substitute internal authority for a failed app-token lookup.
+
 A compatibility lane remains in `src/lib/notify/legacy-auth.ts`: the configured
 `NOTIFY_WEBHOOK_SECRET` can authorize send/broadcast/interest via
 `x-webhook-secret` only when Authorization is absent. Comparison is timing-safe;
@@ -38,6 +45,7 @@ Disable it only after verifying each existing consumer's token adoption, under
 Notify ingestion uses scope `operator.approval.requested`, addressed initially to
 the configured node operator. For connector proposals carrying a valid
 `detail.ownerDid`, the kernel resolves the actual addressee to that owner.
+Any initial `to` other than the configured operator DID is rejected with 400.
 
 A namespaced proposal supplies `proposalId`, `source`, `kind`, `summary`,
 `keysTouched`, optional bounded `detail`, and `contentHash`. Source and subkind
@@ -63,6 +71,10 @@ building a proposal. Do not include credentials in detail or diagnostic output.
 Optional `signerDid` identifies the requesting agent for decision delivery; it
 is not part of the six-field content digest. Missing, non-string or overlong
 values are ignored. It does not grant authority or replace signature verification.
+The limit is 200 characters; unusable values normalize to null. Key paths are
+also at most 200 characters, using letters, digits and `_.-/`. Hashes may carry
+the `sha256:` prefix. Card labels are source-specific; an unregistered renderer
+falls back to the summary/keys card rather than interpreting arbitrary detail.
 
 ## Human addressee and acting identity
 
@@ -84,6 +96,13 @@ org-context writes: do not replace the human countersigner with
 why controls are disabled; switch back to the human identity before deciding.
 Other rails that permit org ownership still use the verified acting DID and
 record the actual human signer separately. Never fall back silently between them.
+
+For pending connector rows stored under the wrong addressee,
+`scripts/readdress-connector-approvals.ts --dry-run` previews the repair.
+The real run updates only still-pending rows whose stored addressee matches the
+value read, logs each move and is idempotent. It never moves decided, expired
+or past-deadline rows. Read-time addressing already resolves the owner from the
+kind/detail, so the node operator cannot borrow authority from an old stored DID.
 
 ## Decision and countersignature
 
@@ -125,6 +144,33 @@ Record verification distinguishes a letter actually covered by the human's
 signature from a node-witnessed letter on a mode-less signature. It does not
 label the latter as human-countersigned. Verify the exact signed payload.
 
+## `gateway-exec:command`
+
+Forwarded host-exec requests use `source: "gateway-exec"` and
+`kind: "gateway-exec:command"`, not a dotted kind. Their required `detail`
+contains the exact full `command`, `host`, `cwd`, `agentId`, `requestedBy`,
+`approvalId` and `expiresAt`. Every field is a nonempty string; `requestedBy`
+is DID-shaped and `expiresAt` must parse as a timestamp. `approvalId` identifies
+the source's approval store, separately from the kernel `proposalId`.
+
+The full detail is covered by the content hash. A multiline/chained command is
+shown verbatim, never summarized or truncated to fit the 16 KiB cap; oversize
+detail is rejected. The command is not subjected to the summary's secret-shape
+redaction, so the adapter must never resolve credentials into it before staging.
+The card is permission for this exact command on the displayed host/directory,
+not standing execution authority.
+
+Approve permits only absent mode or `allow-once`; reject permits only absent
+mode or `deny`. The API rejects `allow-always` and mismatched modes with 400
+before mutation, even if a caller bypasses the UI. A decision at or after the
+request's `expiresAt` returns 409. The source applies the decision through its
+own store; generic withdrawal remains available only before apply.
+
+After execution, the vault-authenticated internal outcome callback attaches
+`exitCode`, `durationMs` and `outputHash` to this kind's card. It is not the
+execution itself and does not submit raw stdout/stderr. The apply callback is
+a no-op for an already-applied, unknown or no-longer-approved proposal.
+
 ## Delivery, application and expiry
 
 The kernel publishes `operator.approval.decided` with a `sha256:` effective
@@ -133,6 +179,12 @@ same signed payload is addressed once per distinct recipient: the deciding
 human and the requesting `signerDid`, when present. Grant-bound subscription
 delivery requires live capability and subject audience; durable catch-up uses
 the same scoped event log. No requesting signer means human-only delivery.
+The adapter routes a decision using its `source` and subscribes with a live
+`operator:approvals` capability whose audience permits the event subject.
+Each distinct recipient receives the same signed bytes; matching human and
+signer DIDs are deduplicated. Independent publication failure is non-fatal.
+An offline adapter catches up through the auth event-subscription contract
+under its own subject, not another principal's Inbox.
 
 A source maps approve/reject into its underlying mechanism, checks its local
 content hash and treats already-applied/expired decisions as no-ops. A successful
@@ -151,5 +203,22 @@ correlated signed outcome rail. Selecting that execution rail suppresses legacy
 executable decision fan-out atomically; missing command authority cannot silently
 switch back. See [loop contracts](loops-rail-contract.md).
 
-Notifications survive reconnect through the ordinary ack/claim backlog path,
-not proposal-specific retry code. See [the notification chain](warp-notification-chain.md).
+## Redelivery
+
+`operator.approval.requested` is an ordinary persisted `notify.notifications`
+row. A pending proposal survives a missed live delivery and the human client's
+reconnect through `getNotificationBacklog`, not proposal-specific retry code.
+The backlog selects unread, unacknowledged rows oldest-first, capped at 100
+per reconnect, and claims each using the same atomic send-attempt guard as live
+push so the two paths cannot offer it concurrently.
+
+A failed push that reaches no socket rolls back its claim and attempt count.
+A send without an acknowledgement becomes eligible again after the thirty-second
+ack window; heartbeat removal releases claim time for a dead socket. Only the
+recipient's authenticated `notification_ack` sets `delivered_at`. A socket send
+alone is not delivery. Re-offers are capped at three attempts, with a warning;
+the row remains readable through the authenticated notifications API after that
+cap. A backlog DB error yields no replay on that pass, not deletion or a false ack.
+See [the notification chain](warp-notification-chain.md) for heartbeat and transport
+diagnostics. Decision-event catch-up and notification redelivery are separate
+durable paths; neither proves that a source executed the command.

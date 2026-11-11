@@ -230,6 +230,10 @@ but a settlement is not a guarantee that every manifest was signed or DFOS-backe
 
 ### 4. Settlement
 
+The shared `@imajin/money` Money primitive preserves currency identity and signed
+FX snapshots. `usage.incurred` metering and `usage.billed` reconciliation remain
+separate records, not proof that every vendor invoice has been imported.
+
 The bus `settle` reactor reads the manifest, resolves placeholder DIDs, deducts processing
 fees, splits the payment,
 and emits a `transaction.settled` attestation. No human intervention. No invoice. No accounts

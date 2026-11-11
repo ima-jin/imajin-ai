@@ -94,6 +94,21 @@ gap record; do not expand the allowlist to make CI pass. The guard's `--list`
 mode reports detected current call sites. Retained audit metadata alone is not
 proof that the named source still exists.
 
+## Shared-package boundaries
+
+The ownership parser tracks supported tables, views, types and functions;
+renames preserve creation origin and dropped objects no longer project as live
+objects. Temporary scratch objects do not establish persistent ownership.
+Schema qualifiers, not application-code guesses, determine owner assignment.
+A generated replay is an object-origin audit, not authorization for cross-schema
+runtime access.
+
+Kernel-only shared-package consumers still need boundary review before an app
+imports them: money FX lookups and trust-graph DB declarations are examples.
+Their use inside the kernel is not an app-to-kernel violation, but exposing a DB
+handle to a standalone app would cross that boundary. The runtime scanner and
+its exact allowlist are a ratchet, not evidence that archived paths are still live.
+
 ## Runner modes and retained shared records
 
 `scripts/migrate.mjs --owner <owner>` filters by ownership. Shared files are
@@ -106,3 +121,8 @@ The map's shared-migration allowlist records multi-owner seed/data operations in
 the archive. It is not an escape hatch around the active kernel-only rule.
 Existing databases adopt the baseline under the runbook's checks; they are not
 reset or reconstructed by deleting migration rows.
+
+Runner modes share `public._migrations`; filtering never creates a second ledger.
+With no owner flag, the runner keeps its unfiltered active-root behavior. Archived
+shared files are not active bootstrap steps, so their former cross-owner ordering
+caveats must not be applied as instructions for a fresh kernel baseline.

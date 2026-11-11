@@ -119,11 +119,35 @@ only on a dry-run or package-source test.
 
 ## Preparing a publishable package
 
+The workflow pins npm and checks a minimum CLI of 11.5.1; npm Trusted Publishing
+also requires a supported Node release (at least 22.14.0 in this setup). Read the
+workflow's exact pin before changing it. Package-owner setup must permit direct
+`npm publish`, not only staged publication. Validate a newly configured publisher
+promptly: npm documents expiry after two days without its first successful publish.
+The `npm trust` CLI requires a supported npm release and account-level 2FA;
+verify the current UI/CLI publisher-count and reusable-workflow rules instead of
+assuming that one manual backfill proves the release caller.
+
 Keep `private: true` in source as a safety net. The publish copy, not an accidental
 in-place `npm publish`, owns the public scoped identity. Provide description,
 license, repository/directory metadata, a built entry point, declarations,
 explicit exports and a `files` allowlist. Add a package to `ALL_PACKAGES` only
 when an actual external consumer can use it without kernel-private wiring.
+
+A dist-based package needs matching `main`, `types` and `exports`, a build into
+`dist/`, and `prepublishOnly: "npm run build"`. Set `type: module` only for ESM
+output. An export outside `src/` or `dist/`, such as a root CommonJS helper, must
+also appear in `files`; workspace symlinks do not test tarball inclusion.
+Packing honors negation globs even when the preparation copy step cannot expand
+them. Inspect the prepared package and the packed list, not just copied files.
+
+Each publish attempt uses isolated npm config. For GitHub Packages the temporary
+project config contains an environment-variable reference to `NODE_AUTH_TOKEN`,
+never expanded credential bytes. Do not rewrite it into a literal token.
+OIDC failure may use the existing optional token fallback once, with a visible
+warning; a dry run performs no OIDC exchange and proves no Trusted Publisher.
+`scripts/ci-guard-version-bump.mjs` and `scripts/ci-guard-version-tag-sync.mjs`
+enforce release-only manifest changes and tag/manifest alignment.
 
 Choose ESM-only unless every runtime dependency genuinely supports require.
 Inspect actual package exports and emitted files; a nominal CJS entry that loads

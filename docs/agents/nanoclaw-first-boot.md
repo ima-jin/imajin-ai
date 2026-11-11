@@ -51,6 +51,24 @@ assume a sidecar health response proves authenticated tool execution. Review its
 
 ## Operator preparation
 
+The adapter build seam uses NanoClaw's `ChannelAdapter` interface and its
+`src/channels/index.ts` registration barrel. The envelope supplies
+`groups/<folder>/container.json` for the runner, whose MCP HTTP configuration
+has static headers. Persona input is `instructions.prepend.md` plus the harness's
+`memory/` convention, composed into `CLAUDE.md`; OpenClaw workspace filenames
+are not interchangeable with these. Check the pinned upstream ref's interfaces
+before building, since source support is not a deployed-harness guarantee.
+
+The chat adapter signs the agent's login challenge, establishes its own session
+and persistent `/chat/ws` connection, and sends replies through the agent chat
+contract without impersonating its owner. Minimal delegation comes from the
+existing capability registry; emitter registration remains an owner action.
+The usage sidecar tails the harness-owned session JSONL under its bind-mounted
+data path and persists its own deduplication state. These local harness reads do
+not grant the kernel transcript access. The Docker build pins `NANOCLAW_GIT_REF`;
+the host process needs controlled Docker-socket access and the matching host
+socket group, not an assumption that every container runs as root.
+
 Pin the upstream NanoClaw commit used by the Docker build. Check its actual
 extension/config interfaces at that ref rather than assuming another harness's
 workspace filenames or provider hooks apply. Keep the channel adaptation in the

@@ -129,6 +129,69 @@ Use the existing provisioning/rotation controls, not a copied bearer token.
 For node-root or internal-secret rotation, follow the
 [key roles and rotation runbook](security/node-key-roles-and-rotation.md).
 
+## Internal-secret replacement and service bootstrap operations
+
+A single-consumer generated secret is self-granted to the node by purpose and
+resolved with `getInternalSecret`. Initial generation records metadata/hash, not
+bytes. Human countersignature is needed to import, replace or revoke, not to
+create the first internal value. Granting a shared value to corpus is a separate
+operator action through `grantInternalSecretTo`, reusing the existing wrapped
+material rather than generating a second value. Corpus resolves the current
+purpose grant on each boot with its existing bootstrap identity and sends a
+deferred acknowledgement on first use.
+
+`rotateInternalSecret` keeps the purpose, replaces the self-grant and reissues
+external grantees with their terms. `revokeInternalSecret` withdraws the self-grant
+and its provisioning lookup together; the next lookup generates a fresh value.
+External grantees are not silently changed by that revoke: re-grant or revoke
+each explicitly, and heed the logged stale-grantee error. Tier 1 refuses node
+self-replacement before writing. Other running processes keep cached values until
+restart. These supported operations are not permission to delete DB rows by hand.
+
+For provisioning, use plain Node's ESM entry point with the kernel's protected
+env file and the intended `--env dev|prod` ecosystem. Do not invoke it through a
+CommonJS-transpiling wrapper. Choose exactly one of `--all`, a service name,
+`--app <slug>` or `--service-dir <path>`. `--app` resolves a one-segment slug next
+to the kernel checkout; a standalone checkout must declare its required bootstrap
+pair in `.env.example` and already have `.env.local`.
+
+Optional bootstrap pairs and undeployed in-repo services without env files are
+skipped. Both absent keys cause an in-process mint, identity registration and
+atomic mode-0600 file installation; both present nonempty keys are preserved.
+An incomplete/empty pair fails without replacement. Every existing or newly
+minted pair has its required grant ensured idempotently, so a write/grant
+interruption can be retried. A standalone service receives the attestation key,
+never the kernel cron secret merely because of its directory name. Restart its
+owned process after provisioning so it fetches the value in memory.
+
+The output contains service, DID, existing/minted status and grant id only,
+never private material. `--dry-run` validates file pairs and loads the modules a
+real run uses without a database call, mint, file write or grant. Local setup
+runs provisioning after migrations; normal deploy runs it before check-env and
+restart, behind the existing production reviewer gate.
+
+Cron routes return 503 with a warning when their vault secret is unavailable and
+401 for the wrong bearer. A missing scheduler identity/grant fails provisioning;
+repair the vault/identity, not an invented CRON_SECRET env value. Each scheduler
+uses its own environment's cron grant and records its first-use acknowledgement.
+
+The recorded standalone web-app port pairs are coffee 3100/7100, dykil 3101/7101,
+links 3102/7102, learn 3103/7103 and market 3104/7104, with their corresponding
+path prefixes. They remain app-repository responsibilities, not kernel workspace
+entries or live-host evidence. Configuration paths and actual process ownership
+must be checked against those owned runbooks before a host change.
+The ecosystem also records fixready at 3400/7400 and karaoke at 3401/7401.
+Their own repositories own database names, credentials and deployment; do not
+treat this port convention as a shared-database access grant.
+
+Common public settings include `NEXT_PUBLIC_DOMAIN`, `NEXT_PUBLIC_BASE_URL` and
+`NEXT_PUBLIC_SERVICE_PREFIX`. `APP_URL` is an origin, not a path. `VAULT_PATH`
+comes from the ecosystem environment and overrides an env-file value in pm2;
+provisioning must resolve the same file. Without an explicit path in nonproduction
+local development, `~/.imajin/vault.json` can bootstrap implicitly; production
+requires the configured per-environment path. Health exposes only vault status,
+path, entry count, last-loaded time and bootstrap state, never field names/values.
+
 ## App-owned secrets and restarts
 
 Apps declare secret names/kinds in `imajin.app.json`. Manifest sync adds slots

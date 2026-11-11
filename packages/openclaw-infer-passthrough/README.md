@@ -108,6 +108,58 @@ token; host-static health checks its configured mint path. Liveness/health alone
 proves neither a model completion nor an org billing relationship. Inspect the
 mode and contract in the deployment guide before promoting a candidate.
 
+## Host-static routing, errors and metering
+
+These details apply only to an explicitly isolated non-agent host-static instance.
+Its default generic OpenAI-compatible, Anthropic and MCP entries use the configured
+principal, without a routes file or direct fallback. Catalog routing caches by
+principal for sixty seconds and refreshes once on a model miss, even inside that
+TTL. `picked: false` does not exclude a servable row. Provider/model ids, including
+slashes, remain intact. A failed refresh returns an auth/upstream error, never a
+stale catalog or a misleading unknown-model answer.
+
+Explicit route prefixes use their own principal. Prefix overrides may select a
+route, but no catalog row borrows another principal's direct key. An optional
+inference `actingAs` selector keeps the member as principal; live org authority
+and the member grant are checked before unsealing. Such org-selected calls never
+fall back to personal/app/direct credentials, even on an outage. Org-held cards
+supply keys rather than a picked model; send the requested model on each call.
+Legacy `attestationId` config entries are ignored with one value-free startup
+warning, not used to grant authority.
+
+A mint refusal is 401; a revoked/no-live grant is 403 with the Grants repair path.
+A missing model is 422; a model absent after catalog refresh is 404 naming the
+connector control. Kernel 4xx, including 402 spend-cap refusal, is forwarded, not
+retried through direct keys. Unavailable/timed-out kernel calls without an allowed
+fallback produce 502; genuinely unexpected errors remain 500. Host-static MCP
+checks the configured app-DID hint, requests the granted MCP scope set and rejects
+an empty surface intersection with 403. Per-tool checks remain in the kernel.
+
+OpenAI-shaped normalization maps `max_tokens` to `max_completion_tokens` only
+when the latter is absent, and drops `reasoning_effort` with tools for matching
+OpenAI model ids. Other provider bodies are not rewritten by that translation.
+Anthropic version/beta headers and MCP session/protocol headers are forwarded
+under their respective protocol contract. Model discovery and MCP never have a
+direct-provider fallback.
+
+Health reports `kernelOk`, `fallbackCount`, `fallbackRate`, `lastFallbackAt`,
+`passthroughOk`, `passthroughErrorCount` and `lastPassthroughError`. A returned 5xx
+marks passthrough unhealthy; a subsequent success clears it. A 4xx neither trips
+nor clears it. A host-static mint failure is unhealthy even if a direct key works.
+Direct fallback traffic is not kernel-metered, so a healthy host alone cannot
+prove the inference or accounting path. Agent mode keeps its no-mint contract.
+
+Kernel inference metering records principal, agent, provider/model and token
+counts. `X-Imajin-Session`/`X-Imajin-Turn` correlation headers, with supported
+legacy aliases, identify the session/turn; `X-Imajin-Run` carries a run id into
+usage metadata. Upstream request ids provide external correlation. Anthropic
+cache-read/cache-creation tokens remain metadata; count-tokens requests are not
+metered as billed model completions. Verify through the authorized connector
+spend or usage-audit contract, not by logging prompts, responses or keys.
+The Anthropic org-bot smoke's agent token uses `sub = azp = agentDid`, audience
+`imajin:apps`, scope `infer:completions`; its independent audit token reads evidence
+only. A mismatched org-subject token is refused, never repaired by a self-grant.
+
 ## Operator verification
 
 `node scripts/artifact-org-bot-smoke.mjs --dry-run` needs no credentials, network
