@@ -23,7 +23,7 @@ it('accepts the watchdog invocation without requiring kernel credentials', () =>
 });
 
 it.each([
-  ['--watchdog'], ['--watchdog', '--once'], ['--watchdog', '--execute'],
+  ['--watchdog'], ['--watchdog', '--execute'],
   ['--ecosystem'], ['--ecosystem', 'file.cjs'],
   ['--watchdog', '--once', '--execute', '--ecosystem'],
   ['--watchdog', '--once', '--execute', '--ecosystem', '--unknown'],
@@ -34,4 +34,9 @@ it.each([
 it('retains alerts if cron has neither webhook nor internal credential', async () => {
   for (const key of ['AUTH_INTERNAL_API_KEY', 'RESTART_ALERT_WEBHOOK', 'STATUS_ALERT_WEBHOOK']) vi.stubEnv(key, '');
   expect(await deliverWatchdog({}, 7000)).toBe(false);
+});
+
+it('permits a one-shot watchdog dry run without enabling restarts or delivery', () => {
+  expect(parseOptions(['--env', 'prod', '--once', '--watchdog', '--ecosystem', '/tmp/ecosystem.cjs']))
+    .toEqual({ environment: 'prod', once: true, execute: false, watchdog: true, ecosystem: '/tmp/ecosystem.cjs' });
 });

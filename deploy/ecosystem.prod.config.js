@@ -103,6 +103,7 @@ module.exports = {
       "exec_mode": "fork",
       "env": {
         "PORT": 7001,
+        "LIVENESS_PATH": "/api/health?liveness=1",
         "NODE_ENV": "production"
       },
       "max_restarts": 10,
@@ -118,6 +119,7 @@ module.exports = {
       "exec_mode": "fork",
       "env": {
         "PORT": 7002,
+        "LIVENESS_PATH": "/api/health?liveness=1",
         "NODE_ENV": "production"
       },
       "max_restarts": 10,
@@ -133,6 +135,7 @@ module.exports = {
       "exec_mode": "fork",
       "env": {
         "PORT": 7003,
+        "LIVENESS_PATH": "/api/health?liveness=1",
         "NODE_ENV": "production"
       },
       "max_restarts": 10,
@@ -148,6 +151,7 @@ module.exports = {
       "exec_mode": "fork",
       "env": {
         "PORT": 7004,
+        "LIVENESS_PATH": "/api/health?liveness=1",
         "NODE_ENV": "production"
       },
       "max_restarts": 10,
@@ -163,6 +167,7 @@ module.exports = {
       "exec_mode": "fork",
       "env": {
         "PORT": 7005,
+        "LIVENESS_PATH": "/api/health?liveness=1",
         "NODE_ENV": "production"
       },
       "max_restarts": 10,
@@ -177,6 +182,7 @@ module.exports = {
       "exec_mode": "fork",
       "env": {
         "PORT": 7007,
+        "LIVENESS_PATH": "/api/health?liveness=1",
         "NODE_ENV": "production"
       },
       "max_restarts": 10,
@@ -192,6 +198,7 @@ module.exports = {
       "exec_mode": "fork",
       "env": {
         "PORT": 7009,
+        "LIVENESS_PATH": "/api/health?liveness=1",
         "NODE_ENV": "production"
       },
       "max_restarts": 10,
