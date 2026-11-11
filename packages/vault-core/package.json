@@ -2,7 +2,7 @@
   "name": "@imajin/vault-core",
   "version": "0.8.36",
   "private": true,
-  "description": "Vault entry models, integrity verification, sealing and delegation primitives for Imajin nodes",
+  "description": "identity and authority for AI agents. Vault models, integrity verification, sealing and delegation for Imajin (alpha).",
   "license": "MIT",
   "repository": {
     "type": "git",

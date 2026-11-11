@@ -2,11 +2,38 @@
 
 **identity and authority for AI agents.**
 
-You choose your tools, bring your identity and compose work with people and agents. Connect a service, authorize an app or inspect a signed record without becoming the object being managed — *the speed of thought, signed.*
+your agents act as themselves, on your authority, and every action is signed.
+
+Imajin is the trust layer for AI agents, for businesses putting agents in front of
+customers or staff, and platforms and agencies running agents for many clients.
+**Alpha:** [book a demo or join the alpha](https://imajin.ai) as a tester, integrator or partner.
+
+1. **Agent identity.** Every agent holds its own key and proves it, with no shared
+   passwords or API tokens. Several identities can run on one runtime, each for
+   its own principal. The agent never impersonates the person.
+2. **Delegated authority.** A person grants authority explicitly and can revoke it.
+   Risky actions wait for a named human approver. The record shows both: the person
+   authorised it, and the agent did it.
+3. **A signed record and settlement.** Every action is a signed event that anyone
+   can verify, including a third party's own agent. Cost and credit are recorded
+   per identity, and .fair turns that into who gets paid.
+
+## Quickstart: run a node
+
+Use Node.js, pnpm and PostgreSQL with the prerequisites in [contributor setup](docs/DEVELOPER.md). The setup helper prepares a local kernel database and environment, not independently owned apps.
+
+```bash
+git clone https://github.com/ima-jin/imajin-ai.git
+cd imajin-ai
+bash scripts/setup-local.sh
+pnpm --filter @imajin/kernel dev
+```
+
+Open `http://localhost:3000/register` and save your key file. The setup helper disables the invite gate for local development only; production remains policy-gated. [Deployment](deploy/README.md), [deploy posture](docs/ops/DEPLOY-POSTURE.md) and [environment configuration](docs/ENVIRONMENTS.md) describe approved operator procedures. Do not deploy production with a manual `git pull`.
 
 ## What it is
 
-Imajin is **Agentic Relation Management**: the relation is at the center, with agents on both sides. Its kernel serves **Attestation · Communication · Attribution · Settlement · Discovery · Revocation**, plus identity/auth, the bus, connectors, inference and media. Identity is their subject, not another primitive.
+Its kernel serves **Attestation · Communication · Attribution · Settlement · Discovery · Revocation**, plus identity/auth, the bus, connectors, inference and media. Identity is their subject, not another primitive.
 
 **Proof of history, not proof of work:** signatures and linked records establish who asserted what and under whose authority, not that every assertion is true. Actor signatures, node-witnessed actions and unsigned logs have distinct guarantees. See the [proof model](docs/guide/proof-model.md) and [whitepaper](docs/mjn-whitepaper.md).
 
@@ -104,19 +131,6 @@ The external OpenClaw plugin and workspace envelope, provisioner, channel, infer
 | [`@imajin/openclaw-infer-passthrough`](packages/openclaw-infer-passthrough/package.json) | Calling-agent credential transport to kernel inference, with explicit non-agent host compatibility | Workspace-only (not on public npm) |
 | [`@imajin/openclaw-reflex-guard`](packages/openclaw-reflex-guard/package.json) | Deterministic outbound instruction checks and reflex scaffold | Workspace-only (not on public npm) |
 | [`@imajin/usage-emitter-claude-code`](packages/usage-emitter-claude-code/package.json) | External incurred-usage emitter from local session observations | Workspace-only (not on public npm) |
-
-## Run a node
-
-Use Node.js, pnpm and PostgreSQL with the prerequisites in [contributor setup](docs/DEVELOPER.md). The setup helper prepares a local kernel database and environment, not independently owned apps.
-
-```bash
-git clone https://github.com/ima-jin/imajin-ai.git
-cd imajin-ai
-bash scripts/setup-local.sh
-pnpm --filter @imajin/kernel dev
-```
-
-Open `http://localhost:3000/register` and save your key file. The setup helper disables the invite gate for local development only; production remains policy-gated. [Deployment](deploy/README.md), [deploy posture](docs/ops/DEPLOY-POSTURE.md) and [environment configuration](docs/ENVIRONMENTS.md) describe approved operator procedures. Do not deploy production with a manual `git pull`.
 
 ## Project status
 

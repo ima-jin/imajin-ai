@@ -2,6 +2,7 @@
   "name": "@imajin/auth",
   "version": "0.8.36",
   "private": true,
+  "description": "identity and authority for AI agents. Authentication, scoped authorization, DID helpers, signing and verification for Imajin (alpha).",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
