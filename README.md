@@ -1,6 +1,6 @@
 # Imajin
 
-**You compose. Imajin orchestrates. Signed. Legible.**
+**identity and authority for AI agents.**
 
 You choose your tools, bring your identity and compose work with people and agents. Connect a service, authorize an app or inspect a signed record without becoming the object being managed — *the speed of thought, signed.*
 
