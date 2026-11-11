@@ -69,6 +69,13 @@ not grant the kernel transcript access. The Docker build pins `NANOCLAW_GIT_REF`
 the host process needs controlled Docker-socket access and the matching host
 socket group, not an assumption that every container runs as root.
 
+The envelope renderer also recognizes explicit `brain.via: 'direct'` and model
+placement/provider configuration. These describe a separate operator-selected
+brain path, not an automatic fallback from rejected kernel agent credentials or
+proof of kernel metering. The usage emitter reports source `harness:nanoclaw`
+and uses external-id deduplication; do not turn that observation into a second
+charge or assume it always exists for each kernel-observed call.
+
 Pin the upstream NanoClaw commit used by the Docker build. Check its actual
 extension/config interfaces at that ref rather than assuming another harness's
 workspace filenames or provider hooks apply. Keep the channel adaptation in the

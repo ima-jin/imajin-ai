@@ -32,11 +32,13 @@ describe('principal migration runbook (#3041)', () => {
   it('documents assigned org bots, personal isolation and the partial operator proof (#3184)', () => {
     const readme = readFileSync(new URL('README.md', packageUrl), 'utf8');
     for (const contract of [
-      'org bot = agent assigned to the org DID using the org',
-      'Personal agents stay on their human', 'No per-session act-as',
-      'no per-member grant', 'connection_not_loaded',
+      'agent assigned to the org DID',
+      "A personal agent uses its human principal's authorized keys",
+      'Per-session conversation switching does not create principal authority',
+      'does not need a human per-member grant', 'connection_not_loaded',
       'artifact-org-bot-smoke.mjs --dry-run', 'usageIds',
-      'no Warp implementation or placeholder', 'plugin PR #151',
+      'no Warp implementation or placeholder',
+      'sub = azp = agentDid',
     ]) expect(readme).toContain(contract);
   });
   it('documents per-agent transport, refusals and the host-only opt-in (#3224)', () => {
@@ -102,7 +104,7 @@ describe('principal migration runbook (#3041)', () => {
     expect(readme).toContain("node_args: '--import tsx'");
     expect(readme).toContain('ExecStart=/usr/bin/env node --import tsx packages/openclaw-infer-passthrough/src/server.ts');
     expect(readme).not.toContain(['node_modules', '.bin', 'tsx'].join('/'));
-    expect(readme).toContain('the tsx CLI relays process-group signals twice under contention (#3270)');
+    expect(readme).toContain('the tsx CLI relays process-group signals twice under contention');
   });
   it('ships grant-free optional example routes', () => {
     const routes = loadRoutes(fileURLToPath(new URL('config/routes.example.json', packageUrl)));

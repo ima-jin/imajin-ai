@@ -3,7 +3,7 @@
 This guide sets up the kernel monorepo for contributors. Public integrations use
 [the developer integration guide](developer-guide.md) and
 [registered-app contract](REGISTRATION.md); public copy comes from
-[POSITIONING.md](POSITIONING.md). Imajin is alpha, not an unattended self-serve
+[positioning](POSITIONING.md). Imajin is alpha, not an unattended self-serve
 service. Local source setup is not evidence of production readiness.
 
 ## Prerequisites and isolated workspace

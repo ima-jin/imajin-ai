@@ -561,8 +561,8 @@ history. The sealed handoff is not protection from a compromised host.
 
 A verified independent human countersignature binds the reviewed decision bytes;
 node witness signatures alone cannot provide that property. The per-node
-`OPERATOR_COUNTERSIGN_REQUIRED` flag is off by default. When it is not required,
-set `OPERATOR_COUNTERSIGN_REQUIRED=true` only with compatible human-proof
+`OPERATOR_COUNTERSIGN_REQUIRED` flag is off by default. Set
+`OPERATOR_COUNTERSIGN_REQUIRED=true` only with compatible human-proof
 verification on the receiving adapter. Without that requirement,
 the kernel can accept unsigned human-session decisions. When required, adapters
 must also verify the human proof before applying; do not infer deployment policy

@@ -83,6 +83,13 @@ under the existing process supervisor. Do not run the tsx CLI as a signal-relayi
 wrapper. Use the deployment-owned systemd unit/updater rather than copying a
 second unit definition from a README. Never print a secret-bearing EnvironmentFile.
 
+The launch shape uses in-process tsx because the tsx CLI relays process-group signals twice under contention.
+For an existing pm2 definition, the relevant non-secret fields are
+`script: 'packages/openclaw-infer-passthrough/src/server.ts'`,
+`interpreter: 'node'` and `node_args: '--import tsx'`. The tracked systemd unit uses
+`ExecStart=/usr/bin/env node --import tsx packages/openclaw-infer-passthrough/src/server.ts`.
+Keep its protected EnvironmentFile separate from the unit and gateway config.
+
 ## Explicit host-static mode: non-agent instances only
 
 `INFER_PROXY_AUTH_MODE=host-static` is a separate compatibility deployment for
@@ -111,6 +118,18 @@ mode and contract in the deployment guide before promoting a candidate.
 ## Host-static routing, errors and metering
 
 These details apply only to an explicitly isolated non-agent host-static instance.
+No routes file is needed for normal operation of that host-static instance.
+For an authorized one-time conversion from grant-pinned host-static config:
+Remove **every** `INFER_PROXY_ROUTES_CONFIG` assignment from the effective unit,
+drop-ins and environment source, not just the shell. Set **`INFER_PROXY_PRINCIPAL_DID`**
+to the intended principal, retaining the protected app identity and kernel origin.
+Optional override/direct-fallback config remains a deliberate separate choice;
+never point agent traffic here. These are operator instructions, not changes applied by this PR.
+In the normal deployment window, run `systemctl daemon-reload` and restart the
+owned unit to load its new code/config, then verify health, catalog and a small
+metered call. That rollout restart is **not** needed for any subsequent re-grant
+or added connector. Do not treat this host-static procedure as an agent migration.
+
 Its default generic OpenAI-compatible, Anthropic and MCP entries use the configured
 principal, without a routes file or direct fallback. Catalog routing caches by
 principal for sixty seconds and refreshes once on a model miss, even inside that
@@ -171,7 +190,7 @@ audit token. Never put that input on a command line or in source/logs.
 The smoke checks the usable kind-A route, makes one completion through the local
 proxy and requires correlated usage with the expected billed org. Its output is
 limited to status, billedOrg and usageIds, not prompts, responses or credentials.
-It has no Warp lane implementation; do not present an Anthropic result as proof
+It has no Warp implementation or placeholder; do not present an Anthropic result as proof
 of another provider or a compatible external plugin deployment.
 
 For a promotion, verify the exact release SHA has successful production deployment
