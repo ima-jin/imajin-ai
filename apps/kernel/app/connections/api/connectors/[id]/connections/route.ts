@@ -4,6 +4,7 @@ import { db, googleWorkspaceState } from '@/src/db';
 import { corsHeaders, corsOptions } from '@/src/lib/kernel/cors';
 import { resolveConnectorOwnerDid } from '@/src/lib/kernel/connector-owner-did';
 import { getConnector } from '@/src/lib/kernel/connector-registry';
+import { connectorPurpose } from '@/src/lib/kernel/connection-holding';
 import {
   createConnectorConnection, listConnectorRegistrations, renameConnectorConnection,
 } from '@/src/lib/kernel/connector-registry-store';
@@ -36,7 +37,8 @@ export async function GET(request: NextRequest, context: Context) {
   if (auth instanceof NextResponse) return auth;
   const { connector, ownerDid } = auth;
   try {
-    const registrations = (await listConnectorRegistrations(ownerDid)).filter((row) => row.provider === connector.id);
+    const registrations = (await listConnectorRegistrations(ownerDid))
+      .filter(row => row.provider === connector.id && connectorPurpose(row) === 'inference');
     const removed = new Set(registrations.filter(row => row.status === 'removed').map(row => row.slot));
     const rows = registrations.filter(row => !removed.has(row.slot));
     const slots = new Set(['primary', ...rows.map((row) => row.slot)]);

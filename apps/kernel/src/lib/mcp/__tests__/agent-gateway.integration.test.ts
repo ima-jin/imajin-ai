@@ -115,7 +115,7 @@ beforeEach(async () => {
   await database.insert(connectors).values([
     { id: 'conn_ryan', ownerDid: RYAN, provider: 'warp', channel: 'warp', connectorDid: 'did:imajin:warp-connector',
       sealedKeyField: `warp-agent-key:${RYAN}` },
-    { id: 'conn_artifact', ownerDid: ORG, provider: 'org-held-warp', channel: 'external-mcp',
+    { id: 'conn_artifact', ownerDid: ORG, provider: 'warp', purpose: 'inference', channel: 'external-mcp',
       connectorDid: 'did:imajin:node', sealedKeyField: `external-mcp:binding:${ORG}`, loadedByDid: RYAN, loadedAt: new Date() },
   ]);
 });

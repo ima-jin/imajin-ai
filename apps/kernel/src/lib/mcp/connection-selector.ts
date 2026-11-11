@@ -1,4 +1,5 @@
 import { listConnectorRegistrations } from '../kernel/connector-registry-store';
+import { connectorPurpose } from '../kernel/connection-holding';
 import { connectionSlot } from '../kernel/connection-slots';
 import { withConnectorConnection } from '../kernel/connector-connection-context';
 import type { McpTool } from './types';
@@ -13,7 +14,8 @@ export async function resolveToolConnection(
   if (typeof selector !== 'string' || !selector.trim()) {
     throw new Error('invalid_connection: connection must be a non-empty slot or label');
   }
-  const rows = (await listConnectorRegistrations(ownerDid)).filter((row) => row.provider === provider);
+  const rows = (await listConnectorRegistrations(ownerDid))
+    .filter(row => row.provider === provider && connectorPurpose(row) === 'inference');
   const exact = rows.find((row) => row.slot === selector);
   if (exact?.status === 'removed') throw new Error('connection_removed: Connection removed. Select another connection explicitly.');
   if (exact) return connectionSlot(exact.slot);

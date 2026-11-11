@@ -1,11 +1,11 @@
 import { and, eq, isNull } from 'drizzle-orm';
-import { db, orgConnectionMemberGrants, type ConnectorRow } from '@/src/db';
+import type { ConnectorRow } from '@/src/db';
 
 export type ConnectionPurpose = 'inference' | 'billing';
 type ProviderRow = { provider: string; purpose?: ConnectionPurpose; upstreamBinding?: string | null };
 type HeldRow = Pick<ConnectorRow, 'ownerDid'>;
 type GrantedRow = HeldRow & Pick<ConnectorRow, 'id' | 'status' | 'revokedAt' | 'expiresAt'>;
-type GrantReader = Pick<typeof db, 'select'>;
+type GrantReader = Pick<typeof import('@/src/db').db, 'select'>;
 
 /** Ownership never depends on identity scope, provenance, or provider spelling. */
 export const isHeldBy = (row: HeldRow, did: string) => row.ownerDid === did;
@@ -25,10 +25,11 @@ export function isUpstreamConnection(row: ProviderRow): boolean {
 }
 
 /** Live authority is keyed on this connection id AND its holder, never its provider label. */
-export async function readConnectionGrant(row: GrantedRow, callerDid: string, tx: GrantReader = db) {
+export async function readConnectionGrant(row: GrantedRow, callerDid: string, tx?: GrantReader) {
   if (isHeldBy(row, callerDid) || row.status !== 'active' || row.revokedAt
     || (row.expiresAt && row.expiresAt.getTime() <= Date.now())) return undefined;
-  const [grant] = await tx.select().from(orgConnectionMemberGrants).where(and(
+  const { db, orgConnectionMemberGrants } = await import('@/src/db');
+  const [grant] = await (tx ?? db).select().from(orgConnectionMemberGrants).where(and(
     eq(orgConnectionMemberGrants.orgDid, row.ownerDid),
     eq(orgConnectionMemberGrants.memberDid, callerDid),
     eq(orgConnectionMemberGrants.connectionId, row.id),
@@ -37,6 +38,6 @@ export async function readConnectionGrant(row: GrantedRow, callerDid: string, tx
   return grant;
 }
 
-export async function isGrantedTo(row: GrantedRow, callerDid: string, tx: GrantReader = db): Promise<boolean> {
+export async function isGrantedTo(row: GrantedRow, callerDid: string, tx?: GrantReader): Promise<boolean> {
   return !!await readConnectionGrant(row, callerDid, tx);
 }
