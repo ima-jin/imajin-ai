@@ -46,6 +46,15 @@ beforeEach(() => {
 });
 
 describe('connection metadata API', () => {
+  it('does not list billing slots or lend their custody references to an inference card', async () => {
+    h.list.mockResolvedValue([
+      { provider: 'anthropic', purpose: 'billing', slot: 'billing', sealedKeyField: 'billing-only-reference' },
+      { provider: 'anthropic', purpose: 'inference', slot: 'primary', sealedKeyField: 'inference-reference' },
+    ]);
+    const body = await (await GET(request(), context('anthropic'))).json();
+    expect(body.connections.map((row: { slot: string }) => row.slot)).toEqual(['primary']);
+    expect(h.status).not.toHaveBeenCalledWith('billing-only-reference');
+  });
   it.each(['github', 'google', 'quickbooks'])('hides removed %s slots, including stale Google account state', async id => {
     h.list.mockResolvedValue([{ provider: id, slot: 'work', status: 'removed', label: 'Removed account' }]);
     h.googleRows = [{ slot: 'work', accountEmail: 'stale@example.test' }];

@@ -20,6 +20,14 @@ beforeEach(() => {
 });
 
 describe('MCP connection selection', () => {
+  it('never selects a billing row by slot or label as an ordinary tool connection', async () => {
+    list.mockResolvedValue([
+      { provider: 'google', purpose: 'billing', slot: 'work', label: 'Billing', status: 'removed' },
+      { provider: 'google', purpose: 'inference', slot: 'work', label: 'Company', status: 'active' },
+    ]);
+    expect(await resolveToolConnection(DID, 'google', 'work')).toBe('work');
+    await expect(resolveToolConnection(DID, 'google', 'Billing')).rejects.toThrow('unknown_connection');
+  });
   it.each(['work', 'Company'])('reports a removed slot or label (%s) without rebinding to another account', async selector => {
     list.mockResolvedValue([
       { provider: 'google', slot: 'work', label: 'Company', status: 'removed' },

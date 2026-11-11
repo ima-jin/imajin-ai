@@ -39,6 +39,8 @@ export const ANTHROPIC_BILLING_SCOPE = 'anthropic:billing';
 
 const anthropicBilling = createConnectorTokenPaste({
   id: 'anthropic-billing',
+  provider: 'anthropic',
+  purpose: 'billing',
   displayName: 'Anthropic Billing',
   connectorDid: ANTHROPIC_CONNECTOR_DID,
   channel: ANTHROPIC_CHANNEL,

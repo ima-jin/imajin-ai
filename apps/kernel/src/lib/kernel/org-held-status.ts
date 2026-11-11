@@ -23,11 +23,11 @@ export function readOrgHeldStatus(actor: OrgConnectionActor) {
     }
     const rows = await tx.select({
       ownerDid: connectors.ownerDid, provider: connectors.provider,
-      upstreamBinding: connectors.upstreamBinding, loadedAt: connectors.loadedAt,
+      purpose: connectors.purpose, upstreamBinding: connectors.upstreamBinding, loadedAt: connectors.loadedAt,
     })
       .from(connectors).where(and(
         eq(connectors.ownerDid, actor.orgDid),
-        eq(connectors.slot, 'primary'), eq(connectors.status, 'active'),
+        eq(connectors.purpose, 'inference'), eq(connectors.slot, 'primary'), eq(connectors.status, 'active'),
         isNotNull(connectors.sealedKeyField), isNotNull(connectors.loadedAt), isNotNull(connectors.loadedByDid),
       )).orderBy(connectors.provider);
     return { connections: rows.filter(row => isHeldBy(row, actor.orgDid)

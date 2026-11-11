@@ -1,7 +1,7 @@
-import { eq, sql } from 'drizzle-orm';
+import { and, desc, eq, sql } from 'drizzle-orm';
 import { db, attestations, registryApps } from '@/src/db';
 import { prepareMechanicalAttestation } from '@/src/lib/auth/emit-mechanical-attestation';
-import { auditMemberConnection, authorizeExternalMcp } from './external-mcp';
+import { auditMemberConnection, authorizeExternalMcp, disconnectExternalMcp } from './external-mcp';
 import { ExternalMcpError } from './external-mcp-policy';
 import { forwardAppUpstream } from './external-mcp-transport';
 import { reserveExternalMcpCall } from './external-mcp-limits';
@@ -27,6 +27,22 @@ export function declareAppUpstreams(appDid: string, raw: unknown) {
     return { upstreams };
   });
 }
+/** Signed connection evidence retains personal revocation after an app/declaration disappears. */
+export async function disconnectAppUpstream(memberDid: string, appDid: string, upstreamId: string) {
+  const [evidence] = await db.select({ payload: attestations.payload }).from(attestations).where(and(
+    eq(attestations.subjectDid, memberDid), eq(attestations.type, 'connector.external-mcp'),
+    sql`${attestations.payload}->>'action' = 'connected'`,
+    sql`${attestations.payload}->>'appDid' = ${appDid}`,
+    sql`${attestations.payload}->>'upstreamId' = ${upstreamId}`,
+  )).orderBy(desc(attestations.issuedAt)).limit(1);
+  const payload = evidence?.payload as Record<string, unknown> | undefined;
+  if (typeof payload?.connectionId !== 'string' || typeof payload.provider !== 'string') {
+    return { disconnected: true };
+  }
+  return disconnectExternalMcp(memberDid, {
+    connectionId: payload.connectionId, provider: payload.provider, scope: UPSTREAM_READ_SCOPE,
+  }, appDid);
+}
 export async function resolveAppUpstream(appDid: string, upstreamId: string): Promise<AppUpstream> {
   const app = await requireConnectionApp(db, appDid, UPSTREAM_READ_SCOPE, true);
   const { upstreams } = parseUpstream(upstreamDeclarations, { upstreams: app.upstreams });
@@ -35,17 +51,18 @@ export async function resolveAppUpstream(appDid: string, upstreamId: string): Pr
   return target;
 }
 export function appConnectionTarget(appDid: string, target: AppUpstream, scope = UPSTREAM_READ_SCOPE) {
-  return { provider: upstreamProvider(appDid, target.id), binding: upstreamBinding(appDid, target), scope };
+  const binding = upstreamBinding(appDid, target);
+  return { provider: upstreamProvider(target), binding, upstreamId: target.id, scope };
 }
 /** Authenticated app DID is supplied by requireAppAuth, never by the request body. */
 export async function invokeAppUpstream(caller: ExternalMcpCaller & { scopes?: readonly string[] }, raw: unknown) {
   const call = parseUpstream(upstreamCallInput, raw);
   if (!caller.appDid || !caller.serviceToken || caller.memberDid !== call.memberDid) throw connectionUnavailable();
   const appDid = caller.appDid;
-  const provider = upstreamProvider(appDid, call.upstreamId);
   const release = reserveExternalMcpCall(caller.memberDid, appDid);
   try {
     const target = await resolveAppUpstream(appDid, call.upstreamId);
+    const provider = upstreamProvider(target);
     const scope = ['GET', 'HEAD'].includes(call.method) ? UPSTREAM_READ_SCOPE : UPSTREAM_WRITE_SCOPE;
     if (!caller.scopes?.includes(scope)) throw connectionUnavailable();
     const context = await authorizeExternalMcp(

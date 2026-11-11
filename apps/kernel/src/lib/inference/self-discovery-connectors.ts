@@ -180,13 +180,13 @@ async function upstreamRow(context: InferenceAuthContext & { appDid: string }, u
   await forEachSequential(scopes, async scope => {
     if (!tokenAllows(context, scope)) return;
     results.push(await discoveryExternalConnection(context, {
-      provider: upstreamProvider(context.appDid, upstream.id),
+      provider: upstreamProvider(upstream),
       binding: upstreamBinding(context.appDid, upstream), scope,
     }, 'http'));
   });
   const usable = results.filter(row => row.usable);
   const selected = usable.at(0) ?? results.at(0);
-  if (!selected) return deny(diagnostic(upstreamProvider(context.appDid, upstream.id), 'http', actor(context), false), 'tool_scope_required');
+  if (!selected) return deny(diagnostic(upstreamProvider(upstream), 'http', actor(context), false), 'tool_scope_required');
   return { ...selected, authorizedScopes: usable.flatMap(row => row.authorizedScopes) };
 }
 

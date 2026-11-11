@@ -119,7 +119,7 @@ beforeAll(async () => {
   await client.exec('CREATE SCHEMA auth; CREATE SCHEMA kernel; CREATE SCHEMA profile; CREATE SCHEMA registry; CREATE SCHEMA usage; CREATE SCHEMA pay;');
   for (const table of tables) await client.exec(tableSql(table));
   await client.exec(`
-    CREATE UNIQUE INDEX seed_connector_slot ON kernel.connectors(owner_did,provider,slot);
+    CREATE UNIQUE INDEX seed_connector_slot ON kernel.connectors(owner_did,provider,purpose,slot);
     CREATE UNIQUE INDEX seed_owner_envelope ON kernel.vault_owner_envelopes(field,key_id);
     CREATE UNIQUE INDEX seed_custody ON kernel.vault_delegation_grants(subject,granted_to,field,key_id) WHERE status='active';
     CREATE UNIQUE INDEX seed_suspension ON kernel.org_connection_suspensions(org_did,member_did,provider,slot);

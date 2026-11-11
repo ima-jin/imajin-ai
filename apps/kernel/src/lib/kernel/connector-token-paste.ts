@@ -60,6 +60,7 @@ import {
 } from '@/src/lib/vault';
 import { VaultDelegationError } from '@/src/lib/vault/errors';
 import { getNodeSigningIdentity } from '@/src/lib/vault/sealing';
+import type { ConnectionPurpose } from './connection-holding';
 import {
   recordConnectorRegistration,
   revokeConnectorRegistration,
@@ -80,6 +81,9 @@ export interface ConnectorTokenPasteOptions {
    * breaking change to both stored fields and error contracts.
    */
   id: string;
+  /** Vendor and use are independent of the existing vault-field namespace. */
+  provider?: string;
+  purpose?: ConnectionPurpose;
   /** Display name used in human-facing error prose, e.g. `'Gemini'`. */
   displayName: string;
   /** Connector app DID that appears in `auth.channel_links.appDid`. */
@@ -278,7 +282,8 @@ export function createConnectorTokenPaste(
     // a projection failure must not fail a seal that already succeeded.
     await recordConnectorRegistration({
       ownerDid,
-      provider: opts.id,
+      provider: opts.provider ?? opts.id,
+      purpose: opts.purpose ?? 'inference',
       sealedKeyField: keyField(ownerDid),
       ...(orgSealProvenance ? { orgSealProvenance } : {}),
     });
@@ -429,7 +434,7 @@ export function createConnectorTokenPaste(
     const revokedLinks = opts.preserveScopesOnRevoke ? 0 : await revokeActiveChannelLinks(ownerDid);
     // Both authoritative surfaces are already revoked at this point; the
     // registry is brought into agreement afterwards and never throws (#1924).
-    await revokeConnectorRegistration(ownerDid, opts.id);
+    await revokeConnectorRegistration(ownerDid, opts.provider ?? opts.id, undefined, opts.purpose ?? 'inference');
 
     const revoked = revokedGrants > 0 || revokedLinks > 0;
     // #2205 — only on an actual transition, so a no-op disconnect stays

@@ -165,10 +165,10 @@ describe('connectorRegistryId', () => {
 describe('recordConnectorRegistration', () => {
   it.each(['anthropic', 'openai'])('registers %s billing through the same vendor identity path', async vendor => {
     await recordConnectorRegistration({
-      ownerDid: OWNER, provider: `${vendor}-billing`, sealedKeyField: `billing-reference:${OWNER}`,
+      ownerDid: OWNER, provider: vendor, purpose: 'billing', sealedKeyField: `billing-reference:${OWNER}`,
     });
     expect(insertValues[0]).toMatchObject({
-      ownerDid: OWNER, provider: `${vendor}-billing`, channel: vendor,
+      ownerDid: OWNER, provider: vendor, purpose: 'billing', channel: vendor,
       connectorDid: `did:imajin:${vendor}-connector`, status: 'active',
     });
     expect(warnLog).not.toHaveBeenCalled();
@@ -180,7 +180,7 @@ describe('recordConnectorRegistration', () => {
     await sealBillingKey(OWNER, syntheticKey);
     expect(sealAndStoreV2).toHaveBeenCalledWith(`anthropic-billing-api-key:${OWNER}`, syntheticKey);
     expect(insertValues[0]).toMatchObject({
-      provider: 'anthropic-billing', sealedKeyField: `anthropic-billing-api-key:${OWNER}`,
+      provider: 'anthropic', purpose: 'billing', sealedKeyField: `anthropic-billing-api-key:${OWNER}`,
       channel: 'anthropic', connectorDid: 'did:imajin:anthropic-connector',
     });
     expect(JSON.stringify(insertValues)).not.toContain(syntheticKey);
@@ -188,14 +188,14 @@ describe('recordConnectorRegistration', () => {
   });
   it('registers independent billing custody under the canonical Anthropic identity without warning', async () => {
     const sealedKeyField = `anthropic-billing-api-key:${OWNER}`;
-    await recordConnectorRegistration({ ownerDid: OWNER, provider: 'anthropic-billing', sealedKeyField });
+    await recordConnectorRegistration({ ownerDid: OWNER, provider: 'anthropic', purpose: 'billing', sealedKeyField });
     const rows = await listConnectorRegistrations(OWNER);
     expect(rows).toEqual([expect.objectContaining({
-      id: connectorRegistryId(OWNER, 'anthropic-billing'),
-      provider: 'anthropic-billing', channel: 'anthropic',
+      id: connectorRegistryId(OWNER, 'anthropic', undefined, 'billing'),
+      provider: 'anthropic', purpose: 'billing', channel: 'anthropic',
       connectorDid: 'did:imajin:anthropic-connector', sealedKeyField, status: 'active',
     })]);
-    expect(connectorRegistryId(OWNER, 'anthropic-billing')).not.toBe(connectorRegistryId(OWNER, 'anthropic'));
+    expect(connectorRegistryId(OWNER, 'anthropic', undefined, 'billing')).not.toBe(connectorRegistryId(OWNER, 'anthropic'));
     expect(conflictSets[0]).not.toHaveProperty('scopes');
     expect(warnLog).not.toHaveBeenCalled();
   });
@@ -280,12 +280,12 @@ describe('syncConnectorRegistrationScopes', () => {
   it.each(['anthropic', 'openai'])('mirrors and withdraws %s billing scopes identically', async vendor => {
     await syncConnectorRegistrationScopes(OWNER, vendor, [`${vendor}:infer`, `${vendor}:billing`], 'work');
     expect(insertValues).toEqual([
-      expect.objectContaining({ provider: `${vendor}-billing`, scopes: [`${vendor}:billing`], slot: 'work' }),
+      expect.objectContaining({ provider: vendor, purpose: 'billing', scopes: [`${vendor}:billing`], slot: 'work' }),
       expect.objectContaining({ provider: vendor, scopes: [`${vendor}:infer`, `${vendor}:billing`], slot: 'work' }),
     ]);
     insertValues.length = 0;
     await syncConnectorRegistrationScopes(OWNER, vendor, [], 'work');
-    expect(insertValues[0]).toMatchObject({ provider: `${vendor}-billing`, scopes: [] });
+    expect(insertValues[0]).toMatchObject({ provider: vendor, purpose: 'billing', scopes: [] });
     expect(warnLog).not.toHaveBeenCalled();
   });
   it.each([
@@ -294,19 +294,19 @@ describe('syncConnectorRegistrationScopes', () => {
     { scopes: [], expected: [] },
   ])('mirrors only billing scopes from the shared manifest: $scopes', async ({ scopes, expected }) => {
     await syncConnectorRegistrationScopes(OWNER, 'anthropic', scopes, 'work');
-    const billing = insertValues.find(row => row.provider === 'anthropic-billing');
+    const billing = insertValues.find(row => row.provider === 'anthropic' && row.purpose === 'billing');
     expect(billing).toMatchObject({
-      provider: 'anthropic-billing', channel: 'anthropic', slot: 'work',
+      provider: 'anthropic', purpose: 'billing', channel: 'anthropic', slot: 'work',
       connectorDid: 'did:imajin:anthropic-connector', scopes: expected,
     });
-    expect(insertValues.find(row => row.provider === 'anthropic')).toMatchObject({ scopes, slot: 'work' });
+    expect(insertValues.find(row => row.provider === 'anthropic' && row.purpose === 'inference')).toMatchObject({ scopes, slot: 'work' });
     expect(conflictSets[0]).toMatchObject({ scopes: expected });
     expect(warnLog).not.toHaveBeenCalled();
   });
 
   it('recognizes direct billing scope sync and never copies inference scopes into it', async () => {
-    await syncConnectorRegistrationScopes(OWNER, 'anthropic-billing', ['anthropic:infer', 'anthropic:billing']);
-    expect(insertValues[0]).toMatchObject({ provider: 'anthropic-billing', scopes: ['anthropic:billing'] });
+    await syncConnectorRegistrationScopes(OWNER, 'anthropic', ['anthropic:infer', 'anthropic:billing'], undefined, 'billing');
+    expect(insertValues[0]).toMatchObject({ provider: 'anthropic', purpose: 'billing', scopes: ['anthropic:billing'] });
     expect(warnLog).not.toHaveBeenCalled();
   });
   it('upserts the snapshot, so an OAuth connector with no seal step still registers', async () => {

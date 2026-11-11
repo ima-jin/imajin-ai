@@ -9,7 +9,7 @@ import { getConnector } from './connector-registry';
 import { connectInput, ExternalMcpError } from './external-mcp-policy';
 import { generateId } from './id';
 import { authorizeOrgConnectionAdmin, type OrgConnectionActor } from './org-held-connection-policy';
-import { connectionProviderCondition, connectorPurpose, connectorVendor, isHeldBy, isUpstreamConnection } from './connection-holding';
+import { connectorPurpose, connectorVendor, isHeldBy, isUpstreamConnection } from './connection-holding';
 import { findMemberConnection } from './member-connection-gate';
 export type { OrgConnectionActor } from './org-held-connection-policy';
 
@@ -17,7 +17,7 @@ type Transaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
 function selection(orgDid: string, provider?: string) {
   return and(eq(connectors.ownerDid, orgDid), eq(connectors.slot, 'primary'),
-    provider === undefined ? undefined : connectionProviderCondition(connectors.provider, provider));
+    eq(connectors.purpose, 'inference'), provider === undefined ? undefined : eq(connectors.provider, provider));
 }
 function metadata(row: ConnectorRow) {
   return { provider: connectorVendor(row),
@@ -86,11 +86,11 @@ export function loadOrgHeldConnection(actor: OrgConnectionActor, provider: strin
     const loadedAt = new Date();
     const [row] = await tx.insert(connectors).values({
       id: previous?.id ?? connectorRegistryId(actor.orgDid, provider, 'primary'),
-      ownerDid: actor.orgDid, provider: previous?.provider ?? provider, slot: 'primary', channel: entry.channel,
+      ownerDid: actor.orgDid, provider, purpose: 'inference', slot: 'primary', channel: entry.channel,
       connectorDid: node.senderDid, sealedKeyField: field, loadedByDid: actor.actorDid, loadedAt,
       status: 'active',
     }).onConflictDoUpdate({
-      target: [connectors.ownerDid, connectors.provider, connectors.slot],
+      target: [connectors.ownerDid, connectors.provider, connectors.purpose, connectors.slot],
       set: { sealedKeyField: field, connectorDid: node.senderDid, loadedByDid: actor.actorDid, loadedAt,
         status: 'active', revokedAt: null, updatedAt: loadedAt },
     }).returning();

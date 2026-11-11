@@ -57,7 +57,7 @@ beforeAll(async () => {
   await client.waitReady;
   await client.exec('CREATE SCHEMA auth; CREATE SCHEMA kernel;');
   for (const table of [connectors, channelLinks, attestations, identityMembers]) await client.exec(createTable(table));
-  await client.exec('CREATE UNIQUE INDEX uniq_connector ON kernel.connectors(owner_did,provider,slot);');
+  await client.exec('CREATE UNIQUE INDEX uniq_connector ON kernel.connectors(owner_did,provider,purpose,slot);');
   database = drizzle(client);
   h.db = database;
 });

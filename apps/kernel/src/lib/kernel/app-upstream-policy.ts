@@ -45,8 +45,8 @@ export function parseUpstream<T>(schema: z.ZodType<T>, raw: unknown): T {
   if (!result.success) throw new ExternalMcpError(400, 'Invalid upstream input');
   return result.data;
 }
-export function upstreamProvider(appDid: string, upstreamId: string) {
-  return `app-upstream:${appDid}:${upstreamId}`;
+export function upstreamProvider(target: Pick<AppUpstream, 'origin'>) {
+  return new URL(target.origin).hostname.toLowerCase();
 }
 /** Canonical set of exact permissions, also the member-facing plain-text list. */
 export function upstreamPermissions(target: Pick<AppUpstream, 'paths'>): string[] {

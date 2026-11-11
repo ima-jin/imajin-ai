@@ -90,7 +90,7 @@ const httpFetch = globalThis.fetch;
 async function useWarpConnection() {
   const field = `${EXTERNAL_MCP_NAMESPACE}:org-fixture:${ORG}`;
   await database.update(connectors).set({
-    provider: 'org-held-warp', sealedKeyField: field, loadedByDid: MEMBER, loadedAt: new Date(),
+    provider: 'warp', sealedKeyField: field, loadedByDid: MEMBER, loadedAt: new Date(),
   });
   await database.update(vaultDelegationGrants).set({ field });
 }
@@ -273,7 +273,9 @@ beforeAll(async () => {
   // Exact schema column names/types; no external PostgreSQL server or credentials.
   for (const table of tables) {
     const { schema, name, columns } = getTableConfig(table);
-    const fields = columns.map(column => `"${column.name}" ${column.getSQLType()}`).join(',');
+    const fields = columns.map(column => `"${column.name}" ${column.getSQLType()}${
+      column.name === 'purpose' ? " DEFAULT 'inference'" : ''
+    }`).join(',');
     await client.exec(`CREATE TABLE "${schema}"."${name}" (${fields})`);
   }
   database = drizzle(client);
@@ -766,7 +768,7 @@ describe('assigned agents use only the assigned DID keys, without member-grant r
     await database.update(identityMembers).set({ allowedServices: ['infer'] }).where(eq(identityMembers.memberDid, AGENT));
     await expect(authorizeExternalMcp(agent, target)).rejects.toMatchObject({ status: 403 });
   });
-  it.each(['warp', 'org-held-warp'])('enforces %s suspension against a vendor-only held row for an assigned agent', async provider => {
+  it.each(['warp'])('enforces %s suspension against a vendor-only held row for an assigned agent', async provider => {
     await assign();
     await useWarpConnection();
     await database.update(connectors).set({ provider: 'warp' });
@@ -941,12 +943,10 @@ describe('prod-shaped sealed Anthropic org resolution (#3313)', () => {
     expect(h.fallback).not.toHaveBeenCalled();
   });
 
-  it.each([true, false])('dual-reads legacy Anthropic spelling with assignedAgent=%s', async assigned => {
+  it.each([true, false])('does not parse an unmigrated Anthropic provider with assignedAgent=%s', async assigned => {
     const selected = await context(assigned);
     await database.update(connectors).set({ provider: 'org-held-anthropic' });
-    expect(await resolveOrgHeldBrain(selected, 'claude-test')).toMatchObject({
-      provider: 'anthropic', credentialDid: ORG, orgUsage: { connectionId: 'org-connection' },
-    });
+    await expect(resolveOrgHeldBrain(selected, 'claude-test')).rejects.toMatchObject({ status: 403 });
     expect(h.personal).not.toHaveBeenCalled();
   });
 

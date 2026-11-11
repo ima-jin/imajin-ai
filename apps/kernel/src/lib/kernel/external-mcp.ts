@@ -1,4 +1,4 @@
-import { eq, sql } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { db, attestations, connectors, vaultDelegationGrants, type ConnectorRow } from '@/src/db';
 import { prepareMechanicalAttestation } from '@/src/lib/auth/emit-mechanical-attestation';
 import { _applyDelegationGrant, deleteFromVault, revokeStaticSecretGrant, sealAndGrantStaticSecret, vaultService } from '@/src/lib/vault';
@@ -24,8 +24,8 @@ async function lockMember(tx: Transaction, did: string) {
   const lockKey = `external-mcp:${did}`;
   await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))`);
 }
-const connection = (tx: Pick<Transaction, 'select'>, did: string, provider = POSTMAN_PROVIDER) =>
-  findMemberConnection(tx, did, provider);
+const connection = (tx: Pick<Transaction, 'select'>, did: string, target: MemberConnectionTarget = POSTMAN_CONNECTION) =>
+  findMemberConnection(tx, did, target.provider, target.binding);
 export async function auditMemberConnection(tx: Pick<Transaction, 'insert'>, memberDid: string, orgContextDid: string | null,
   action: 'connected' | 'disconnected' | 'call', extra: Record<string, unknown> = {}, provider = POSTMAN_PROVIDER) {
   await tx.insert(attestations).values(await prepareMechanicalAttestation({
@@ -39,7 +39,7 @@ function publicConnection(row: ConnectorRow | undefined, target: MemberConnectio
     orgContextDid: row?.orgContextDid ?? null };
 }
 export async function externalMcpStatus(memberDid: string, target: MemberConnectionTarget = POSTMAN_CONNECTION) {
-  const row = await connection(db, memberDid, target.provider);
+  const row = await connection(db, memberDid, target);
   const result = publicConnection(row, target);
   if (result.connected) {
     result.connected = !!row?.sealedKeyField && (await vaultFieldStatusForGrantee(
@@ -60,7 +60,7 @@ export function connectExternalMcp(memberDid: string, raw: unknown, target: Memb
   return db.transaction(async tx => {
     await lockMember(tx, memberDid);
     await checkStanding(tx, memberDid, orgContextDid ?? null);
-    const previous = await connection(tx, memberDid, target.provider);
+    const previous = await connection(tx, memberDid, target);
     if (previous?.status === 'removed') throw unavailable();
     const node = getNodeSigningIdentity();
     const field = `${EXTERNAL_MCP_NAMESPACE}:${generateId('mcp')}:${memberDid}`;
@@ -68,17 +68,22 @@ export function connectExternalMcp(memberDid: string, raw: unknown, target: Memb
       principalDid: memberDid, granteeDid: node.senderDid, purpose: target.scope, tx,
     });
     if (previous?.sealedKeyField) await revokeStaticSecretGrant(previous.sealedKeyField, node.senderDid, tx);
+    const connectionId = previous?.id ?? connectorRegistryId(memberDid, target.provider, target.binding ?? 'primary');
     await tx.insert(connectors).values({
-      id: connectorRegistryId(memberDid, target.provider, 'primary'),
-      ownerDid: memberDid, provider: target.provider, slot: 'primary', channel: 'external-mcp',
+      id: connectionId,
+      ownerDid: memberDid, provider: target.provider, purpose: 'inference',
+      slot: target.binding ?? 'primary', channel: 'external-mcp',
       connectorDid: node.senderDid, sealedKeyField: field, orgContextDid: orgContextDid ?? null,
       upstreamBinding: target.binding ?? null, status: 'active',
     }).onConflictDoUpdate({
-      target: [connectors.ownerDid, connectors.provider, connectors.slot],
+      target: [connectors.ownerDid, connectors.provider, connectors.purpose, connectors.slot],
       set: { sealedKeyField: field, orgContextDid: orgContextDid ?? null, upstreamBinding: target.binding ?? null,
         status: 'active', revokedAt: null, updatedAt: new Date() },
     });
-    await auditMemberConnection(tx, memberDid, orgContextDid ?? null, 'connected', { appDid: appDid ?? null }, target.provider);
+    await auditMemberConnection(tx, memberDid, orgContextDid ?? null, 'connected', {
+      appDid: appDid ?? null,
+      ...(target.upstreamId ? { upstreamId: target.upstreamId, connectionId } : {}),
+    }, target.provider);
     await vaultService.set(sealed.entry);
     if (previous?.sealedKeyField) await deleteFromVault(previous.sealedKeyField);
     return { provider: target.provider === POSTMAN_PROVIDER ? 'postman' : target.provider, connected: true, orgContextDid: orgContextDid ?? null };
@@ -88,7 +93,11 @@ export function connectExternalMcp(memberDid: string, raw: unknown, target: Memb
 export function disconnectExternalMcp(memberDid: string, target: MemberConnectionTarget = POSTMAN_CONNECTION, appDid?: string) {
   return db.transaction(async tx => {
     await lockMember(tx, memberDid);
-    const row = await connection(tx, memberDid, target.provider);
+    const row = target.connectionId
+      ? (await tx.select().from(connectors).where(and(
+        eq(connectors.id, target.connectionId), eq(connectors.ownerDid, memberDid),
+        eq(connectors.purpose, 'inference'),
+      )).limit(1))[0] : await connection(tx, memberDid, target);
     if (!row?.sealedKeyField) return { disconnected: true };
     await revokeStaticSecretGrant(row.sealedKeyField, getNodeSigningIdentity().senderDid, tx);
     await tx.update(connectors).set({ status: 'revoked', revokedAt: new Date(), updatedAt: new Date() })
