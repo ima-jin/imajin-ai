@@ -1,630 +1,159 @@
-# Environment Configuration
-
-## Database (Local Postgres)
-
-All environments run on the self-hosted server (`imajin-server`, 192.168.1.193).
-
-| Environment | Database | User | Port |
-|-------------|----------|------|------|
-| Production | `imajin_prod` | `imajin` | 5432 |
-| Development | `imajin_dev` | `imajin_dev` | 5432 |
-
-Standalone app databases:
-
-| App | Production | Development |
-|-----|-----------|-------------|
-| fixready | `fixready_prod` | `fixready_dev` |
-| karaoke | `karaoke_prod` | `karaoke_dev` |
-
-### Schemas
-
-Each service owns a schema within the shared database:
-
-| Schema | Service(s) |
-|--------|-----------|
-| `auth` | kernel |
-| `profile` | kernel |
-| `connections` | kernel |
-| `pay` | kernel |
-| `chat` | kernel |
-| `media` | kernel |
-| `notify` | kernel |
-| `registry` | kernel |
-| `events` | events |
-| `coffee` | coffee |
-| `learn` | learn |
-| `market` | market |
-
-Connection string format:
-```
-DATABASE_URL="postgresql://USER:PASSWORD@localhost:5432/DATABASE"
-```
-
-Postgres is open to LAN (192.168.1.0/24). `pg_stat_statements` enabled for query performance tracking.
-
-Every shared `@imajin/db` client bounds its pool, connection acquisition, statement time and idle-in-transaction time, and `GET /api/health?liveness=1` probes that same pool (`database: true`, or 503). Defaults and `DB_*` overrides: [deploy/README.md](../deploy/README.md#database-deadlines-and-pool-stall-reproduction).
-
-## Services
-
-All services run via **pm2** on the server. **Caddy** handles reverse proxy with auto-SSL.
-
-### Port Convention
-
-- `3xxx` = development, `7xxx` = production (1:1 mapping)
-- `x000-x099` — **Core platform** (kernel); standalone events retains its historical 3006/7006 assignment without becoming kernel-owned
-- `x100-x199` — **Imajin apps** (coffee, dykil, links, learn — account-based, DID-linked)
-- `x400-x499` — **Client apps** (fixready, karaoke — standalone repos, own databases)
-- Internal daemons (e.g. corpus) are not subdomain-routed and don't follow this
-  convention — see their own row for the (different) fixed ports they use.
-  dev and prod still can't share a port, since dev-* and prod-* pm2
-  processes run side by side on the same host.
-
-| Tier | Service | Dev | Prod | Domain |
-|------|---------|-----|------|--------|
-| Core | kernel | 3000 | 7000 | jin.imajin.ai (prod) / dev-jin.imajin.ai (dev); auth/pay/profile/connections/registry/chat/media/notify are paths |
-| App | events (external, [ima-jin/events](https://github.com/ima-jin/events)) | 3006 | 7006 | jin.imajin.ai/events |
-| Imajin | coffee (external, [ima-jin/coffee](https://github.com/ima-jin/coffee)) | 3100 | 7100 | jin.imajin.ai/coffee |
-| Imajin | dykil (external, [ima-jin/dykil](https://github.com/ima-jin/dykil)) | 3101 | 7101 | jin.imajin.ai/dykil |
-| Imajin | links (external, [ima-jin/links](https://github.com/ima-jin/links)) | 3102 | 7102 | jin.imajin.ai/links |
-| Imajin | learn (external, [ima-jin/learn](https://github.com/ima-jin/learn)) | 3103 | 7103 | jin.imajin.ai/learn |
-| Imajin | market (external, [ima-jin/market](https://github.com/ima-jin/market)) | 3104 | 7104 | jin.imajin.ai/market |
-| Client | fixready | 3400 | 7400 | fixready.imajin.ai |
-| Client | karaoke | 3401 | 7401 | karaoke.imajin.ai |
-| Infra | corpus | 8013 | 8003 | internal only — no subdomain (#1726) |
-
-**corpus host note (#2232, decided 2026-09-22):** corpus's prod port (8003)
-above is its own canonical port, but corpus no longer runs on the same host
-as the rest of prod — it's deployed on **gx10**, not the ProLiant
-(`deploy/ecosystem.prod.config.js` has no `prod-corpus` entry; see that
-file's README). Dev corpus (8013) is unaffected and still runs on the
-ProLiant alongside `dev-jin`.
-
-**links host note (#1986 phase 2):** links moved out of this monorepo into
-its own repo, [ima-jin/links](https://github.com/ima-jin/links) (kernel-side
-prune merged 2026-09-28). Its ports (3102/7102) and Caddy route
-(`jin.imajin.ai/links`) are unchanged — it is still deployed on this same
-host, just as a standalone `dev-links`/`prod-links` pm2 process built from
-its own repo checkout instead of `deploy/ecosystem.{dev,prod}.config.js`.
-
-**coffee host note (#2500):** coffee moved out of this monorepo the same way, into
-[ima-jin/coffee](https://github.com/ima-jin/coffee). Its ports (3100/7100) and
-Caddy route (`jin.imajin.ai/coffee`) are unchanged; `dev-coffee` serves from
-`~/dev/coffee` and `prod-coffee` from `~/prod/coffee`, each a standalone pm2
-process claimed with its own app identity (see `docs/REGISTRATION.md`).
-
-**dykil host note (#2523):** dykil moved out of this monorepo the same way, into
-[ima-jin/dykil](https://github.com/ima-jin/dykil). Its ports (3101/7101) and
-Caddy route (`jin.imajin.ai/dykil`) are unchanged; `dev-dykil` serves from
-`~/dev/dykil` and `prod-dykil` from `~/prod/dykil`, each a standalone pm2
-process claimed with its own app identity (see `docs/REGISTRATION.md`).
-
-**events is external (#2517):** standalone dev was signed off in #2529 on
-2026-10-16 02:33Z; prod has run from `~/prod/events` since 2026-10-16 22:44Z.
-#2804 and #2806 released kernel ecosystem ownership. `dev-events` and
-`prod-events` now belong to [ima-jin/events](https://github.com/ima-jin/events)
-checkouts at `~/dev/events` and `~/prod/events`. The kernel no longer builds
-or sets up events; app deployment follows that repo's runbook. Ports
-**3006/7006**, health **`/events/api/health`**, and the Caddy **`/events` prefix**
-are unchanged. Existing migrations, ownership metadata, schema and data are
-untouched by this source prune.
-
-**Cutover update (2026-10-20):** #2516 closed under the
-[operator ruling](https://github.com/ima-jin/imajin-ai/issues/2516#issuecomment-6294184437);
-future-event buy/QR smoke remains #2989. The former kernel-copy rollback is
-retired; events rollback uses its owned prior deployment ref with matching
-build/dependencies. The existing production reviewer gate remains; no SQL/data rollback.
-See [deploy/README.md](../deploy/README.md#events-rollback).
-
-The kernel reaches corpus over HTTP via `CORPUS_SERVICE_URL`
-(`apps/kernel/.env.example`) — its `localhost` default is only correct when
-kernel and corpus are colocated on the same host; point it at gx10 in prod.
-
-**Corpus release configuration (#3089/#3090):** no new owner-DID environment
-variable exists. GitHub owners resolve through the registry alias
-`(github, org:<lowercase owner>)`; explicit owner-issued corpus grants are
-required. `GITHUB_TOKEN`/`GH_TOKEN` and the `gh` CLI credential fallback are
-removed from the daemon. Select the resolved owner's vault-backed GitHub OAuth
-connector on `/auth/corpus`; existing sources need an explicit connector ref.
-Keep the credential-bearing internal HTTP transport private or use TLS.
-Deploy the kernel resolver before the daemon and run the separately authorized,
-signed owner migration only after backups and stopping writers. See the
-[corpus runbook](../apps/corpus/README.md); source changes do not prove a prod migration.
-
-**SSH deploy and inference updater:** the reusable
-[vault SSH action](deploy/vault-ssh-deploy.md) uses public policy variables
-`KERNEL_URL`, `VAULT_SSH_CA_ID`, `VAULT_SSH_GRANT_ID`, `DEPLOY_KNOWN_HOSTS`,
-GitHub's ephemeral OIDC and an in-memory job key, not a new long-lived deploy
-secret. Host trust/principal policy must be installed separately for each target.
-The [passthrough systemd updater](../deploy/infer-passthrough/README.md) documents
-`INFER_UPDATE_REPO`, `INFER_UPDATE_USER`, live/candidate ports and the optional
-GitHub credential file. Its runtime `/etc/imajin/infer-passthrough.env` is
-separate from the updater configuration and kernel `.env.local`. Promotion needs
-exact-SHA production evidence and mint-backed health. Neither runbook is a claim
-that a live host was installed by this sweep.
-
-**Session boundary (#1069 phase 2):** host-only by default on each kernel
-host; `SESSION_COOKIE_SCOPE=domain` on that kernel process is the rollback.
-No mass logout: legacy cookies migrate on the next session write. Same-origin
-path-proxied apps still receive Cookie until phase 3 ops/Caddy or Path work.
-See [cookie isolation](security/cookie-isolation.md). The production ecosystem
-file retains obsolete split-service entries (documented in deploy/README.md);
-they do not establish a cross-host sign-in requirement.
-
-### pm2 Naming
-
-- **`prod-*` prefix** = production in the recorded ecosystem (kernel: `prod-jin`).
-- **`dev-*` prefix** = development (kernel: `dev-jin`, corpus: `dev-corpus`).
-- Extracted app processes are owned by their repo/runbook. Do not assume a bare
-  name or add them back to the kernel ecosystem; see [deploy posture](ops/DEPLOY-POSTURE.md).
-
-## Shared Packages
-
-| Package | Purpose |
-|---------|---------|
-| `@imajin/auth` | Ed25519 signing, verification, DID creation |
-| `@imajin/db` | Database layer (postgres-js + drizzle-orm) |
-| `@imajin/config` | Shared configuration |
-| `@imajin/ui` | Shared UI components (NavBar, Footer, dark theme) |
-| `@imajin/input` | Input components (emoji, voice, GPS, file upload) |
-| `@imajin/media` | Media browser & asset display components |
-| `@imajin/fair` | .fair attribution (types, validator, FairEditor, FairAccordion) |
-| `@imajin/onboard` | `<OnboardGate>` — shared anonymous → soft DID onboarding flow |
-| `@imajin/email` | Email sending (SendGrid) + templates + QR generation |
-| `@imajin/trust-graph` | Trust graph queries (connection checks) |
-
-## Environment Variables
-
-Each service has a `.env.local` file for its current bootstrap/non-secret configuration and any not-yet-migrated credentials. App-declared vault credentials are held in memory after approved provisioning, not written back into this file. Common variables in existing deployments:
-
-| Variable | Description | Example |
-|----------|-------------|---------|
-| `DATABASE_URL` | Postgres connection string (app vault adoption is follow-up work) | `FAKE_DATABASE_URL_NOT_A_CONNECTION_STRING` |
-| `AUTH_SERVICE_URL` | Auth service base URL | `http://localhost:3000/auth` |
-| `PAY_SERVICE_URL` | Pay service base URL | `http://localhost:3000/pay` |
-| `CONNECTIONS_SERVICE_URL` | Connections service URL | `http://localhost:3000/connections` |
-| `PROFILE_SERVICE_URL` | Profile service URL | `http://localhost:3000/profile` |
-| `NEXT_PUBLIC_SERVICE_PREFIX` | URL scheme prefix | `https://jin.imajin.ai/` (prod) or `https://dev-jin.imajin.ai/` (dev) |
-| `NEXT_PUBLIC_DOMAIN` | Base domain | `imajin.ai` |
-| `NEXT_PUBLIC_BASE_URL` | Service's own base URL | `http://localhost:3006` |
-| `APP_URL` | Kernel's public origin for server-side browser redirects (runtime, not build-inlined — origin only) | `https://jin.imajin.ai` |
-
-**⚠️ Service-to-service URLs must come from env vars — never hardcode URLs.**
-
-Every app that uses env vars should have a matching `.env.example` file.
-### Operator-supplied app secrets (#2821)
-Registered apps can declare `{"name":"DATABASE_URL","kind":"operator-supplied"}` in `imajin.app.json`, with names/kinds only and no values. An operator enters a value through the masked `/jin` App secrets control, then countersigns its pending set/rotate proposal. Staging seals the input; pending/rejected/expired values are not app grants. Cards, metadata, audit and error surfaces never echo the input. Manifest sync alone cannot generate an operator value or make the app ready to boot.
-For an already-claimed app, **Sync manifest secrets** appends only new declaration slots under
-a countersigned approval; no identity/key/claim change, removal, kind change, value generation
-or grant occurs. New random slots need separate signed **Generate** (refused after any prior
-grant history); operator-supplied slots need separate masked **Set** and countersign.
-This requires no new environment variable or re-provisioning (#3124).
-The app must adopt the SDK's `createVaultBoot` boundary: load vault credentials, install typed server-only in-memory config, then dynamically import/start the application. DB modules that read `DATABASE_URL` at module initialization must use `boot.getConfig().DATABASE_URL`, not `process.env`. A static DB/server import before the fetch is not safe. See the [author boot example](app-self-secrets-author.md#pre-import-boot-boundary-for-database-consumers) and [operator approval/restart guide](app-self-secrets-operator.md).
-Adoption order, with a separate reviewed change and coordinated restart per app/environment:
-1. events, coffee, learn, market, links: **`DATABASE_URL` first**.
-2. events: `WEBHOOK_SECRET`, `SMTP_PASSWORD`; fixready/karaoke/scorecard: `SESSION_SECRET`; xprize: `APP_PRIVATE_KEY`, `SESSION_SECRET`, legacy `PAY_SERVICE_API_KEY`; dykil: `LEGACY_DATABASE_URL`.
-3. Development coffee/learn/market: `SESSION_SECRET`; development learn/market: `WEBHOOK_SECRET`. Coffee's `WEBHOOK_SECRET` is vestigial and explicitly excluded.
-The xprize pay-key inventory does not restore the kernel's retired shared pay key; inspect the standalone legacy consumer and prefer current scoped app-service tokens (below). Rotation/import must be coordinated with external providers; a vault change does not modify a database account. Running processes keep their loaded values until restart; rotating session signing material signs users out after restart.
-This is the supported rail and follow-up inventory, not a claim that current env files or apps have migrated. No server, env file, deploy or standalone repository is changed by #2821. Do not remove a required env value until that app has the released SDK, a refactored import graph, approved usable vault material and a verified restart. SDK/package versions are changed only by the normal reviewed Release workflow, never by the feature PR; #2260 remains separate.
-### Scoped pay callers (#2735)
-
-Pay has no shared service API key. Remove the retired pay-key entry from existing kernel and
-app `.env.local` files and host/CI secret stores; setup no longer generates it and check-env
-uses the key-free `.env.example` manifests. No new environment variables are required.
-
-Registered apps use their existing app signing key and app-service token provider. Operators
-must approve `pay:refund` (refund only this app's payments) and `pay:charge-pledges` (create
-app-bound pledge setups and charge only those setups), alongside `pay:settle` where needed,
-through the countersigned `apps:service-scopes` card. Deploy the kernel contract before
-migrated callers. Pledge setup additionally forwards the user's session Cookie; charge requests
-name the recorded `setupIntentId`. Legacy unbound pledges require a new user-confirmed setup.
-Emission is kernel-internal and invoked in-process. Topup routes require the user's session
-Cookie; `/pay/api/balance/topup` aliases the existing Stripe checkout and can target only
-that user's own DID. It returns a checkout URL/session id and pending transaction, never a
-direct credit from caller amounts. Stripe confirms the receipt before MJN is credited;
-EMT topups remain pending until the incoming payment is matched.
-
-### check-env annotations (#2246)
-
-`scripts/check-env.ts` validates every service's `.env.local` against its
-`.env.example` before a build (`scripts/build.sh`'s pre-flight step). By
-default every key in `.env.example` is **required** — missing it from
-`.env.local` is a hard error. Comment annotations, placed on the line
-directly above a `KEY=value` line, change that:
-
-| Annotation | Missing from `.env.local` | Set in `.env.local` |
-|------------|---------------------------|----------------------|
-| `# optional` | OK (grouped into one warning per service) | normal |
-| `# vault-sourced: <reason>` | OK, silent (fetched at boot instead) | WARN — "deprecated hand-provisioned value present; remove after rotation" |
-| `# deprecated: <reason>` | OK, silent | WARN with `<reason>` |
-| _(none)_ | **ERROR** | normal |
-
-The former monorepo events app-identity exceptions and their single-use annotation
-parser were removed with its source in #2517. Standalone events validates its
-configuration in its own repository; kernel check-env selects only services with
-a local workspace manifest and does not require an events `.env.local`.
-
-```
-# vault-sourced: fetched at boot via loadFromVault (#2243), do not set locally
-CORPUS_DID_PRIVATE_KEY=
-```
-
-Every `apps/*/.env.example` documents this table's short form at the top of
-the file. See `apps/corpus/.env.example` and `apps/kernel/.env.example` for
-the fullest set of examples (rotation-grace-window keys, vault-fetched
-service identity, a one-shot re-pin flag).
-
-This is what let corpus's `.env.local` shrink from a full set of
-hand-provisioned secrets down to `PORT` + `NODE_ENV` + the one bootstrap
-delegation-grant pointer (`CORPUS_VAULT_GRANT_ID`) plus that grant's small
-bootstrap identity (`CORPUS_VAULT_BOOTSTRAP_DID` / `_PRIVATE_KEY`) — the real
-signing keypair itself is minted in the vault and fetched at boot, never
-hand-copied onto the host (#2241/#2243).
-
-### Internal generated secrets (#2245)
-
-A third secret state, alongside hand-set and vault-sourced-fetched-at-boot:
-**granted**. `missing → granted (vault, signed, purpose-bound, unread) →
-loaded (fetched in-memory + one deferred ack)`. What ever touches an env
-var, CI log, or `.env.example` is the grant reference (or nothing at all)
-— never the secret value itself.
-
-This applies to secrets with a **single in-process consumer** (never
-fanned out to another service) — e.g. the foreign-principal-stub pepper
-(`kernel.foreign-principal-pepper`, replacing the old
-`FOREIGN_PRINCIPAL_STUB_SECRET` env var). The ruling (Ryan, 2026-09-22, via
-#2245):
-
-> Internal generated secrets don't need a human to *exist* — they need a
-> human to *replace or destroy* them. On first boot, the kernel looks up a
-> static-secret grant for the purpose, self-granted to its own node DID;
-> if none exists, it generates one in-process, seals + self-grants it, and
-> emits exactly one mechanical `vault.secret.generated` attestation
-> binding the purpose/grantId/content hash — never the bytes. Human
-> countersign (canvas card, #2084 roles) is reserved for import / rotate /
-> revoke, never for this self-provisioning path.
-
-This is distinct from the `# vault-sourced:` annotation above, which
-describes a secret fetched at boot from a grant something else (an
-operator, another service) already created. A self-provisioned internal
-secret has no annotation at all in `.env.example` — the var is deleted
-entirely, since check-env has nothing to validate once no human ever sets
-it. See `apps/kernel/src/lib/vault/internal-secret.ts` for the
-implementation (generate-vs-fetch decision, the provisioning-claim race
-between two boots, and the rotation seam a future rotate card can build on
-without changing the "current grant" lookup).
-
-### Shared (cross-service) internal secrets (#2245, second target)
-
-The self-provisioning story above is for a secret with a **single**
-in-process consumer. `ATTESTATION_INTERNAL_API_KEY` (used by corpus to
-forward ingestion attestations to the kernel's `POST
-/api/attestations/internal`, checked by
-`apps/kernel/src/lib/auth/require-internal-api-key.ts`) has **two**:
-the kernel itself (verifier) and corpus (external caller). The ruling's own
-words draw the line exactly here:
-
-> a shared, cross-service secret needs a human to countersign
-> import/rotate/revoke, but an internal secret with a single in-process
-> consumer... doesn't need a human to *exist* — only to be replaced or
-> destroyed.
-
-So existence is still fully automatic (the kernel self-provisions the value
-exactly like any other internal secret, via `getInternalSecret`), but
-granting the SAME secret to the second party is a deliberate, operator-run
-step — `apps/kernel/src/lib/vault/shared-internal-secret.ts`'s
-`grantInternalSecretTo`, invoked via
-`scripts/grant-attestation-internal-api-key.ts <corpusBootstrapDid>`, once
-per corpus deployment. It reuses the field's EXISTING wrapped key material
-(no re-seal, see that module's docblock) rather than generating a second
-value, so the kernel and corpus always hold the exact same bytes.
-
-Corpus fetches it at boot the same way it already fetches its own signing
-keypair (#2243's `loadFromVault`), reusing its EXISTING
-`CORPUS_VAULT_BOOTSTRAP_DID`/`_PRIVATE_KEY` identity — no new bootstrap
-identity, no new env var. Unlike a fixed `CORPUS_VAULT_GRANT_ID`, this
-secret's grant id is not known ahead of time and CHANGES on rotation, so
-corpus discovers the CURRENT active grant for the purpose dynamically at
-every boot instead (`loadFromVault`'s `resolveGrantByPurpose`,
-`packages/auth/src/vault-client.ts`). Rotation is therefore revoke + mint +
-re-grant, with no file edit on either side — both processes just pick up
-the new value on their next boot.
-
-`ATTESTATION_INTERNAL_API_KEY` carries NO `.env.example` line on either
-side anymore (kernel or corpus) — same "deleted entirely" posture as a
-single-consumer internal secret. It is **vault-only** (#2353 step 4): the
-deprecated hand-set env fallback was removed from
-`require-internal-api-key.ts`, corpus's `attestation-key.ts`, and
-`packages/auth` (`require-auth.ts`, `session.ts`, `require-app-auth.ts`,
-`internal-post.ts`). A hand-set `ATTESTATION_INTERNAL_API_KEY` is ignored; a
-service without the vault value fails closed with an error log (kernel
-routes 401, act-as validation denies, internal posts are skipped). The
-kernel itself hands its vault-resolved value to `@imajin/auth` at boot
-(`provideInternalApiKey`, `apps/kernel/instrumentation.ts`).
-
-### Rotate vs. revoke an internal secret (#2354, #2446, #2582)
-
-Two operator actions, one per intent. Both are code-level today
-(`apps/kernel/src/lib/vault/`); neither needs a file edit or a hand-set env var.
-
-| | Rotate | Revoke |
-|---|---|---|
-| Function | `rotateAndStore(field, value)` → `rotateInternalSecret` (`internal-secret-rotate.ts`); the /admin/vault Rotate action | `revokeInternalSecret(purpose)` (`internal-secret-revoke.ts`) |
-| Intent | Replace the value and keep everyone working | Withdraw the secret outright |
-| Self-grant | Replaced, purpose kept | Revoked, key material erased |
-| `internal_secret_provisions` row | Kept, repointed at the new grant | Deleted, in the same transaction |
-| External grantees (e.g. corpus) | Re-issued on the new key, terms carried forward | Untouched — revoke an external grantee on its own with `revokeStaticSecretGrant` |
-| Next `getInternalSecret(purpose)` | Resolves the rotated value, no restart | Re-provisions a NEW generated value (as on first boot) |
-
-**Rotate** when you want a new value (suspected leak, scheduled rotation) and
-the consumers must keep working: the operator supplies the value, the kernel
-re-issues each external grantee on the new key.
-
-**Revoke** when the secret should stop being usable under its current value
-and you accept a fresh one taking its place — e.g. decommissioning, or
-recovering from a compromise where you do not want to choose the replacement.
-The self-grant revoke and the provisions-row delete commit together, so a
-revoke can never strand the row and break `getInternalSecret` on next boot
-(#2354). Every external grantee still holds the OLD wrapped key and no longer
-matches the kernel's new value: the re-provision logs an ERROR naming them, and
-an operator must re-grant (`grantInternalSecretTo`) or revoke each. On Tier 1
-revoke is refused before anything is written (as rotate is), because the node
-cannot self-grant to re-provision. Only the calling process's cached value is
-dropped; other running processes keep theirs until restart.
-
-### Service bootstrap identities (#2353, #2442)
-
-An in-repo service that fetches a kernel-internal credential from the vault at
-boot authenticates with its own bootstrap identity:
-`<SVC>_VAULT_BOOTSTRAP_DID` / `_PRIVATE_KEY` in `apps/<svc>/.env.local`
-(the kernel's own `KERNEL_CRON_VAULT_BOOTSTRAP_*` pair serves its cron scheduler,
-which is granted the cron secret instead of the attestation key). The pair stays **required**
-(no `check-env` annotation) — but nobody mints it by hand any more.
-`scripts/provision-service-bootstrap.mjs` does, and the deploy runs it:
-
-- **Where:** `deploy-prod.yml` and `deploy-dev.yml` run
-  `node --env-file=apps/kernel/.env.local scripts/provision-service-bootstrap.mjs --all --env <env>`
-  after dependencies are installed and **before check-env** (which
-  `build-changed.sh` → `build.sh` runs first). In prod the whole job sits behind
-  the `production` environment approval, so the gate tap is the human
-  countersign from #2245 for these grants. A provisioning failure fails the
-  deploy before any restart.
-- **Env:** the kernel's own — `DATABASE_URL` and `AUTH_PRIVATE_KEY` from
-  `apps/kernel/.env.local` (loaded with `--env-file`, exactly how pm2 starts
-  `prod-jin`), and `VAULT_PATH` from the env's `deploy/ecosystem.*.config.js`
-  (`--env`), so the grant lands in the same vault file the kernel reads.
-- **Discovery:** services are found by scanning `apps/*/.env.example` for
-  `<SVC>_VAULT_BOOTSTRAP_DID` — add the two keys to a new service's
-  `.env.example` and the next deploy provisions it. A pair annotated
-  `# optional` there (corpus) is skipped, and so is a service with no
-  `apps/<svc>/.env.local` on that host (creating one would turn `check-env`'s
-  warning into an error for a service that isn't deployed there).
-- **Per service:** both keys present and non-empty → left alone, never rotated
-  or overwritten. Exactly one present, or either empty → the run fails with a
-  clear error and changes nothing (fix the file by hand). Both absent → mint an
-  Ed25519 keypair + `did:imajin:*` DID (`@imajin/auth`), register it as a kernel
-  identity (the vault fetch authenticates against `auth.identities`), and
-  append the pair to `.env.local` atomically (temp file + rename, mode 0600).
-- **Grant:** for **every** service whose pair exists — minted now or not — the
-  `kernel.attestation-internal-api-key` grant is ensured through the same code
-  path as `scripts/grant-attestation-internal-api-key.ts`. It is idempotent, so
-  a crash between the write and the grant self-heals on the next run.
-- **Output:** one line per service, `service · did · minted|existing · grantId`
-  (also in the run's step summary). A private key is never printed or logged.
-
-Local dev: `scripts/setup-local.sh` runs the same script with `--all` after
-migrations. To provision (or re-check) by hand:
-`node --env-file=apps/kernel/.env.local scripts/provision-service-bootstrap.mjs --all`
-(or pass a single in-repo `<service>`, e.g. `kernel`).
-
-#### Standalone apps in their own repo (#2712)
-
-An app that was pruned from this repo (links, #1986) has no `apps/<svc>/` here,
-so `--all` and `<service>` never see it. Point the same script at its checkout
-instead, from the kernel checkout on the same host, with the same env as the
-deploy (kernel `.env.local` via `--env-file`, `VAULT_PATH` via `--env`):
-
-```bash
-# links is checked out next to the kernel (~/dev/imajin-ai + ~/dev/links):
-node --env-file=apps/kernel/.env.local scripts/provision-service-bootstrap.mjs --app links --env dev
-# or any checkout path:
-node --env-file=apps/kernel/.env.local scripts/provision-service-bootstrap.mjs --service-dir ~/dev/links --env dev
-# validate only (nothing minted, written, registered or granted, no database):
-node scripts/provision-service-bootstrap.mjs --app links --dry-run
-```
-
-- `--app <slug>` is `--service-dir <kernel checkout>/../<slug>` (the slug is one
-  path segment: `[a-z][a-z0-9-]*`). `--service-dir <path>` takes any checkout.
-  Pass exactly one of `--all`, `<service>`, `--service-dir`, `--app`.
-- **Contract:** the checkout's `.env.example` must declare a required
-  `<SVC>_VAULT_BOOTSTRAP_DID` (links: `LINKS_VAULT_BOOTSTRAP_DID` /
-  `_PRIVATE_KEY`), exactly as the kernel's apps do; the app's name is the
-  directory name (the slug for `--app`).
-- **Same flow, one command:** mint + register the identity, write the pair to
-  `<checkout>/.env.local` (temp file + rename, mode 0600), then ensure the
-  `ATTESTATION_INTERNAL_API_KEY` grant — no separate
-  `grant-attestation-internal-api-key.ts` run, no symlink into `apps/`, no
-  hand-made keys. It is idempotent and never rotates an existing pair.
-- **Differences from the kernel's own apps:** the checkout's `.env.local` must
-  already exist (you named the app, so a missing file fails the run instead of
-  being skipped — create it from the app's `.env.<env>.example`, mode 0600), and
-  an external app always gets the attestation key, never the kernel cron secret,
-  whatever its directory is called.
-- **Output:** `service · did · minted|existing · grantId`, nothing else. The
-  private key never reaches stdout, stderr, error messages or
-  `$GITHUB_STEP_SUMMARY`; a half-written pair (one key, or an empty one) exits
-  non-zero and changes nothing.
-- Restart the app afterwards so it fetches the key at boot (links:
-  `scripts/deploy.sh <env>` or `pm2 startOrReload`; see its `docs/DEPLOY.md`).
-
-The entrypoint runs as ESM under plain `node` (#2483), like `scripts/migrate.mjs`:
-run through `tsx` the kernel's TypeScript compiles to CommonJS, which cannot load
-ESM-only dependencies such as `@ipld/dag-cbor`. `--dry-run` validates every
-`.env.local` pair and loads every module a real run imports, without minting,
-writing, granting or contacting the database; CI's "Provisioning entrypoint" job
-runs the deploy command plus `--dry-run` against a production-style install.
-
-### Per-env deploy targets (#2246)
-
-A service with no `.env.local` at all is only a **hard error** when it's
-actually part of that environment's pm2 deploy target; otherwise it's a
-warning. "Deploy target" is read straight from `deploy/ecosystem.{dev,prod}.config.js`'s
-`cwd` entries (the same file `build.sh`'s ecosystem-sync step and the deploy
-workflows already treat as canonical) — not a separate manifest. This is why
-corpus's missing `.env.local` is an error in dev (it's in
-`ecosystem.dev.config.js`) but only a warning in prod (removed from
-`ecosystem.prod.config.js`; see the corpus host note above and
-`deploy/README.md`).
-
-### VAULT_PATH — per-env vault file split (#2357)
-
-`VAULT_PATH` is the absolute path to the kernel's on-disk sealed-secrets
-vault file (`FileVaultRepository` — owner GitHub OAuth tokens, connector
-config, Warp API keys sealed via `seal_key`, etc). It is **not** a key in
-`apps/kernel/.env.example` and must not be set in `apps/kernel/.env.local`
-(#2487): the pm2 ecosystem config is its single source of truth. `check-env`
-reports a stray `VAULT_PATH` in `.env.local` as an extra key, and the
-pre-deploy check below fails the deploy when it disagrees with the ecosystem.
-
-| Environment | pm2 process | `VAULT_PATH` |
-|-------------|--------------|--------------|
-| Development | `dev-jin` | `~/.imajin/vault.dev.json` |
-| Production | `prod-jin` | `~/.imajin/vault.prod.json` |
-
-Both values are set directly in `deploy/ecosystem.{dev,prod}.config.js`'s
-`env` block (not `.env.local`), mirroring how `NODE_ENV` is already pinned
-there. pm2 env beats the kernel's `--env-file`, so a restart from the
-ecosystem file alone always resolves the same vault file. A literal leading `~` is expanded to the process's home directory at
-runtime (`apps/kernel/src/lib/vault/vault-path.ts`) — pm2 ecosystem configs
-are version-controlled and can't embed a concrete home directory. The kernel
-refuses to start in production when `VAULT_PATH` is unset (see
-`instrumentation.ts#register()`), rather than silently falling back to the
-shared `~/.imajin/vault.json` default used outside production.
-
-#### One source of truth, checked before every deploy (#2487)
-
-The deploy's provisioning step (#2442) runs as
-`node --env-file=apps/kernel/.env.local scripts/provision-service-bootstrap.mjs`,
-and `--env-file` values beat the ecosystem fallback. A `VAULT_PATH` in
-`.env.local` therefore made the provisioner write into one vault file while the
-running kernel (pm2 env) read another, and the provisioner refused to continue
-on the empty one. `deploy-prod.yml` / `deploy-dev.yml` now run
-`scripts/check-vault-path-consistency.mjs` first. It fails the deploy, naming
-both paths, when any of these disagree:
-
-- the ecosystem config's `VAULT_PATH` for the kernel app (`prod-jin`/`dev-jin`),
-- `VAULT_PATH` in `apps/kernel/.env.local` or the deploy shell (what the
-  provisioner would use),
-- `VAULT_PATH` in the **running** kernel's pm2 env (read from `pm2 jlist`;
-  skipped when the kernel is not running, e.g. a first deploy).
-
-A `.env.local` value that merely matches the ecosystem is a warning. The check
-prints paths and verdicts only (also to the step summary): it never opens the
-vault and reads nothing from `pm2 jlist` but `VAULT_PATH`.
-
-#### Fail-loud vault file (#2412)
-
-A configured `VAULT_PATH` must point at a file that exists. v0.8.8 shipped
-`VAULT_PATH=~/.imajin/vault.prod.json` while only `vault.json` existed on the
-box; the vault silently loaded as empty and every sealed secret resolved to
-`undefined` for ~9h while `/api/health` was green. Now:
-
-- **Boot** (`instrumentation.ts#register()`): the kernel loads the vault and
-  logs `vault: loaded N entries from <path>`. A missing configured file makes
-  boot throw, so pm2 crash-loops loudly instead of serving an empty vault.
-- **`/api/health`** has a `vault` block: `status` (`ok` / `empty` / `error`),
-  `path`, `entryCount`, `lastLoadedAt`, `bootstrapped`. Never field names or
-  values. `error` always degrades the aggregate; `empty` degrades it in
-  production (zero sealed entries is a red flag there).
-- **`check-env`** (run by `scripts/build.sh` before pm2 restarts) fails when the
-  kernel is checked and `VAULT_PATH` (process env, else the env's
-  `deploy/ecosystem.*.config.js`) names a missing file.
-- **First-run bootstrap is explicit:** set `VAULT_ALLOW_BOOTSTRAP=1` (or `true`)
-  in the kernel's env to start a brand-new vault at a path that does not exist
-  yet. The kernel then loads an empty store, warns on every boot while the flag
-  is set, and creates the file on the first seal. `check-env` downgrades the
-  missing file to a warning. Unset the flag once the file exists. With no
-  `VAULT_PATH` at all (non-production local dev) the default
-  `~/.imajin/vault.json` still bootstraps implicitly, as before.
-
-The split matters because Postgres is already isolated per environment (a
-separate `imajin_prod`/`imajin_dev` database and `DATABASE_URL` each), but
-until #2357 the vault was not: `dev-jin` and `prod-jin` both defaulted to the
-same `~/.imajin/vault.json`, so a dev process could read — and, on any
-re-seal, silently overwrite — prod-sealed material. Splitting the file is
-the same trust boundary Postgres already draws, applied to the one piece of
-per-environment state that was missing it.
-
-### Kernel cron secret — scheduled jobs (#2550)
-
-There is **no `CRON_SECRET` env var**. The bearer token for every
-`/api/cron/*` route and `GET /api/admin/cron-status` is an internal generated
-secret (#2245 pattern, purpose `kernel.cron-secret`): generated in the vault, one
-value per environment (each env has its own vault file), never pasted anywhere.
-The kernel reads it in-process (`getInternalSecret`, memory only). The
-`prod-kernel-cron` / `dev-kernel-cron` scheduler fetches it at boot with
-`loadFromVault`, authenticating as its own bootstrap identity
-(`KERNEL_CRON_VAULT_BOOTSTRAP_DID` / `_PRIVATE_KEY` in the kernel's
-`.env.local`), and sends one deferred ack on first use.
-
-That identity is provisioned like every other service's (see "Service
-bootstrap identities" above): `scripts/provision-service-bootstrap.mjs` mints it
-and grants it the cron secret on the deploy, after the `production` gate tap and
-before `check-env`. The routes still fail closed (503 + WARN when the vault
-cannot supply the secret, 401 on a wrong bearer); a missing identity or grant
-fails the deploy with an error that points at the vault/provisioning step, not at
-`.env.local`. Rotating the secret is a /jin card. See `deploy/README.md` for the
-scheduler.
-
-## Deployment
-
-See [deploy/README.md](../deploy/README.md) for the deployment pipeline and
-[deploy posture](ops/DEPLOY-POSTURE.md) for evidence and approval boundaries.
-
-## Database Migrations
-
-```bash
-# On server — dev (runs all services)
-cd ~/dev/imajin-ai
-./scripts/migrate.sh
-
-# On server — single service
-./scripts/migrate.sh auth
-
-# On server — prod (be careful!)
-cd ~/prod/imajin-ai
-./scripts/migrate.sh
-```
-
-> **⚠️ Never use `drizzle-kit push`.** See DEVELOPER.md for migration discipline rules.
-
-## GPU Node (imajin-ml)
-
-ML/compute services run on a dedicated GPU node (`192.168.1.124`), not the ProLiant.
-
-| Service | Port | Model | Purpose |
-|---------|------|-------|---------|
-| Whisper | 8765 | large-v3 (CUDA float16) | Speech-to-text transcription |
-| Ollama | 11434 | qwen2.5-coder:7b, nomic-embed-text | Code refactoring, embeddings |
-
-The kernel service relays audio to the GPU node over LAN for transcription. No public subdomain for the GPU node — internal only.
-
-- **Repo:** [ima-jin/imajin-ml](https://github.com/ima-jin/imajin-ml)
-- **Server path:** `~/imajin-ml`
-
-## Local Development
-
-To develop locally against the server DB, SSH tunnel:
-```bash
-ssh -f -N -L 5432:127.0.0.1:5432 jin@192.168.1.193
-```
-
-Then use `localhost:5432` in your `.env.local`.
-
-## Config Files
-
-| File | Location |
-|------|----------|
-| Caddy | `/etc/caddy/Caddyfile` |
-| pm2 prod | `~/prod/ecosystem.config.js` |
-| pm2 dev | `~/dev/ecosystem.config.js` |
-| Env files | `.env.local` in each app directory |
+# Environment configuration
+
+The kernel is one application with path-based services, not a set of independently
+running auth/pay/profile servers. The recorded deployment uses Caddy and pm2;
+configuration in git is not evidence that a host has been deployed or migrated.
+See [deploy posture](ops/DEPLOY-POSTURE.md) and the
+[deployment runbook](../deploy/README.md) before changing a host.
+
+## Kernel, apps and internal services
+
+`deploy/ecosystem.dev.config.js` and `deploy/ecosystem.prod.config.js` are the
+version-controlled pm2 definitions. The kernel processes are `dev-jin` on port
+3000 and `prod-jin` on port 7000. Their cron schedulers are separate processes.
+The production file also retains obsolete split-service entries; they do not
+establish live services or justify configuring those ports as kernel upstreams.
+
+Events, coffee, dykil, links, learn and market run from independently owned
+`ima-jin/<app>` repositories and use their own deployment runbooks. Do not add
+them back to the kernel's workspace or ecosystem to make setup pass. Web-app port
+ranges conventionally use 3xxx for dev, 7xxx for prod, x100-x199 for Imajin apps
+and x400-x499 for client apps. Events retains its 3006/7006 assignment.
+
+Corpus is an internal HTTP daemon, not a public subdomain service. Dev corpus
+is recorded on the kernel host at 8013; production corpus runs on gx10 at 8003
+and is absent from the kernel production ecosystem. Set `CORPUS_SERVICE_URL` to
+the reachable private address; localhost is only correct when colocated. Keep
+credential-bearing internal HTTP private or use TLS. Corpus owns its SQLite
+store, registry-owner-DID partitioning and GitHub OAuth connector integration;
+see [its runbook](../apps/corpus/README.md).
+
+GPU services belong to [ima-jin/imajin-ml](https://github.com/ima-jin/imajin-ml),
+not the kernel ecosystem. Resolve actual host/model configuration there instead
+of relying on a copied LAN address or model inventory in this guide.
+
+## Database isolation
+
+Use a separate database and credential per environment. The recorded kernel
+names are `imajin_dev` and `imajin_prod`. Standalone applications own their
+schemas and may have their own databases; sharing a server does not authorize
+cross-owner reads. See [migration ownership](../migrations/OWNERSHIP.md).
+
+Set `DATABASE_URL` through protected local configuration, not source or commands
+containing a password. For remote development, use an authorized SSH tunnel and
+a dedicated development database. Do not point a local test runner at production.
+The shared `@imajin/db` client bounds pools, acquisition and statement deadlines;
+liveness probes use that same pool. Defaults and `DB_*` overrides are in the
+[database deadline runbook](../deploy/README.md#database-deadlines-and-pool-stall-reproduction).
+
+Use root SQL migrations through `scripts/migrate.mjs` or `scripts/migrate.sh`.
+Never use `drizzle-kit push`, reset a deployed database or delete migration rows.
+A fresh kernel uses the generated kernel baseline and post-cut files; existing
+DBs adopt it through the [baseline procedure](../migrations/BASELINE.md).
+
+## Configuration sources
+
+Each running service owns an untracked `.env.local` and a checked-in
+`.env.example`. Example files contain variable names, safe defaults and policy,
+never credentials. Use environment-derived URLs, not hardcoded service hosts.
+
+- `APP_URL` is the kernel's runtime public origin for browser redirects.
+- `AUTH_SERVICE_URL`, `PAY_SERVICE_URL`, `PROFILE_SERVICE_URL` and similar server
+  URLs address kernel service prefixes on the configured origin.
+- `NEXT_PUBLIC_*` values are browser-visible and may be built into assets; they
+  must never carry secret material. Local setup uses the consolidated kernel.
+- `SESSION_COOKIE_SCOPE` defaults to host-only. Same-origin path-proxied apps
+  still require the documented [cookie isolation](security/cookie-isolation.md)
+  controls; a host-only cookie is not path isolation.
+
+Registered-app integrations discover wire contracts through the owning service's
+live spec, such as [auth](https://jin.imajin.ai/auth/api/spec),
+[connections](https://jin.imajin.ai/connections/api/spec) or
+[pay](https://jin.imajin.ai/pay/api/spec). A spec link is not authorization.
+
+## Environment validation
+
+`scripts/check-env.ts` runs before builds and checks `.env.local` against
+`.env.example`. A missing required variable fails. A missing entire file is a
+hard error for an ecosystem deploy target; an undeployed workspace is a warning.
+Standalone repositories validate their configuration themselves.
+
+Place an annotation immediately above a variable to describe its handling:
+
+- `# optional`: absence is a grouped warning, not an error.
+- `# vault-sourced: <reason>`: absence is expected; a hand-set value warns that
+  it is deprecated and must be removed only after coordinated rotation/adoption.
+- `# deprecated: <reason>`: absence is expected; presence warns with that reason.
+- No annotation: the variable is required.
+
+## Vault path and bootstrap
+
+`VAULT_PATH` belongs in the pm2 ecosystem environment, not `.env.local`.
+Dev uses `~/.imajin/vault.dev.json`; prod uses `~/.imajin/vault.prod.json`.
+The runtime expands the leading tilde. Production refuses an unset path or a
+configured missing vault; an empty production vault degrades health.
+
+`scripts/check-vault-path-consistency.mjs` compares ecosystem, provisioning env
+and the running kernel's path before deploy. A mismatch fails; a redundant
+matching `.env.local` value warns. This prevents provisioning into one vault
+while the kernel reads another. It reads path metadata, not vault contents.
+
+For a genuinely new vault only, `VAULT_ALLOW_BOOTSTRAP=1` explicitly permits the
+missing file and warns until the first seal creates it. Remove that permission
+once the file exists. Do not enable it to silence a missing production vault.
+Health reports status, path, entry count and bootstrap metadata, never values.
+
+## Service identities and internal secrets
+
+`provision-service-bootstrap.mjs` discovers required service bootstrap pairs from
+`.env.example`, then ensures the appropriate vault grant after migrations and
+before check-env. Both keys present are preserved; a half-present/empty pair
+fails rather than overwriting identity. Neither key is printed.
+
+For in-repo services use `--all` or a service name; standalone checkouts use
+`--app <slug>` or `--service-dir <path>`. A standalone `.env.local` must already
+exist. `--dry-run` checks configuration and imports without minting, writing,
+granting or contacting the database. Production provisioning remains behind the
+existing deployment reviewer gate.
+
+Single-consumer generated internal secrets are purpose-bound, vault-held and
+resolved in memory. Initial generation is automatic; replacement/revocation
+needs the documented operator authority. Shared credentials need explicit grants
+to each external consumer, using that consumer's existing bootstrap identity.
+`ATTESTATION_INTERNAL_API_KEY` is vault-only; a hand-set env value is ignored.
+A missing vault credential fails closed instead of creating a shared-key fallback.
+
+The cron scheduler fetches purpose `kernel.cron-secret` with its
+`KERNEL_CRON_VAULT_BOOTSTRAP_*` identity; there is no `CRON_SECRET` env variable.
+Use the existing provisioning/rotation controls, not a copied bearer token.
+For node-root or internal-secret rotation, follow the
+[key roles and rotation runbook](security/node-key-roles-and-rotation.md).
+
+## App-owned secrets and restarts
+
+Apps declare secret names/kinds in `imajin.app.json`. Manifest sync adds slots
+only. Random values require signed Generate; existing/operator-supplied strings
+need masked Set and a separate human countersignature. Pending staging is not a
+grant. `createVaultBoot` loads approved values into typed server-only memory
+before dynamic DB/server imports; never backfill them into `process.env`.
+
+Adoption is per app/environment, not automatic. Do not remove a required env value
+until its consumer has adopted vault boot, has approved usable material and has
+passed a coordinated restart. A vault rotation does not change a provider account;
+running processes retain loaded values, and rotating session secrets can log users
+out. See the [author](app-self-secrets-author.md) and
+[operator](app-self-secrets-operator.md) guides for adoption inventory.
+
+Pay callers use scoped app-service tokens, not a shared pay API key. Approve
+only required service scopes; pledge setup also requires the user's own session
+and later charges must reference its recorded setup. Topups are pending rail
+payments, not direct caller-supplied credits. Check the live pay spec.
+
+## Deployment boundaries
+
+Use the reviewed Release and deploy workflows, not `git pull` on a production
+host. The [vault SSH action](deploy/vault-ssh-deploy.md) uses ephemeral job keys
+and OIDC with separately installed host trust. The
+[inference updater](../deploy/infer-passthrough/README.md) has its own protected
+runtime configuration and exact-SHA production-evidence checks. Those runbooks
+describe supported procedures, not proof that a particular host is configured.

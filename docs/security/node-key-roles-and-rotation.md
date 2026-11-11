@@ -1,13 +1,12 @@
 # Node key roles and rotation runbook (`AUTH_PRIVATE_KEY`)
 
-Issue #2081 (epic #2084). Prior art: #1400 (vault rotation sweep, two-phase),
-#1520 (prod-jin booted without `AUTH_PRIVATE_KEY` → silent dev-seed fallback),
-#1239 (custody option table), #513 (`key.rotated` attestation type — registered
-by this change).
-
 This is a runbook, not an authorization. **Executing a rotation against prod is
-an operator decision made separately from this document.** Hardware custody
-(secure element / TPM / Unit-as-custodian) is #1979 and out of scope here.
+an operator decision made separately from this document.** Hardware-backed custody is not supplied by this runbook.
+
+The [auth spec](https://jin.imajin.ai/auth/api/spec),
+[vault spec](https://jin.imajin.ai/vault/api/spec) and
+[Jin spec](https://jin.imajin.ai/jin/api/spec) describe request contracts.
+The ordered procedure below is mandatory operational context, not a route inventory.
 
 ## 1. Why one env var is a rotation problem
 
@@ -21,7 +20,7 @@ anyone outside the process can still verify what the old key produced.
 
 ## 2. Roles inventory
 
-Derived by `grep -rn AUTH_PRIVATE_KEY` over `apps/ packages/ scripts/ deploy/
+Find direct references to `AUTH_PRIVATE_KEY` under `apps/ packages/ scripts/ deploy/
 .github/ docs/ migrations/`, then following the indirect consumers the grep
 cannot see: `getNodeSigningIdentity()`, `getSealKey()`, `getNodeXPrivateKey()`,
 `getOwnerXPrivateKey()` (all in `apps/kernel/src/lib/vault/sealing.ts`). To
@@ -35,14 +34,14 @@ They are listed honestly in §7 rather than papered over.
 | Role | Consumers | What breaks on rotation | Who verifies the old key |
 |---|---|---|---|
 | **S1. Session / app / session-app / MFA-challenge JWTs** | `apps/kernel/src/lib/auth/jwt.ts` | Every outstanding token stops verifying at the swap: sessions (24 h), app and session-app tokens (10 min), MFA challenges (5 min). Users re-authenticate; apps re-mint. | Nobody, by design. The kernel verifies the current key only, and userspace services validate by calling the kernel (`AUTH_SERVICE_URL`), not against a pinned key. Short TTL bounds the damage; not covered by `key.rotated`. |
-| **S2. `CorpusAccessClaim`** | `apps/kernel/src/lib/kernel/corpus-access-claim.ts` (60 s TTL) | Corpus answers 401 to every claim until it trusts the new key. | Corpus, from its pinned key set (`apps/corpus/src/lib/kernel-trust.ts`). The kernel serves old + new in `GET /auth/.well-known/kernel-signing-key` while `AUTH_PREVIOUS_PUBLIC_KEY*` is set (#2244). Corpus reconciles its pin **only at boot**, and only adds the new key if the served set still shares a kid with the pin, so corpus must be restarted inside the grace window. |
-| **S3. Node-issued ("mechanical") attestations** | `emit-mechanical-attestation.ts` (`session.created`, `session.device.new`, `usage.*`, `registry.app.*`, `relay.peer`, `vault.*`, `access.*`, `apps.signing-key.claimed`, ...), `emit-recovery-attestation.ts`, `pay/payment-requests/attestations.ts`, `knock.ts` (`agent.external_identity`), `app/auth/api/attestations/internal/route.ts`, admin registry mutations, and `key.rotated` itself | Stored signatures stop verifying against `identities.public_key` as soon as that row carries the new key (runbook step 8). | Anyone who resolves the node DID's key (the node DID is `relay.relay_config.imajin_did`; see §2.5). The in-repo chain verifier (`lib/retrace/repository.ts`) now falls back to the `key.rotated` history (`verifyNodeSignatureAcrossKeyHistory`). Every other verifier must use `trustedPublicKeysAt` from `@imajin/auth/key-rotation` over a verified chain. |
+| **S2. `CorpusAccessClaim`** | `apps/kernel/src/lib/kernel/corpus-access-claim.ts` (60 s TTL) | Corpus answers 401 to every claim until it trusts the new key. | Corpus, from its pinned key set (`apps/corpus/src/lib/kernel-trust.ts`). The kernel serves old + new in `GET /auth/.well-known/kernel-signing-key` while `AUTH_PREVIOUS_PUBLIC_KEY*` is set. Corpus reconciles its pin **only at boot**, and only adds the new key if the served set still shares a kid with the pin, so corpus must be restarted inside the grace window. |
+| **S3. Node-issued ("mechanical") attestations** | `emit-mechanical-attestation.ts` (`session.created`, `session.device.new`, `usage.*`, `registry.app.*`, `relay.peer`, `vault.*`, `access.*`, `apps.signing-key.claimed`,...), `emit-recovery-attestation.ts`, `pay/payment-requests/attestations.ts`, `knock.ts` (`agent.external_identity`), `app/auth/api/attestations/internal/route.ts`, admin registry mutations, and `key.rotated` itself | Stored signatures stop verifying against `identities.public_key` as soon as that row carries the new key (runbook step 8). | Anyone who resolves the node DID's key (the node DID is `relay.relay_config.imajin_did`; see §2.5). The in-repo chain verifier (`lib/retrace/repository.ts`) now falls back to the `key.rotated` history (`verifyNodeSignatureAcrossKeyHistory`). Every other verifier must use `trustedPublicKeysAt` from `@imajin/auth/key-rotation` over a verified chain. |
 | **S4. Node-as-witness signatures for an identity** | `identity/[did]/sign/route.ts`, `chat/api/d/[did]/messages/route.ts` (`signMessagePayload`), `oauth/authorize` + `api/auth/authorize` + `api/auth/revoke` (`app.authorized` / `app.revoked`), `lib/auth/document-signatures.ts` | Old witness signatures stop verifying against the current node key. | **GAP.** `document-signatures.ts` verifies against the key currently in env only, so previously issued node-signed document signature tokens fail after rotation. Others resolve the node key as in S3. |
-| **S5. Kernel witness / publisher signatures (vault-derived node DID)** | `getNodeSigningIdentity()` users: `notify/operator-approvals-service.ts` (witness record on `operator.approval.decided`), `consent-requests`, `inference/consent`, `usage/billed/receipt`, `loops/cycle`, `warp/loop-emit`, `github`/`access`/`vault` `approvals-execution` | Same key, but signed under the vault-derived DID `did:imajin:<first 16 hex of pubkey>`, so the **DID itself changes**. Old witness records no longer verify against the current identity; the loops publisher DID changes. | The stored `operator.approval.decided` witness record is now verified against the `key.rotated` history by `lib/auth/verify-witness-record.ts` (#2684). Other in-process verifiers use the current key only (`loops/verify-publisher-signature.ts` at ingest) and remain a **GAP** until they adopt it. The operator countersign (#2082) is signed by the *operator's* key and is unaffected. |
+| **S5. Kernel witness / publisher signatures (vault-derived node DID)** | `getNodeSigningIdentity()` users: `notify/operator-approvals-service.ts` (witness record on `operator.approval.decided`), `consent-requests`, `inference/consent`, `usage/billed/receipt`, `loops/cycle`, `warp/loop-emit`, `github`/`access`/`vault` `approvals-execution` | Same key, but signed under the vault-derived DID `did:imajin:<first 16 hex of pubkey>`, so the **DID itself changes**. Old witness records no longer verify against the current identity; the loops publisher DID changes. | The stored `operator.approval.decided` witness record is now verified against the `key.rotated` history by `lib/auth/verify-witness-record.ts`. Other in-process verifiers use the current key only (`loops/verify-publisher-signature.ts` at ingest) and remain a **GAP** until they adopt it. The operator countersign is signed by the *operator's* key and is unaffected. |
 | **S6. FAIR manifests and settle receipts** | `lib/kernel/sign-fair-manifest.ts`, `lib/media/create-asset.ts`, `manifest-helpers.ts`, `content-signer.ts`; receipts: `lib/media/settle.ts`, `settle/confirm/route.ts`, `packages/fair/src/receipt.ts` | Receipts minted before the swap fail verification (streaming 24 h, other actions 30 d); buyers re-settle. `.fair.json` manifests on disk keep a signature by the old key. | **GAP.** Current key only. No re-sign sweep exists for manifests. |
 | **S7. DFOS content chain (federation)** | `lib/auth/dfos.ts` (`createAttestationEntry`), `packages/dfos/src/content-publish.ts` (uses `AUTH_PRIVATE_KEY` when `DFOS_PRIVATE_KEY_HEX` is unset) | New entries signed by the new key are rejected by relays/peers until the node's DFOS identity chain registers that key (a chain `update`, `updateIdentityChain` in `packages/dfos/src/bridge.ts`). This is the "re-announce" step. | Peers and the relay, via the DFOS chain, which keeps key history natively. `key.rotated` is not needed for this role. If the node has no DFOS identity chain, `createAttestationEntry` already skips with a warning and there is nothing to re-announce. |
 
-S2 also covers detached kernel-to-app callback signatures (#2798):
+S2 also covers detached kernel-to-app callback signatures:
 `apps/kernel/src/lib/auth/kernel-webhook.ts` signs payment, subscription and
 bus settlement callbacks with the same published key. `@ima-jin/auth`
 `verifyKernelWebhook` caches verified publication sets for a bounded TTL, requires
@@ -50,7 +49,7 @@ overlap by both kid and public key, and accepts currently published non-expired
 keys during grace and binds each delivery to its recipient app DID. Unlike corpus's boot reconciliation, apps do not need a restart
 or a key-file/env edit during an overlapping rotation. See `kernel-webhooks.md`.
 
-Gateway deployment-read delivery (#3190) uses S5 for the short-lived,
+Gateway deployment-read delivery uses S5 for the short-lived,
 recipient/purpose/repository-bound encrypted response witness and S3 for
 persisted fetched/acked provenance. `vault/deployment-read.ts` reuses D2/D3
 through the existing imported-secret grant fetch. The gateway verifies a pinned
@@ -60,7 +59,7 @@ remain excluded from the legacy plaintext sweep and must retain their
 human-authorized import custody. The gateway's existing app signing identity is
 independent of the node root and is not a new node-key consumer.
 
-S3 also covers DNS domain evidence (#2902):
+S3 also covers DNS domain evidence:
 `apps/kernel/src/lib/domains/signing.ts` verifies the configured node DID's
 registered public key before using `AUTH_PRIVATE_KEY` for DNS verification
 and revocation attestations. Historical domain evidence needs the same
@@ -69,7 +68,7 @@ original signed verification record rather than silently re-signing it.
 Imajin-issued subdomain evidence instead uses the pinned organization's own
 vault-granted key, never the node key. Node rotation still requires preserving
 that vault grant through the custody steps below.
-Group signing-key custody (#2934) uses
+Group signing-key custody uses
 `apps/kernel/src/lib/vault/group-key.ts`: it refuses missing node signing
 configuration rather than accepting the deterministic dev fallback, and reuses
 D2/D3 custody plus S3 audit preparation. Its `vault-group-key:*` fields are
@@ -79,7 +78,7 @@ countersign fresh custody from the group's original server-encrypted key.
 Keep the independent group-encryption secret unchanged. If that source cannot
 be authenticated, stop: do not export a seed or invent a replacement.
 
-SSH CAs (#3063) use `apps/kernel/src/lib/vault/ssh-ca.ts`: the CA Ed25519
+SSH CAs use `apps/kernel/src/lib/vault/ssh-ca.ts`: the CA Ed25519
 key is independently minted by `vault.mint`, not derived from the node key.
 Its sealed custody still depends on D2/D3, and its lifecycle receipts use S3.
 Protected `vault-ssh-ca:*` fields never enter generic fetch, grant renewal or
@@ -90,7 +89,7 @@ CA under the new custody root; old public trust overlaps for the shared
 maximum certificate TTL, then disappears on the next trusted-keys read.
 Never move a CA seed through the node rotation handoff.
 
-Bank details (#3075), `apps/kernel/src/lib/vault/bank-details.ts`, use D2/D3
+Bank details, `apps/kernel/src/lib/vault/bank-details.ts`, use D2/D3
 custody through the existing static-secret seal helper, S6 signed private media
 and S3 transactional create/revoke receipts. The explicit node-key presence
 check refuses deterministic development custody. Protected `bank-details:*`
@@ -101,7 +100,7 @@ root, using their original banking source. Never export identifiers through a
 shell or handoff, and do not claim existing record secrets survive root rotation
 without that separately authorized replacement.
 
-SSH signing (#3064), `apps/kernel/src/lib/vault/ssh-cert.ts`, uses D2/D3 to
+SSH signing, `apps/kernel/src/lib/vault/ssh-cert.ts`, uses D2/D3 to
 open the live node-only CA custody grant in-process and S3 for issuance,
 refusal and operation-grant attestations. Operation grants contain no CA key
 material; their principal/command/host scope is signed by the node root.
@@ -120,7 +119,7 @@ existing issuance events under its locks before signing, so concurrent requests
 cannot exceed the budget. Excess requests return 429, record an authenticated
 refusal, and return no certificate. No separate rate-limit store or config exists.
 
-GitHub job signing (#3095) adds a verified external identity, not a new node-key
+GitHub job signing adds a verified external identity, not a new node-key
 role: fixed-issuer RS256 OIDC is checked before the existing CA/grant transaction.
 The signed issuance binds repository, environment, workflow ref, run ID and
 attempt. Grants authorize repository + environment, not workflow filenames.
@@ -134,7 +133,7 @@ for pinned host trust, non-swappable tmpfs and cleanup requirements.
 | Role | Consumers | What breaks on rotation | Who can read the old material |
 |---|---|---|---|
 | **D1. Vault seal key** (AES-256-GCM, `deriveSealKey`) | `vault/sealing.ts` `getSealKey()`; `packages/vault-core/src/seal.ts`; all v1 `node-sealed` entries; `scripts/demo/vault-client.ts` (demo only: seals with the same derivation into an in-memory store, so nothing persists across a rotation) | Every remaining **v1** entry becomes undecryptable. The sweep covers delegation-grant (v2) fields only. | Only the old key. Therefore v1 fields must be migrated to v2 before rotating (`scripts/migrate-vault-custody.mjs`, see `docs/vault-custody-migration-runbook.md`). |
-| **D2. Vault node signing identity** (signs every vault entry; DID = `did:imajin:<pubkey[:16]>`) | `vault/sealing.ts` `getNodeSigningIdentity()`; node-held grants and `internal-secret:*` fields | `senderDid` changes, so every old entry/grant fails signature or grantee checks. This is exactly the #1520 failure mode, now caused deliberately. | Only the old key, during Phase 1. Phase 2 re-signs under the new identity. |
+| **D2. Vault node signing identity** (signs every vault entry; DID = `did:imajin:<pubkey[:16]>`) | `vault/sealing.ts` `getNodeSigningIdentity()`; node-held grants and `internal-secret:*` fields | `senderDid` changes, so every old entry/grant fails signature or grantee checks. Old custody is not readable under the replacement identity. | Only the old key, during Phase 1. Phase 2 re-signs under the new identity. |
 | **D3. Node and Tier-0 owner X25519 keys** (HKDF info `vault-node-x25519-v1`, `vault-owner-x25519-v1`) | `vault/sealing.ts`; `vault/index.ts` grant wrapping | Field keys wrapped to the old X25519 keys cannot be unwrapped. Under Tier 1 the owner X25519/Ed25519 keys are external (`VAULT_OWNER_X_PUB`/`_ED_PUB`) and unaffected; the node's own X25519 key is still derived. | Only the old key, during Phase 1; Phase 2 re-wraps. |
 | **D4. HMAC-bound short-lived tokens** | `lib/kernel/connector-oauth-state.ts` (10 min), `connector-device-ticket.ts` (16 min), `connector-signed-payload.ts`, `profile/api/contact/verify-email{,/confirm}` (15 min) | In-flight OAuth connects, device-code flows and email verifications fail; the user starts over. | Nobody; accepted. Note `verify-email` falls back to a literal dev string when the env var is unset (§7). |
 
@@ -158,7 +157,7 @@ for pinned host trust, non-swappable tmpfs and cleanup requirements.
   service's `*_VAULT_BOOTSTRAP_PRIVATE_KEY`, and Tier 1 owner-agent keys are
   independent secrets.
 - **`internal-secret:*` vault fields** (`ATTESTATION_INTERNAL_API_KEY`, the cron
-  secret, the foreign-principal pepper, ...) are *not* simply carried by the sweep.
+  secret, the foreign-principal pepper,...) are *not* simply carried by the sweep.
   The sweep re-seals the **field**, but `getInternalSecret` finds its claim by
   `(ownerDid, purpose)` where `ownerDid` is the vault-derived node DID (D2), which
   **changes with the key**, and the sweep never touches
@@ -166,9 +165,9 @@ for pinned host trust, non-swappable tmpfs and cleanup requirements.
   Phase 2 reimport (the kernel does one at boot, for `ATTESTATION_INTERNAL_API_KEY`)
   takes the first-boot path for the new DID and **generates a fresh value**. The runbook
   therefore restarts the kernel a **second** time after the reimport, when the new DID
-  finds the reimported field and *adopts* it instead of generating (#2446); the test
+  finds the reimported field and *adopts* it instead of generating; the test
   that pins this is `apps/kernel/src/lib/vault/__tests__/internal-secret.test.ts`
-  ("node key rotation (#2081)"). Until that second restart, internal calls that
+  ("node key rotation"). Until that second restart, internal calls that
   depend on those secrets can fail; that window is expected and short.
 
 ### 2.5 Where the node DID comes from
@@ -219,8 +218,8 @@ any past instant.
 
 ## 4. Rotation runbook
 
-Roles are rotated in dependency order. Steps 3 and 6 are the two-phase vault sweep
-(#1400); step 4 is the fail-closed boot gate (#1520); step 7 is the second restart that
+Roles are rotated in dependency order. Steps 3 and 6 are the two-phase vault
+sweep; step 4 is the fail-closed boot gate; step 7 is the second restart that
 settles the internal secrets (§2.4).
 
 Conventions: private keys stay in the operator-controlled env file and its
@@ -233,8 +232,7 @@ cookie-based modes remain for legacy compatibility, not this operator runbook.
 
 **Restart rule for steps 4 and 7.** Restart `prod-jin` from the ecosystem file with
 `./scripts/pm2-reconcile.sh "$ECOSYSTEM_FILE" prod-jin`. Do **not** use
-`pm2 restart prod-jin` (it reuses the saved definition and drops `--env-file`, which is
-#1520), and do **not** run the deploy (`deploy-prod.yml`) for these two restarts: the
+`pm2 restart prod-jin` (it reuses the saved definition and drops `--env-file`, which is not a safe restart), and do **not** run the deploy (`deploy-prod.yml`) for these two restarts: the
 deploy runs `provision-service-bootstrap`, which touches vault grants and internal
 secrets while the node DID is changing. Provisioning happens once, in step 7, after the
 internal secrets have settled.
@@ -323,7 +321,7 @@ are accepted or returned. The encrypted handoff stays server-side adjacent to
 the environment-specific `VAULT_PATH`, surviving the restart. An existing
 handoff must not be overwritten; recover it before attempting another export.
 
-**Sealed handoff design and limits (#2987).** The kernel exclusively creates
+**Sealed handoff design and limits.** The kernel exclusively creates
 `<resolved VAULT_PATH>.key-rotation.sealed` with mode **0600**, writes only
 ciphertext plus public metadata/signature, and fsyncs it before reporting
 success. Keep the same `VAULT_PATH` on persistent, operator-controlled storage
@@ -367,7 +365,7 @@ ownership or invent replacement secrets.
 restart per the restart rule. The old custody remains authoritative; preserve
 any pending ciphertext for deliberate recovery, not blind regeneration.
 
-### Step 4. Restart with the fail-closed boot check (#1520)
+### Step 4. Restart with the fail-closed boot check
 
 Restart per the restart rule above, log in again, and click **Verify baseline**
 on `/admin/keys`. Record **Signing process started at (UTC)** as `RESTART_AT`
@@ -442,7 +440,7 @@ The kernel process is still holding whatever it generated at the step 4 boot. Re
 again per the restart rule so every internal secret is re-resolved against the
 reimported field:
 
-- [ ] Logs show, per internal secret, the #2446 adoption WARN `no purpose-tagged grant,
+- [ ] Logs show, per internal secret, the adoption WARN `no purpose-tagged grant,
       but the field is readable — re-tagged the existing grant and kept its value`, and
       **no** ERROR containing `nothing readable left`. That ERROR means a fresh secret
       was generated over unreadable material: stop, the named grantees hold a stale key.
@@ -473,7 +471,7 @@ exactly one boot. Confirm a corpus read succeeds.
       use `RELAY_DID` (§2.5):
       ```sql
       UPDATE auth.identities SET public_key = '<NEW_PUBLIC_KEY_HEX>', updated_at = now()
-      WHERE id = '<NODE_DID>';   -- must affect exactly 1 row
+      WHERE id = '<NODE_DID>'; -- must affect exactly 1 row
       ```
 - [ ] **Only if the node has a DFOS identity chain** (S7): publish a chain `update` that
       replaces the auth key with the new one, signed by the chain's controller key
@@ -541,68 +539,45 @@ or echoing private material. Keep the old **public** key: it is the anchor for
 | Step 9 | `submit` accepts only a payload whose new key is the loaded key and whose node DID is from `relay_config` | wrong key loaded, stale payload, or relay-identity DID |
 | Step 10 | `verify --anchor` | broken chain, un-attested rotation, identity row mismatch, or relay-identity DID |
 
-## 5. Split decision: do witness/log and identity need different cadences?
+## 5. Shared-root rotation policy
 
-**Decision: no split.** The runbook gives no reason for the two to differ, though it does expose verifier work that must land first:
+All signing, session and derived custody roles currently rotate together. There
+is no supported partial-role rotation. The authenticated handover preserves key
+history, but only verifiers that consume it can validate old records. Complete
+the consumer-specific go/no-go checks before retiring old material.
 
-1. **They share one trigger.** The reasons to rotate (compromise of the kernel
-   environment, operator turnover, hygiene) all burn the single env secret, so every
-   role rotates together. No step of §4 rotates a subset.
-2. **The witness/log role's rotation cost is bounded, and is not a cadence driver.**
-   The usual argument for a slower log cadence is that old signatures must stay
-   verifiable for ever. `key.rotated` supplies the *record* that makes that possible
-   (one attestation plus `trustedPublicKeysAt`), but the *verifiers* are not all there
-   yet: only Retrace (S3) and the S5 witness-record verifier (`verify-witness-record.ts`,
-   #2684) consume the history today, and node-as-witness signatures (S4), FAIR receipts
-   (S6) and the loops publisher check remain gaps (§7). Until those verifiers adopt it, a rotation leaves those records
-   unverifiable. That is a fixed, one-time piece of verifier work per consumer, the same
-   whatever the cadence; it is a reason to finish §7, not a reason to run the log key
-   on a different schedule from the identity key.
-3. **The expensive role is neither of them.** Identity/session rotation costs a
-   global logout; witness/log costs one attestation; the vault sweep (D1–D3, sealed
-   handoff and reimport) is what makes rotation heavy. A split motivated by cadence
-   would split the *vault derivation root* from the signing key first.
-4. **A split is not free.** The vault signing DID is a function of the public key
-   (S5/D2), the node DID row carries one key, and every verifier resolves one key.
-   Splitting means a second DID and issuer identity, migration of every
-   node-issued attestation consumer, and a second custody story, for no cadence
-   benefit the runbook demonstrates.
-
-**Revisit when** (a) `OPERATOR_COUNTERSIGN_REQUIRED=true` is on node-wide (#2082) and
-the operator-approval chain (#2084) is live, so the witness key only attests ordering
-and timestamps and could sit in hardware custody (#1979) on its own slower cadence;
-(b) a security-driven rotation of the signing key is wanted more often than the vault
-sweep is tolerable, which argues for splitting the vault root first; or (c) federation
-makes peers pin the node key, where a longer-lived log key plus a short-lived session
-key would reduce churn.
+A global logout and custody reseal are different costs. Separating their cadence
+would require a separate derivation root, issuer/trust design and consumer
+migration; this runbook implements none of those. Hardware-backed witness keys
+or a shorter session-signing cadence need an independently reviewed design, not
+an improvised second key added during a rotation.
 
 ## 6. Threat-model disclosure
 
-**Node key custody class: server secret.** `AUTH_PRIVATE_KEY` lives in the kernel's
-process environment, so anyone who can read that environment or the process memory
-holds every role in §2 at once: the node's signing identity, the vault sealing and
-delegation keys, and the session-token key. A compromised kernel can therefore forge
-anything the node signs. For human-to-agent operational approvals that means: in the
-shipped v1 model the kernel's own witness signature on a decision is the only proof,
-so **a kernel compromise implies approval forgery until the operator's own
-countersignature is required** (`OPERATOR_COUNTERSIGN_REQUIRED=true`, #2082, shipped and
-off by default). **Once countersign is required, a kernel compromise can forge
-timestamps (when a witnessed decision is recorded) and withhold records, but can no
-longer forge an approval**, because it does not hold the operator's key. Hardware
-custody that would narrow the server-secret class is #1979.
+**Node key custody class: server secret.** Anyone who can read the kernel's
+process environment or memory can acquire its signing, sealing, delegation and
+session roles. A compromised kernel can forge node-signed records and withhold
+history. The sealed handoff is not protection from a compromised host.
 
-(This paragraph is mirrored in `SECURITY.md`.)
+A verified independent human countersignature binds the reviewed decision bytes;
+node witness signatures alone cannot provide that property. The per-node
+`OPERATOR_COUNTERSIGN_REQUIRED` flag is off by default. When it is not required,
+the kernel can accept unsigned human-session decisions. When required, adapters
+must also verify the human proof before applying; do not infer deployment policy
+from the existence of the flag. See [the approval contract](../notify-operator-approvals-contract.md)
+and [SECURITY.md](../../SECURITY.md).
 
 ## 7. Known gaps and follow-ups
 
-Found while building the inventory; none is introduced by this change and none is
-closed by it, but each now has a concrete place to attach.
+These are current limitations, not a completed verifier migration. Treat them
+as go/no-go inputs before rotating the root; do not discard old custody merely
+because the handover statement verifies.
 
 - **Verifiers that resolve only the current key** (S4/S5/S6): `lib/auth/document-signatures.ts`,
   FAIR manifest and receipt verification, `loops/verify-publisher-signature.ts`.
   `verifyNodeSignatureAcrossKeyHistory` (kernel) and `trustedPublicKeysAt`
   (`@imajin/auth/key-rotation`) are the building blocks; Retrace and the S5 witness-record
-  verifier (`verifyWitnessRecord` / `verifyOperatorApprovalWitnessRecord`, #2684) consume
+  verifier (`verifyWitnessRecord` / `verifyOperatorApprovalWitnessRecord`) consume
   them today. The S5 verifier is a library function: nothing calls it from a route or job yet.
 - **Corpus TOFU** adds a new key because it shares a kid with the pin. It could instead
   require a verified `key.rotated` from old to new, which would also remove the
@@ -611,7 +586,7 @@ closed by it, but each now has a concrete place to attach.
   exists; the operator wiring does not.
 - **`verify-email` falls back to the literal string `dev-verify-key`** when
   `AUTH_PRIVATE_KEY` is unset (`profile/api/contact/verify-email{,/confirm}/route.ts`).
-  Unlike `jwt.ts` and `sealing.ts` it has no production guard (#1520 class).
+  Unlike `jwt.ts` and `sealing.ts` this fallback has no local production guard.
 - **Witness-DID key history** (`witness-jws.ts`, `operator-countersign.ts`): those
   verify a *user or operator DID's* current key. `key.rotated` covers the **node's** key
   only; history for a user/operator DID that rotated via `identity/:did/rotate` is
@@ -621,7 +596,7 @@ closed by it, but each now has a concrete place to attach.
 ## 8. Inventory manifest (checked by a test)
 
 `scripts/__tests__/node-key-inventory.test.mjs` walks the repo for non-test code that
-references `AUTH_PRIVATE_KEY`, `deriveSealKey`, `getNodeSigningIdentity`, `getSealKey` or
+references `AUTH_PRIVATE_KEY`, `deriveSealKey`, `getNodeSigningIdentity()`, `getSealKey()` or
 `getNodeX*` / `getOwnerX*`, and fails if any file is missing from this list, or if a
 listed file no longer exists or no longer references any of them. Adding a consumer means
 adding it here with its role from §2 (or `not a consumer`, with the reason). One line per
@@ -665,7 +640,7 @@ file: ``- `path` — role``.
 - `apps/kernel/src/lib/pay/fee-receipts.ts` — S3/S5 (signs fee facts as the configured platform DID with the node key; signed loop ingest and replay re-verification require that DID's current registered key, so historical replay after rotation fails closed under the existing current-key verifier gap in §7; never re-sign stored receipts)
 - `apps/kernel/src/lib/loops/cycle.ts` — S5
 - `apps/kernel/src/lib/loops/emit.ts` — S5 (signed native loop lifecycle observations)
-- `apps/kernel/src/lib/loops/surface-conflict.ts` — S5 (node-witness-signed advisory collision observations, #2405)
+- `apps/kernel/src/lib/loops/surface-conflict.ts` — S5 (node-witness-signed advisory collision observations)
 - `apps/kernel/src/lib/loops/authorize-publisher.ts` — S5
 - `apps/kernel/src/lib/loops/verify-publisher-signature.ts` — S5
 - `apps/kernel/src/lib/warp/loop-emit.ts` — S5

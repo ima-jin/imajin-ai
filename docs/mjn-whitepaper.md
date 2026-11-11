@@ -1,11 +1,10 @@
 # MJN Protocol
 ## A Cryptographic Operating System for Sovereign Commerce
-### v0.9 · October 2026
 
 *Ryan Veteze · ryan@imajin.ai · [github.com/ima-jin/imajin-ai](https://github.com/ima-jin/imajin-ai)*
 
 **Building on MJN?** → [Developer Guide](https://github.com/ima-jin/imajin-ai/blob/main/docs/developer-guide.md)
-**Machine-readable spec** → [llms-full.txt](https://imajin.ai/llms-full.txt)
+**Machine-readable spec** → [llms-full.txt](https://jin.imajin.ai/llms-full.txt)
 
 ---
 
@@ -44,14 +43,10 @@ and internal services. Repository inventory and generated build metrics live in 
 ## Architecture
 
 The userspace row below is a conceptual layer, not a monorepo file inventory.
-Events is owned by [ima-jin/events](https://github.com/ima-jin/events). Its kernel copy
-was pruned under [#2517](https://github.com/ima-jin/imajin-ai/issues/2517)
-(closed 2026-10-17); production acceptance
-[#2516](https://github.com/ima-jin/imajin-ai/issues/2516) closed under the
-2026-10-20 ruling, with future-event buy/QR smoke deferred to #2989.
-Pruning is not proof of completed production acceptance. External apps
-compose through scoped tokens, published `@ima-jin/*` SDKs and public kernel
-APIs, not kernel-internal workspace imports. See [the registration contract](https://github.com/ima-jin/imajin-ai/blob/main/docs/REGISTRATION.md).
+Events, market, learn, coffee, links and dykil are independently owned apps.
+They compose through scoped tokens, published `@ima-jin/*` SDKs and public kernel
+APIs, not kernel-internal workspace imports. Pruning a source copy is not proof
+of production acceptance. See [the registration contract](REGISTRATION.md).
 
 ```
 ┌────────────────────────────────────────────────────────────────────────────┐
@@ -169,7 +164,7 @@ Attestations bind a signer to a recorded claim. User-authored signatures, node a
 and unilateral mechanical records must not be conflated. Soft participation has no actor
 countersignature; there is no universal bilateral onboarding root for all subsequent records.
 
-**Attestation vocabulary:** [80+ and growing](https://github.com/ima-jin/imajin-ai/blob/main/packages/auth/src/types/attestation.ts),
+**Attestation vocabulary:** [shared type declarations](https://github.com/ima-jin/imajin-ai/blob/main/packages/auth/src/types/attestation.ts),
 including usage, recovery, app registry, payment requests, and vault lifecycle records.
 Declarations are a shared vocabulary, not a count of types observed emitting in production.
 
@@ -189,7 +184,7 @@ with the platform key for chain-verified identities, not a mandatory sender-DID 
 Chat uses TLS in transit, with plaintext at rest on the hosting node in
 `chat.messages_v2.content`. Push notifications carry the first 200 characters of the
 message preview. End-to-end encryption (MLS with mandatory hybrid post-quantum encryption)
-is planned under [#1070](https://github.com/ima-jin/imajin-ai/issues/1070), not implemented.
+is planned, not implemented.
 There is no forward-secrecy or post-compromise-security guarantee;
 see [SECURITY.md](https://github.com/ima-jin/imajin-ai/blob/main/SECURITY.md).
 
@@ -206,25 +201,25 @@ Every asset carries a `.fair` manifest: who contributed, in what proportion, und
 The manifest travels WITH the content. Not stored separately. Not in a different system. When
 money moves, the manifest says where it goes.
 
-Fee cascade — deducted in order, seller gets the remainder:
+The economic proposal allocates fees among protocol, node, buyer and optional
+scope, with the seller receiving the remainder:
 1. **Protocol fee**: 1.0% (fixed — this is how the network sustains itself)
 2. **Node fee**: 0.5% default, operator-configurable [0.25%, 2.0%]
 3. **Buyer credit**: 0.25% default — the buyer earns MJN for transacting
 4. **Scope fee**: optional — only when a community/business takes a cut
 5. **Seller share**: everything else
 
-Default total overhead: 2%. The seller gets 98%. Compare to Stripe's 2.9% + $0.30 where
-the platform keeps everything. Here, the 2% is split across four stakeholders who all
-contributed to the transaction happening.
+The proposal's 2% overhead/98% seller-share target is not the current calculator.
+The [constants](../packages/fair/src/constants.ts) and
+[builder](../packages/fair/src/buildManifest.ts) also deduct a 1% platform fee:
+1% protocol + 1% platform + 0.5% node + 0.25% buyer = 2.75%, before optional
+scope, tax and processor handling. Buyer-credit units and the proposed target
+remain an economic-model question, not a promise made by the implementation.
 
-> **Economic-model discrepancy (October review):** the fee narrative above is retained
-> pending a separate ruling/rewrite, not endorsed as the current calculator. The
-> [constants](https://github.com/ima-jin/imajin-ai/blob/main/packages/fair/src/constants.ts) and
-> [builder](https://github.com/ima-jin/imajin-ai/blob/main/packages/fair/src/buildManifest.ts) also deduct a 1% platform fee:
-> 1% protocol + 1% platform + 0.5% node + 0.25% buyer = 2.75%, before optional scope and
-> processor fees. The stated 2%/98% and buyer-credit unit need explicit reconciliation.
-> This is the manifest-builder path, not a universal checkout fee: seller-owned BYO Stripe
-> settlement does not distribute a platform-held `.fair` chain or collect that platform fee.
+This allocation argument is about recognizing stakeholders who contributed to a
+transaction, not a universal checkout fee. Seller-owned BYO Stripe settlement
+does not distribute a platform-held `.fair` chain or collect that platform fee.
+Consult the [pay spec](https://jin.imajin.ai/pay/api/spec) for the chosen flow.
 
 Settlement validates the manifest's chain and totals. Non-funded settlement verifies a
 signature when supplied but currently allows a missing signature with a warning; funded
@@ -240,22 +235,21 @@ fees, splits the payment,
 and emits a `transaction.settled` attestation. No human intervention. No invoice. No accounts
 receivable in that automated path. Signature exceptions above still apply.
 
-**Implemented rails (not deployment verification):** Stripe checkout uses the seller's
-own BYO connector account; Stripe Connect and its platform-held fallback were removed
-([#2766](https://github.com/ima-jin/imajin-ai/pull/2766), merged 2026-10-09).
-CAD Interac e-Transfer pay-in for payment requests provides instructions and requires
-manual receiver confirmation, not an automatic bank feed
-([#2667](https://github.com/ima-jin/imajin-ai/pull/2667), merged 2026-10-06).
+**Implemented rails (not deployment verification):** Stripe checkout uses the
+seller's own BYO connector account, not Stripe Connect or a platform-held
+fallback. CAD Interac e-Transfer pay-in for payment requests supplies instructions
+and requires manual receiver confirmation, not an automatic bank feed.
 
-**MJN / MJNx ledger:** Two units, one ledger, provenance forever (ruled 2026-09-04, shipped
-in the #2016 ledger split). **MJN** is receipt-backed money — minted only against a rail
-receipt (Stripe today; e-Transfer, Lightning, Solana Pay/x402 as they land), burned against
+**MJN / MJNx ledger:** Two units, one ledger, retained provenance. **MJN** is receipt-backed money — minted only against a rail
+receipt (Stripe receipts in supported flows; additional rails require their own receipt contract), burned against
 a payout receipt, withdrawable. **MJNx** is the emitted platform unit — earned by activity
 per a configured emission schedule, spendable in-platform, **not withdrawable**, and never
 silently converted to MJN. Any future MJNx → MJN relationship is a reserved Stiftung seat
 (RFC-12) — an invariant, not a conversion promise or a rate.
 
-**Planned settlement schemes:** MJNx-direct, Solana Pay, Lightning, x402.
+**Settlement boundaries:** single-unit ledger settlement already checks accepted
+units. A future on-chain bridge, Solana Pay, Lightning and x402 remain distinct
+planned work, not guarantees attached to an existing balance.
 
 **Gas model for declared-intent marketplace:**
 
@@ -265,22 +259,17 @@ silently converted to MJN. Any future MJNx → MJN relationship is a reserved St
 | Tier 2 | Declared interest pool | Medium gas |
 | Tier 3 | Extended reach, opted-in | High gas |
 
-Frequency-scaled depth gating prevents spam: costs escalate with repetition
-(1× → 1.5× → 3× → 7× → 15× → 40×). Matching is local — user's interests never leave
-their node. k-anonymity enforced.
+The proposed frequency-scaled depth gating would prevent spam: costs escalate with repetition
+(1× → 1.5× → 3× → 7× → 15× → 40×). The proposed matching stays local to the user's node and calls for k-anonymity;
+these are design requirements, not implemented guarantees.
 
-> **Model review boundary:** the dual-unit ledger distinction agrees with current code,
-> but this section is not a delivery claim for future rails, a bridge, or the gas marketplace.
-> [RFC-12](https://github.com/ima-jin/imajin-ai/blob/main/docs/canon/rfcs/RFC-12-mjn-token-economics.md) retains stale emission-route and schedule
-> wording: the [current schedule](https://github.com/ima-jin/imajin-ai/blob/main/packages/bus/src/emissions.ts) is versioned DB
-> configuration emitting MJNx, and the public emission route is disabled. Its percentage
-> calculation also uses a cent-based MJNx scale, which needs reconciliation with RFC-12's
-> no-fiat-relationship language. The gas/reach and k-anonymity claims above remain
-> unverified design language pending a separate model pass.
->
-> The retained "MJNx-direct" planned label and "MJN token settlement (dual-currency)"
-> pending row also need a model pass: single-unit ledger settlement with an accepted-unit
-> check already exists, while an on-chain token bridge remains a separate reserved seat.
+The dual-unit ledger distinction is implemented; the proposed gas/reach market
+and k-anonymity are not established by it. [RFC-12](canon/rfcs/RFC-12-mjn-token-economics.md)
+contains the economic model. Current activity emissions come from
+[configured schedules](../packages/bus/src/emissions.ts) and credit MJNx; the
+public emission route is disabled. The cent-based MJNx calculation and the
+model's no-fiat-relationship language still require reconciliation. There is
+no implicit MJNx-to-MJN conversion or bridge promise.
 
 ### 5. Discovery
 
@@ -313,10 +302,10 @@ sentences in the record — it acts on validity, not on the world.
 **Propagation is part of the primitive.** A revocation that doesn't reach every node holding
 a copy of the attestation is theater, not revocation.
 
-Ruled a first-class primitive on 2026-08-14 — not a sub-case of Attestation. Named ahead of
-the lived experience: the canonical seat in the grammar is set now; the concrete
-implementation (tombstone schema, propagation transport, hard-destroy key handling) waits
-for the use case that forces it.
+Revocation is a first-class primitive, not a sub-case of Attestation. Specific
+grant/record revocations are implemented. A universal tombstone propagation
+transport and hard-destroy key lifecycle are not established by that fact; the
+three levels above express the protocol's required grammar.
 
 ---
 
@@ -324,12 +313,9 @@ for the use case that forces it.
 
 ### Event Bus (`@imajin/bus`)
 
-Side effects are the hard part. "After payment succeeds, create an attestation, credit MJN,
+Side effects are the hard part. "After payment succeeds, create an attestation, credit MJNx,
 settle the .fair manifest, and notify the seller." Without the bus, that's a fragile
 imperative sequence in a webhook handler. With the bus, it's a composable reactor chain.
-
-The retained example's MJN wording is part of the model discrepancy above: activity
-emissions currently credit MJNx, not MJN.
 
 ```
 bus.publish('listing.purchased', { issuer, subject, scope, payload })
@@ -352,10 +338,10 @@ Encrypted key-value storage with signed, CID-addressed entries. Data sealing use
 AES-256-GCM. V1 derives a node seal key; v2 uses per-field keys wrapped through
 X25519 delegation grants. Tier 0 self-grants do not separate custody from the node.
 Tier 1 can require an external owner agent, while an active grant still enables node access.
-Both entry versions remain supported; this review does not certify a completed production
+Both entry formats remain supported; source support does not certify a completed production
 migration. See the [custody migration runbook](https://github.com/ima-jin/imajin-ai/blob/main/docs/vault-custody-migration-runbook.md).
 
-The release adds purpose-scoped SSH CA lifecycle and bounded user-certificate
+The vault supports purpose-scoped SSH CA lifecycle and bounded user-certificate
 issuance, with no private CA export. Live grants bind principals, forced command,
 hosts and expiry; revocation stops new signing, not already-issued certificates.
 GitHub jobs authenticate with verified OIDC for the granted repository/environment.
@@ -419,32 +405,27 @@ next (Solana), mesh trust eventually (no central authority).
 
 ---
 
-## What's Live
-Implementation evidence checked against source `6f16236e` on 2026-10-17. Here ✅ means
-merged implementation with a backing PR, not verified deployment or production acceptance.
-Unbacked prior ✅ rows are removed rather than carried forward as assumptions.
+## Current implementation and limits
 
-Release-diff additions checked at `4d7b2dc1` on 2026-10-25 follow below.
-They are source evidence, not claims of host deployment or production data migration.
+Source implements the separate MJN/MJNx ledger, consent-based selective disclosure
+with preview/shadow/enforce modes, registered apps, scoped connector operations,
+operator approvals, incurred usage and separate billed reconciliation. Approval
+countersignature requirements are per-node policy; source existence is not proof
+that a host requires a human signature.
 
-| Status | Item |
-|--------|------|
-| ✅ | MJN/MJNx dual-unit ledger — receipt-backed withdrawable MJN vs. emitted non-withdrawable MJNx ([#2159](https://github.com/ima-jin/imajin-ai/pull/2159)) |
-| ✅ | Selective disclosure / data broker — consent, scoped release, HTTP API and audit ([#1192](https://github.com/ima-jin/imajin-ai/pull/1192)); advisory shadow mode ([#1237](https://github.com/ima-jin/imajin-ai/pull/1237)); not a production-complete claim |
-| ✅ | Google Workspace connector — OAuth2 Gmail, Calendar, Drive integration and reactive provider-side revocation ([#2151](https://github.com/ima-jin/imajin-ai/pull/2151), [#2153](https://github.com/ima-jin/imajin-ai/pull/2153)) |
-| ✅ | App registry — first-class registered-app table ([#2160](https://github.com/ima-jin/imajin-ai/pull/2160)) |
-| ✅ | Operator approvals via /jin — kernel-witnessed confirm decisions; operator countersignature is conditional ([#2078](https://github.com/ima-jin/imajin-ai/pull/2078)) |
-| ✅ | Public signed usage-rollup read API and manual/backfill `usage.billed` ([#2031](https://github.com/ima-jin/imajin-ai/pull/2031)); receipt upload binding ([#2041](https://github.com/ima-jin/imajin-ai/pull/2041)) |
-| ✅ | `@imajin/money` — currency-safe Money primitive with signed FX snapshots ([#2036](https://github.com/ima-jin/imajin-ai/pull/2036)) |
-| ✅ | Purpose-scoped SSH CA lifecycle ([#3066](https://github.com/ima-jin/imajin-ai/pull/3066)), bounded certificate signing ([#3083](https://github.com/ima-jin/imajin-ai/pull/3083)) and reusable GitHub OIDC deploy action ([#3095](https://github.com/ima-jin/imajin-ai/pull/3095)); host trust rollout is separate |
-| ✅ | Sealed bank-details API ([#3107](https://github.com/ima-jin/imajin-ai/pull/3107)) and per-field legal-entity release ([#3096](https://github.com/ima-jin/imajin-ai/pull/3096)); custody/disclosure limits above apply |
-| ✅ | Registry-owner-DID corpus partitions ([#3103](https://github.com/ima-jin/imajin-ai/pull/3103)) and source-owner GitHub OAuth credentials ([#3102](https://github.com/ima-jin/imajin-ai/pull/3102)); live explicit grants required, no node-token fallback, signed migration is a separate operation |
-| ✅ | Grantee-only Cloudflare zone-grant metadata ([#3094](https://github.com/ima-jin/imajin-ai/pull/3094)), without credential release |
-| ✅ | Inference release updater gated by exact-SHA successful production deployment and mint-backed health ([#3060](https://github.com/ima-jin/imajin-ai/pull/3060)); installation is operator-managed |
-| ⏳ | Generalized weighted/decaying and portable standing (local eligibility checks exist) |
-| ⏳ | Portable exit credentials |
-| ⏳ | MJN token settlement (dual-currency) |
-| ⏳ | Declared-intent marketplace |
+The vault supplies purpose-scoped SSH CAs, bounded certificate signing and a
+GitHub OIDC deploy action; hosts separately install trust and principal policy.
+Sealed bank details and legal-entity records have distinct custody/disclosure
+rules. Corpus uses registry-resolved owner partitions, live explicit grants and
+the source owner's OAuth connector, never a node-token fallback. Connector metadata
+discovery is not credential release. Inference promotion requires exact-SHA
+production evidence and mode-appropriate health; installation remains operator-managed.
+
+Generalized weighted/decaying portable standing, portable exit credentials, a
+complete token bridge and the declared-intent gas marketplace remain planned.
+Read [the concise guide](../apps/kernel/public/llms.txt) and each service's live
+spec for integration contracts. These are implementation boundaries, not a claim
+that every standalone app or production node has adopted them.
 
 ---
 
@@ -454,35 +435,9 @@ for the replayable stats table and how each figure is derived.
 
 ---
 
-Licensed under the [Imajin Network License (INL) v1.0](https://github.com/ima-jin/imajin-ai/blob/main/LICENSE.md).
+Licensed under the [Imajin Network License (INL)](https://github.com/ima-jin/imajin-ai/blob/main/LICENSE.md).
 This repository is the Imajin Inc. reference implementation of the MJN protocol, not the
 protocol spec itself — the spec is scoped to move toward an independent protocol entity
 over time.
 
-v0.6 (2026-09): Revocation added as sixth primitive (#2042). MJN/MJNx model reconciled
-(#2019). What's Live refreshed. Build Stats section removed — replayable stats live in
-the README. Stale dates and counts corrected.
-
-v0.7 (2026-10): Evidence pass against `6f16236e` — qualify proof, DFOS, standing, chat,
-vault custody, node registration and exit claims; correct app boundaries, scoped DB chain
-configuration, token authentication and persistence; reconcile What's Live to merged PRs,
-including implemented broker modes, without inferring deployment. Economic/model disagreements
-are explicitly flagged, not ruled here. This pass also records the previously unversioned
-2026-10-17 events-boundary edit (`6d6c06c2`, referencing issue #2517); production acceptance
-is tracked separately by #2516 and is not established by pruning.
-
-v0.8 (2026-10): v0.8.26..`4d7b2dc1` release-diff sweep (#2028): document SSH
-CA/signing/OIDC deploy boundaries, sealed bank-details/legal-entity records,
-owner-DID corpus and OAuth requirements, Cloudflare metadata grants and the
-production-evidence-gated inference updater; record #2516's 2026-10-20 ruling.
-Economic/model annotations are unchanged.
-
-v0.9 (2026-10): Record the previously unversioned [#3121](https://github.com/ima-jin/imajin-ai/pull/3121)
-chat disclosure correction: TLS in transit, plaintext at rest and notification previews;
-public key bundles/legacy utilities do not provide current message encryption.
-MLS with mandatory hybrid post-quantum encryption remains planned under #1070.
-This documentation version is not the kernel release number or deployment evidence.
-
-*[Developer Guide](https://github.com/ima-jin/imajin-ai/blob/main/docs/developer-guide.md) · [llms-full.txt](https://imajin.ai/llms-full.txt) · [.fair spec](https://github.com/ima-jin/.fair) · [DFOS](https://protocol.dfos.com) · [Source](https://github.com/ima-jin/imajin-ai)*
-
-*Live since February 2026.*
+*[Developer Guide](https://github.com/ima-jin/imajin-ai/blob/main/docs/developer-guide.md) · [llms-full.txt](https://jin.imajin.ai/llms-full.txt) · [.fair spec](https://github.com/ima-jin/.fair) · [DFOS](https://protocol.dfos.com) · [Source](https://github.com/ima-jin/imajin-ai)*

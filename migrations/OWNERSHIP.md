@@ -1,499 +1,108 @@
-# Migration Ownership Map
+# Migration ownership
 
-## Current baseline layout (#2525)
-Active root SQL is kernel-only, including the generated baseline. All app
-schemas (including events and links) are prohibited in active SQL regardless
-of owner headers or historical allowlists. The complete pre-cut chain moved
-unchanged to `archive/pre-kernel-baseline/`, ignored by the runtime runner.
-Ownership origins and gaps below remain historical audit records; their
-`firstMigration` filenames resolve into that archive. The audit map builder
-replays archived history plus post-cut SQL, not the generated baseline.
-See [BASELINE.md](BASELINE.md) for the executable procedure, seed inventory,
-operator restore commands and merge holds. Older deferrals below are
-historical, superseded by #2525's October 16/17 rulings.
+Active root SQL belongs only to the kernel. App schemas and data belong to their
+independently deployed app repositories, even when they share a Postgres server.
+A kernel migration cannot create, read, alter or backfill an app schema. Use the
+owning service's public API for runtime access.
 
-Phase 1 of #1991. Every table/view/type/function created anywhere in
-`migrations/` lives in exactly one Postgres schema, and every schema is
-assigned to exactly one owner. This document explains the rule, how the
-map was derived, and lists every gap the derivation surfaced. The machine-
-readable map is `migrations/ownership.json` (table → owner) and the machine-
-readable gap list is `migrations/ownership-gaps.json`;
-`scripts/check-migration-ownership.mjs` enforces the map in CI (see
-[Rule](#rule) below) and `scripts/__tests__/ownership-map.test.mjs` checks
-that the committed artifacts are complete, consistent with a fresh replay of
-`migrations/`, and agree with each other.
+## Sources of truth
 
-**What phase 1 is not:** it does not move, rename, or squash any migration,
-and it does not fix any of the cross-owner reads/writes listed in
-[Gaps](#gaps). Those are deliberately deferred — see the PR description for
-#1991.
+- `ownership.json` maps schema objects to an owner and their creation filename.
+  It retains app-owned objects as well as kernel objects; presence in this map
+  does not authorize kernel SQL against them.
+- `kernel-baseline.json` fixes the generated baseline, cut and archive checksums.
+  Active root SQL initializes the kernel baseline plus post-cut migrations.
+- `archive/pre-kernel-baseline/` holds immutable migration records, not active
+  migrations. App-origin filenames in the ownership map resolve into this archive.
+- `ownership-gaps.json` and `cross-schema-allowlist.json` retain the runtime audit
+  inventory. Entries naming the absent `apps/events` tree do not establish a
+  current monorepo call site or authority to restore one.
 
-## Owners
+See [BASELINE.md](BASELINE.md) for adoption, backups and restore gates, and
+[the migration guide](../docs/MIGRATIONS.md) for runner usage. Neither a source
+prune nor a baseline change authorizes deleting app data or rewriting the ledger.
 
-`kernel | coffee | dykil | links | learn | events | market | broker-agent | corpus`
+## Owners and schemas
 
-Every schema in `migrations/` maps to exactly one of these:
+The parser recognizes `kernel`, `coffee`, `dykil`, `links`, `learn`, `events`,
+`market`, `broker-agent` and `corpus`. The named app schemas belong to the
+corresponding app; the kernel owns its service schemas such as `auth`, `chat`,
+`connections`, `inference`, `kernel`, `media`, `notify`, `pay`, `profile`,
+`registry`, `usage` and `www`. Read `ownership.json` for the complete object map,
+not a hand-maintained table count.
 
-| Schema | Owner |
-|---|---|
-| `coffee` | coffee |
-| `dykil` | dykil |
-| `events` | events |
-| `learn` | learn |
-| `links` | links |
-| `market` | market |
-| `auth`, `chat`, `connections`, `consent_requests`, `github`, `inference`, `kernel`, `media`, `money`, `notify`, `operator`, `pay`, `profile`, `registry`, `relay`, `usage`, `www` | kernel |
+Events, coffee, dykil, links, learn and market run from their `ima-jin/<app>`
+repositories. Broker-agent has no Postgres schema here; corpus uses its own
+SQLite store. Their inclusion in the parser's owner vocabulary is not a reason
+to create tables for them in the kernel database.
 
-`broker-agent` and `corpus` own zero tables in `migrations/`: broker-agent
-is a Telegram bot with no `@imajin/db` dependency (it authenticates via a
-self-minted app-service token and talks to the kernel over HTTP only), and
-corpus is a standalone Express service with its own `better-sqlite3` file,
-not Postgres. Neither has a schema to own here — noted so their absence from
-`ownership.json` doesn't read as an oversight.
+## New migration rule
 
-## How the map was derived
+Every new migration declares `-- owner: kernel` near the top, uses idempotent,
+schema-qualified SQL and registers new persistent objects in `ownership.json` in
+the same change. Choose a free number above the active migration range, without
+moving the baseline cut. Do not edit applied SQL or archived files.
 
-`scripts/generate-migration-ownership.mjs` (built on the same parser the CI
-guard uses, `scripts/lib/migration-ownership-parser.mjs`) replays every file
-in `migrations/` in application order and tracks `CREATE TABLE`,
-`CREATE [OR REPLACE] FUNCTION`, `DROP TABLE`, `ALTER TABLE ... RENAME TO`,
-and generic `ALTER TABLE` (e.g. `ADD COLUMN`, which the map builder ignores
-but the CI guard treats as "touching" the table) (the only DDL forms
-actually present in this repo's 167 migration files, confirmed by grepping
-for `CREATE VIEW`, `CREATE TYPE ... AS ENUM`, and `CREATE MATERIALIZED
-VIEW` — none exist today; the parser still recognizes them so a future
-migration that adds one is registered, not silently ignored). A
-`DROP TABLE` removes the entry; a `RENAME TO` carries the
-original `firstMigration` forward under the new name. This is why
-`ownership.json` has no entries for `drizzle.*` (dropped in
-`0003_drop_drizzle_tracking.sql`, and in fact never created by a migration
-file — it predates the plain-SQL runner), `profile.connection_requests` /
-`profile.did_migrations` (created in `0001_seed.sql`, dropped in `0003`),
-`events.ticket_registrations` (created in `0001_seed.sql` /
-`0015_ticket_registrations.sql`, dropped in `0027_drop_ticket_registrations.sql`),
-or the `CREATE TEMP TABLE folder_dedup_map` in `0028_folders_unique_constraint.sql`
-(a temp table dropped in the same file). The map reflects live schema, not
-migration-file history.
+`scripts/check-migration-ownership.mjs` compares changed migrations against
+`origin/main` and validates declared owner and object ownership. Active baseline
+mode also scans every active root file for non-kernel schemas, regardless of
+header or shared-file allowlists. New external-schema references, schema DDL and
+literal search paths are prohibited. Dynamic SQL still needs review: these
+scanners are static heuristics, not a PostgreSQL parser.
 
-Owner inference is schema-based: every table/function created in
-`migrations/` is schema-qualified (verified — no unqualified/`public`-schema
-persistent tables exist), so the schema name itself is the ownership
-signal per the table above. This was cross-checked against
-`packages/*/tests` and `apps/*/drizzle`: only `apps/events/drizzle` has a
-Drizzle schema-introspection artifact, and per the #1983 audit it's
-`schemaFilter`-cosmetic (drizzle-kit introspection output, not an ownership
-declaration), so it added no signal beyond the schema qualifier already
-used. No table name required resolving ownership by grepping app code
-instead of by schema — see [Gaps](#gaps) for why this doesn't mean the
-current code respects those boundaries.
+Archived history is checksum-protected. A same-name move can only establish an
+archive while activating a baseline against matching merge-base bytes; an active
+baseline does not permit archive additions, edits or removal. Do not use an
+allowlist entry as permission to import app history into active SQL.
 
-**Counts** (172 tables, 2 functions, 0 views, 0 types, across 167 migration
-files; `broker-agent` and `corpus` own 0):
+Run the checks from the repository root:
 
-| Owner | Tables |
-|---|---|
-| kernel | 149 |
-| events | 8 |
-| learn | 5 |
-| links | 3 |
-| market | 3 |
-| coffee | 2 |
-| dykil | 2 |
-
-Full detail: `migrations/ownership.json`.
-
-## Rule
-
-### Identity registering-app provenance (#2926)
-
-`0212_identity_registering_app.sql` is kernel-owned and adds only nullable
-`auth.identities.registered_by_app_did`. The kernel records the verified app
-DID at identity creation, never from caller-supplied metadata or alias
-re-resolution. Legacy and non-app registrations remain NULL; there is no
-inferred backfill. Identity and conversation ownership remain kernel-owned.
-Numbers 0208–0211 were reserved by open PRs when 0212 was allocated.
-
-### Verified domain bindings (#2902)
-
-`0211_domain_bindings.sql` is kernel-owned and creates
-`auth.domain_bindings`; its `ownership.json` entry records owner `kernel`
-and `firstMigration: 0211_domain_bindings.sql`. Number 0204 belongs to
-`0204_registry_apps_visibility.sql`; the domain migration uses its reserved
-slot 0211 without changing its SQL or legacy-routing backfill.
-
-### Reach throttling audit seed (#2599)
-
-`0207_seed_agent_reach_throttled_chain.sql` is kernel-owned and only updates
-`kernel.bus_chain_configs`, including existing `agent`-scoped overrides.
-Its awaited `audit-log` chain writes allowlisted throttling metadata to the
-existing kernel-owned `kernel.audit_log`; it creates no schema objects and
-never persists IPs, limiter keys/hashes, message bodies, or signatures.
-
-### Extracted repositories (#1991, October 14 ruling)
-
-`ownership.json.externalSchemas` identifies `dykil → ima-jin/dykil`,
-`coffee → ima-jin/coffee`, `learn → ima-jin/learn` and
-`market → ima-jin/market`. App schemas/data remain in place; pruning never
-permits dropping them. **New root migrations may not reference these
-schemas**, whether declared kernel-owned or app-owned, DDL or DML, even
-if added to `sharedMigrationAllowlist`. Schema DDL and literal/identifier-valued
-`search_path` settings are checked too.
-Like the existing scanner, this is a static heuristic, not a PostgreSQL
-parser: dynamically constructed SQL and `set_config` calls require review,
-never an ownership bypass.
-
-Historical SQL and table-owner/origin rows remain unchanged. Dykil's
-baseline/ledger live in `ima-jin/dykil`
-([PR #24](https://github.com/ima-jin/dykil/pull/24)). The other apps reuse
-the prospective guard without claiming their baselines ship here.
-Shared history stays replayable until the separately gated squash (#2525).
-See `BASELINE.md`'s current #1991 section; the older deferral/first-mover
-notes below are historical and superseded for dykil.
-
-### Schema boundary
-
-An app's migrations may only create, alter, drop, or rename tables/views/
-types/functions in its own schema. Touching another owner's schema from a
-migration is a contract violation — the runtime equivalent (an app reading
-or writing another app's tables directly instead of calling its API) is
-exactly what caused the gaps below, and phase 1 exists to stop the DDL side
-of that from getting worse while the runtime side is fixed separately.
-
-### Header convention
-
-Every **new** migration file must declare its owner as the first `--`
-comment matching this pattern, anywhere in the file (by convention, right
-after the filename comment at the top):
-
-```sql
--- 0132_something.sql
--- owner: events
+```bash
+bash scripts/check-schema-migration-sync.sh origin/main
+bash scripts/check-migrations.sh
+node scripts/check-migration-ownership.mjs
 ```
 
-`scripts/check-migration-ownership.mjs` reads this header for every file
-changed or added in a PR (`git diff origin/main...HEAD -- migrations/`):
+The ownership guard accepts `MIGRATION_OWNERSHIP_BASE_REF` for another base,
+`CI_GUARD_WORKDIR` for a scratch root, and `GIT_BIN` for an absolute git binary
+when it is not in the guard's known locations. Test the runner twice against an
+isolated scratch database; retain each ledger row on the second run.
 
-- A **new** file with no `-- owner:` header fails the build.
-- A file's declared owner must match what `ownership.json` says about every
-  table/view/type/function the file's statements touch. Touching a table
-  registered to a different owner fails the build.
-- A **new** table/view/type/function must be added to `ownership.json` in
-  the same PR — the guard fails if the map wasn't updated, so it can never
-  silently drift out of date again.
-- Pre-existing migration files this repo already shipped without a header
-  are **grandfathered**: the guard only inspects files a PR actually
-  changes, and a pre-existing file that's merely touched (not newly added)
-  without a header is not retroactively required to add one — migrations
-  are immutable, so rewriting history to add headers is out of scope here.
+## Map maintenance
 
-Wired into CI as `pnpm check:migration-ownership`, a step in the
-`lint-and-typecheck` job in `.github/workflows/ci.yml`.
-### App directory curation (#2871)
+`scripts/lib/migration-ownership-parser.mjs` replays archived creation history
+plus post-cut SQL, not the generated baseline, to retain object origins. It
+tracks supported creation, alteration, rename and drop forms. The generator's
+no-flag output is for review; do not blindly replace the committed map, which
+also contains external-schema policy and explanatory metadata.
 
-`0203_registry_apps_featured.sql` is kernel-owned and adds only
-`registry.apps.featured` (`boolean NOT NULL DEFAULT false`). The existing
-`registry.apps` owner and `firstMigration` remain unchanged. Featuring is
-operator curation, not installation or authorization; this migration adds no
-tables and does not change anyone's enabled-app list or grants.
-`0204_registry_apps_visibility.sql` adds listing visibility on the same
-kernel-owned table. PR #2899 retains `0205_registry_apps_profile_widget.sql`
-for profile widget declarations; neither migration changes table ownership
-or its `firstMigration`.
-
-The open train reserves 0206 for #2907, 0207 for #2857, 0208 for #2903,
-0209 for #2912, 0210 for #2921, and 0211 for #2906. These reservations do
-not renumber the migrations already committed on main or PR #2899.
-### Mail senders (#2919)
-
-`0210_mail_senders.sql` is kernel-owned and creates `kernel.mail_senders`
-for send-only, fixed-purpose owner/app sender configuration. It provisions
-no mailboxes or MX records and adds no grants. Migration 0210 remains
-reserved for #2921 and does not renumber main's profile widget migration
-`0205_registry_apps_profile_widget.sql` or the surrounding migration train.
-
-### App-owned event conversations (#2539)
-
-`0209_chat_conversations_app_binding.sql` adds nullable `app_did` to the
-kernel-owned `chat.conversations_v2`. Existing rows remain unbound: membership
-and mutable context are not evidence of app ownership. The registered-app
-conversation route binds app and creator at insertion and cannot adopt legacy
-rows or transfer either binding. No events-owned schema or data is touched.
-
-### Imported credential audit chain (#2260)
-
-`0208_seed_vault_key_imported_chain.sql` is kernel-owned and seeds only
-`kernel.bus_chain_configs` for `vault.key.imported`. Its metadata-only
-`audit-log` reactor matches `packages/bus/src/config.ts` DEFAULTS.
-`ON CONFLICT (event_type, scope) DO NOTHING` preserves existing operator
-configuration, including disabled chains. No tables are added; the existing
-owner and `firstMigration` remain unchanged.
-
-### Environment variables
-
-The guard (`scripts/check-migration-ownership.mjs`) reads two optional
-environment variables; neither is set by CI today, since the defaults are
-already correct for how `ci.yml` checks out a PR:
-
-- `MIGRATION_OWNERSHIP_BASE_REF` — the git ref to diff `HEAD` against.
-  Defaults to `origin/main`, which is what every PR in this repo targets, so
-  CI never needs to set it. Override it for local runs against a different
-  base branch, or in tests that diff between two commits in a scratch repo
-  (see `scripts/__tests__/check-migration-ownership.test.mjs`).
-- `GIT_BIN` — absolute path to the `git` binary. Defaults to the first of
-  `/usr/bin/git`, `/usr/local/bin/git`, `/opt/homebrew/bin/git`, `/bin/git`
-  that exists (git is resolved to an absolute path rather than found via
-  `PATH` — SonarCloud S4036). Override only if `git` lives somewhere else
-  entirely.
-
-`CI_GUARD_WORKDIR` (repo root, defaults to two directories up from the
-script) is the same override every other `scripts/ci-guard-*.mjs` in this
-repo already supports, for the same reason: tests point it at a scratch
-directory instead of the real checkout.
-
-## Gaps
-
-Ownership assignment above was unambiguous for every table (all names are
-schema-qualified, and every schema maps to exactly one owner) — so there are
-**zero UNRESOLVED entries** in `ownership.json`.
-
-The real gap is not in *assigning* ownership, it's that code still reaches
-across the line: reading or writing tables outside its own schema via raw
-SQL instead of going through the owner's API. The machine-readable list is
-`migrations/ownership-gaps.json` (status `open` / `fixed` / `watch`, with
-the filed issue for each); this section is the human summary, re-verified
-against the tree for #2526. The 2026-09 audit (#1983, gaps 6–9) and its
-follow-ups (#2155) closed most of the app-to-kernel reads; what remains is
-entirely `apps/events`.
-
-### Open runtime gaps (all `apps/events`: 33 `(file, table)` pairs across 27 files)
-
-| Target | Owner | Access | Files | Issue |
-|---|---|---|---|---|
-| `auth.identities`, `auth.credentials`, `auth.onboard_tokens` | kernel | read; **INSERT** `onboard_tokens` | 9 | #2537 |
-| `connections.pod_members` | kernel | read | 7 | #2538 |
-| `chat.conversations_v2` | kernel | **UPDATE** | 1 | #2539 |
-| `pay.transactions` | kernel | read (JOIN) | 1 | #2540 |
-| `profile.profiles` | kernel | read; **UPDATE** `contact_email` | 3 | #2541 |
-| `dykil.surveys`, `dykil.survey_responses` | dykil (app → app) | read / JOIN | 8 | #2542 |
-
-The `dykil` row is different in kind: it is events reading another *app's*
-tables, so the fix is a dykil-owned contract (or moving registration answers
-into events-owned storage, see #1985/#2395), not a kernel route.
-
-Each of these call sites is grandfathered in
-`migrations/cross-schema-allowlist.json`; the allowlist and the open runtime
-entries in `ownership-gaps.json` are kept identical by
-`scripts/__tests__/ownership-map.test.mjs`.
-
-### Open migration-level gaps
-
-- `0001_seed.sql` creates every owner's schema in one file, and
-  `0025`/`0026` mix `dykil` DML with `events` tables (see
-  [Shared migrations](#shared-migrations-1991-phase-2a)). Resolved by the
-  per-app migration directories and kernel baseline (#2524, #2525), not by
-  editing history.
-- `apps/links` no longer exists in this monorepo, but its three tables are
-  still created by the kernel's root migrations (#2524 — `links` is the
-  first mover).
-- `apps/learn` no longer exists in this monorepo either (#2503): the code that
-  owns the `learn` schema now lives in [ima-jin/learn](https://github.com/ima-jin/learn).
-  The learn-owned migrations stay in this directory and keep owner `learn`; the
-  schema and its five tables are untouched. The only new migration is the
-  kernel-owned `0184_retire_legacy_learn_registry_row.sql` (a guarded `UPDATE` of
-  `registry.apps`).
-- `apps/coffee` no longer exists in this monorepo either (#2500): its owning
-  code now lives in [ima-jin/coffee](https://github.com/ima-jin/coffee). Its two
-  tables (`coffee.pages`, `coffee.tips`) are still created by the kernel's root
-  migrations, the coffee-owned migrations stay in this directory, and ownership
-  stays `coffee`; see `BASELINE.md` ("#2500 — coffee per-table ownership decision").
-- `apps/market` no longer exists in this monorepo either (#2512): its owning
-  code now lives in [ima-jin/market](https://github.com/ima-jin/market). Its three
-  tables (`market.disputes`, `market.listings`, `market.seller_settings`) are still
-  created by the kernel's root migrations, the market-owned migrations stay in this
-  directory, and ownership stays `market`; see `BASELINE.md` ("#2512 — market
-  per-table ownership decision"). The only new migration is the kernel-owned
-  `0187_retire_legacy_market_registry_row.sql` (a guarded `UPDATE` of `registry.apps`).
-- `apps/dykil` no longer exists in this monorepo either (#2523), but its two
-  tables are still created by the kernel's root migrations and are still read by
-  `events` (#2542). Ownership stays `dykil`; see `BASELINE.md` ("#2523 — dykil
-  per-table ownership decision"). The only new migration is the kernel-owned
-  `0188_retire_legacy_dykil_registry_row.sql` (a guarded `UPDATE` of `registry.apps`).
-- No foreign key crosses an owner boundary (checked across every
-  `REFERENCES` in `migrations/`), so no table has to be moved together with
-  another owner's table.
-
-### events deploy ownership handoff — per-environment releases (#2784)
-
-Every `events.*` table remains owner `events`; `ima-jin/events` owns that schema
-and data, not the kernel. **Deployment authority transfers per environment**:
-the dev workflow and its `build.sh` call use `migrate.mjs --owner kernel` after
-standalone dev cutover. The separate prod release switches both prod migration
-calls to kernel-owner mode only when it merges in Ryan's #2516 window, after
-#2529 soak/sign-off and standalone prod is running and saved. Until that merge,
-prod retains its existing unfiltered migration and monorepo build/reconcile path.
-
-Historical SQL/data are not changed. Kernel-owner mode retains shared files
-(including the seed and `0025`/`0026`) under the existing #1991 rules and
-fresh-database/ordering caveats; this is not a baseline split. The open runtime
-gaps above remain visible. No source is pruned here; retain `apps/events` while
-prod still needs it. Both ownership-release PRs merge only after the respective
-standalone process is healthy and pm2 definitions are saved. Rollback is a
-reviewed per-environment revert and standard deploy/reconciliation with matching
-build/dependencies, health verification and `pm2 save`, not schema rollback.
-See `deploy/README.md`. Nothing here accesses live state.
-
-### Fixed since the #1983 audit (kept so the history is not re-litigated)
-
-- `relay.relay_config` reads in `coffee`/`learn`/`market`/`events` —
-  replaced by `@imajin/config`'s node-self helper (#2000).
-- `profile.forest_config` reads — replaced by `@imajin/config`'s
-  forest-config helper (#2001, #2057).
-- `profile.profiles` reads in `learn`/`market` — batched resolve route
-  (#1998, #2155).
-- `events` `cohosts` route `connections.pod_members` read + `INSERT` — kernel
-  pods API (#2155).
-- `events` `UPDATE auth.identities` (contact email, hard-eligibility) —
-  kernel contact/eligibility routes (#2058, #1999).
-- `packages/auth` raw SQL — now HTTP (#1992, #1998).
-
-### Watch-list (not violations today)
-
-Shared packages that run SQL against kernel-owned tables via the caller's
-db handle. Only `apps/kernel` imports them, so nothing crosses a boundary
-yet; they would the moment an app does: `packages/money`'s `getRate` →
-`money.fx_rates`, and `packages/trust-graph`'s Drizzle re-declaration of the
-`connections.*` tables. No issue is filed because there is no violation to
-fix; they are recorded as `watch` entries in `ownership-gaps.json`.
-
-The runtime guard below has a documented, honest baseline: every open gap
-above is a filed issue.
+`scripts/__tests__/ownership-map.test.mjs` compares committed object ownership
+with replay and checks audit-artifact consistency. A numeric inventory copied
+into this guide would drift independently; use those artifacts instead.
 
 ## Runtime cross-schema query guard
 
-`scripts/ci-guard-cross-schema-reads.mjs` (#2155 item 3) is the runtime
-counterpart to the migration-file guard above: it scans every source file
-under `apps/<x>` (kernel exempt — it legitimately owns and may read every
-kernel schema) for a raw-SQL `schema.table` reference or a Drizzle
-`pgSchema(...)` declaration for a schema `ownership.json` says `<x>` does
-not own. Wired into CI as the "Cross-schema query guard" step in the
-`ci-guards` job in `.github/workflows/ci.yml`.
+`scripts/ci-guard-cross-schema-reads.mjs` scans source under `apps/<app>` for
+foreign raw-SQL references and Drizzle schema declarations. Kernel source is
+exempt from this app scanner because it legitimately owns several kernel service
+schemas, not because the kernel may query app-owned tables.
 
-It shipped with real, pre-existing violations still in the tree (the Gaps
-above), so it ships with an explicit allowlist —
-`migrations/cross-schema-allowlist.json` — listing every currently-known
-violation as an exact `(file, schema, table)` triple. This is a ratchet,
-not a suppression:
+`cross-schema-allowlist.json` is an exact `(file, schema, table)` ratchet, not a
+namespace exemption. A new foreign table reference fails. Migrate a real call
+site to the owner's API and remove its obsolete entry together with the matching
+gap record; do not expand the allowlist to make CI pass. The guard's `--list`
+mode reports detected current call sites. Retained audit metadata alone is not
+proof that the named source still exists.
 
-- The guard fails on any cross-schema reference NOT in the allowlist, so a
-  brand-new violation (or a new table touched in an already-listed file)
-  fails the build immediately.
-- **To shrink the allowlist**: migrate a call site to the owning schema's
-  kernel API (as #2155 did for `learn`/`market`'s `profile.profiles` reads
-  and `events`' `cohosts` route), then remove that entry from
-  `migrations/cross-schema-allowlist.json`.
-- **To check nothing was missed** after a migration, regenerate the full
-  current violation list and diff it against the allowlist:
-  `node scripts/ci-guard-cross-schema-reads.mjs --list`.
-- Do not add a new entry to make CI pass without either migrating the call
-  site or getting explicit sign-off that it's a deliberately deferred gap
-  (as every open gap in the table above is for now). Update
-  `migrations/ownership-gaps.json` in the same PR — a test
-  (`scripts/__tests__/ownership-map.test.mjs`) fails if the open runtime
-  gaps and the allowlist diverge.
+## Runner modes and retained shared records
 
-## Shared migrations (#1991 phase 2a)
+`scripts/migrate.mjs --owner <owner>` filters by ownership. Shared files are
+included for `kernel`, and for another owner only with `--include-shared`.
+This compatibility filter does not transfer schema ownership, activate archived
+SQL or provide a standalone app baseline. The active kernel baseline contains no
+app schemas. Fresh standalone app setup follows that app's own migration runner.
 
-A migration file is **shared** when its SQL — DDL or DML, see
-`scripts/lib/migration-schema-scan.mjs` — references more than one owner's
-schema. Three files in this repo are shared today:
-
-| File | Owners touched | Why |
-|---|---|---|
-| `0001_seed.sql` | coffee, dykil, events, kernel, learn, links, market | the historical monolithic seed — creates every schema at once |
-| `0025_backfill_survey_responses_for_orphan_registrations.sql` | dykil, events | backfills `dykil.survey_responses` by joining `events.ticket_registrations`/`events.tickets` |
-| `0026_clone_shared_survey_responses_per_ticket.sql` | dykil, events | clones `dykil.survey_responses` rows keyed off `events.ticket_registrations` |
-
-These are listed in `ownership.json`'s `sharedMigrationAllowlist`, which
-serves two purposes:
-
-1. **CI guard grandfathering.** `scripts/check-migration-ownership.mjs`
-   now additionally fails a *newly added* migration that touches more than
-   one owner's schema (DDL or DML), unless it's on this allowlist. The
-   three files above predate the check; the allowlist is what keeps them
-   from being retroactively flagged, and is also where a future genuinely-
-   necessary cross-owner migration would be added as a deliberate,
-   reviewed exception (see the guard's own header comment).
-2. **Documentation.** `0025`/`0026` are a concrete, in-repo example of why
-   `dykil` was *not* picked over `links` as the #1991 phase-2 first mover:
-   despite scoring 0 entanglement in the #1983 *application-code* audit,
-   `dykil`'s own migrations directly join and update `events` tables —
-   entanglement the app-level audit couldn't see.
-
-Note that this detection is broader than the per-table check earlier in
-this document: `parseStatements` (the per-table check's parser) only
-recognizes DDL, so it doesn't see `0025`/`0026` touching `events` at all
-(they contain zero DDL, only `UPDATE`/`INSERT`/`JOIN`). The shared-file
-scan exists precisely to catch that class of cross-owner reference too.
-
-## Per-owner migration runner mode (#1991 phase 2a)
-
-`scripts/migrate.mjs --owner <app>` filters the existing root
-`migrations/` file list down to files owned solely by `<app>`, using the
-same shared/single-owner classification described above. A shared file is
-included automatically under `--owner kernel`; for any other `--owner`, it
-only runs when `--include-shared` is also passed. No flags at all keeps
-the original, unfiltered behavior byte-for-byte — this is strictly a
-filter layered on top, not a replacement.
-
-This does **not** give any owner true migration isolation today: every
-owner's earliest tables (or, for `dykil`/`events`, some later ones too)
-are created inside a shared file, so running e.g. `--owner links` alone
-against a fresh database will apply nothing for `links` at all unless
-`0001_seed.sql` also runs (as `kernel`, or via `--include-shared`). See
-`migrations/BASELINE.md`'s "Per-app migration directories" section for why
-that's a structural gate on real per-app migration directories, not just a
-runner feature.
-
-It also does not give owners *order* independence: `0025` (shared,
-`dykil`/`events`) reads a column that `0008` (`dykil`-only) adds, so
-running `--owner kernel --include-shared` against a fresh database before
-`--owner dykil` has run fails outright on `0025` (a real SQL error, not a
-skip — the transaction rolls back and nothing is marked applied). Running
-`--owner dykil` and then retrying `--owner kernel --include-shared`
-succeeds, because the retry is idempotent — see `scripts/migrate.mjs`'s
-header comment for the full explanation and why the plain no-flag command
-remains the right choice for bootstrapping a database from empty.
-
-Tracking stays in the single, shared `public._migrations` table regardless
-of mode. This was verified against a real Postgres instance, not just
-argued: a fresh database migrated with the plain no-flag command, and a
-fresh database migrated by running `--owner kernel/coffee/dykil/events/
-learn/links/market --include-shared` in that sequence, produce
-byte-identical `pg_dump --schema-only` output and the same row count in
-`public._migrations` (132 at the time of that verification; the
-migration set has since grown to 167 files).
-the full convergence argument.
-
-## Deferred (explicitly out of scope for phase 1 and phase 2a)
-
-Per the issue decision (2026-09-09): baseline squash of the 167 existing
-migration files (as of #2526) into a clean per-schema baseline, and splitting
-`migrations/` into per-repo/per-app migration directories, are both
-deferred. `links` was the recommended first mover for a future per-repo
-migration split (0 entanglement per the #1983 audit — no internal imports,
-no DB couplings, no internal routes), but no such split happens in this
-phase.
-
-Phase 2a (this round) intentionally does not lift that deferral: it adds a
-`--owner` filter and a stricter CI guard over the *existing* root
-`migrations/` directory, and ships `migrations/BASELINE.md` as a dry-run-
-only plan. No migration file is moved, and no `apps/<app>/migrations/`
-directory is created. See #1991's phase-2 pre-work comment for the full
-blocker writeup (why `links`'s only migration, `0001_seed.sql`, can't be
-moved without either editing an existing migration's SQL or duplicating
-its DDL under a second filename).
-
-## For the migration runner
-
-See `docs/MIGRATIONS.md` for the `scripts/migrate.mjs` quick reference; it
-now links here for the ownership rule and the per-owner filter mode.
+The map's shared-migration allowlist records multi-owner seed/data operations in
+the archive. It is not an escape hatch around the active kernel-only rule.
+Existing databases adopt the baseline under the runbook's checks; they are not
+reset or reconstructed by deleting migration rows.

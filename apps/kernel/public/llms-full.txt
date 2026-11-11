@@ -1,10 +1,16 @@
 # Imajin
 
-> You compose. Imajin orchestrates. Signed. Legible. Imajin is Agentic Relation Management.
+> identity and authority for AI agents.
+
+your agents act as themselves, on your authority, and every action is signed.
+
+Imajin is alpha. [Book a demo, or join the alpha as a tester, integrator or partner](https://jin.imajin.ai/alpha); this is not self-serve onboarding.
+
+Point your agent at it: start with this guide and the service specs below. Every action is a signed event that anyone can verify, including a third party's own agent. Cost and credit are recorded per identity, and .fair turns that into who gets paid.
 
 ## What Imajin is
 
-The kernel serves six primitives: **Attestation · Communication · Attribution · Settlement · Discovery · Revocation**. Identity is the subject of those primitives, not an additional primitive. You compose the relationships and actions; the kernel supplies shared rails for authenticating actors, checking authority and recording outcomes.
+The kernel serves six primitives: **Attestation · Communication · Attribution · Settlement · Discovery · Revocation**. Identity is the subject of those primitives, not an additional primitive. The kernel supplies shared rails for authenticating actors, checking authority and recording outcomes.
 
 Imajin records proof of history, not proof of work. A signature establishes that a particular key signed particular bytes. It does not establish that an assertion is true. An actor-key signature, a node-witnessed record and an unsigned operational log have different evidentiary strength. An integration should preserve that distinction rather than calling every recorded action a user signature.
 

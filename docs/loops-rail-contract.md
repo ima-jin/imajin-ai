@@ -1,15 +1,12 @@
-# Loop registry rail — publisher-authorization contract (#2358, epic #2288/#2290, #2295, #2296, #2338)
-Horizon bridge ruling #2931: issue-ref-only bindings and publisher-scoped envelope receipts.
-Horizon step entries extend this signed rail under #2878; #2879 binds claims to
-the existing surface leases. Runs rendering remains separate (#2880).
-Horizon steps retain their declaring publisher's DID (#3151).
+# Loop registry rail
+
 The kernel consumes signed publisher facts, never gateway RPC, harness transcripts
-or session stores (#3150). This boundary is CI-enforced by
+or session stores. This boundary is CI-enforced by
 `scripts/ci-guard-harness-boundary.mjs` in the `ci-guards` job: production source
 under `apps/kernel/src/**` and `apps/kernel/app/**` cannot import OpenClaw/gateway
 clients, address gateway RPC/HTTP surfaces, or read harness transcripts/session
-stores. Harness `sessionKey` identifiers and JSON keys are forbidden as data too
-(#3259). Unknown refs are stripped after signature verification, before storage,
+stores. Harness `sessionKey` identifiers and JSON keys are forbidden as data too.
+Unknown refs are stripped after signature verification, before storage,
 bus publication or retained publisher proofs; old historical JSON is not rewritten
 or used for joins. Reads and spend correlate only loopId/runId, with run aliases
 from signed loop history and parent lineage. `meet.transcript.available` remains
@@ -17,8 +14,110 @@ allowed as a signed content event. Legacy exceptions are keyed to the
 exact file, detection kind and value in the guard, each with a one-line reason;
 they are a shrinking ratchet, not permission for new harness calls.
 This guard is a static tripwire, not a proof: boundary review is still required for concatenated strings such as `'/tools/' + 'invoke'` or `'sessions' + '_send'`, `import(variable)`, renamed destructured imports such as `{ sessions_send: send }`, `spawn`/`execSync` of `openclaw`, and `OPENCLAW_GATEWAY_TOKEN`, none of which it detects.
-## Horizon steps (#2878, parent #2313 decision a)
 
+A publisher submits signed lifecycle facts naming the principal whose history
+they describe. Signature verification and publisher authorization are independent
+checks, both completed before persistence or publication. The kernel's own Warp
+and cycle adapters witness native activity; external harnesses push their facts.
+Read the [Jin spec](https://jin.imajin.ai/jin/api/spec) for wire schemas and
+[usage spec](https://jin.imajin.ai/usage/api/spec) for metering contracts.
+
+## 1. Signature verification
+
+`verifyLoopPublisherSignature` (`src/lib/loops/verify-publisher-signature.ts`)
+proves `publisherDid` controls the private key it claims: it resolves
+`publisherDid` to its currently registered public key (the kernel node's
+own signing DID resolves in-process through `getNodeSigningIdentity()`;
+every other DID resolves via the identity registry) and verifies
+the Ed25519 signature over `canonicalize({ type, payload })`. An unknown,
+mismatched, or revoked key — or an invalid signature — is rejected with
+400 before anything downstream runs.
+
+This step answers **"does this publisher control this DID?"** — nothing
+more. It does **not** answer whether that DID has any standing to write
+history for `payload.principal`.
+
+## 2. Publisher authorization
+
+`authorizeLoopPublisher` (`src/lib/loops/authorize-publisher.ts`) answers
+that second question, once signature verification has already succeeded.
+`publisherDid` may write `loop.*` history naming `principal` when, and
+only when, one of the following holds:
+
+1. **Self-attestation**: `publisherDid === principal`. A DID always may
+   publish its own loop history.
+2. **The kernel node's own signing-DID path**: `getNodeSigningIdentity()`
+   witnesses every `warp.run.*` (`src/lib/warp/loop-emit.ts`) and `cycle`
+   (`src/lib/loops/cycle.ts`) transition on behalf of whichever human
+   dispatched or triggered it — `principal` is that dispatching DID,
+   never the node's own DID. The node's signing DID is deliberately never
+   registered in the identity registry, so
+   neither self-attestation nor a realistic per-principal delegation
+   grant could ever cover it. The node is not an external actor crossing
+   this ingest boundary — it is the same trusted process enforcing the
+   boundary — so its own witnessed events are exempt from the
+   delegation-grant check the same way they are already exempt from
+   registry-based key resolution.
+3. **An active `loops:publish` delegation grant**: a
+   `delegationGrants` row where `agentDid = publisherDid`,
+   `delegatorDid = principal`, status `active`, not expired, holding the
+   `loops:publish` capability (`packages/auth/src/grant-scopes.ts`).
+   Checked via `introspectGrant` — the same fail-closed,
+   re-read-on-every-call primitive every other cross-DID capability in
+   this codebase uses (`agent:reach`, `usage:read`) — so a revoked or
+   expired grant denies on the very next call, with nothing cached to go
+   stale.
+
+Anything else — an unrelated publisher with no self-match, no
+node-witness match, and no matching grant — is rejected with **403** and
+a typed error code (`loop_publisher_unauthorized`) before publishing.
+The rejected `(publisherDid, principal)` pair is logged at most once per
+hour per kernel process; the envelope payload (summary, refs, etc.)
+is never logged on this path. Suppression affects logging only: every event
+still rechecks the live grant and receives 403 while unauthorized. Restarting
+the process resets this in-memory warning budget.
+
+## Granting `loops:publish`
+
+Issue a grant through the existing delegation rail
+(`POST /auth/api/grants`, `issueGrant` in `apps/kernel/src/lib/auth/grants.ts`):
+the principal (`delegatorDid`) authorizes a specific external agent DID
+(`agentDid`) to hold the `loops:publish` capability, scoped by `audience`
+and a bounded TTL. Revoking the grant (or letting it expire) makes the
+very next `POST /api/loops` call from that publisher fail with 403.
+### Repairing a gateway publisher
+
+There is already a granting UI: `/jin` → **Grants** → **Manage capabilities**
+opens `/auth/agents`. No SQL insert or authorization exception is needed.
+Use the gateway plugin's actual signing agent DID, not a gateway URL, node DID,
+or a newly minted identity. Match the principal in its signed event; a grant
+from a human's personal DID does not authorize the same agent for an organization.
+
+The directly authenticated principal (or current organization owner/admin with
+`auth` access, selecting that organization) can use **Grant an existing agent a
+capability** to issue `loops:publish`, or **+ Add capability** on an existing
+grant. Check the displayed delegator, agent, audience and expiry; renew an expired
+lease explicitly. A revoked grant requires a new deliberate issuance. Grant
+history and signed lifecycle attestations remain retained.
+
+For an exact-principal audience rather than the UI's generic first-grant audience,
+the existing authenticated `POST /auth/api/grants` accepts
+`{agentDid, capabilities: ["loops:publish"], audience: {type: "dids", values: [principalDid]}, ttlMs}`.
+The route derives the delegator from the authenticated human/selected organization,
+never a body-supplied delegator. The audience must include that exact principal;
+do not add foreign principals or use a wildcard. Grants are bounded (maximum
+30 days), so record the expiry and renew through the existing control.
+
+After granting, trigger a normal gateway session and subagent turn. In the same
+principal's authenticated `GET /api/loops?kind=openclaw.session` and
+`?kind=openclaw.subagent`, verify each new loop's principal, refs and timestamp
+within a minute. Then observe the gateway DID's authorization-warning count for
+24 hours: it must be zero, not merely throttled. A quiet log alone does not prove
+registration. This requires live operator authority and production observations;
+unit/integration tests and a PR are not evidence that a production grant exists.
+The kernel continues to learn only from signed events, never gateway RPC.
+
+## Horizon steps
 Publish `step.queued|updated|claimed|started|progress|blocked|finished|observed|attested`
 through the existing `POST /api/loops` signature and `loops:publish` authorization
 boundary. All events carry the common loop envelope plus a nonempty `stepId`.
@@ -102,7 +201,7 @@ Zones are **read projection only**, in precedence order:
 6. `tail`: one-line intention only.
 
 A ref-only binding stays `tail`, but still satisfies matching `issue_closed` (→ `past`).
-### Publishing steps from any harness (#3151)
+### Publishing steps from any harness
 
 No OpenClaw plugin is required. A second harness uses its **own registered DID
 and Ed25519 key**, with a live `loops:publish` grant from the same principal
@@ -131,7 +230,7 @@ harness authorization mechanism; no session token or plugin credential is needed
     "principal": "did:imajin:owner",
     "state": "queued",
     "summary": "Queue a step from another harness",
-    "at": "2026-10-27T12:00:00.000Z",
+    "at": "<fresh ISO-8601 timestamp>",
     "stepId": "second-harness:review",
     "step": {
       "stepKind": "ops",
@@ -173,10 +272,9 @@ unchanged: they do not require the step publisher's DID.
 Input `zone`, `depth`, derived `state: "exited"` and step `output` are rejected.
 Other common-envelope state labels are observational only; they cannot override
 the projected lifecycle. A `step.claimed` fact alone cannot make an item `head`
-or supply its projected `claim`. **#2880** owns Runs rendering.
+or supply its projected `claim`. Runs rendering consumes this projection.
 
-### Step claim leases (#2879; decision c: warn-only)
-
+### Step claim leases
 Acquire by pushing signed `surface.acquired` with `surface: "step:<stepId>"`
 and the existing owning `loopId` and `principal`. The publisher DID (human or
 agent) is the holder; delegated agents use the same `loops:publish` grant.
@@ -208,9 +306,8 @@ fact-derived zone, with `past`/`done` still taking precedence). A bare
 `claimed` state becomes `queued`; work lifecycle observations remain history.
 No timer, sweep, cleanup write, or agent memory is needed after a restart.
 
-`kernel.loop_events` already stores all necessary facts. New bus defaults await
-history persistence and invoke the existing emit reactor, so no schema migration, schema ownership change
-or numbered migration reservation is needed. Exact signed retries deduplicate
+`kernel.loop_events` stores the facts. The bus chain awaits history
+persistence and invokes the emit reactor. Exact signed retries deduplicate
 by a hash of the signed ingest request. History is principal scoped; replay
 sorts by `(occurred_at, id)`, with no in-memory session state to lose at restart.
 Every step fact retains server-assigned `publisherProof` over its exact wire
@@ -219,16 +316,15 @@ of storing an unverifiable substitute. The existing Record lane can read
 `action=step.attested` from the emitted signed event stream, including the
 completing DID, statement and publisher proof, under its existing principal /
 delegated-issuer visibility rules. `/jin` horizon rows show the declaring
-publisher DID as plain text, separately from any current lease holder (#3151).
+publisher DID as plain text, separately from any current lease holder.
 Record emission uses the existing batched, fire-and-forget adapter; only
 `loop_events` history/horizon has read-after-write durability. This feature
 does not change the shared Record adapter's delivery guarantees.
 
-The referenced workspace bridge is outside this repository and no settled
-bridge field-shape ruling was attached to #2878 at dispatch. This contract is
-the explicit kernel wire seam for the later plugin sync (#2881); it does not
-claim to have inspected or modified an agent's local horizon files.
-### Envelope receipts and stale outbox recovery (#2931)
+The workspace bridge belongs to the publisher's repository. This contract
+defines the kernel wire seam, not an agent's local horizon-file format.
+
+### Envelope receipts and stale outbox recovery
 
 `POST /api/loops/receipts` is a kernel-root route, **not** `/jin/api/loops/...`.
 It accepts `{type: "loop.receipt", payload: {loopId, principal, envelopeHash, at},
@@ -247,9 +343,8 @@ Use the original signed wire payload with all absent/null/extension fields
 unchanged, and lowercase `signature.keyId` and `signature.sig` (as ingest does).
 Do not hash HTTP whitespace, the lookup request, a redacted payload, or stored
 `publisherProof` metadata. This is the existing `loopObservationId` digest;
-the stored id is `signed-loop:<envelopeHash>`. All newly ingested lifecycle
-events use this deterministic id as steps, surfaces and signed completions
-already did. No schema change or backfill of legacy random lifecycle ids occurs.
+the stored id is `signed-loop:<envelopeHash>`. Ingest uses deterministic ids; older random lifecycle ids are retained
+without fabricated receipt backfills.
 
 The lookup's `at` is fresh and bounded by `SIGNED_MESSAGE_MAX_AGE` (five minutes)
 and `FUTURE_TOLERANCE`, independently of the original envelope's age. The signed
@@ -278,7 +373,7 @@ stale reconciliation. No replay window is widened and no fresh original `at`
 is fabricated. The discoverable wire schemas are in `/jin/api/spec`
 (`apps/kernel/api-spec/jin.yaml`).
 
-## Surface leases (#2405)
+## Surface leases
 
 `POST /api/loops` also accepts signed `surface.acquired`, `surface.released`,
 and `surface.conflicted` observations. They use the same common loop envelope
@@ -286,7 +381,7 @@ and `surface.conflicted` observations. They use the same common loop envelope
 plus a required `surface`. Sign **the exact wire payload** inside
 `canonicalize({type,payload})`; validation never adds optional defaults to a
 surface payload. The same key resolution and `loops:publish` authorization
-rules below apply to all three event kinds. An explicit conflict also requires
+rules above apply to all three event kinds. An explicit conflict also requires
 `refs.conflictingLoopId`.
 
 Surface identities are exact, case-sensitive typed URIs, at most 2048 characters:
@@ -313,7 +408,7 @@ Acquisition evidence is retained as `issuer`, `signature`, and `signed_payload`
 on the lease row. Surface observations are also in `kernel.loop_events`;
 their payload retains `evidence: {publisherDid, signature, signedPayload}`.
 Verify that signature against `canonicalize({type, payload: evidence.signedPayload})`,
-not the augmented history payload. When #2406 redaction or
+not the augmented history payload. When redaction or
 artifact spilling changes an envelope, surface history and lease rows retain
 only the prepared, redacted payload; history evidence has `redacted: true`
 instead of an exact `signedPayload`. As with `publisherProof`, original
@@ -334,117 +429,10 @@ filters leases by holder and conflicts by either named loop; `limit` defaults
 to 50, capped at 200 independently for each list. `principal`, if supplied,
 must match the effective principal. Cross-principal holdings are never returned;
 a collision observation exposes the conflicting loop id, not its principal or
-signature. The Runs lane can consume these warnings inline (#2404); rendering
+signature. The Runs lane can consume these warnings inline; rendering
 and publisher/plugin changes remain separate work.
 
-Kernel half of the loop registry rail's signed ingest boundary
-(`POST /api/loops`, `apps/kernel/src/lib/loops/`). Any publisher (Warp's
-own dispatch bridge, the sprint `cycle` loopKind, the OpenClaw plugin
-translating gateway-side lifecycle hooks, a review sub-agent) submits a
-`loop.started|progress|blocked|finished` envelope naming a `principal` —
-the DID this history is attributed to — signed with the publisher's own
-DID key. This document is the contract for **who may publish loop history
-for whom**, split into the two independent checks ingest runs, in order,
-before anything is written or published onto the bus.
-
-## 1. Signature verification (#2295, #2338)
-
-`verifyLoopPublisherSignature` (`src/lib/loops/verify-publisher-signature.ts`)
-proves `publisherDid` controls the private key it claims: it resolves
-`publisherDid` to its currently registered public key (the kernel node's
-own signing DID resolves in-process, `getNodeSigningIdentity()`, per
-#2338 — every other DID resolves via the identity registry) and verifies
-the Ed25519 signature over `canonicalize({ type, payload })`. An unknown,
-mismatched, or revoked key — or an invalid signature — is rejected with
-400 before anything downstream runs.
-
-This step answers **"does this publisher control this DID?"** — nothing
-more. It does **not** answer whether that DID has any standing to write
-history for `payload.principal`.
-
-## 2. Publisher authorization (#2358)
-
-`authorizeLoopPublisher` (`src/lib/loops/authorize-publisher.ts`) answers
-that second question, once signature verification has already succeeded.
-`publisherDid` may write `loop.*` history naming `principal` when, and
-only when, one of the following holds:
-
-1. **Self-attestation**: `publisherDid === principal`. A DID always may
-   publish its own loop history.
-2. **The kernel node's own signing-DID path (#2338)**: `getNodeSigningIdentity()`
-   witnesses every `warp.run.*` (`src/lib/warp/loop-emit.ts`) and `cycle`
-   (`src/lib/loops/cycle.ts`) transition on behalf of whichever human
-   dispatched or triggered it — `principal` is that dispatching DID,
-   never the node's own DID. The node's signing DID is deliberately never
-   registered in the identity registry (#2338: a registry write the
-   node's own verification "shouldn't depend on... succeeding"), so
-   neither self-attestation nor a realistic per-principal delegation
-   grant could ever cover it. The node is not an external actor crossing
-   this ingest boundary — it is the same trusted process enforcing the
-   boundary — so its own witnessed events are exempt from the
-   delegation-grant check the same way they are already exempt from
-   registry-based key resolution.
-3. **An active `loops:publish` delegation grant (#1882)**: a
-   `delegationGrants` row where `agentDid = publisherDid`,
-   `delegatorDid = principal`, status `active`, not expired, holding the
-   `loops:publish` capability (`packages/auth/src/grant-scopes.ts`).
-   Checked via `introspectGrant` — the same fail-closed,
-   re-read-on-every-call primitive every other cross-DID capability in
-   this codebase uses (`agent:reach`, `usage:read`) — so a revoked or
-   expired grant denies on the very next call, with nothing cached to go
-   stale.
-
-Anything else — an unrelated publisher with no self-match, no
-node-witness match, and no matching grant — is rejected with **403** and
-a typed error code (`loop_publisher_unauthorized`) before publishing.
-The rejected `(publisherDid, principal)` pair is logged at most once per
-hour per kernel process (#3134); the envelope payload (summary, refs, etc.)
-is never logged on this path. Suppression affects logging only: every event
-still rechecks the live grant and receives 403 while unauthorized. Restarting
-the process resets this in-memory warning budget.
-
-## Granting `loops:publish`
-
-Issue a grant the same way every other #1882 delegation grant is issued
-(`POST /auth/api/grants`, `issueGrant` in `apps/kernel/src/lib/auth/grants.ts`):
-the principal (`delegatorDid`) authorizes a specific external agent DID
-(`agentDid`) to hold the `loops:publish` capability, scoped by `audience`
-and a bounded TTL. Revoking the grant (or letting it expire) makes the
-very next `POST /api/loops` call from that publisher fail with 403.
-### Repairing a gateway publisher (#3134)
-
-There is already a granting UI: `/jin` → **Grants** → **Manage capabilities**
-opens `/auth/agents`. No SQL insert or authorization exception is needed.
-Use the gateway plugin's actual signing agent DID, not a gateway URL, node DID,
-or a newly minted identity. Match the principal in its signed event; a grant
-from a human's personal DID does not authorize the same agent for an organization.
-
-The directly authenticated principal (or current organization owner/admin with
-`auth` access, selecting that organization) can use **Grant an existing agent a
-capability** to issue `loops:publish`, or **+ Add capability** on an existing
-grant. Check the displayed delegator, agent, audience and expiry; renew an expired
-lease explicitly. A revoked grant requires a new deliberate issuance. Grant
-history and signed lifecycle attestations remain retained.
-
-For an exact-principal audience rather than the UI's generic first-grant audience,
-the existing authenticated `POST /auth/api/grants` accepts
-`{agentDid, capabilities: ["loops:publish"], audience: {type: "dids", values: [principalDid]}, ttlMs}`.
-The route derives the delegator from the authenticated human/selected organization,
-never a body-supplied delegator. The audience must include that exact principal;
-do not add foreign principals or use a wildcard. Grants are bounded (maximum
-30 days), so record the expiry and renew through the existing control.
-
-After granting, trigger a normal gateway session and subagent turn. In the same
-principal's authenticated `GET /api/loops?kind=openclaw.session` and
-`?kind=openclaw.subagent`, verify each new loop's principal, refs and timestamp
-within a minute. Then observe the gateway DID's authorization-warning count for
-24 hours: it must be zero, not merely throttled. A quiet log alone does not prove
-registration. This requires live operator authority and production observations;
-unit/integration tests and a PR are not evidence that a production grant exists.
-The kernel continues to learn only from signed events, never gateway RPC.
-
-
-## Registry refs and spend (#2290)
+## Registry refs and spend
 
 `refs` are signed publisher data: `runId`, `sessionId`, `issue`, `pr`; ingest
 drops any other key, including a harness `sessionKey`. `GET /api/loops` and MCP
@@ -479,7 +467,7 @@ still uses the existing principal-authorized connector; unavailable is unknown.
 
 `/jin` Runs uses the same projection through direct-human operator-gated
 adapters, not the Warp or gateway API. Nonoperators see no Runs lane.
-## Native lifecycle observations (#2290)
+## Native lifecycle observations
 
 - Warp publishes authoritative run/session ids, exact GitHub trigger refs and
   unambiguous typed PR artifact refs; it never infers subjects from prompts or
@@ -507,7 +495,7 @@ adapters, not the Warp or gateway API. Nonoperators see no Runs lane.
 | Publisher | Principal | Path | Result |
 |---|---|---|---|
 | `did:imajin:ryan` | `did:imajin:ryan` | self-attestation | 201 |
-| kernel node's signing DID | any dispatching DID | node-witness (#2338) | 201 |
+| kernel node's signing DID | any dispatching DID | node-witness | 201 |
 | `did:imajin:agent` | `did:imajin:ryan` | active `loops:publish` grant from ryan | 201 |
 | `did:imajin:agent` | `did:imajin:ryan` | grant revoked or expired | 403 |
 | `did:imajin:stranger` | `did:imajin:ryan` | no grant at all | 403 |

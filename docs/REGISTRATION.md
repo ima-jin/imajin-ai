@@ -1,701 +1,168 @@
-# Registering an extracted app with the kernel
-
-Gate 1+2 of epic #2370 (#2375): an app being extracted out of the monorepo into its own
-standalone repo (dykil and links today; learn/etc. later, #1985/#1991/#1986) is registered through
-`apps.provision` — one call that creates its GitHub repo, registers it in the kernel's app
-registry (`registry.apps`, #1990) as a **`tier: 'third_party'`** row, and vault-seals its app-auth
-private key, handing the app a one-time claim code to fetch that key at first boot.
-**The app's private key never leaves the vault/keystore path** — it is never returned in any
-API response, never logged, never "shown once," and never copied into an env file or a GitHub
-Actions secret (the `IMAJIN_APP_PRIVATE_KEY` Actions secret was removed in v0.8.17, #2437).
-
-`apps.provision` always registers `tier: 'third_party'` — matching `imajin-app-template`'s own
-AGENTS.md ("every app forked from this template, including Imajin's own extractions (dykil,
-links, ...), registers the same way, at the same [third_party] tier"). `tier: 'first_party'`
-stays reserved for the kernel's own admin surface (`POST /api/admin/registry/apps`) seeding
-an in-monorepo trusted-userspace app — see "Legacy first-party rows vs. provisioned apps"
-below for how the two coexist during an app's extraction.
-
-A developer forking `ima-jin/imajin-app-template` **outside** ima-jin (a genuine third party,
-not an ima-jin extraction) uses that template's own self-service `docs/REGISTRATION.md`
-(`POST /api/registry/apps`) instead — a different, human-session-gated flow where the developer
-holds their own keypair rather than the kernel minting and sealing it. Do not confuse the two:
-`apps.provision` is for apps the kernel itself is extracting/deploying.
-
-## Discovery and sign-in are independent (#2957)
-
-`registry.apps.signInAudience` is `members` (default) or `anyone`. Omission on
-registration/provisioning uses `members`; existing rows also default to `members`.
-Null, unknown strings, arrays and other invalid values are rejected, not coerced.
-
-- **`visibility: "private", signInAudience: "members"`**: only the owning
-  identity and its current members may consent. Both authorize POST routes
-  return `403` with clear members-only copy; OAuth also returns
-  `access_denied`. No grant, authorization code or app-list addition is made.
-- **`visibility: "private", signInAudience: "anyone"`**: any authenticated person
-  may consent when arriving through the app's direct sign-in link. It remains
-  hidden from public discovery. This is useful for a customer-facing site owned
-  by a memberless organization stub: customers need not join that organization.
-- Public/unlisted apps keep their existing consent behavior. Internal apps do
-  not acquire a sign-in surface. Public web pages are unaffected by either setting.
-
-This setting grants neither organization membership nor extra scopes, tokens,
-service authority or automatic installation. Redirect URI, PKCE, scope, active
-registration and consent checks still apply. Both native and OAuth authorize
-routes use the same audience rule. The direct registration-id detail endpoint
-(`GET /api/registry/apps/{appId}`) permits authenticated private/anyone reads so
-the consent screen can load; the directory listing stays private.
-
-Developers choose **Sign-in audience** in `/auth/developer/apps` registration and
-the owner's app detail editor, or supply `signInAudience` to
-`POST /api/registry/apps` / owner-only `PATCH /api/registry/apps/{appId}`. List,
-detail and successful write responses return the stored setting. An omitted PATCH
-field is preserved. Changing `members` to `anyone` reuses the visibility-widening
-delegation policy: the owner's own session/countersign is required; a delegate
-receives `403 AGENT_APPROVAL_REQUIRED`. Narrowing/no-op edits remain delegable with
-an active grant. Concurrent audience/ownership changes produce `409`; reload first.
-
-`POST /api/apps/provision` and the `/jin` **Provision app** form accept the same
-setting. Fresh proposals show it in the summary and read-only detail; it is part
-of the content hash the operator countersigns and is persisted during registration,
-without a follow-up PATCH. For example, propose
-`{"slug":"gbs","displayName":"GBS","visibility":"private","signInAudience":"anyone"}`.
-Manifest contents cannot override the approved setting.
-
-A pending proposal with a different audience returns `409`, rather than silently
-reusing the wrong card. Retry after registration must use the recorded audience;
-conflicting retries fail without editing the registry or issuing a claim code.
-For an already-succeeded run, omitted audience preserves the live setting and an
-explicit different audience is refused (use owner settings to change it).
-`reissueClaim: true` must omit `signInAudience` entirely: reissue cannot reset or
-change it, even to its default. Existing keys, identity and audience survive reissue.
-
-## Operator setup (one-time, per node) — optional for an app whose repo already exists
-
-`apps.provision` acts as a **GitHub App installation**, not a personal access token — ruled
-by Ryan (2026-09-28, #2416): the `ima-jin` org does not issue GitHub PATs. This supersedes
-#2375's original org-scoped-PAT shape; the credential slot (`github-org-provisioning`) is the
-same vault field, just resealed with a different, non-PAT shape. Every GitHub action this
-credential takes lands in the org audit log as `imajin-provisioner[bot]` — the same identity
-model `warp-factories[bot]` already uses.
-
-`apps.provision`'s repo-existence check (`ensureRepoFromTemplate`) runs **unauthenticated**
-first and never requires this credential at all when `ima-jin/<slug>` already exists (#2415):
-provisioning an app whose repo was created out of band (e.g. `gh repo create`, or cloned/built
-manually per the dykil precedent below) needs no GitHub credential of any kind, so sealing the
-App identity below is not a blocking prerequisite for that path. The credential is only ever
-consulted for two things:
-- **Creating a new repo from the template** when `ima-jin/<slug>` does not exist yet (the
-  'repo' step fails closed with an out-of-band `gh repo create` instruction when it's missing
-  AND the credential is unsealed — see "Idempotency and fail-closed" below).
-- **Reading `imajin.app.json`** (the app's nav metadata) from the repo during registration —
-  best-effort, skipped when unsealed.
-
-It is **never** used to write GitHub Actions secrets: the app's signing key is not pushed to
-the repo at all (see "Where the app's key goes" below; removed in v0.8.17, #2437).
-
-1. **Create the App** under the `ima-jin` org: `https://github.com/organizations/ima-jin/settings/apps`
-   -> "New GitHub App". Name it `imajin-provisioner` (or similar), disable webhooks (unused).
-2. **Grant repository permissions:** Administration (Read and write — creates repos from the
-   template), Contents (Read and write), Metadata (Read-only — mandatory baseline). (No
-   `Secrets` permission is needed since v0.8.17 / #2437 — an App that already holds it can have
-   it dropped; nothing in provisioning writes Actions secrets any more.)
-3. **Install the App on the org:** from the App's settings page, "Install App" -> `ima-jin` ->
-   "All repositories" (new app repos are created after the install, so per-repo selection
-   can't include them yet).
-4. **Generate a private key** on the App's settings page ("Generate a private key") — this
-   downloads a `.pem` file once. Note the **App ID** (shown on the same page) and the
-   **Installation ID** (the numeric ID in the URL after installing, e.g.
-   `https://github.com/organizations/ima-jin/settings/installations/<installationId>`).
-5. **Seal the three values as one JSON blob** through the admin panel: open `/admin/vault` ->
-   "+ Set Secret", enter the field `github-org-provisioning` (typed exactly — case is preserved),
-   leave Custody on `delegation-grant` (the default for a namespaced field), and paste the JSON
-   blob as the value. Fallback, via the existing generic vault-set route:
-   ```bash
-   curl -X POST "${IMAJIN_AUTH_URL}/api/vault/set" \
-     -H "Content-Type: application/json" \
-     -H "Cookie: <admin session cookie>" \
-     -d '{
-       "field": "github-org-provisioning",
-       "value": "{\"appId\":\"<App ID>\",\"installationId\":\"<Installation ID>\",\"privateKeyPem\":\"<contents of the downloaded .pem, newlines escaped as \\n>\"}",
-       "custodyScheme": "delegation-grant"
-     }'
-   ```
-   Never sealed as a v1 field — `custodyScheme: "delegation-grant"` is required (v2 grant
-   shape, self-granted to the node, #2311). The private key never passes through chat or Jin
-   — only the operator running this `curl` ever sees it.
-
-At call time, `getInstallationToken()` (`src/lib/github/org-provisioning.ts`) signs a
-short-lived RS256 JWT with the App's private key (`iss` = App ID, <=10-minute lifetime),
-exchanges it for a 1-hour installation access token
-(`POST /app/installations/{installationId}/access_tokens`), and caches that token in memory
-until 5 minutes before it expires. The App private key and the minted installation token are
-never persisted outside the vault field itself, and never logged.
-
-## 1. Call `apps.provision` (the normal path)
-
-`apps.provision` is an **operator-authority proposal** on the existing operator-approvals
-rail (#2059/#2152/#2082) — the same rail every other repo/identity-creating mechanical action
-rides. Any authenticated identity (a human, or an agent) may propose; nothing external happens
-until the node operator countersigns an `approve` decision on `/jin`.
-
-**Propose — from `/jin` (preferred):** open `/jin` as the node operator, fill in the **Provision app**
-form (`slug` and `displayName` are required; `template` defaults to `ima-jin/imajin-app-template`;
-`attestationTypes` is an optional comma-separated `<slug>/<type>` list), and click **Propose
-provision**. A bad slug is refused client-side before anything is proposed. The form shows the
-`proposalId` and links to its card in **Operator approvals** directly below; a `200` "already
-pending" is shown as such (not as an error). Approve the card there, and the form then shows the
-result from `GET /api/apps/provision?slug=` — `status`, `repoUrl`, `appDid`, or `failedStep` /
-`errorMessage` on failure — without any manual polling. The form calls the same route as the curl
-below; it adds no endpoint and no authority, and only the operator's approval runs the pipeline.
-
-**Propose — from a script or agent (curl):**
-
-```bash
-curl -X POST "${IMAJIN_AUTH_URL}/api/apps/provision" \
-  -H "Content-Type: application/json" \
-  -H "Cookie: <your kernel session cookie>" \
-  -d '{
-    "slug": "dykil",
-    "displayName": "dykil",
-    "attestationTypes": ["dykil/survey-response", "dykil/survey-response-legacy-import"]
-  }'
-```
-
-Response (`201`, or `200` if a matching proposal is already pending):
-
-```json
-{ "status": "pending", "proposalId": "appprov_..." }
-```
-
-**Operator approves** the resulting card on `/jin` (`POST /api/operator-approvals/{proposalId}/decision`
-with `decision: "approve"`, countersigned). That decision is what actually runs the pipeline
-(`src/lib/apps/approvals-execution.ts` → `src/lib/apps/provision.ts`).
-
-**Poll the result** (the agent that proposed it doesn't see the decision response directly):
-
-```bash
-curl "${IMAJIN_AUTH_URL}/api/apps/provision?slug=dykil" \
-  -H "Cookie: <your kernel session cookie>"
-```
-
-```json
-{
-  "slug": "dykil",
-  "status": "succeeded",
-  "appDid": "did:imajin:9f2c...",
-  "repoUrl": "https://github.com/ima-jin/dykil",
-  "secretsSet": [],
-  "attestationTypes": ["dykil/survey-response", "dykil/survey-response-legacy-import"],
-  "failedStep": null,
-  "errorMessage": null
-}
-```
-
-(`appDid` is freshly minted and public-key-derived, not the legacy `did:imajin:app-dykil`
-placeholder — see "Legacy first-party rows vs. provisioned apps" below. `secretsSet` is always
-`[]` for a run made on v0.8.17+ — the field is kept so API consumers and
-`kernel.app_provisions` rows stay valid; a ledger row from before #2437 may still list
-`IMAJIN_APP_PRIVATE_KEY`, which describes what was sealed back then, not what is set now.)
-
-### Fields
-
-| Field | Meaning |
-|---|---|
-| `slug` | Short, repo-safe identifier. The repo is `ima-jin/<slug>`; this is the idempotency key. |
-| `displayName` | Human-readable app name, stored on the `registry.apps` row. |
-| `template` | Optional `owner/repo` to generate from. Defaults to `ima-jin/imajin-app-template`. |
-| `attestationTypes` | Optional `<slug>/<type>` strings to seed (see below). |
-
-### Idempotency and fail-closed
-
-- **Idempotent on slug.** Re-running `apps.provision` for a slug that already succeeded
-  returns the cached `{repoUrl, appDid, secretsSet}` — it does not re-create the repo and does
-  not re-mint a key (it only issues a fresh claim code). If the repo already exists (e.g. dykil's
-  `ima-jin/dykil`, cloned/built manually before this landed), the repo-creation step is
-  skipped and only registration + the key grant/claim code run.
-- **The repo-existence check needs no GitHub credential at all (#2415).** `ensureRepoFromTemplate`
-  checks `ima-jin/<slug>` unauthenticated FIRST; a `200` short-circuits straight to `{created:
-  false}` without ever touching the org credential. The credential is only consulted once the
-  repo is confirmed missing (`404`) — to actually create it — or on an ambiguous status, for one
-  authenticated retry. If the repo is missing AND the credential is unsealed, the 'repo' step
-  fails closed with an `OrgCredentialMissingError` naming the out-of-band fix: `gh repo create
-  ima-jin/<slug> --template ima-jin/imajin-app-template`, then re-run `apps.provision`.
-- **An unsealed org credential never blocks the key hand-off (#2415, #2437).** Once the repo
-  step passes (existing or freshly created), nothing after it needs the org credential to write
-  anything: the chain mints the key, registers the app, grants the app its own
-  `app-signing-key` vault delegation, and issues the claim code. (There is no "seal" step and
-  no `apps.provision.seal.skipped` event any more — both were removed in v0.8.17, #2437.)
-- **Fail-closed for every step.** A failing step leaves a `kernel.app_provisions` row with
-  `status: "failed"`, `failedStep` naming exactly which step (`repo` | `mint` | `register` |
-  `app-signing-key-grant` | `attestation-types`), and an `apps.provision.failed` bus event. No
-  half-registered app is ever served: the `registry.apps` row is written only after a real
-  keypair already exists and is durably vault-sealed. (A pre-#2437 ledger row may name the
-  retired `seal` step.)
-- **A stale PAT still sealed fails closed with `OrgCredentialMalformedError` (#2436).** If
-  `github-org-provisioning` still holds a pre-#2416 PAT string (or any value that is not the
-  `{appId, installationId, privateKeyPem}` JSON blob), provisioning fails closed — at the first
-  step that consults the credential, which is `register` (the manifest read) when the repo
-  already exists, or `repo` when it must be created — instead of degrading like the unsealed
-  case. No registry row is written. Fix: reseal the `{appId, installationId, privateKeyPem}`
-  blob ("Operator setup" step 5 above), then re-propose.
-- **Retryable.** Re-proposing after a failure resumes from whichever step didn't already
-  succeed (each step checks its own completion state first).
-
-### Attestation types (namespaced, app-owned)
-
-Attestation types an app emits are namespaced `<slug>/<type>` (e.g. `dykil/survey-response`)
-and owned by the app DID whose slug they carry — declared by the app itself, refused outside
-its own slug prefix. `apps.provision`'s optional `attestationTypes` seeds the initial set via
-the existing attestation-type registry (`registerAttestationType`, #1885) — the SAME mechanism
-`GET`/`POST /auth/api/attestations/types` already expose, just called with `handle: slug`
-instead of a human's own `identities.handle`. A type outside `<slug>/` is refused (per-type;
-it never fails the rest of provisioning).
-
-### Scopes the app defines, and services it depends on (#2663)
-
-Two more declarations ride the same `registry.apps` row that already carries `requestedScopes`
-(the existing app scope-assignment model) — nothing parallel:
-
-| Field | Meaning |
-|---|---|
-| `providesScopes` | Scope strings the app defines and enforces itself, e.g. `["dykil:read", "dykil:write"]`. |
-| `dependsOn` | Other registered audiences the app's tokens must also satisfy, with the platform scopes it needs there, e.g. `[{ "aud": "jin.imajin.ai", "scopes": ["media:read", "media:write"] }]`. |
-
-(A third declaration, `emittableEvents` — the event types the app may emit — is covered in
-[Emitting events from an app](#emitting-events-from-an-app-post-apievents-2638-2641) below.)
-
-Both default to `[]`. They have different authority:
-
-- `providesScopes` is the app's own vocabulary, and it needs a registered `slug` (#2674): the
-  `<slug>:` namespace is reserved for the app that holds that slug. An `apps.provision` app declares
-  it in its `imajin.app.json`, an operator on `POST /api/admin/registry/apps` (which takes an
-  optional `slug` for exactly this), and an owner may *narrow* it via `PATCH /api/registry/apps/:appId`.
-  A self-service app (`POST /api/registry/apps`) has no slug, so it declares none.
-- `dependsOn` hands an app's tokens *another service's* audience (e.g. kernel media), so it is
-  **operator-only**: only the admin route and `apps.provision` write it. Self-service register and
-  PATCH reject a `dependsOn` field with `400`.
-
-Both are validated at write time and a bad one is a `400` (`apps.provision` fails closed at
-`register`, writing no row):
-
-- A `providesScopes` entry must be `namespace:verb` (lowercase), must not already be in the platform
-  `SCOPE_VOCABULARY`, and must not sit in a namespace the vocabulary owns (`media:`, `wallet:`, ...).
-  The namespace must be the app's own `slug` (every `apps.provision` app has one) — an app with no
-  slug can't declare any, so it can't squat another app's namespace (`dykil:read`) (#2674).
-- A `dependsOn` entry's `aud` must be a registered, active app, and its `scopes` must be platform
-  vocabulary scopes.
-
-**The operator approves the list on the apps.provision card.** When `POST /api/apps/provision`
-raises the proposal it reads `providesScopes` / `dependsOn` from the app's `imajin.app.json` and
-snapshots them into the proposal's `detail` (`manifestDeclarations`), which is covered by the hash the
-operator signs. The `/jin` approval card shows that list, read-only, before the operator approves:
-the scopes the app provides, and each dependency audience with its scopes. Approving registers
-**exactly that list and nothing beyond it** — if the manifest has changed since the proposal, or
-declares anything when no manifest was readable at proposal time (unsealed org credential, repo not
-created yet), `apps.provision` fails closed at `register` and the app is re-proposed so the operator
-reviews the current list. A manifest that declares something invalid is refused with `400` when the
-proposal is raised, so the operator is never asked to approve it.
-
-**Gap 1 — the app's own scopes.** `POST /auth/api/tokens/app` clamps the requested scopes to the
-platform vocabulary *plus* the `providesScopes` of the app whose `aud` the token is for, so a token
-minted for dykil carries `dykil:read` / `dykil:write`. One app's scopes are never granted on another
-app's audience.
-
-**Gap 2 — one token for the app and the services it fronts.** The same route mints the token with
-the requested `aud` first, then the `aud` of each `dependsOn` entry that (a) one of the requested
-scopes reaches, and (b) is still a registered, active app. So a dykil token minted with `media:read`
-also carries the node's own host and is accepted by `requireMediaAuth`, with no second token and no
-change to the media routes. The response reports every audience in `aud`. Verification re-checks the
-registry for *every* audience on the token, so revoking either end stops the token at both — on
-`POST /auth/api/tokens/app/verify` and on the caller-DID path the attestation routes use (#2674).
-
-**Exactly the approved scopes.** Every scope on a token is honoured at every audience it carries, so
-once a token carries a dependency audience its scopes are clamped to the app's `providesScopes` plus
-the listed scopes of the dependencies actually added — nothing else. An app that declared only
-`media:read` and asks for `media:read media:write` gets a token with `media:read` only. A token with
-no dependency audience is valid only at the app's own host and is not clamped further.
-
-**Scopes are bound to their audience at verify time (#2674).** The token carries one flat scope list,
-but verifying it *for a dependency* honours only the scopes the app's `dependsOn` lists for that
-dependency: with two dependencies A and B, A's scopes are not honoured at B, and the app's own
-`providesScopes` are honoured at neither. The primary audience (the app itself) honours the whole
-token. `POST /auth/api/tokens/app/verify` returns the scopes for the audience it verified. A
-dependency the app no longer lists honours none.
-
-**The approved list is the ceiling (#2674).** `apps.provision` records the whole approved list in the
-row — `providesScopes`, `dependsOn`, and `requestedScopes` (the app's own scopes plus the approved
-dependency scopes). Two things hold the app to it:
-
-- *At mint*, `POST /auth/api/tokens/app` never grants a scope outside `requestedScopes` ∪
-  `providesScopes` ∪ the approved `dependsOn` scopes, so a third-party app with nothing assigned is
-  granted nothing. (Legacy `first_party` rows seeded with `requested_scopes = []` by `0139` predate
-  scope assignment and are left unconstrained; a `first_party` row with an assignment is held to it.)
-- *After approval*, `PATCH /api/registry/apps/:appId` may narrow `providesScopes` (and, on an app with a
-  slug, `requestedScopes`) but never widen it past that list; widening is a `400`. The ceiling is
-  computed from the stored row, not the request body, so one request can't raise it and spend it.
-  Adding a scope means re-proposing `apps.provision`, so the operator sees it on the card.
-
-```bash
-curl -X POST "${IMAJIN_AUTH_URL}/api/tokens/app" \
-  -H "Content-Type: application/json" -H "Cookie: <the user's session cookie>" \
-  -d '{ "aud": "dykil.imajin.ai", "scopes": ["dykil:read", "dykil:write", "media:read", "media:write"] }'
-# -> { "token": "...", "expiresIn": 600, "scopes": ["dykil:read", ...only the approved ones], "aud": ["dykil.imajin.ai", "jin.imajin.ai"] }
-```
-
-### Signed payment callbacks and notify service tokens (#2798)
-
-Kernel payment, enrollment, listing-purchase, subscription and settlement HTTP
-callbacks carry detached Ed25519 signatures. Verify with `verifyKernelWebhook`
-from `@ima-jin/auth/kernel-webhook` before parsing or processing, passing your own app DID as the
-required `audience` option and your configured kernel auth URL. Never derive that
-expected DID from the callback header. The signed `x-kernel-audience` prevents
-cross-app replay at shared callback paths. The helper pins the published key set, follows overlapping rotation
-without app env/key-file edits, rejects timestamps outside ±300 seconds and
-consumes nonces atomically. Production replicas use a shared DB-backed nonce
-adapter and persistent pins; the default nonce store is process-local.
-See [the signature protocol and typed failures](security/kernel-webhooks.md).
-
-This is the integration contract, not a claim that every standalone app has
-already adopted it. Standalone coffee/learn/market remain Bearer-only until
-coffee#13/learn#15/market#15 respectively merge and deploy; retain the existing
-kernel callback Bearers and service URLs until each migration ships.
-Events now runs from [ima-jin/events](https://github.com/ima-jin/events) in dev
-and prod; its signed callback/contact integration belongs to that repository.
-The events#38 prerequisite and monorepo receiver were cutover-era context;
-the kernel source copy was pruned in #2517. Keep the public signed-callback,
-app-token and contact contracts available to standalone consumers. See the
-rollout/removal gate in the linked protocol doc before removing any legacy bridge.
-
-For direct notifications, approve `notify:send`, `notify:broadcast` and/or
-`notify:interest` through the existing countersigned `apps:service-scopes` tool
-flow. The token must carry the endpoint's scope and the app must still have that
-scope in its active registry approval. Configure `@ima-jin/notify` at boot with
-an `appTokenProvider` that returns a fresh/cached service token minted through
-`/auth/api/apps/token/service` using the app's vault/keystore identity. User-session
-and delegated app tokens do not authorize these routes; token scopes are not
-self-granted. No new shared credential is required. See `packages/notify/README.md`
-for the callback configuration contract. The temporary rollout bridge is documented
-only in the dated removal note, not an integration path for new apps.
-
-### Emitting events from an app: `POST /api/events` (#2638, #2641)
-
-A standalone app cannot import `@imajin/bus` (kernel-internal, never published), so the kernel
-exposes the one public way to put a domain event on the bus. It is deliberately narrow — an app-sent
-event can **notify and audit, never move money**:
-
-> an operator-approved allowlist of event types, which can only notify and audit — never move money
-> (no settle, no attestation issuance from app-emitted events). *Ruled by Ryan, 2026-10-07.*
-
-Money stays on one audited path: market settlement goes through the settle route (#2642), not events.
-
-**The operator approves, per app, which event types it may emit.** It is one more declaration on the
-`registry.apps` row, with the same ceiling pattern as the approved scopes:
-
-| Field | Meaning |
-|---|---|
-| `emittableEvents` | Event types the app may emit, e.g. `["tip.granted", "tip.sent"]` (coffee) or `["listing.created", "listing.purchased"]` (market). Lowercase dotted names, no wildcards, at most 50, none in a kernel-owned namespace. |
-
-- **Default: `[]`.** An app can emit nothing until an operator approves a list.
-- **Never kernel-owned types (#2717).** A list containing a type in a kernel-owned namespace —
-  `payment_request.*`, `loop.*`, `attestation.*`, `identity.*`, `vault.*`, `settlement.*`, `order.*`, ... (the
-  full set is `KERNEL_EVENT_NAMESPACES` in `apps/kernel/src/lib/kernel/emittable-events.ts`) — is refused
-  with `400` by every approval path (the admin registry routes, and `apps.provision` at both the card preview
-  and `register`). App-domain namespaces such as `tip.*`, `listing.*` and `ticket.*` stay approvable.
-- **Operator-only.** `POST /api/registry/apps` and `PATCH /api/registry/apps/:appId` reject an
-  `emittableEvents` field with `400`; an app never picks its own list.
-- **`apps.provision`:** the app *requests* the list in its `imajin.app.json` (`"emittableEvents": [...]`).
-  The proposal snapshots it into `detail.manifestDeclarations`, the `/jin` approval card shows it
-  (*May emit events — notify and audit only*), and approving registers **exactly that list** — a manifest
-  that has changed since the proposal fails closed at `register`, same as `providesScopes` / `dependsOn`.
-- **Already-registered apps:** the operator sets the full list with
-  `PATCH /api/admin/registry/apps/:appId` and body `{ "emittableEvents": [...] }` (replace, not merge;
-  `[]` withdraws everything). Every change is signed into the audit trail as a
-  `registry.app.emittable-events.updated` attestation carrying the before and after lists.
-- **Visible where the approved scopes are:** `GET /api/admin/registry/apps`,
-  `GET /api/registry/apps` and `GET /api/registry/apps/:appId` return `emittableEvents` next to
-  `requestedScopes` / `providesScopes` / `dependsOn`.
-
-**Emitting.** Authenticate as the app with an app-service token (`POST /auth/api/apps/token/service`
-— proof of possession of the app's registered keypair), then:
-
-```bash
-curl -X POST "${IMAJIN_KERNEL_URL}/api/events" \
-  -H "Authorization: Bearer ${APP_SERVICE_TOKEN}" -H "Content-Type: application/json" \
-  -d '{ "type": "tip.granted", "subject": "did:imajin:<recipient>", "payload": { "amount": 3, "currency": "USD" } }'
-# -> 201 { "ok": true, "type": "tip.granted", "origin": "did:imajin:<app>", "ran": ["audit-log", "notify"] }
-```
-
-| Status | When |
-|---|---|
-| `401` | No bearer, or it is not a valid app-service token. A user-delegated app token or a session token is also `401`: only the app itself, proven by its key, may speak as the app. So is a validly signed service token minted for another audience (#2717): the token's `aud` must be `imajin:apps` (what `POST /auth/api/apps/token/service` mints) or the kernel's registry audience `jin` — never another app's slug or a host. |
-| `429` | The app is over its emit budget (#2717): 60 events a minute per app, with a `Retry-After` header. Uses the kernel's shared `rateLimit` helper. |
-| `400` | Malformed body: `type` must be a lowercase dotted event type, `subject` a DID, `payload` an object of at most 16 KB. `payload.interestDids`, when present, must be an array of at most 25 DIDs (#2717). `scope` is not accepted — the kernel fixes it. |
-| `403` | `event_type_not_approved` — `type` is not on this app's approved list (including every type, for an app whose list is empty); `event_type_reserved` — `type` is in a kernel-owned namespace, refused even if a stored list holds it (#2717); or `app_not_registered` — the app has been revoked. |
-
-**Chain configs: scope `apps` only (#2717).** App events use chain configs from scope `apps` only: the
-kernel looks up the `kernel.bus_chain_configs` row for exactly `{type, scope: 'apps'}`. It never falls back to
-the node-default (`scope IS NULL`) row or to the hardcoded kernel defaults, so an app event cannot pick up a
-kernel chain that happens to share its type. An approved type with no `apps` row leaves an audit record and
-sends no notification — the operator adds the `apps`-scope row (with a `notify` reactor) to turn notification on.
-
-**What an accepted event can trigger — notify and audit only.** The kernel runs the event's `apps`-scope
-chain *intersected with* `{notify, audit-log}`, enforced in code (`publishAppEvent`,
-`packages/bus/src/publish-app-event.ts`) no matter what `bus_chain_configs` says:
-
-- `audit-log` always runs first, so the record exists even if a notification then fails.
-- the `apps`-scope chain's `notify` reactor runs if it has one (e.g. an `apps` row for `tip.granted` -> the coffee tip notification).
-- `settle`, `mjn` (MJN emission), `attestation` (attestation issuance) and every other reactor are
-  **never** run for an app-origin event. An app-sent `listing.purchased` notifies the buyer; it does not
-  settle, credit MJN, or write an attestation.
-- event-subscription fan-out does not run for app-origin events.
-
-**Origin on the record.** The recorded event names the emitting app: `issuer` is the app's DID and the
-payload carries `origin: "app"` and `originAppDid`, so the operator's audit trail (`kernel.audit_log`)
-shows which app sent what. These keys, and `preview` / `attestationId`, are owned by the kernel — an
-app-supplied value for them is dropped, so an app cannot spoof another origin or opt out of the audit
-write.
-
-### Acting as a group DID (#2639, #2644)
-
-A person acting as their group in a registered app (market's group-owned listings with the group's
-scope fee, coffee's group-owned pages) needs the token to say so. Ruled: **the kernel checks the
-user's group authority once, at app-token issuance (reusing the existing group-permission check), and
-the operator approves act-as per app; token expiry bounds staleness.** There is no per-request
-re-check.
-
-1. **The operator approves act-as per app.** `POST /api/admin/registry/apps/:appId/act-as` with
-   `{ "allowed": true }` (admin-only, signs a `registry.app.act_as.updated` attestation) sets
-   `registry.apps.act_as_allowed`. It is `false` for every app by default, and, like `dependsOn`, is
-   written only by this operator route: self-service register and PATCH never set it.
-2. **The mint takes an optional `actAs`.** `POST /auth/api/tokens/app` accepts `{ aud, scopes?, actAs? }`
-   where `actAs` is the group DID. At mint the kernel runs the same `validateActingAs` gate
-   `requireAuth` uses for `x-acting-as`, once. It answers `403` and mints **no token** when the app is
-   not operator-approved (`act_as_not_approved`) or the caller is not an owner/admin/maintainer/agent
-   controller of the group (`act_as_not_authorized`). A controller restricted to specific services is
-   refused as well, since an app audience is not one of those services. A malformed `actAs` is `400`.
-3. **The token carries the verified claim.** The response includes `actingAs`, the token has an
-   `acting_as` claim, and `POST /auth/api/tokens/app/verify` returns `actingAs`. Token lifetime is
-   unchanged (10 minutes).
-4. **Revocation follows the registry.** Verify already re-checks the registry for every audience on
-   the token. For an act-as token it also re-reads the minting app's `act_as_allowed`: if the operator
-   has since withdrawn approval, the token stops verifying (`403 act_as_not_approved`) rather than
-   silently falling back to the user's own DID. The claim is honoured for the app's own audience only,
-   not when the token is verified as a `dependsOn` audience.
-5. **Apps read it from `requireSessionOrAppToken`.** The result's `auth.actingAs` is set on the
-   `token` path only; own records as `auth.actingAs ?? auth.did`. The `cookie` path is unchanged: it
-   ignores `x-acting-as` and never sets `actingAs`.
-
-```bash
-# Operator approves act-as for market (admin session):
-curl -X POST "https://<kernel-host>/api/admin/registry/apps/${APP_ID}/act-as" \
-  -H "Content-Type: application/json" -d '{ "allowed": true }'
-
-# A person who controls the group mints a token that acts as it:
-curl -X POST "${IMAJIN_AUTH_URL}/api/tokens/app" \
-  -H "Content-Type: application/json" -H "Cookie: <the user's session cookie>" \
-  -d '{ "aud": "market.imajin.ai", "scopes": ["profile:read"], "actAs": "did:imajin:<group>" }'
-# -> { "token": "...", "expiresIn": 600, "scopes": [...], "aud": [...], "actingAs": "did:imajin:<group>" }
-```
-
-### Where the app's key goes (vault/claim only — no Actions secret)
-
-The app's freshly minted Ed25519 private key is sealed into the **vault** at mint time and
-never leaves the vault/keystore path: `apps.provision` never unseals it, never writes it to an
-env file, and never writes it to GitHub — no `IMAJIN_APP_PRIVATE_KEY` Actions secret, no other
-Actions secret, no call to any GitHub `.../actions/secrets/...` endpoint. The only way the key
-reaches the app is the claim-code flow below (#2411), and apps refuse to boot when
-`IMAJIN_APP_PRIVATE_KEY` is set at all. `secretsSet` in every response/record is names only —
-and is `[]` for every run on v0.8.17+.
-
-> **Removed in v0.8.17 (#2437).** Until then `apps.provision` also sealed the raw key into the
-> app repo's Actions secrets as `IMAJIN_APP_PRIVATE_KEY` (libsodium `crypto_box_seal` +
-> `PUT .../actions/secrets/{name}`). No workflow in `imajin-app-template` or any app repo ever
-> read it, and the template's `instrumentation.ts` rejects it, so it was dead weight. Repos
-> provisioned before the removal may still hold the secret — an operator deletes it by hand:
-> `gh secret delete IMAJIN_APP_PRIVATE_KEY -R ima-jin/<slug>`.
->
-> (Earlier still, #2416 dropped resealing the org credential as `GITHUB_PACKAGES_TOKEN`: a
-> GitHub App installation token expires within the hour, and the template CI reads `@ima-jin/*`
-> from public npmjs, so no packages-read secret is needed.)
-
-The app's DID is derived from its freshly minted public key (the same convention third-party
-self-service registration already uses) — NOT the `did:imajin:app-<slug>` convention the
-legacy first-party seed rows use (`migrations/0139_registry_apps_seed_first_party.sql`).
-This is deliberate: it's what keeps the new row's `app_did` structurally distinct from a
-pre-existing legacy first-party row's `app_did` for the same app (`registry.apps.app_did` is
-globally unique) — see "Legacy first-party rows vs. provisioned apps" below.
-
-### First boot, then every later boot: the app fetches its own signing key from the vault (#2411)
-
-The vault is the app's **only** route to its signing key (#2437): there's no honest channel to
-hand an app a raw private key — not an env file, not a GitHub Actions secret — so the minted key
-is granted directly to the app's own DID in the vault (`purpose: 'app-signing-key'`), and the
-operator's approval additionally issues a **one-time, ~15-minute claim code** — Ryan's
-2026-09-27 ruling on #2411: not a `/jin` copy-paste of the key itself, not an unseal CLI on the
-box. This is true for every deployment shape — a dev box (`pm2 start` by hand) and a
-CI-deployed app alike.
-
-#### First boot: claim code -> bootstrap keypair -> signing key
-
-The claim code is shown **exactly once**, in a reveal banner on the `/jin` approval card right
-after approval — never persisted anywhere (only its SHA-256 hash is), never returned again by
-any route, including `GET /api/apps/provision?slug=`. Put it in the app's `.env.local` as
-`IMAJIN_APP_CLAIM_CODE` — a bootstrap credential the file only ever needs ONCE, alongside `PORT`,
-`NODE_ENV`, `IMAJIN_KERNEL_URL`, and `IMAJIN_APP_DID`. At first boot, the app mints its OWN
-Ed25519 "bootstrap" keypair (a narrow-purpose credential distinct from the vault signing key),
-persists it in a local keystore file (`IMAJIN_APP_KEYSTORE`, default `./.imajin/keystore.json`,
-`0600`), and exchanges the claim code + the bootstrap PUBLIC key for the real signing key:
-
-```bash
-curl -X POST "${IMAJIN_KERNEL_URL}/api/apps/claim" \
-  -H "Content-Type: application/json" \
-  -d '{"claimCode": "claim_...", "bootstrapPublicKey": "<hex Ed25519 pubkey>", "hostHint": "dykil-standalone", "expectedAppDid": "did:imajin:9f2c..."}'
-```
-
-```json
-{ "appDid": "did:imajin:9f2c...", "privateKey": "...", "publicKey": "...", "attestationId": "att_..." }
-```
-
-`expectedAppDid` (optional, #2444) is the app DID the caller believes the code belongs to — an
-app passes its own `IMAJIN_APP_DID`. If it doesn't match the app the code was issued for, the
-kernel answers **409 before spending the code**: nothing is claimed or bound, no key material is
-returned, and the code stays redeemable by its rightful app (so pasting another app's code into
-the wrong app burns nothing). Omitted, the route behaves as it always has.
-
-`attestationId` (#2444) is the id of the kernel-signed `apps.signing-key.claimed` attestation
-minted for this redemption — what a `/claim` success page shows next to the app DID. It is
-`null` only if attestation forwarding was unavailable; the code is already spent by then, so
-that never fails the exchange.
-
-The kernel binds `bootstrapPublicKey` to the claim (`kernel.app_signing_key_claims`), which is
-what every LATER boot authenticates against — see below. No `requireAuth` session gates this
-route: the claim code itself, single-use and short-lived, IS the authentication for this one
-call. A second exchange attempt — whether the code was already redeemed or has simply expired —
-is refused (410 Gone). A code presented with a mismatching `expectedAppDid` is refused with 409
-and is not spent.
-
-#### Every later boot: sign a fresh challenge with the bootstrap key
-
-Once the keystore exists, the app never spends another claim code. It signs
-`canonicalize({ appDid, nonce, timestamp })` with the bootstrap private key and re-fetches:
-
-```bash
-curl -X POST "${IMAJIN_KERNEL_URL}/api/apps/signing-key/fetch" \
-  -H "Content-Type: application/json" \
-  -d '{"appDid": "did:imajin:9f2c...", "timestamp": 1735300000000, "nonce": "<random>", "signature": "<hex sig>"}'
-```
-
-The kernel verifies the signature against the bound bootstrap public key, rejects a stale
-timestamp or a replayed nonce (both `401`), and otherwise returns the same `{appDid, privateKey,
-publicKey}` shape. The SDK does all of this for you — `@ima-jin/auth-client`'s
-`loadAppSigningKey()` (see that package's README) picks the keystore-present vs. first-boot path
-automatically.
-
-#### Rebinding a lost keystore
-
-If the local keystore is lost (disk wipe, redeploy to a fresh host), re-propose and re-approve
-`apps.provision` for the same slug with `"reissueClaim": true` in the request body for a fresh
-claim code (reuses the existing repo/key/grant — nothing is re-minted or re-created). Redeeming
-the new code **revokes** the previous bootstrap key's binding, so a lost/compromised keystore can
-never authenticate a fetch again.
-
-Signed events for the full chain are on the bus: `vault.key.minted` → `vault.grant.fulfilled` →
-`apps.signing-key.claimed` → `apps.signing-key.fetched` (tagged `via: 'claim'` on first boot,
-`via: 'bootstrap-key'` on every later boot). None of them ever carries the claim code, the
-bootstrap private key, or the signing private key.
-
-### Legacy first-party rows vs. provisioned apps
-
-An app mid-extraction (dykil today) has, for a time, **two** `registry.apps` rows:
-
-| | Legacy row (e.g. `app_first_party_dykil`) | Provisioned row (`apps.provision` creates this) |
-|---|---|---|
-| `tier` | `first_party` | `third_party` |
-| `slug` | `NULL` (deliberately excluded from `0163_registry_apps_slug.sql`'s backfill) | the provisioned slug, e.g. `dykil` |
-| `app_did` | the legacy `did:imajin:app-<slug>` placeholder, with **no real private key backing it** | freshly minted, vault-sealed, public-key-derived |
-| Written by | `0139_registry_apps_seed_first_party.sql` (one-time seed) | `apps.provision` |
-
-`apps.provision` **never updates, renames, or upserts into the legacy row** — it only ever
-reads/writes the row it itself owns (looked up by the freshly-minted `app_did`, never by
-slug or id). The legacy row's `slug` is left `NULL` specifically so the provisioned row can
-claim that slug value without violating `registry.apps`'s unique `slug` index. The two rows
-coexist until the legacy row's own retirement (revoking it, or dropping it entirely) is
-deliberately handled as separate cleanup — #1991, out of scope for #2375.
-
-An app whose legacy row was NOT excluded from the slug backfill (i.e. its `slug` is already
-set) cannot be provisioned yet: the INSERT in the 'register' step hits the same unique-slug
-constraint and correctly fails closed at that step — provisioning intentionally refuses to
-silently produce two rows answering to the same slug.
-
-## 2. Or do these steps by hand
-
-`apps.provision` needs no GitHub credential at all when `ima-jin/<slug>` already exists
-(#2415), so hand-registering should rarely be necessary anymore. It remains useful only for
-creating a repo that does NOT exist yet while the org credential is unsealed (`apps.provision`
-fails closed at 'repo' in that specific case, with the exact `gh repo create` command to run).
-Do not do this for an app `apps.provision` already owns — hand-registering fights with the
-idempotency ledger.
-
-1. **Create the repo:** `gh repo create ima-jin/<slug> --template ima-jin/imajin-app-template
-   --private`. Skip if it already exists.
-2. **Mint a keypair** for the app (do NOT hand-generate one — use the vault's own mint
-   primitive so the private key is born sealed): `POST /api/vault/mint` with
-   `{"purpose": "apps.provision:<slug>", "requesterDid": "<node DID>"}` — note that route
-   requires mint authority (the node's own signing identity); prefer the `apps.provision` route
-   instead — it now handles this whole case (repo already exists, credential unsealed) on its
-   own.
-3. **Register the app as a NEW third-party row** — do not touch any pre-existing legacy
-   first-party row for the same app. `POST /api/admin/registry/apps` (admin-scoped) with
-   `{"name": "<displayName>", "ownerDid": "did:imajin:platform", "callbackUrl":
-   "https://your-node.imajin.ai/<slug>", "tier": "third_party", "publicKey": "<from step 2>",
-   "tokenAudiences": ["<slug>"], "allowedRedirectHosts": ["<slug>"], "slug": "<slug>"}`. Passing
-   `slug` (#2674) makes future `apps.provision` calls treat the row as idempotent, and is what lets
-   the app declare `providesScopes` in its own namespace. A taken slug is a `409`. If a legacy row for this slug still has
-   `slug` set, clear it first (see "Legacy first-party rows vs. provisioned apps" below) —
-   `slug` is globally unique.
-4. **Grant the app its own signing key + issue a claim code:** the vault delegation grant for
-   `purpose: 'app-signing-key'` plus the one-time claim code (see "First boot, then every later
-   boot" above). Do **not** push the private key to the repo as an Actions secret — that
-   destination was removed in v0.8.17 (#2437).
-5. **Seed attestation types (optional):** `POST /auth/api/attestations/types` per type, or call
-   `registerAttestationType` in-process with `handle: <slug>`.
-
-## Worked example: how dykil registers through this on dev
-
-Per #2370's evidence comment (2026-09-26): a standalone `ima-jin/dykil` was already cloned,
-built, and Caddy-routed on dev — it hard-stopped at app registration, since
-`POST /auth/api/registry/apps` needs a human session and there was no agent-callable path.
-`apps.provision` is exactly the gate that unblocks it. dykil is **not provisioned at all**
-on dev today: `registry.apps` has only the **legacy** first-party row `app_first_party_dykil`
-(seeded by `migrations/0139_registry_apps_seed_first_party.sql` — `did:imajin:app-dykil`, a
-non-functional placeholder public key, `slug IS NULL`, `tier = 'first_party'`), the standalone
-repo `ima-jin/dykil` already exists, and — as of #2415's surfaced bug — `github-org-
-provisioning` is **not sealed** on this node yet (the org does not issue PATs; an operator
-still needs to create and seal the `imajin-provisioner` GitHub App per "Operator setup" above).
-
-1. An agent proposes:
-   ```json
-   POST /api/apps/provision
-   { "slug": "dykil", "displayName": "dykil",
-     "attestationTypes": ["dykil/survey-response", "dykil/survey-response-legacy-import"] }
-   ```
-2. The operator approves. Because `ima-jin/dykil` already exists, the unauthenticated existence
-   check alone confirms that (#2415) — the unsealed credential is never even loaded for this
-   step, so the pipeline is not blocked by it. It then mints a **fresh** Ed25519 keypair (a new,
-   public-key-derived DID — distinct from the legacy `did:imajin:app-dykil`) and **registers
-   a brand-new `tier: 'third_party'` row** with `slug: 'dykil'` — the legacy
-   `app_first_party_dykil` row is left completely untouched (still `first_party`, still
-   `slug IS NULL`, still its own placeholder `app_did`).
-3. The chain proceeds straight to the app-signing-key grant and claim code, with `secretsSet:
-   []` — dykil runs via `pm2 start` on dev, and the key is never pushed to GitHub as an Actions
-   secret on any path (#2437). (Before v0.8.17 a node with a sealed credential would also have
-   pushed `IMAJIN_APP_PRIVATE_KEY` to `ima-jin/dykil`; delete it with `gh secret delete
-   IMAJIN_APP_PRIVATE_KEY -R ima-jin/dykil` if it's still there.)
-4. dykil sets `IMAJIN_APP_DID` from the new third-party row's `appDid` (the response/ledger
-   value, not the legacy placeholder) and, at first boot, exchanges the claim code for its
-   signing key straight from the vault (#2411) — no human touched a secret value at any point.
-5. The two `dykil/*` attestation types are seeded against the NEW `appDid`, so dykil's
-   survey-response ingestion is immediately namespace-valid.
-6. `registry.apps` now has both rows side by side (see "Legacy first-party rows vs.
-   provisioned apps" above) until the legacy row's separate retirement (#1991).
+# Registering an app with the kernel
+
+An app has its own DID, registered public key, declared audiences and permission
+ceilings. It calls public kernel APIs with scoped credentials, not kernel workspace
+imports or another service's SQL tables. Start from
+[ima-jin/imajin-app-template](https://github.com/ima-jin/imajin-app-template).
+Imajin is alpha: public intake is [join the alpha or book a demo](https://jin.imajin.ai/alpha),
+not a promise of unattended account or app provisioning.
+
+The [Jin spec](https://jin.imajin.ai/jin/api/spec) documents provisioning and
+operator decisions; the [auth spec](https://jin.imajin.ai/auth/api/spec) documents
+registration, consent and tokens. Use these for wire schemas and errors rather
+than treating this guide as a route catalogue.
+
+## Choose the registration path
+
+- **Operator-managed provisioning:** `apps.provision` proposes repository setup,
+  registry registration and vault-backed key bootstrap. The resulting row is
+  `third_party`, including apps maintained by Imajin. Nothing external happens
+  until the operator approves the content-hashed proposal on `/jin`.
+- **Developer-managed registration:** the template's registration flow uses a
+  human session and a developer-held keypair. That API exists independently of
+  the alpha site's intake. It does not grant operator-only dependencies, event
+  permissions or service scopes.
+- `first_party` is reserved for trusted kernel-admin registrations. It is not a
+  shortcut for a template app to bypass consent or scope ceilings.
+
+## Propose and approve
+
+In `/jin`, provide the slug and display name. The template defaults to
+`ima-jin/imajin-app-template`; an existing `sourceRepo` can be selected explicitly.
+Site ownership, domain, visibility, sign-in audience and manifest declarations
+are part of the proposal the operator reviews. An identity selected in the UI
+is not authority by itself: preserve the verified owner and controller separately.
+
+The proposal snapshots declarations from `imajin.app.json`, including app-owned
+scopes, dependencies, emittable events, profile widgets and secret declarations.
+The operator approves that exact list. A changed or unreadable manifest cannot
+silently widen it during execution: correct the manifest and re-propose.
+
+The pipeline checks the repository, mints and durably seals an Ed25519 keypair,
+registers the app, establishes its signing-key grant and issues a claim code.
+Optional attestation types use the app's own `<slug>/<type>` namespace. Inspect
+`status`, `failedStep` and the error on failure; do not hand-register a second row
+against the same provisioning ledger. Retries reuse completed work and the same
+identity rather than minting another app.
+
+A seeded placeholder registration can be retired atomically during registration
+when it matches the guarded legacy-row rules. The signed retirement provenance
+and tombstoned row remain. An unrelated active audience holder is an
+`audience_conflict`, never silently replaced. A successful retry retains the
+retirement metadata. Do not delete registry rows or clear ownership by hand.
+
+## Repository credential setup
+
+Creating a missing `ima-jin/<slug>` repository requires the operator's GitHub App
+installation credential in the vault field `github-org-provisioning`. It is a
+structured value with `appId`, `installationId` and `privateKeyPem`, not a PAT.
+Use the protected admin vault input with delegation-grant custody; never paste
+private material into a command, chat, issue, manifest or Actions secret.
+
+The provisioning App needs Administration and Contents read/write plus Metadata
+read access, installed with access to the repositories it manages. An existing
+public repository is checked unauthenticated first, so its existence check does
+not require that credential. Manifest reads can use the installation token;
+missing credentials are distinct from malformed credentials, which fail closed.
+Installation tokens are short-lived and cached in memory, not persisted or logged.
+Provisioning does not write GitHub Actions secrets.
+
+## App signing-key bootstrap
+
+The app key stays on the vault/keystore path. Provisioning never reveals it in
+its result, env files or Actions secrets; new `secretsSet` results are empty.
+The dedicated authenticated claim/fetch exchange is the intentional exception:
+it delivers the key to the app in-process so the SDK can sign. Do not print its
+response or confuse the claim code with the private signing key.
+
+1. After approval, capture the one-time claim-code reveal securely. Only its hash
+   is retained; status polling does not reveal it again. It expires in about
+   fifteen minutes.
+2. Configure `IMAJIN_KERNEL_URL`, the returned `IMAJIN_APP_DID` and the temporary
+   `IMAJIN_APP_CLAIM_CODE`. Do not configure `IMAJIN_APP_PRIVATE_KEY`.
+3. Use `loadAppSigningKey()` from `@ima-jin/auth-client`. First boot generates a
+   local bootstrap keypair and stores it in `IMAJIN_APP_KEYSTORE` (default
+   `./.imajin/keystore.json`, mode 0600). The claim binds its public key to the app.
+4. Supply `expectedAppDid` when claiming. A mismatched DID returns 409 without
+   consuming the code. Used or expired codes return 410.
+5. Later boots sign a fresh nonce/timestamp challenge with the bootstrap key to
+   fetch the app's signing key. Stale timestamps and nonce replay are refused.
+
+A lost keystore needs a new operator-approved `reissueClaim: true` proposal for
+the same slug. This preserves repo, app DID and signing key; redeeming the new
+code replaces the prior bootstrap binding. Reissue must omit `signInAudience`:
+it cannot reset the app's audience. Protect the bootstrap file as a credential.
+Signed claim/fetch events contain metadata, never private keys or claim codes.
+
+## Visibility and sign-in audience
+
+Discovery visibility and permission to sign in are independent.
+`signInAudience` is `members` by default; `anyone` allows authenticated visitors
+through the app's direct consent link, even for a private app. A private app
+remains absent from public directory listings. Public/unlisted apps retain their
+consent behavior; internal apps do not acquire a sign-in surface.
+
+Invalid audience values are rejected, not coerced. An omitted owner-edit field
+preserves the stored value. Widening from `members` to `anyone` requires the
+owner's own session/countersign; a delegate receives `AGENT_APPROVAL_REQUIRED`.
+Concurrent ownership/audience changes require reloading before retry. Provision
+retries cannot silently substitute another approved audience.
+
+This setting grants no membership, scopes, service authority or installation.
+Redirect URI, PKCE where applicable, registration status and consent checks still
+apply. Use the app's own login handler and auth-client callback flow; exchange
+the single-use code before trusting the returned subject. See the
+[auth-client contract](../packages/auth-client/README.md).
+
+## Scope ceilings and organization context
+
+`providesScopes` declares the app's `<slug>:` vocabulary, never a platform-owned
+namespace or another app's namespace. `dependsOn` names registered active
+dependency audiences and approved platform scopes. Dependencies are operator-only;
+developer registration and owner PATCH cannot self-grant them. Token minting
+clamps scopes to the approved ceiling; verification for a dependency honors only
+that dependency's approved scopes. Revoking an audience stops verification.
+Owners may narrow the ceiling, not widen it in the same edit.
+
+An app may accept group-context tokens only after the operator approves act-as.
+Minting validates the human's current group authority and allowed services;
+`acting_as` applies to the primary audience, not dependency audiences. Expiry
+bounds membership staleness; verification rechecks the app's act-as approval.
+An app using `requireSessionOrAppToken` owns records as `auth.actingAs ?? auth.did`
+on that token path. Its cookie path does not interpret `x-acting-as`.
+Kernel routes use their canonical `resolveActingDid`/acting-as checks instead.
+Never derive an organization's ownership, handle or label from the raw personal
+session, and never fall back to that personal identity after an org refusal.
+
+## Events and callbacks
+
+`emittableEvents` is an operator-approved exact list, empty by default.
+Kernel-owned namespaces and wildcards cannot be approved. Apps authenticate as
+themselves with an app-service token; user-delegated/session tokens are not app
+origin authority. App events run only the `apps`-scoped notify/audit chain:
+audit runs first; settlement, emission, attestation issuance and subscription
+fan-out cannot be enabled by an app event. No configured chain is permission to
+move money. The kernel stamps origin and audit metadata itself.
+
+For direct notifications, both the token and current registry approval must hold
+the endpoint's `notify:*` scope. Configure `@ima-jin/notify` with an
+`appTokenProvider`; failure to obtain it must not fall back to internal authority.
+For payments use the scoped pay contracts, not app-emitted events or shared keys.
+
+Verify detached kernel HTTP callbacks with `verifyKernelWebhook` before parsing
+or processing, pinning your own app DID as `audience`. The helper checks Ed25519
+signatures, the published overlapping key set, bounded timestamps and replay
+nonces. Multi-replica receivers need shared durable nonce storage and persistent
+pins. Individual standalone apps own their adoption and deployments; do not
+remove an existing compatibility credential until that receiver is verified.
+See [kernel webhook security](security/kernel-webhooks.md).
+
+## Declared app secrets
+
+Manifest secret entries contain names and kinds only. Manifest sync adds slots,
+not values or grants. Random kinds require a separate signed Generate action;
+operator-supplied kinds require masked Set and a separate countersignature.
+Load approved values into typed server-only memory before importing DB/server
+modules using `createVaultBoot`; never copy them into `process.env`.
+See the [author guide](app-self-secrets-author.md) and
+[operator guide](app-self-secrets-operator.md).
