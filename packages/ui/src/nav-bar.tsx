@@ -92,6 +92,28 @@ function getLauncherTier(identity: NavIdentity | null): 'anonymous' | 'soft' | '
   return 'hard';
 }
 
+function PublicNavigation({ homeUrl }: Readonly<{ homeUrl: string }>) {
+  const base = homeUrl.endsWith('/') ? homeUrl.slice(0, -1) : homeUrl;
+  const linkClass = 'block min-h-11 rounded-md px-3 py-3 text-sm font-medium hover:bg-gray-100 dark:hover:bg-gray-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-amber-500';
+  return (
+    <ul className="flex flex-col gap-1 sm:flex-row sm:items-center">
+      <li><a href={`${base}/#product`} className={linkClass}>Product</a></li>
+      <li><a href={`${base}/how-it-works`} className={linkClass}>How it works</a></li>
+      <li><a href={`${base}/compare`} className={linkClass}>Compare</a></li>
+      <li><a href={`${base}/docs`} className={linkClass}>Developers</a></li>
+      <li className="relative">
+        <details>
+          <summary className={`${linkClass} cursor-pointer`}>Company</summary>
+          <ul className="rounded-lg border border-gray-200 bg-white p-1 dark:border-gray-800 dark:bg-gray-900 sm:absolute sm:right-0 sm:top-full sm:w-44">
+            <li><a href={`${base}/project`} className={linkClass}>Why we built it</a></li>
+            <li><a href={`${base}/whitepaper`} className={linkClass}>Whitepaper</a></li>
+          </ul>
+        </details>
+      </li>
+    </ul>
+  );
+}
+
 /**
  * Hook that auto-fetches identity from auth service when no identity prop is provided.
  */
@@ -204,6 +226,7 @@ export function NavBar({
   // Auto-fetch identity if no prop provided
   const autoIdentity = useAutoIdentity(servicePrefix, domain, serviceUrls);
   const identity = identityProp ?? autoIdentity;
+  const homeUrl = buildUrl('www', servicePrefix, domain, serviceUrls);
 
   const registryUrl = buildUrl('registry', servicePrefix, domain, serviceUrls);
   const launcherTier = getLauncherTier(identity);
@@ -289,7 +312,8 @@ export function NavBar({
       <div className="max-w-6xl mx-auto px-4 py-3 flex items-center gap-2">
         {/* Logo */}
         <a
-          href={buildUrl('www', servicePrefix, domain, serviceUrls)}
+          href={homeUrl}
+          aria-label="Imajin home"
           className="flex items-center hover:opacity-80 transition shrink-0"
         >
           <span className="w-8 h-8 rounded-lg bg-amber-500/10 dark:bg-amber-500/20 flex items-center justify-center">
@@ -298,14 +322,17 @@ export function NavBar({
         </a>
 
         {/* Children slot (center, fills available space) */}
-        <div className="flex-1 min-w-0">{children}</div>
+        <div className="flex-1 min-w-0">
+          {children}
+          {!identity?.isLoggedIn && <div className="hidden sm:block"><PublicNavigation homeUrl={homeUrl} /></div>}
+        </div>
         <JinNavEntry
           href={`${buildUrl('www', servicePrefix, domain, serviceUrls).replace(/\/$/, '')}/jin`}
           identityDid={identity?.isLoggedIn ? identity.did : null}
         />
 
         {/* Right - Launcher + Quick Access (desktop) */}
-        <div className="hidden sm:flex items-center gap-1">
+        {identity?.isLoggedIn && <div className="hidden sm:flex items-center gap-1">
           <AppLauncher
             registryUrl={registryUrl}
             currentService={currentService}
@@ -338,10 +365,10 @@ export function NavBar({
               </a>
             </>
           )}
-        </div>
+        </div>}
 
         {/* Notification Bell (desktop) */}
-        {process.env.NEXT_PUBLIC_NOTIFY_URL && (
+        {identity?.isLoggedIn && process.env.NEXT_PUBLIC_NOTIFY_URL && (
           <div className="hidden sm:flex items-center">
             <NotificationBell />
           </div>
@@ -350,6 +377,8 @@ export function NavBar({
         {/* Mobile hamburger */}
         <button type="button"
           onClick={() => setShowMobileMenu(!showMobileMenu)}
+          aria-label="Toggle navigation"
+          aria-expanded={showMobileMenu}
           className="sm:hidden p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition"
         >
           <span className="text-xl">{showMobileMenu ? '✕' : '☰'}</span>
@@ -588,7 +617,7 @@ export function NavBar({
       {showMobileMenu && (
         <div className="sm:hidden border-t border-gray-200 dark:border-gray-800 px-4 py-3">
           {children && <div className="mb-3">{children}</div>}
-          <AppLauncher
+          {identity?.isLoggedIn ? <AppLauncher
             registryUrl={registryUrl}
             currentService={currentService}
             tier={launcherTier}
@@ -596,7 +625,7 @@ export function NavBar({
             variant="grid"
             authUrl={identity?.isLoggedIn && identity?.tier !== 'soft' ? authUrl : undefined}
             enabledServices={activeConfig?.enabledServices}
-          />
+          /> : <PublicNavigation homeUrl={homeUrl} />}
           {identity?.isLoggedIn && identity?.tier !== 'soft' && (
             <div className="flex items-center gap-2 mt-3 pt-3 border-t border-gray-200 dark:border-gray-800">
               <a
