@@ -1,562 +1,224 @@
-# Operator approvals — notification contract (#2059, open source/kind vocabulary #2152, operator countersignature #2082)
+# Operator approvals: notification contract
 
-Kernel half of "operator approvals appear as a signed confirm on /jin —
-approve from anywhere". #2059 shipped a single hard-coded vocabulary (the
-OpenClaw system-agent: `kind: restart | config-mutation | other`). #2152
-generalizes it so **any source** can raise a proposal — first new consumer:
-OpenClaw Skill Workshop proposals. This is the contract source adapters
-implement against, primarily the OpenClaw plugin's generic
-gateway-approvals bridge (`ima-jin/openclaw-imajin-plugin#33`, superseding
-`#24`). The plugin repo is never imported from here and this repo never
-imports it — the two sides only ever talk over the kernel's existing HTTP
-and WebSocket surfaces described below.
+A source stages a proposal, a named human approves or refuses its exact content,
+and the source applies that decision through its own execution mechanism. The
+kernel persists the proposal and decision; a notification is not permission to
+bypass the source's approval store. The OpenClaw plugin is a separate repository,
+connected only through authenticated HTTP/WebSocket contracts.
 
-**Backward compatibility**: a source may still publish the original bare
-`kind` (no `source` field, no `detail`, no `contentHash`) and it ingests
-and renders exactly as before, normalized onto `system-agent:*` — sources
-don't have to be lock-stepped with this contract's generalization.
+Read the live [notify spec](https://jin.imajin.ai/notify/api/spec) for ingestion
+and internal callbacks, and [Jin spec](https://jin.imajin.ai/jin/api/spec) for
+Inbox cards, decisions, expiry and archive controls. These are the route catalogue.
 
-## Notify authentication migration (#2798)
+## Transport authority
 
-Notification payload compatibility above is unchanged, but transport authentication
-uses registered app tokens. A temporary notify-only rollout bridge is documented below.
-`/notify/api/send`, `/notify/api/broadcast`, and `/notify/api/interest` accept a
-registered **app-service** token with `notify:send`, `notify:broadcast`, or
-`notify:interest`, respectively. The app must be active and the endpoint scope
-must be present in both the token and `registry.apps.approved_service_scopes`.
-Approvals use the existing countersigned `apps:service-scopes` flow, and are
-re-read on every call; user/session tokens do not authorize these endpoints.
-These scopes are not globally service-eligible: requested scopes alone never
-grant access.
+External notification senders use registered app-service tokens. The selected
+endpoint's `notify:send`, `notify:broadcast` or `notify:interest` scope must be
+present both in the token and the active app's current approved service scopes.
+The countersigned `apps:service-scopes` flow grants that ceiling; registration,
+requested scopes, user sessions and user-delegated tokens do not grant it.
 
-**Temporary dual accept (2026-10-14, #2798):** existing userspace event callers
-still use the shared notify header. Until those app-side migrations land, only
-`src/lib/notify/legacy-auth.ts` reads `NOTIFY_WEBHOOK_SECRET`; setting it enables
-`x-webhook-secret` on send/broadcast/interest when **no Authorization header** is
-present. Comparison is timing-safe and a deprecation warning is emitted once per
-process. Invalid Bearer tokens never downgrade to this lane. Unset the variable
-to disable legacy auth immediately. Removal trigger: all per-app verify children
-of #2241 closed; exact lines and tests to delete are in the dated removal note in
-`docs/security/kernel-webhooks.md`. It does not apply to registry/contact/internal approvals.
+Internal callers use the vault-resolved internal Bearer credential supplied at
+boot. Internal applied/outcome callbacks require this authority, not notify-send
+scope or a user token. SDK `configureNotify` accepts `appTokenProvider` or an
+explicit internal provider; unavailable app credentials never fall back to the
+more privileged internal lane. Delivery is best-effort/logged, not thrown as an
+application failure. See the [notify package](../packages/notify/README.md).
 
-Kernel/internal callers retain the vault-sourced internal Bearer contract
-(`provideInternalApiKey` / `getVaultInternalApiKey`, populated at boot). Internal
-approval `applied` and `outcome` callbacks require this vault credential, not a
-user token or the send scope. Adapters using the old shared notify credential
-must migrate before deployment; this repository does not change external adapters.
+Registry audience/contact reads, interest creation and email-unsubscribe writes
+use the kernel's internal vault Bearer, never a forwarded app token. Session
+preference writes enforce DID ownership. The internal preference lane accepts
+only `{marketing: false, email: false}`: it cannot opt someone in. The SDK skips
+delivery when credentials are unavailable; it does not read a shared-secret env
+variable or silently substitute internal authority for a failed app-token lookup.
 
-`@imajin/notify` keeps the existing `send`, `broadcast`, and `interest` function
-signatures. `configureNotify({ serviceUrl, appTokenProvider })` accepts a callback
-that retrieves a fresh/cached app-service token from the app's vault-backed
-credential flow. Internal deployments may supply `internalSecretProvider`; by
-default the SDK uses `getVaultInternalApiKey()`. An unavailable app token never
-falls back to a more privileged internal credential. No shared-secret environment
-variable is read. Missing credentials still skip delivery, and delivery errors
-remain best-effort/logged rather than thrown.
+A compatibility lane remains in `src/lib/notify/legacy-auth.ts`: the configured
+`NOTIFY_WEBHOOK_SECRET` can authorize send/broadcast/interest via
+`x-webhook-secret` only when Authorization is absent. Comparison is timing-safe;
+a warning records use. Invalid Bearer auth never downgrades into it. This is not
+a new integration path and does not authorize registry/contact/internal approvals.
+Disable it only after verifying each existing consumer's token adoption, under
+[the webhook security runbook](security/kernel-webhooks.md).
 
-Registry audience/contact reads, interest creation, and email-unsubscribe writes
-now authenticate with the kernel's own vault internal Bearer key, never a forwarded
-app token. Session preference routes still enforce DID ownership; the internal
-PUT lane accepts only `{ marketing: false, email: false }` and cannot opt a user in.
-The signed email-unsubscribe token contract is otherwise unchanged.
+## Request content
 
-## Overview
+Notify ingestion uses scope `operator.approval.requested`, addressed initially to
+the configured node operator. For connector proposals carrying a valid
+`detail.ownerDid`, the kernel resolves the actual addressee to that owner.
+Any initial `to` other than the configured operator DID is rejected with 400.
 
-```
-A source (e.g. OpenClaw       The source's adapter            Kernel (/jin)
-system-agent, Skill Workshop)   (e.g. the OpenClaw plugin's
-  stages a proposal   ──────►  bridge)                 ──────►  operator.approval.requested
-                                POST /notify/api/send            notification, renders as a
-                                scope: operator.approval.        confirm card via the
-                                requested                        source's own renderer
+A namespaced proposal supplies `proposalId`, `source`, `kind`, `summary`,
+`keysTouched`, optional bounded `detail`, and `contentHash`. Source and subkind
+are lowercase hyphenated identifiers with `kind` in `<source>:<subkind>` form.
+`detail` is bounded to 16 KiB; source-specific renderers can show its reviewed
+fields, otherwise the default card shows summary and touched keys.
 
-                                subscribes over its existing
-                                authenticated WS  ◄────────────  operator.approval.decided
-                                                                  bus event, published once
-  applies/discards via          POST .../applied  ──────────►    the operator taps Approve /
-  the source's own                                               Reject / Withdraw on /jin
-  apply mechanism
-```
+The compatibility bare kinds `restart`, `config-mutation` and `other` normalize
+to `system-agent:*`. That shape can omit source/detail/hash; any supplied hash
+is still verified. A detail-bearing or namespaced proposal requires its hash.
 
-A source's adapter never bypasses its own underlying approval store — it
-only relays the operator's decision to it, mapping the generic
-`approve`/`reject` onto whatever vocabulary that store expects (e.g.
-system-agent: approve → `allow-once`, reject → `deny`).
+`computeApprovalContentHash` hashes canonical JSON of exactly
+`{proposalId, source, kind, summary, keysTouched, detail}`. Ingestion independently
+recomputes it and rejects mismatches before persistence. Applying must compare
+that same reviewed content, not a refreshed or substituted detail object.
 
-## 1. `operator.approval.requested`
+`keysTouched` contains short key paths only, never values or SecretRef objects.
+Summary/key paths are rejected for recognizable credential shapes, long encoded
+blobs or bearer material; key paths have a constrained character set and length.
+This is defense in depth, not permission for an adapter to resolve a secret before
+building a proposal. Do not include credentials in detail or diagnostic output.
 
-Published by the source's adapter via the existing notify ingestion
-endpoint:
+Optional `signerDid` identifies the requesting agent for decision delivery; it
+is not part of the six-field content digest. Missing, non-string or overlong
+values are ignored. It does not grant authority or replace signature verification.
+The limit is 200 characters; unusable values normalize to null. Key paths are
+also at most 200 characters, using letters, digits and `_.-/`. Hashes may carry
+the `sha256:` prefix. Card labels are source-specific; an unregistered renderer
+falls back to the summary/keys card rather than interpreting arbitrary detail.
 
-```
-POST /notify/api/send
-Authorization: Bearer <app-service token with operator-approved notify:send>
-Content-Type: application/json
+## Human addressee and acting identity
 
-{
-  "to": "<operator DID>",
-  "scope": "operator.approval.requested",
-  "data": {
-    "proposalId": "string",
-    "source": "system-agent" | "skill-workshop" | "<any lowercase-hyphenated id>",
-    "kind": "<source>:<subkind>",   // e.g. "system-agent:restart", "skill-workshop:update"
-    "summary": "string — human-readable, what will happen",
-    "keysTouched": ["string", "..."],
-    "detail": { "...": "optional, bounded (\u226416KB) per-source structured payload" },
-    "contentHash": "sha256 hex digest — see Content hash below",
-    "signerDid": "optional — the requesting agent's own DID (#2337), see Delivery below"
-  }
-}
-```
+`operator.approvals.operator_did` stores the Inbox addressee, not necessarily the
+node operator. Connector append/mutate/write proposals with owner metadata go to
+that owner; node-level system, vault, access, provisioning and decision-card
+proposals go to the node operator.
 
-- `to` **must** be the node's configured operator DID
-  (`relay.relay_config.node_operator_did` — see `getOperatorDid()` in
-  `apps/kernel/src/lib/notify/operator-approvals.ts`). Any other recipient is
-  rejected with 400. For a connector proposal (kind
-  `<connector>:append|mutate|write` with `detail.ownerDid`) the kernel then
-  resolves the real addressee to that owner — see *Whose Inbox* below (#2723).
-- **Legacy shape** (no `source` field): `kind` must be one of the original
-  three bare values (`restart` | `config-mutation` | `other`); the kernel
-  normalizes it onto `source: "system-agent"`, `kind: "system-agent:<kind>"`.
-  `detail` and `contentHash` are not required on this path.
-- **Open-vocabulary shape** (`source` present): `source` must be a
-  lowercase, hyphenated identifier; `kind` must be namespaced
-  `"<source>:<subkind>"` with the same lowercase-hyphenated rule for
-  `<subkind>`. `contentHash` is **required** on this path (see below).
-- `summary` is free text but is validated at the boundary — see
-  **Secret redaction** below.
-- `keysTouched` is an array of **key paths only** — e.g. `"gateway.plugins.
-  foo.token"` — **never** resolved secret values, never a `SecretRef`
-  object, never a raw credential. A payload that fails this check is
-  rejected with 400, not silently redacted, so the source's own config
-  diffing is the one place secret values are ever supposed to be resolved.
-- `detail` is optional, per-source structured JSON, bounded to 16KB — e.g.
-  Skill Workshop's `{ skillName, kind: 'create'|'update', scan, description,
-  diffSummary }`. Rendered by the /jin panel's per-source renderer registry
-  (`apps/kernel/app/jin/operator-approvals-panel.tsx`); an unregistered
-  source falls back to the default summary/keys-touched card.
-- The two implicit actions on the resulting card are `approve` and
-  `reject` — labeled per source via `decisionLabels` in the panel's
-  renderer registry (default: Approve/Deny; Skill Workshop: Apply/Reject).
-- `signerDid` (#2337) is an optional string identifying the source
-  adapter's own signing identity — e.g. `ima-jin/openclaw-imajin-plugin`'s
-  `KernelApprovalRequestedPayload.signerDid`, the agent DID keypair used to
-  sign the request. Not part of the `contentHash` digest (unchanged six
-  fields, see below) and not rendered on the /jin card — it is delivery
-  metadata only, captured so `operator.approval.decided` can later be
-  addressed back to the requesting agent, not just the operator (see
-  **Delivery** below). Absent, non-string, or overlong (>200 chars) input
-  is silently dropped to `null` rather than rejecting the request.
+Inbox reads return only the real session principal's addressed rows. The node
+operator cannot read or decide another owner's connector proposal. The decision
+must come from the real authenticated addressee; an agent acting for them is
+not that human. A supplied owner DID is not authentication.
 
-### Content hash (#2152)
+**This confirm rail is self-only.** `actingFor` and `actingAs` are refused before
+proposal ownership lookup on decisions and vault-proposal creation, with
+`403 act_as_not_permitted`. This is an intentional exception to ordinary
+org-context writes: do not replace the human countersigner with
+`resolveActingDid`. Inbox reads can expose act-as metadata so the UI explains
+why controls are disabled; switch back to the human identity before deciding.
+Other rails that permit org ownership still use the verified acting DID and
+record the actual human signer separately. Never fall back silently between them.
 
-`contentHash` is a sha256 hex digest (optionally `sha256:`-prefixed) over
-the canonical JSON of `{proposalId, source, kind, summary, keysTouched,
-detail}` (see `computeApprovalContentHash` in `apps/kernel/src/lib/
-notify/operator-approvals.ts`). The kernel **independently recomputes**
-this and rejects the request with 400 on any mismatch — the invariant is
-"what the operator saw is what gets applied": `detail` cannot be silently
-swapped between the moment the card renders and the moment a source
-applies the reviewed decision. Required whenever `source` and/or `detail`
-is present; not required (but still verified if supplied) for the legacy
-bare-kind shape.
+For pending connector rows stored under the wrong addressee,
+`scripts/readdress-connector-approvals.ts --dry-run` previews the repair.
+The real run updates only still-pending rows whose stored addressee matches the
+value read, logs each move and is idempotent. It never moves decided, expired
+or past-deadline rows. Read-time addressing already resolves the owner from the
+kind/detail, so the node operator cannot borrow authority from an old stored DID.
 
-### Secret redaction
+## Decision and countersignature
 
-There is no shared `SecretRef` type across repos, so the kernel validates
-the *shape* of what it's given (`validateApprovalRequestedPayload` in
-`apps/kernel/src/lib/notify/operator-approvals.ts`):
+A decision records `approve`, `reject` or `withdrawn`, addressee DID, timestamp,
+optional reason/mode, effective content hash and any operator countersignature.
+The kernel signs its own witness record; that is not the human's signature.
+A source verifies the independent human signature against the addressee's key
+before applying when its policy requires it.
 
-- Every `keysTouched` entry must look like a short, plain key path
-  (letters/digits/`_.-/`, ≤200 chars) — not a value.
-- Both `summary` and every `keysTouched` entry are rejected if they match
-  common secret shapes: PEM private-key blocks, vendor token prefixes
-  (`sk-`, `ghp_`, `xoxb-`, …), long hex/base64 blobs, or a `Bearer <token>`
-  string.
+The human signs exactly:
 
-This is defense-in-depth at the kernel boundary. The plugin is still
-responsible for never resolving a `SecretRef` before building `summary` /
-`keysTouched` in the first place.
-
-## 2. `operator.approval.decided`
-
-Published by the kernel via `bus.publish('operator.approval.decided', …)`
-once the operator taps Approve, Reject, or Withdraw on `/jin`
-(`decideOperatorApproval` in
-`apps/kernel/src/lib/notify/operator-approvals-service.ts`):
-
-```ts
-{
-  proposalId: string;
-  source: string;       // carried through unchanged from the request (#2152)
-  kind: string;          // carried through unchanged from the request (#2152)
-  decision: 'approve' | 'reject' | 'withdrawn';
-  mode?: string;         // the operator's chosen option (#2693): decision-card letter | exec 'allow-once'/'deny' | github TTL 'single'/'5m'/'24h' — validated per kind, covered by operatorSignature
-  decidedBy: string;    // the operator DID — always the human, never an agent
-  decidedAt: string;    // ISO 8601
-  reason?: string;
-  operatorSignature?: {  // the operator's OWN countersignature (#2082) — see below
-    keyId: string;        // hex-encoded Ed25519 public key that produced `sig`
-    alg: 'ed25519';
-    sig: string;           // hex-encoded Ed25519 signature
-  };
-  contentHash: string;   // "sha256:" + effectiveContentHash(row) (#2294) — see below; NEVER omitted, the event is not published if it can't be computed
-}
+```text
+canonicalize({contentHash, decision, decidedAt})
+canonicalize({contentHash, decision, decidedAt, mode})
 ```
 
-`contentHash` (#2294) is `effectiveContentHash(row)` for the stored
-proposal row, `sha256:`-prefixed the same way `fair.manifest.published`'s
-`manifestDigest` is (`apps/kernel/src/lib/media/manifest-helpers.ts`) — the
-exact digest a source adapter's own #2084 "check 1" (e.g.
-`ima-jin/openclaw-imajin-plugin`'s gateway-approvals bridge,
-`handleKernelDecision`) compares byte-for-byte against the `contentHash` it
-locally tracked when it staged this proposal, to detect kernel-side
-tamper/drift before ever applying a decision. Computed once from the row's
-own durable fields before any state mutation; if it can't be computed, the
-decision is rejected (500) before anything is persisted or published —
-this event is never published without it.
+The second shape applies only when a mode is present. Verification requires the
+current registered human key, a valid Ed25519 signature and a timestamp within
+five minutes back/thirty seconds forward. An added, removed or altered mode
+cannot fall back to the mode-less shape. Invalid supplied signatures return 400
+before state mutation, regardless of the requirement flag.
 
-The kernel signs this attestation with its own node signing identity
-(the same `getNodeSigningIdentity()` pattern the GitHub confirm route and
-the generic consent-request primitive use) — `decidedBy` is guaranteed to
-be the operator because the decide route requires `requireAuth` to resolve
-that *exact* DID directly, never a delegated (`X-Acting-For`/`onBehalfOf`)
-identity. See **Auth invariant** below. The kernel never interprets
-`decision` — it only witnesses and republishes it; a source's adapter is
-responsible for mapping `approve`/`reject` onto whatever vocabulary its
-own underlying store expects. `mode` is **not** opaque (#2693) — see
-*Decision `mode`* below.
+`OPERATOR_COUNTERSIGN_REQUIRED=true` requires the human signature for every
+decision including withdrawal. Unset is off: unsigned human-session decisions
+can still be node-witnessed. Therefore an unconfigured node does not provide an
+unforgeable human approval against a compromised kernel. Do not describe the
+feature flag's existence as proof that a deployment requires countersigning.
 
-### Operator countersignature (#2082)
+Decision modes are validated against kind before signing/persistence:
 
-The kernel's node signature above is a **witness record** of an
-authenticated operator decision — it is signed by the *kernel's* key, so a
-kernel compromise could forge one. `operatorSignature` is a second,
-independent signature by the **operator's own key**, produced client-side
-on `/jin` (`apps/kernel/app/jin/operator-approvals-panel.tsx`) using the
-same Ed25519 keypair already held in the operator's browser
-(`localStorage.imajin_keypair`, the same key used for login/registration).
-It covers exactly:
+- A decision card approval requires one of that card's option letters; rejection
+  or withdrawal has no mode.
+- Gateway exec approval permits absent or `allow-once`; rejection permits absent
+  or `deny`. `allow-always` is refused.
+- GitHub approval permits absent, `single`, `5m` or `24h`; rejection/withdrawal
+  has no mode. Other kinds do not accept a mode.
 
-```ts
-canonicalize({ contentHash, decision, decidedAt })           // decision carries no mode
-canonicalize({ contentHash, decision, decidedAt, mode })     // decision carries a mode (#2693)
-```
+Record verification distinguishes a letter actually covered by the human's
+signature from a node-witnessed letter on a mode-less signature. It does not
+label the latter as human-countersigned. Verify the exact signed payload.
 
-`mode` is part of the signed bytes **if and only if** the decision carries
-one, so a mode-less decision signs byte-for-byte what #2082 signed.
+## `gateway-exec:command`
 
-where `contentHash` is the effective content hash of the *request* this
-decision answers (see `effectiveContentHash` in `apps/kernel/src/lib/
-notify/operator-approvals.ts` — always present on the `GET /jin/api/
-operator-approvals` card, recomputed on the fly for a legacy row that
-never stored one), and `decidedAt` is the same ISO-8601 timestamp on the
-payload above (client-chosen, not kernel-assigned, since it's exactly what
-the operator signed over).
+Forwarded host-exec requests use `source: "gateway-exec"` and
+`kind: "gateway-exec:command"`, not a dotted kind. Their required `detail`
+contains the exact full `command`, `host`, `cwd`, `agentId`, `requestedBy`,
+`approvalId` and `expiresAt`. Every field is a nonempty string; `requestedBy`
+is DID-shaped and `expiresAt` must parse as a timestamp. `approvalId` identifies
+the source's approval store, separately from the kernel `proposalId`.
 
-**Verification** (`verifyOperatorCountersignature` in `apps/kernel/src/
-lib/notify/operator-countersign.ts`), run on every decide request that
-supplies `operatorSignature`, regardless of the feature flag below:
-1. `decidedAt` must parse and be within the same clock-skew window
-   `@imajin/auth`'s message verification already uses (`SIGNED_MESSAGE_MAX_AGE`
-   = 5 minutes back, `FUTURE_TOLERANCE` = 30 seconds forward).
-2. `operatorSignature.keyId` must equal the operator DID's **current**
-   registered `identities.publicKey` exactly (resolved the same way the
-   existing `attestations/countersign` route resolves a witness key) —
-   this single check rejects an unknown key, a mismatched key, AND a
-   revoked/rotated key uniformly, since a rotated-away key is no longer
-   "current" either.
-3. `crypto.verifySync(sig, canonicalize({contentHash, decision, decidedAt[, mode]}), keyId)`
-   must pass. There is deliberately **no fallback** to the mode-less shape:
-   a `mode` altered, added or dropped after signing fails here with 400
-   (`Invalid operator signature`).
-Any failure returns 400 **before** the decision is persisted or the
-kernel's own witness signature is produced.
+The full detail is covered by the content hash. A multiline/chained command is
+shown verbatim, never summarized or truncated to fit the 16 KiB cap; oversize
+detail is rejected. The command is not subjected to the summary's secret-shape
+redaction, so the adapter must never resolve credentials into it before staging.
+The card is permission for this exact command on the displayed host/directory,
+not standing execution authority.
 
-### Decision `mode` — the signed choice (#2693)
+Approve permits only absent mode or `allow-once`; reject permits only absent
+mode or `deny`. The API rejects `allow-always` and mismatched modes with 400
+before mutation, even if a caller bypasses the UI. A decision at or after the
+request's `expiresAt` returns 409. The source applies the decision through its
+own store; generic withdrawal remains available only before apply.
 
-Picking an option IS the signing event (#2323), so the operator's
-countersignature covers the chosen `mode`, and the decision route refuses
-(400, before anything is signed or persisted) a `mode` the approval's kind
-does not offer (`apps/kernel/src/lib/notify/operator-decision-modes.ts`):
+After execution, the vault-authenticated internal outcome callback attaches
+`exitCode`, `durationMs` and `outputHash` to this kind's card. It is not the
+execution itself and does not submit raw stdout/stderr. The apply callback is
+a no-op for an already-applied, unknown or no-longer-approved proposal.
 
-| Kind | `approve` | `reject` / `withdrawn` |
-|---|---|---|
-| `decision:card` | **required**: one of the card's own option letters (`detail.options[].letter`) | no `mode` |
-| `gateway-exec:command` | absent \| `allow-once` | absent \| `deny` |
-| `github:*` | absent \| `single` \| `5m` \| `24h` | no `mode` |
-| every other kind | no `mode` | no `mode` |
+## Delivery, application and expiry
 
-An empty or non-string `mode` is 400 at the route. The `/jin` Inbox sends
-`allow-once`/`deny` for exec explicitly so those are signed rather than
-implied.
+The kernel publishes `operator.approval.decided` with a `sha256:` effective
+content hash, refusing to mutate/publish if it cannot compute that hash. The
+same signed payload is addressed once per distinct recipient: the deciding
+human and the requesting `signerDid`, when present. Grant-bound subscription
+delivery requires live capability and subject audience; durable catch-up uses
+the same scoped event log. No requesting signer means human-only delivery.
+The adapter routes a decision using its `source` and subscribes with a live
+`operator:approvals` capability whose audience permits the event subject.
+Each distinct recipient receives the same signed bytes; matching human and
+signer DIDs are deduplicated. Independent publication failure is non-fatal.
+An offline adapter catches up through the auth event-subscription contract
+under its own subject, not another principal's Inbox.
 
-**Back-compat (no migration):** a decision signed before #2693 has no
-`mode` in its signed payload and still verifies exactly as it did. On the
-Record lane (`GET /jin/api/events`) such an `operator.approval.decided`
-event that nevertheless carries a `mode` reports
-`modeCountersign: "not-countersigned"` /
-`modeCountersignLabel: "letter not countersigned"` — the letter was
-witnessed by the node, not signed by the operator — and is **not** shown as
-invalid. `"invalid"` is reserved for a signature that verifies against
-neither shape (e.g. a stored `mode` altered after signing); `"countersigned"`
-means the signature covers the letter; `"not-applicable"` means there was no
-`mode` or no operator signature to assess.
+A source maps approve/reject into its underlying mechanism, checks its local
+content hash and treats already-applied/expired decisions as no-ops. A successful
+apply reports through the vault-authenticated internal applied callback. It is
+idempotent; approval is not execution completion. Gateway exec outcome reporting
+adds bounded `exitCode`, `durationMs` and `outputHash` after execution and must not
+leak raw output or credentials.
 
-### Feature flag: `OPERATOR_COUNTERSIGN_REQUIRED`
+Withdrawal applies only to an approved but not yet applied proposal; an applied
+proposal refuses withdrawal with 409. Gateway exec also refuses decisions after
+its own deadline. The approval expiry policy retains signed expiry provenance;
+archive controls hide resolved cards per principal without deleting rows/history.
 
-Per-node environment variable, default unset (**off**). While off, a
-decision with no `operatorSignature` is still accepted (today's v1
-behavior) — but any `operatorSignature` that IS supplied is still fully
-verified per the rules above, so the plugin side
-(`ima-jin/openclaw-imajin-plugin#24`) can be built and tested against real
-verification before the flag ever flips. Once `OPERATOR_COUNTERSIGN_REQUIRED=true`
-on a node, `decideOperatorApproval` rejects (400, before any state
-mutation) any decision — including a withdrawal — that doesn't carry a
-valid `operatorSignature`. This is what closes the "kernel-forged
-decision" gap: a compromised kernel alone can no longer produce an
-accepted decision.
-
-**Rollout order**: (1) this kernel PR ships with the flag off — nothing
-changes for an unmigrated plugin. (2) `openclaw-imajin-plugin#24`
-implements plugin-side verification of `operatorSignature` against the
-operator DID's public key (not the kernel's witness signature) and the
-`/jin` client already starts sending `operatorSignature` on every decision
-(this PR ships that too). (3) once #24 is confirmed live and verifying
-correctly, an operator flips `OPERATOR_COUNTERSIGN_REQUIRED=true` on their
-node to require it going forward.
-
-### Wire-contract table
-
-| Field | Who signs it | Who verifies it | Covered by which hash/signature |
-|---|---|---|---|
-| `contentHash` (on the request) | n/a — computed by the source's adapter | Kernel, at ingest (`validateApprovalRequestedPayload`) | sha256 over `{proposalId, source, kind, summary, keysTouched, detail}` |
-| `contentHash` (on the decided event, #2294) | n/a — echoed by the kernel from the stored row (`effectiveContentHash`) | The source adapter's own #2084 "check 1" (e.g. `ima-jin/openclaw-imajin-plugin`'s gateway-approvals bridge) | Same sha256 digest as above, `sha256:`-prefixed |
-| Kernel witness `signature` (on the decision row) | Kernel's own node key (`getNodeSigningIdentity`) | Anyone holding the node's public key (legacy v1 trust anchor) | Ed25519 over `canonicalize(payload)` (the whole decided-event payload) |
-| `operatorSignature.sig` | The operator's own key (client-side on `/jin`) | Kernel, at decide time (`verifyOperatorCountersignature`); the plugin, per `#24`, against the operator DID's public key directly | Ed25519 over `canonicalize({contentHash, decision, decidedAt[, mode]})` |
-| `operatorSignature.keyId` | — (identifies the signer) | Kernel: must equal the operator DID's current `identities.publicKey` | n/a |
-
-### Delivery
-
-**#2337: addressed to BOTH the requesting agent and the operator.**
-Earlier versions of this contract published `operator.approval.decided`
-with `subject` set to the operator DID only, so an agent whose own
-delegation grant didn't happen to authorize the operator DID as subject
-(the common case for a source adapter's own agent identity) never received
-it — only the operator's own devices did. `decideOperatorApproval` now
-publishes the exact same signed payload (`contentHash`, `operatorSignature`
-included, byte-for-byte identical) once per distinct recipient: once with
-`subject: <operator DID>`, and — whenever the original request supplied a
-`signerDid` (see above) — once more with `subject: <signerDid>`. A
-legacy/no-`signerDid` request (or any in-process-raised proposal, e.g.
-vault/access/decision-card kinds) falls back to the original operator-only
-delivery. Each publish is independently non-fatal, and a `signerDid` equal
-to the operator DID is only ever published once (deduped).
-
-Each source's adapter routes this event back to its own owning source by
-the `source` field. It's received live over the adapter's **existing**
-authenticated WebSocket (the same challenge-response session every
-kernel-connected agent already holds) via the kernel's grant-bound
-event-subscription fan-out (#1884, `packages/bus/src/subscriptions.ts`):
-any agent DID holding an active delegation grant for the
-`operator:approvals` capability (`packages/auth/src/grant-scopes.ts`),
-whose grant audience allows the event's `subject`, is pushed a `bus_event`
-frame whenever `operator.approval.decided` is published — publishing once
-per recipient (above) is what makes the requesting agent's own
-self-audience grant match, where a single operator-addressed publish never
-did. If the adapter's agent DID has no live socket at the moment of
-publish, the event is still durable in `kernel.event_subscription_log` for
-catch-up via `GET /auth/api/events/subscriptions/catchup` (per-subject, so
-each recipient catches up on its own copy).
-
-No new WS protocol, no new subscription mechanism — every source shares
-the exact same primitive any other delegated agent uses to observe kernel
-events, scoped to a capability the operator (or an admin acting for them)
-grants it.
-
-### Idempotency / no-op
-
-Per the OpenClaw bridge (#24, generalized #33): a `decision` for an
-already-applied or expired proposal is expected to be a no-op on the
-adapter's side, logged and not retried against the underlying store.
-
-## 3. Withdrawal
-
-`decision: 'withdrawn'` is only ever published as a **follow-up** to a
-prior `approve`, and only while the proposal is still "pending-apply" (kernel
-status `approved`, i.e. the source has not yet confirmed it applied). Once
-the source confirms apply (see below), withdrawal is no longer possible —
-the kernel rejects it with 409.
-
-## 4. Apply confirmation (return path)
-
-Once a source's own apply against its underlying approval mechanism
-succeeds, it reports that back so `/jin` can show `applied` instead of
-`approved`:
-
-```
-POST /notify/api/internal/operator-approvals/applied
-Authorization: Bearer <vault-sourced internal API key>
-Content-Type: application/json
-
-{ "proposalId": "string" }
-```
-
-Idempotent: calling this again for an already-`applied` proposal succeeds
-as a no-op; calling it for a proposal that isn't currently `approved`
-(unknown, denied, or already withdrawn) is a safe no-op too.
-
-## Whose Inbox: node-level vs. connector approvals (#2723)
-
-`operator.approvals.operator_did` means **"whose /jin Inbox this row lives
-in"** — the column name is a #2059 leftover (renaming it is a schema change
-and waits for the v0.8.18 baseline squash). The rule is one pure function,
-`resolveApprovalAddressee` (`apps/kernel/src/lib/notify/approval-addressing.ts`):
-
-| Approval | Addressed to |
-|---|---|
-| **Connector proposal** — kind `<connector>:append`, `:mutate` or `:write` carrying `detail.ownerDid` (today: `github:append`, `github:mutate`) | the proposal's **owner DID** — the principal whose own agent raised it |
-| **Node-level** — `system-agent:*` (gateway restart/config), `skill-workshop:*`, `gateway-exec:command`, `apps:provision`, `vault:*`, `access:*`, `decision:card`, and any connector-shaped kind with no usable `detail.ownerDid` | the **node operator** (unchanged) |
-
-Consequences, all enforced server-side:
-
-- **Inbox read** (`GET /jin/api/operator-approvals`) is scoped to the session
-  DID: a principal lists only rows addressed to them. The node operator sees
-  node-level kinds plus their *own* connector proposals — never another
-  principal's, not even read-only. A delegated agent (`X-Acting-For`) has no
-  Inbox. `isOperator` in the response still means "is the node operator"; it
-  no longer gates the list, and the panel renders for anyone with a non-empty
-  Inbox.
-- **Decide is owner-only**: confirm/deny/withdraw succeeds only when the real
-  session DID is the row's addressee. The node operator gets **403** on
-  someone else's connector proposal; act-as is refused first (#2359).
-  Addressing is resolved from the row's kind + `detail.ownerDid`, so a legacy
-  row still stored under the operator's DID is already the owner's to see and
-  decide, with or without the backlog re-address below.
-- **Notifications go to the owner**: `recordApprovalRequested` fans the
-  web-push out to the addressee; `POST /notify/api/send` delivers the
-  persisted notification, WS frame and email for a connector proposal to the
-  owner (the webhook's `to` is still the node operator DID — it is validated
-  as before, then resolved to the owner). Push subscriptions
-  (`/jin/api/push-subscriptions`) are per signed-in principal so an owner can
-  receive them. `operator.approval.decided` is issued by / addressed to the
-  deciding owner (plus `signerDid`, #2337); the operator gets nothing.
-- **The countersignature is the owner's own key**: `operatorSignature` is
-  verified against the *deciding session DID's* current registered key, which
-  for a connector proposal is the owner.
-
-### Backlog re-address
-
-Rows raised before #2723 are stored under the operator. `npx tsx
-scripts/readdress-connector-approvals.ts [--dry-run]`
-(`readdressPendingConnectorApprovals`, `src/lib/notify/approval-readdress.ts`)
-moves them: only `status = 'pending'` connector rows whose owner differs from
-the stored addressee, each via one guarded UPDATE (`status = 'pending' AND
-operator_did = <value read>`), every move logged `from → to`. Decided,
-expired and past-`detail.expiresAt` rows are never touched; a second run is a
-no-op. No schema change.
-
-## Auth invariant
-
-The decide route (`POST /jin/api/operator-approvals/:proposalId/decision`)
-requires the caller's real authenticated identity — never an acting-for
-overlay — to be **the DID the proposal is addressed to** (see *Whose Inbox*
-above): the owner for a connector proposal, the node operator for a
-node-level kind. A delegated agent (`X-Acting-For: <did>`) has no Inbox
-(`inboxDidFor` → null) and is refused regardless of what it claims to act
-for — `@jin` proposing and `@jin` approving is structurally impossible, not
-just discouraged. Any other identity gets 403 (a proposal id that doesn't
-exist at all is 404; ids are unguessable nanoids).
-
-## Who may countersign (#2359, addressee per #2723)
-
-**The confirm rail is self-only.** Every write-approval endpoint on it —
-confirm, deny, withdraw, and any other countersignature of a proposal —
-authorizes against the **real authenticated session identity**
-(`identity.id`), never against `resolveActingDid(identity)`. The rule is
-`session.identity.did === proposal.ownerDid`, where the owner of a
-connector proposal is its `detail.ownerDid` and the owner of a node-level
-proposal is this node's configured operator DID (#2723).
-
-`isOperatorIdentity` above only ever excluded `actingFor`. It did not
-exclude `actingAs` — the group-impersonation overlay the /jin
-IdentitySwitcher sets as a year-long `x-acting-as` cookie
-(`POST /auth/api/session/act-as`) — so the operator's own session could
-satisfy `identity.id === operatorDid` while every other surface on the
-page was attributing its actions to a completely different DID. #2359
-closes that: `actAsRefusal` (`apps/kernel/src/lib/notify/act-as-guard.ts`,
-built on `isUnderActAs` in `packages/auth/src/acting-did.ts`) refuses ANY
-act-as shape — `actingFor` or `actingAs` — before the owner comparison
-even runs.
-
-### Behaviour under act-as
-
-- `POST /jin/api/operator-approvals/:proposalId/decision` → **403** with
-  `{ error, code: "act_as_not_permitted", sessionDid, actingDid }`. Refused
-  for being borrowed, not for failing an ownership test, so it discloses
-  nothing about whether `proposalId` exists — same non-disclosure posture
-  as the operator check.
-- `POST /jin/api/vault-proposals` (raising a `vault:*` card onto this rail)
-  → same 403, same code. A proposal that will be countersigned self-only is
-  not raised from a borrowed identity either.
-- `GET /jin/api/operator-approvals` → **unchanged, still lists.** Hiding
-  the queue would make the act-as state harder to notice, which is the
-  failure mode #2359 is about. The operator branch additionally carries
-  `actAs: { sessionDid, actingDid } | null`, so the panel renders every
-  card with its decision controls replaced by an explanatory line instead
-  of offering a tap the server will refuse. (#2723: `actAs` is returned to
-  every principal's Inbox read, not only the operator's.)
-- Every `/jin` lane renders a persistent act-as banner
-  (`apps/kernel/app/jin/act-as-banner.tsx`, mounted from the lane layout):
-  who you are, who you're acting as, and a one-click drop. It renders
-  nothing when the acting DID equals the session DID — the banner marks an
-  abnormal state, so it must never become chrome.
-
-### Rails that DO permit acting-for
-
-This ruling is about the confirm rail only. A rail that legitimately
-accepts delegation — e.g. vault mint/revoke via `requireMintAuthority`
-(`apps/kernel/src/lib/vault/mint-authority.ts`) — is unchanged and keeps
-its own record honesty: the attestation it writes names the real signer
-DID (`resolveComposedBy`, #1673) alongside the owner it acted for, so
-"attributed to X, actually typed by Y" is always recoverable from the
-record. What such a rail may never do is countersign a proposal on this
-rail on somebody else's behalf.
+Native loop-bound commands use the separate full-command principal wish and
+correlated signed outcome rail. Selecting that execution rail suppresses legacy
+executable decision fan-out atomically; missing command authority cannot silently
+switch back. See [loop contracts](loops-rail-contract.md).
 
 ## Redelivery
 
-`operator.approval.requested` is an ordinary `notify.notifications` row, so
-it gets the same backlog-on-reconnect redelivery every other notification
-does (#2044/#2050, `apps/kernel/src/lib/notify/backlog.ts`) — a pending
-approval survives the operator's client reconnecting with no
-proposal-specific redelivery code required.
+`operator.approval.requested` is an ordinary persisted `notify.notifications`
+row. A pending proposal survives a missed live delivery and the human client's
+reconnect through `getNotificationBacklog`, not proposal-specific retry code.
+The backlog selects unread, unacknowledged rows oldest-first, capped at 100
+per reconnect, and claims each using the same atomic send-attempt guard as live
+push so the two paths cannot offer it concurrently.
 
-## `gateway-exec:command` (#2221)
-
-The first kind whose decision vocabulary the kernel itself narrowed (since
-#2693 every kind's `mode` is validated — see *Decision `mode`* above): forwarded OpenClaw host-exec approvals
-(`ima-jin/openclaw-imajin-plugin#38`, the `gateway-exec` `ApprovalSource`).
-See `apps/kernel/src/lib/notify/exec-command-approvals.ts` for the full
-contract; summary:
-
-- `source: 'gateway-exec'`, `kind: 'gateway-exec:command'` — a disclosed
-  deviation from the issue's shorthand `exec.command`, since the open
-  vocabulary's `"<source>:<subkind>"` convention (above) requires a
-  colon-separated, hyphenated subkind, not a dot.
-- `detail` has a fixed, validated shape (`command`, `host`, `cwd`,
-  `agentId`, `requestedBy`, `approvalId`, `expiresAt`) — the
-  only kind whose `detail` fields are individually required/typed rather
-  than left to the source's own discretion, since the operator is
-  deciding whether to let a real command run on a real host.
-- The kernel enforces `mode` for this kind alone: `approve` only ever
-  pairs with `mode` absent or `'allow-once'`, `reject` only with `mode`
-  absent or `'deny'` — `'allow-always'` (or any other value) is rejected
-  with 400 before any state mutation. (#2693 extends per-kind validation
-  to every other kind.)
-- A decision on a proposal past its own `detail.expiresAt` is refused with
-  409, checked before any state mutation.
-- `POST /notify/api/internal/operator-approvals/outcome` (webhook-secret
-  gated, same posture as `.../applied`) attaches a post-exec outcome
-  (`exitCode`, `durationMs`, `outputHash`) once the gateway reports back —
-  additive to the approval record, shown on the /jin card. Scoped to this
-  kind only.
+A failed push that reaches no socket rolls back its claim and attempt count.
+A send without an acknowledgement becomes eligible again after the thirty-second
+ack window; heartbeat removal releases claim time for a dead socket. Only the
+recipient's authenticated `notification_ack` sets `delivered_at`. A socket send
+alone is not delivery. Re-offers are capped at three attempts, with a warning;
+the row remains readable through the authenticated notifications API after that
+cap. A backlog DB error yields no replay on that pass, not deletion or a false ack.
+See [the notification chain](warp-notification-chain.md) for heartbeat and transport
+diagnostics. Decision-event catch-up and notification redelivery are separate
+durable paths; neither proves that a source executed the command.

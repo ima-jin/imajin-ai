@@ -41,6 +41,44 @@ describe('current-state consumer documentation guard', () => {
     expect(scanDocument(heading)).toContainEqual(expect.objectContaining({ rule: 'history heading' }));
   });
 
+  it('preserves the passthrough opening apart from its removed issue citation', () => {
+    const text = readFileSync(join(root, 'packages/openclaw-infer-passthrough/README.md'), 'utf8');
+    expect(text.split(/\r?\n/).slice(0, 6)).toEqual([
+      '# @imajin/openclaw-infer-passthrough',
+      '**Default: per-calling-agent authentication.** Every call must supply',
+      "the agent's own `app+jwt` and its configured `x-acting-as` selector. Missing,",
+      'invalid or shared-marker credentials return 401; there is no gateway-principal',
+      'mint, re-mint, catalog cache or direct-key fallback for agent calls.',
+      'The kernel alone verifies authority and resolves connector policy.',
+    ]);
+  });
+
+  it('keeps the whitepaper argument and separates economic intent from the current calculator', () => {
+    const text = readFileSync(join(root, 'docs/mjn-whitepaper.md'), 'utf8');
+    for (const section of ['The Six Primitives', 'The Sovereignty Property', 'Identity', 'Infrastructure Layers']) {
+      expect(text).toContain(`## ${section}`);
+    }
+    expect(text).toContain('2% overhead/98% seller-share target is not the current calculator');
+    expect(text).toContain('2.75%');
+    expect(text).toContain('not withdrawable');
+    expect(text).toContain('planned, not implemented');
+  });
+
+  it.each([
+    ['docs/REGISTRATION.md', 'auth.actingAs ?? auth.did', 'never fall back to that personal identity'],
+    ['docs/DEVELOPER.md', 'resolveActingDid', 'raw personal DID'],
+    ['docs/notify-operator-approvals-contract.md', 'This confirm rail is self-only', 'act_as_not_permitted'],
+    ['docs/agents/nanoclaw-first-boot.md', 'proxy defaults to `agent`', 'rejects a'],
+    ['docs/ENVIRONMENTS.md', 'vault.dev.json', 'vault.prod.json'],
+    ['migrations/OWNERSHIP.md', 'Active root SQL belongs only to the kernel', 'absent `apps/events`'],
+    ['docs/warp-notification-chain.md', 'delivered_at', 'only after an explicit `notification_ack`'],
+    ['docs/npm-publishing.md', 'Release close-out is automatic', 'setting OFF'],
+  ])('retains the current boundary in %s', (file, concept, refusal) => {
+    const text = readFileSync(join(root, file), 'utf8');
+    expect(text).toContain(concept);
+    expect(text).toContain(refusal);
+  });
+
   it.each([
     'docs/REGISTRATION.md', 'migrations/OWNERSHIP.md',
     'packages/openclaw-infer-passthrough/README.md', 'docs/ENVIRONMENTS.md',
@@ -51,11 +89,82 @@ describe('current-state consumer documentation guard', () => {
     expect(CONSUMER_FILES).toContain(file);
   });
 
-  it.each(['llms.txt', 'llms-full.txt'])('%s retains only the existing llms blockquote wording', name => {
+  it.each(['llms.txt', 'llms-full.txt'])('%s leads with canonical positioning and honest alpha access', name => {
     const text = readFileSync(join(root, 'apps/kernel/public', name), 'utf8');
-    expect(text.split(/\r?\n/)[2]).toBe(
-      '> You compose. Imajin orchestrates. Signed. Legible. Imajin is Agentic Relation Management.',
-    );
+    const position = readFileSync(join(root, 'docs/POSITIONING.md'), 'utf8');
+    const oneLine = position.match(/\*\*One line:\*\* ([^\r\n]+)/)[1];
+    const subLine = position.match(/\*\*Sub-line:\*\* ([^\r\n]+)/)[1];
+    expect(text.split(/\r?\n/).slice(0, 5)).toEqual(['# Imajin', '', `> ${oneLine}`, '', subLine]);
+    const proof = "Every action is a signed event that anyone can verify, including a third party's own agent.";
+    expect(position.replaceAll(/\s+/g, ' ')).toContain(proof);
+    expect(text).toContain(proof);
+    expect(text).toContain('Point your agent at it:');
+    expect(text).toContain('Imajin is alpha.');
+    expect(text).toContain('this is not self-serve onboarding');
+    expect(text).toContain('https://imajin.ai/alpha');
+    expect(text).toContain('different evidentiary strength');
+    expect(text).toContain('Not publicly served at this origin');
+    expect(text).toContain('apps/kernel/api-spec/google.yaml');
+    expect(text).not.toContain('You compose. Imajin orchestrates.');
+  });
+
+  it.each(['llms.txt', 'llms-full.txt'])('%s puts agent integration before the app path', name => {
+    const text = readFileSync(join(root, 'apps/kernel/public', name), 'utf8');
+    const integration = text.slice(text.indexOf('## How to integrate'), text.indexOf('## Service specifications'));
+    const agent = integration.indexOf('### Connect an agent');
+    const app = integration.indexOf('### Build');
+    expect(agent).toBeGreaterThanOrEqual(0);
+    expect(app).toBeGreaterThan(agent);
+    const agentPath = integration.slice(agent, app);
+    for (const fact of ['own DID', 'scoped delegation', 'https://mcp.imajin.ai/mcp',
+      '/reach/<handle>/mcp', 'https://github.com/ima-jin/openclaw-imajin-plugin']) {
+      expect(agentPath).toContain(fact);
+    }
+    expect(text.indexOf('Imajin records proof of history')).toBeGreaterThan(text.indexOf('## Key concepts'));
+    expect(text).not.toMatch(/https:\/\/jin\.imajin\.ai\/(?:alpha|how-it-works|compare|project|whitepaper|developer-guide)(?=[)#\s])/);
+    for (const page of ['alpha', 'how-it-works', 'compare', 'project']) {
+      expect(text).toContain(`https://imajin.ai/${page}`);
+    }
+    expect(text).toContain('https://jin.imajin.ai/auth/api/spec');
+    if (name === 'llms.txt') {
+      expect(text).not.toContain('plaintext at rest');
+      expect(text).not.toContain('first 200 characters');
+      expect(text).toContain('https://imajin.ai/llms-full.txt#communication-and-security-limits');
+    } else {
+      expect(text).toContain('plaintext at rest');
+      expect(text).toContain('first 200 characters');
+    }
+  });
+
+  it('retains approval redelivery and the exact gateway exec request/decision contract', () => {
+    const text = readFileSync(join(root, 'docs/notify-operator-approvals-contract.md'), 'utf8');
+    for (const fact of ['## Redelivery', 'getNotificationBacklog', 'notification_ack',
+      'thirty-second', 'three attempts', '## `gateway-exec:command`',
+      '`command`', '`host`', '`cwd`', '`agentId`', '`requestedBy`', '`approvalId`',
+      '`expiresAt`', '`allow-once`', '`deny`', '`allow-always`', 'returns 409',
+      'internal outcome callback', 'outputHash', 'operator:approvals']) {
+      expect(text).toContain(fact);
+    }
+    expect(text).toContain('readable through the authenticated notifications API');
+    expect(text).toContain('never summarized or truncated');
+  });
+
+  it.each([
+    ['docs/REGISTRATION.md', '60 events/minute/app', 'plus/minus 300 seconds'],
+    ['docs/ENVIRONMENTS.md', 'rotateInternalSecret', 'atomic mode-0600'],
+    ['docs/DEVELOPER.md', '{did, document_hash}', 'legal-entity.disclosure'],
+    ['migrations/OWNERSHIP.md', 'public._migrations', 'Temporary scratch objects'],
+    ['packages/openclaw-infer-passthrough/README.md', 'X-Imajin-Run', 'sixty seconds'],
+    ['docs/warp-notification-chain.md', 'WATCH_POLL_INTERVALS_MS', 'skippedRace'],
+    ['docs/npm-publishing.md', 'prepublishOnly', 'NODE_AUTH_TOKEN'],
+    ['docs/mjn-whitepaper.md', '@imajin/money', 'usage.billed'],
+    ['docs/security/node-key-roles-and-rotation.md', 'key-rotation.sealed.lock', 'OPERATOR_COUNTERSIGN_REQUIRED=true'],
+    ['docs/agents/nanoclaw-first-boot.md', 'ChannelAdapter', 'instructions.prepend.md'],
+    ['docs/loops-rail-contract.md', 'loops:publish', 'loop.receipt'],
+  ])('retains audited operator facts in %s', (file, first, second) => {
+    const text = readFileSync(join(root, file), 'utf8');
+    expect(text).toContain(first);
+    expect(text).toContain(second);
   });
 
   it.each([
@@ -210,6 +319,11 @@ describe('current-state consumer documentation guard', () => {
     'apps/kernel/public/llms.txt', 'apps/kernel/public/llms-full.txt',
     'docs/developer-guide.md', 'docs/ops/DEPLOY-POSTURE.md',
     'deploy/README.md', 'deploy/infer-passthrough/README.md', 'migrations/BASELINE.md',
+    'docs/REGISTRATION.md', 'migrations/OWNERSHIP.md',
+    'packages/openclaw-infer-passthrough/README.md', 'docs/ENVIRONMENTS.md',
+    'docs/notify-operator-approvals-contract.md', 'docs/warp-notification-chain.md',
+    'docs/npm-publishing.md', 'docs/mjn-whitepaper.md', 'docs/loops-rail-contract.md',
+    'docs/security/node-key-roles-and-rotation.md', 'docs/agents/nanoclaw-first-boot.md', 'docs/DEVELOPER.md',
   ])('keeps the rewritten consumer document %s free of release and issue history', file => {
     const text = readFileSync(join(root, file), 'utf8');
     expect(text).not.toMatch(/\bv\d+\.\d+(?:\.\d+)?\b|(?:issues|pull)\/\d+|#\d{3,}|\b\d{4}-\d{2}-\d{2}\b/);
