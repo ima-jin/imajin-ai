@@ -103,6 +103,28 @@ describe('validateHandle', () => {
 });
 
 describe('mintAgentIdentity', () => {
+  it.each(['ryan-jin', 'ryan-jin-x', 'ryan-jin-travel'])('mints %s for the stored acting owner', async handle => {
+    pushSelectResult([]);
+    pushSelectResult([{ scope: 'actor', handle: 'ryan' }]);
+    expect(await mintAgentIdentity({ handle, actingDid: ACTING_DID })).toMatchObject({ handle });
+  });
+
+  it.each(['travel', 'someone-jin', 'ryan-jinx', 'ryan-jin-'])('rejects non-conforming direct handle %s before minting', async handle => {
+    pushSelectResult([]);
+    pushSelectResult([{ scope: 'actor', handle: 'ryan' }]);
+    await expect(mintAgentIdentity({ handle, actingDid: ACTING_DID })).rejects.toMatchObject({
+      status: 400, message: 'Handle must be @ryan-jin or @ryan-jin-<suffix> for the acting owner',
+    });
+    expect(mockTransaction).not.toHaveBeenCalled();
+  });
+
+  it('keeps internal provision naming unchanged even when the owner has a handle', async () => {
+    pushSelectResult([]);
+    pushSelectResult([{ scope: 'actor', handle: 'ryan' }]);
+    expect(await mintAgentIdentity({ handle: 'provision-agent', actingDid: ACTING_DID, provisionId: 'internal' }))
+      .toMatchObject({ handle: 'provision-agent' });
+  });
+
   it.each([true, false])('requires a matching locked provision before org mint (exists=%s)', async exists => {
     pushSelectResult([]);
     pushSelectResult([{ scope: 'business' }]);
@@ -136,7 +158,7 @@ describe('mintAgentIdentity', () => {
 
     await expect(mintAgentIdentity({ handle: 'taken-handle', actingDid: ACTING_DID })).rejects.toMatchObject({
       status: 409,
-      message: 'Handle already taken',
+      message: 'Handle @taken-handle is already taken',
     });
     expect(mockTransaction).not.toHaveBeenCalled();
   });
@@ -198,7 +220,7 @@ describe('mintAgentIdentity', () => {
     await expect(mintAgentIdentity({ handle: 'org-agent', actingDid: ACTING_DID }))
       .rejects.toMatchObject({ status: 403, message: expect.stringContaining('Provision agent') });
     expect(mockTxInsertValues).not.toHaveBeenCalled();
-    expect(mockDbSelect).toHaveBeenLastCalledWith({ scope: 'identities.scope' });
+    expect(mockDbSelect).toHaveBeenLastCalledWith({ scope: 'identities.scope', handle: 'identities.handle' });
   });
 
   it('retains both legacy personal-agent membership directions for a stored actor', async () => {

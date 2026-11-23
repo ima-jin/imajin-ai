@@ -177,6 +177,44 @@ afterAll(async () => {
   await pg.close();
 });
 
+describe('direct agent handle enforcement (#3399)', () => {
+  it('creates the base and suffixed Jin, with readable duplicate errors and unchanged historical handles', async () => {
+    await database.update(schema.identities).set({ handle: 'ryan' }).where(eq(schema.identities.id, HUMAN));
+    const historical = 'ryan-jin-ryan-jin';
+    await database.insert(schema.identities).values({
+      id: 'did:imajin:historical-doubled', scope: 'actor', subtype: 'agent',
+      publicKey: crypto.generateKeypair().publicKey, handle: historical,
+    });
+    for (const handle of ['ryan-jin', 'ryan-jin-travel']) {
+      const response = await createAgent(request('agents', { body: { handle } }));
+      expect(response.status).toBe(201);
+      expect(await response.json()).toMatchObject({ handle });
+    }
+    const duplicate = await createAgent(request('agents', { body: { handle: 'ryan-jin' } }));
+    expect(duplicate.status).toBe(409);
+    expect(await duplicate.json()).toEqual({ error: 'Handle @ryan-jin is already taken' });
+    expect(await database.select({ handle: schema.identities.handle }).from(schema.identities)
+      .where(eq(schema.identities.id, 'did:imajin:historical-doubled'))).toEqual([{ handle: historical }]);
+  });
+
+  it('rejects API bypasses and retains the org provision boundary using the acting handle', async () => {
+    await database.update(schema.identities).set({ handle: 'ryan' }).where(eq(schema.identities.id, HUMAN));
+    await database.update(schema.identities).set({ handle: 'artifact' }).where(eq(schema.identities.id, ORG));
+    for (const handle of ['travel', 'artifact-jin', 'ryan-jin-', 'ryan-jinx']) {
+      const response = await createAgent(request('agents', { body: { handle, provisionId: 'untrusted' } }));
+      expect(response.status).toBe(400);
+      expect((await response.json()).error).toContain('@ryan-jin');
+    }
+    const wrongOwner = await createAgent(request('agents', { actingAs: ORG, body: { handle: 'ryan-jin' } }));
+    expect(wrongOwner.status).toBe(400);
+    expect((await wrongOwner.json()).error).toContain('@artifact-jin');
+    const orgCreate = await createAgent(request('agents', { actingAs: ORG, body: { handle: 'artifact-jin' } }));
+    expect(orgCreate.status).toBe(403);
+    expect((await orgCreate.json()).error).toContain('Provision agent');
+    expect(await database.select().from(schema.identities).where(eq(schema.identities.subtype, 'agent'))).toEqual([]);
+  });
+});
+
 async function mintProvision(scopes = ['evidence:publish']) {
   const response = await provision(request('agents/provision', {
     actingAs: ORG,

@@ -7,6 +7,7 @@ import RetracePane from './retrace-panel';
 import AdoptAgent from './adopt-agent';
 import { fireAndForget } from '@/src/lib/async/fire-and-forget';
 import { previousGrantLeaseMs, operatorGrantExpiryWarning } from '@/src/lib/auth/grant-lease';
+import { agentHandlePrefix, agentSuffixError, composeAgentHandle } from '@/src/lib/auth/agent-handle';
 
 const NODE_URL = buildPublicUrlAbsolute('kernel');
 const CHAT_BASE_URL = buildPublicUrlAbsolute('chat');
@@ -738,9 +739,10 @@ export default function AgentsPage() {
   // finding. Stable across renders so it only fires when the input mounts.
   const autoFocusRef = useCallback((el: HTMLInputElement | null) => el?.focus(), []);
 
-  const handlePrefix = delegator?.handle ? `${delegator.handle}-jin-` : '';
-  const submittedHandle = `${handlePrefix}${handle}`;
-  const handleValid = handle.length >= 3 && submittedHandle.length <= 64;
+  const handlePrefix = agentHandlePrefix(delegator?.handle);
+  const submittedHandle = composeAgentHandle(delegator?.handle, handle);
+  const handleError = agentSuffixError(delegator?.handle, handle);
+  const handleValid = !handleError;
 
   function showStatus(type: 'success' | 'error', text: string) {
     setStatusMessage({ type, text });
@@ -809,7 +811,7 @@ export default function AgentsPage() {
       return;
     }
     if (!handleValid) {
-      showStatus('error', 'Enter at least 3 characters; the full handle must be at most 64 characters.');
+      showStatus('error', handleError!);
       return;
     }
 
@@ -1248,7 +1250,7 @@ export default function AgentsPage() {
             )}
             <form onSubmit={handleCreate} className="space-y-4">
               <div>
-                <label htmlFor="create-agent-handle" className="block text-sm text-gray-400 mb-1">Handle</label>
+                <label htmlFor="create-agent-handle" className="block text-sm text-gray-400 mb-1">{handlePrefix ? 'Suffix (optional)' : 'Handle'}</label>
                 <div className="flex items-center gap-2">
                   {handlePrefix && (
                     <span className="text-sm text-gray-500 shrink-0">{handlePrefix}</span>
@@ -1265,9 +1267,11 @@ export default function AgentsPage() {
                   />
                 </div>
                 <p id="create-agent-handle-help" className="text-xs text-gray-600 mt-1">
-                  Lowercase letters, numbers, underscores, and hyphens only. Enter at least 3 characters; the full handle must be at most 64 characters.
+                  Lowercase letters, numbers, underscores, and hyphens only. The full handle must be 3-64 characters.
+                  {handlePrefix && ` Leave blank for @${handlePrefix}; a suffix adds a hyphen, e.g. @${handlePrefix}-travel.`}
                 </p>
-                {submittedHandle.length > 64 && <p role="alert" className="text-sm text-red-400">Full handle exceeds 64 characters.</p>}
+                {handle && handleError && <p role="alert" className="text-sm text-red-400">{handleError}</p>}
+                {handleValid && <p className="text-sm text-gray-400">Handle: @{submittedHandle}</p>}
               </div>
               <div>
                 <label htmlFor="create-agent-display-name" className="block text-sm text-gray-400 mb-1">Display name</label>

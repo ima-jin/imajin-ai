@@ -15,8 +15,7 @@ import { eq, and, isNull } from 'drizzle-orm';
 import { generateKeypair } from '@imajin/auth';
 import { didFromPublicKey } from '@/src/lib/auth/crypto';
 import { authorizeAgentApp } from './agent-app';
-
-const HANDLE_REGEX = /^[a-z0-9_-]+$/;
+import { agentHandleError } from './agent-handle';
 
 export interface MintAgentIdentityInput {
   handle: string;
@@ -46,15 +45,8 @@ export class MintAgentIdentityError extends Error {
 }
 
 export function validateHandle(handle: unknown): asserts handle is string {
-  if (!handle || typeof handle !== 'string') {
-    throw new MintAgentIdentityError('handle is required', 400);
-  }
-  if (handle.length < 3 || handle.length > 64) {
-    throw new MintAgentIdentityError('Handle must be 3-64 characters', 400);
-  }
-  if (!HANDLE_REGEX.test(handle)) {
-    throw new MintAgentIdentityError('Handle must be lowercase letters, numbers, underscores, or hyphens', 400);
-  }
+  const error = agentHandleError(handle);
+  if (error) throw new MintAgentIdentityError(error, 400);
 }
 
 /**
@@ -73,18 +65,24 @@ export async function mintAgentIdentity(input: MintAgentIdentityInput): Promise<
     .where(eq(identities.handle, handle))
     .limit(1);
   if (existing.length > 0) {
-    throw new MintAgentIdentityError('Handle already taken', 409);
+    throw new MintAgentIdentityError(`Handle @${handle} is already taken`, 409);
   }
   // Resolve scope from storage, never a caller-provided flag. This primitive
   // is shared by provisioning and direct creation, so neither path can mint
   // an organization-wide controller through legacy membership authority.
   const [servingIdentity] = await db
-    .select({ scope: identities.scope })
+    .select({ scope: identities.scope, handle: identities.handle })
     .from(identities)
     .where(eq(identities.id, input.actingDid))
     .limit(1);
   if (!servingIdentity) {
     throw new MintAgentIdentityError('Serving identity not found', 404);
+  }
+  // Public creates use the stored acting principal, never the personal session.
+  // Internal provisions retain their existing naming contract (#3399 scope).
+  if (!input.provisionId) {
+    const error = agentHandleError(handle, servingIdentity.handle);
+    if (error) throw new MintAgentIdentityError(error, 400);
   }
   const isOrganization = ['business', 'community', 'family'].includes(servingIdentity.scope);
   // #3193: plain create has no operator-selected scopes/provision lifecycle.
