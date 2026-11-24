@@ -191,6 +191,56 @@ beforeEach(() => {
 });
 
 describe('POST /auth/api/agents (#1717)', () => {
+  it.each(['ryan-jin', 'ryan-jin-travel', `ryan-jin-${'x'.repeat(55)}`])('accepts the full owner handle %s', async handle => {
+    pushSelectResult([]);
+    pushSelectResult([{ scope: 'actor', handle: 'ryan' }]);
+    const response = await POST(makePostRequest({ handle }));
+    expect(response.status).toBe(201);
+    expect(await response.json()).toMatchObject({ handle });
+    expect(JSON.stringify(mockSelectWhere.mock.calls)).toContain(PERSONAL_DID);
+  });
+
+  it.each(['travel', 'artifact-jin', 'ryan-jin-', 'ryan-jinx'])('rejects an API bypass with handle %s', async handle => {
+    pushSelectResult([]);
+    pushSelectResult([{ scope: 'actor', handle: 'ryan' }]);
+    const response = await POST(makePostRequest({ handle, actingDid: BUSINESS_DID, provisionId: 'untrusted' }));
+    expect(response.status).toBe(400);
+    expect((await response.json()).error).toContain('Handle must be @ryan-jin or @ryan-jin-<suffix>');
+    expect(mockTransaction).not.toHaveBeenCalled();
+  });
+
+  it.each(['ryan-jin', 'artifact-jin', 'artifact-jin-travel'])('uses the acting org handle, retaining its provision boundary: %s', async handle => {
+    mockRequireAuth.mockResolvedValue({
+      identity: { id: PERSONAL_DID, handle: 'ryan', actingAs: BUSINESS_DID, actingAsRole: 'admin' },
+    });
+    pushSelectResult([]);
+    pushSelectResult([{ scope: 'business', handle: 'artifact' }]);
+    const response = await POST(makePostRequest({ handle }));
+    expect(response.status).toBe(handle === 'ryan-jin' ? 400 : 403);
+    expect((await response.json()).error).toContain(handle === 'ryan-jin' ? '@artifact-jin' : 'Provision agent');
+    expect(JSON.stringify(mockSelectWhere.mock.calls)).toContain(BUSINESS_DID);
+    expect(mockTransaction).not.toHaveBeenCalled();
+  });
+
+  it.each(['', 'ab', 'x'.repeat(65), 'ryan-jin-!', 'Ryan-jin'])('rejects invalid full handle %s', async handle => {
+    expect((await POST(makePostRequest({ handle }))).status).toBe(400);
+    expect(mockDbSelect).not.toHaveBeenCalled();
+  });
+
+  it('returns a readable duplicate error naming the requested handle', async () => {
+    pushSelectResult([{ id: 'existing' }]);
+    const response = await POST(makePostRequest({ handle: 'ryan-jin' }));
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({ error: 'Handle @ryan-jin is already taken' });
+    expect(mockTransaction).not.toHaveBeenCalled();
+  });
+
+  it('preserves unauthenticated denial before accessing storage', async () => {
+    mockRequireAuth.mockResolvedValue({ error: 'Unauthorized', status: 401 });
+    expect((await POST(makePostRequest({ handle: 'ryan-jin' }))).status).toBe(401);
+    expect(mockDbSelect).not.toHaveBeenCalled();
+  });
+
   it('owns the new agent under the raw session DID when not acting for anyone', async () => {
     pushSelectResult([]);
     pushSelectResult([{ scope: 'actor' }]);

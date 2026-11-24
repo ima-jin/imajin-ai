@@ -7,6 +7,8 @@ import RetracePane from './retrace-panel';
 import AdoptAgent from './adopt-agent';
 import { fireAndForget } from '@/src/lib/async/fire-and-forget';
 import { previousGrantLeaseMs, operatorGrantExpiryWarning } from '@/src/lib/auth/grant-lease';
+import { agentSuffixError, composeAgentHandle } from '@/src/lib/auth/agent-handle';
+import AgentHandleField from './agent-handle-field';
 
 const NODE_URL = buildPublicUrlAbsolute('kernel');
 const CHAT_BASE_URL = buildPublicUrlAbsolute('chat');
@@ -563,14 +565,17 @@ function ProvisionWizard({
   onSubmit,
   onCancel,
   submitting,
+  owner,
 }: Readonly<{
   onSubmit: (input: { name: string; handle: string; harness: ProvisionHarness; placement: ProvisionPlacement; scopes: string[]; provider: string }) => void;
   onCancel: () => void;
   submitting: boolean;
+  owner: Delegator | null;
 }>) {
   const [name, setName] = useState('');
-  const [provisionHandle, setProvisionHandle] = useState('');
-  const handleValid = !provisionHandle || (provisionHandle.length >= 3 && provisionHandle.length <= 64 && /^[a-z0-9_-]+$/.test(provisionHandle));
+  const [suffix, setSuffix] = useState('');
+  const provisionHandle = composeAgentHandle(owner?.handle, suffix);
+  const handleValid = !agentSuffixError(owner?.handle, suffix);
   const [harness, setHarness] = useState<ProvisionHarness>('nanoclaw');
   const [placement, setPlacement] = useState<ProvisionPlacement>('hosted');
   const [scopes, setScopes] = useState<string[]>([]);
@@ -591,6 +596,9 @@ function ProvisionWizard({
       <p className="text-gray-400 text-sm">
         Mints an agent DID, issues minimal grants, and assembles an RFC-31 envelope.
       </p>
+      {owner ? <AgentOwner owner={owner} /> : (
+        <p role="alert" className="text-sm text-red-400">Agent owner unavailable. Reload before provisioning an agent.</p>
+      )}
 
       <div>
         <label htmlFor="provision-name" className="block text-sm text-gray-400 mb-1">Name</label>
@@ -605,14 +613,7 @@ function ProvisionWizard({
         />
       </div>
 
-      <div>
-        <label htmlFor="provision-handle" className="block text-sm text-gray-400 mb-1">Handle (optional)</label>
-        <input id="provision-handle" value={provisionHandle} onChange={e => setProvisionHandle(e.target.value)}
-          placeholder="artifact-jin" maxLength={64}
-          className="w-full px-4 py-2 border border-gray-700 rounded-lg bg-black text-white" />
-        <p className="text-xs text-gray-500 mt-1">3–64 lowercase letters, numbers, underscores or hyphens. Leave empty to derive from name.</p>
-        {!handleValid && <p role="alert" className="text-sm text-red-400">Invalid handle</p>}
-      </div>
+      <AgentHandleField id="provision-handle" ownerHandle={owner?.handle} suffix={suffix} onChange={setSuffix} />
 
       <div>
         <p className="block text-sm text-gray-400 mb-1">Harness</p>
@@ -679,8 +680,10 @@ function ProvisionWizard({
       <div className="flex gap-3 pt-2">
         <button
           type="button"
-          onClick={() => onSubmit({ name, handle: provisionHandle, harness, placement, scopes, provider })}
-          disabled={!name.trim() || !handleValid || submitting}
+          onClick={() => {
+            if (owner && handleValid) onSubmit({ name, handle: provisionHandle, harness, placement, scopes, provider });
+          }}
+          disabled={!owner || !name.trim() || !handleValid || submitting}
           className="px-6 py-2 bg-amber-500 hover:bg-amber-400 text-black font-medium rounded-lg transition disabled:opacity-50"
         >
           {submitting ? 'Provisioning…' : 'Provision'}
@@ -733,14 +736,9 @@ export default function AgentsPage() {
   const [displayName, setDisplayName] = useState('');
   const [bio, setBio] = useState('');
 
-  // S9379: an imperative focus-on-mount ref instead of the declarative
-  // `autoFocus` JSX attribute — same one-time focus behavior, no new SonarCloud
-  // finding. Stable across renders so it only fires when the input mounts.
-  const autoFocusRef = useCallback((el: HTMLInputElement | null) => el?.focus(), []);
-
-  const handlePrefix = delegator?.handle ? `${delegator.handle}-jin-` : '';
-  const submittedHandle = `${handlePrefix}${handle}`;
-  const handleValid = handle.length >= 3 && submittedHandle.length <= 64;
+  const submittedHandle = composeAgentHandle(delegator?.handle, handle);
+  const handleError = agentSuffixError(delegator?.handle, handle);
+  const handleValid = !handleError;
 
   function showStatus(type: 'success' | 'error', text: string) {
     setStatusMessage({ type, text });
@@ -809,7 +807,7 @@ export default function AgentsPage() {
       return;
     }
     if (!handleValid) {
-      showStatus('error', 'Enter at least 3 characters; the full handle must be at most 64 characters.');
+      showStatus('error', handleError!);
       return;
     }
 
@@ -1226,6 +1224,7 @@ export default function AgentsPage() {
         {/* Envelope provisioner (#1933): new agent flow */}
         {showProvisionWizard && (
           <ProvisionWizard
+            owner={delegator}
             submitting={actionLoading === 'provision'}
             onSubmit={handleCreateProvision}
             onCancel={() => setShowProvisionWizard(false)}
@@ -1247,28 +1246,7 @@ export default function AgentsPage() {
               <p role="alert" className="text-sm text-red-400">Agent owner unavailable. Reload before creating an agent.</p>
             )}
             <form onSubmit={handleCreate} className="space-y-4">
-              <div>
-                <label htmlFor="create-agent-handle" className="block text-sm text-gray-400 mb-1">Handle</label>
-                <div className="flex items-center gap-2">
-                  {handlePrefix && (
-                    <span className="text-sm text-gray-500 shrink-0">{handlePrefix}</span>
-                  )}
-                  <input
-                    id="create-agent-handle"
-                    type="text"
-                    value={handle}
-                    onChange={(e) => setHandle(e.target.value.toLowerCase().replaceAll(/[^a-z0-9_-]/g, ''))}
-                    placeholder={handlePrefix ? 'travel' : 'travel-agent'}
-                    aria-describedby="create-agent-handle-help"
-                    ref={autoFocusRef}
-                    className="flex-1 px-4 py-2 border border-gray-700 rounded-lg bg-black text-white focus:ring-2 focus:ring-amber-500 focus:border-transparent"
-                  />
-                </div>
-                <p id="create-agent-handle-help" className="text-xs text-gray-600 mt-1">
-                  Lowercase letters, numbers, underscores, and hyphens only. Enter at least 3 characters; the full handle must be at most 64 characters.
-                </p>
-                {submittedHandle.length > 64 && <p role="alert" className="text-sm text-red-400">Full handle exceeds 64 characters.</p>}
-              </div>
+              <AgentHandleField id="create-agent-handle" ownerHandle={delegator?.handle} suffix={handle} onChange={setHandle} focusOnMount />
               <div>
                 <label htmlFor="create-agent-display-name" className="block text-sm text-gray-400 mb-1">Display name</label>
                 <input

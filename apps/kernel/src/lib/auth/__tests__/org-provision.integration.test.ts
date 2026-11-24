@@ -177,10 +177,106 @@ afterAll(async () => {
   await pg.close();
 });
 
+describe('direct agent handle enforcement (#3399)', () => {
+  it('creates the base and suffixed Jin, with readable duplicate errors and unchanged historical handles', async () => {
+    await database.update(schema.identities).set({ handle: 'ryan' }).where(eq(schema.identities.id, HUMAN));
+    const historical = 'ryan-jin-ryan-jin';
+    await database.insert(schema.identities).values({
+      id: 'did:imajin:historical-doubled', scope: 'actor', subtype: 'agent',
+      publicKey: crypto.generateKeypair().publicKey, handle: historical,
+    });
+    for (const handle of ['ryan-jin', 'ryan-jin-travel']) {
+      const response = await createAgent(request('agents', { body: { handle } }));
+      expect(response.status).toBe(201);
+      expect(await response.json()).toMatchObject({ handle });
+    }
+    const duplicate = await createAgent(request('agents', { body: { handle: 'ryan-jin' } }));
+    expect(duplicate.status).toBe(409);
+    expect(await duplicate.json()).toEqual({ error: 'Handle @ryan-jin is already taken' });
+    expect(await database.select({ handle: schema.identities.handle }).from(schema.identities)
+      .where(eq(schema.identities.id, 'did:imajin:historical-doubled'))).toEqual([{ handle: historical }]);
+  });
+
+  it('rejects API bypasses and retains the org provision boundary using the acting handle', async () => {
+    await database.update(schema.identities).set({ handle: 'ryan' }).where(eq(schema.identities.id, HUMAN));
+    await database.update(schema.identities).set({ handle: 'artifact' }).where(eq(schema.identities.id, ORG));
+    for (const handle of ['travel', 'artifact-jin', 'ryan-jin-', 'ryan-jinx']) {
+      const response = await createAgent(request('agents', { body: { handle, provisionId: 'untrusted' } }));
+      expect(response.status).toBe(400);
+      expect((await response.json()).error).toContain('@ryan-jin');
+    }
+    const wrongOwner = await createAgent(request('agents', { actingAs: ORG, body: { handle: 'ryan-jin' } }));
+    expect(wrongOwner.status).toBe(400);
+    expect((await wrongOwner.json()).error).toContain('@artifact-jin');
+    const orgCreate = await createAgent(request('agents', { actingAs: ORG, body: { handle: 'artifact-jin' } }));
+    expect(orgCreate.status).toBe(403);
+    expect((await orgCreate.json()).error).toContain('Provision agent');
+    expect(await database.select().from(schema.identities).where(eq(schema.identities.subtype, 'agent'))).toEqual([]);
+  });
+});
+
+describe('provision agent handle enforcement (#3399 send-back)', () => {
+  beforeEach(async () => {
+    await database.update(schema.identities).set({ handle: 'ryan' }).where(eq(schema.identities.id, HUMAN));
+    await database.update(schema.identities).set({ handle: 'artifact' }).where(eq(schema.identities.id, ORG));
+  });
+
+  it.each([
+    { org: false, handle: undefined }, { org: false, handle: '' },
+    { org: true, handle: undefined }, { org: true, handle: '' },
+  ])('uses the base serving-owner handle for an empty suffix: %j', async ({ org, handle }) => {
+    const servingDid = org ? ORG : HUMAN;
+    const expected = org ? 'artifact-jin' : 'ryan-jin';
+    const response = await provision(request('agents/provision', {
+      actingAs: org ? ORG : undefined,
+      body: { servingDid, name: 'Free display name !!!', handle, harness: 'nanoclaw', placement: 'local', scopes: [] },
+    }));
+    expect(response.status).toBe(201);
+    expect((await response.json()).provision).toMatchObject({
+      handle: expected, displayName: 'Free display name !!!', servingDid, status: 'envelope_rendered',
+    });
+    const [agent] = await database.select().from(schema.identities).where(eq(schema.identities.handle, expected));
+    expect(agent).toMatchObject({ name: 'Free display name !!!', subtype: 'agent' });
+  });
+
+  it.each([false, true])('rejects wrong-owner, doubled, malformed and overlong handles before minting (org=%s)', async org => {
+    const prefix = org ? 'artifact-jin' : 'ryan-jin';
+    const invalid = ['unrelated', org ? 'ryan-jin' : 'artifact-jin', `${prefix}-${prefix}`,
+      `${prefix}-${prefix}-x`, `${prefix}-`, `${prefix}x`, `${prefix}-!`, `${prefix}-${'x'.repeat(64)}`];
+    for (const handle of invalid) {
+      const response = await provision(request('agents/provision', {
+        actingAs: org ? ORG : undefined,
+        body: { servingDid: org ? ORG : HUMAN, name: 'Display name', handle, harness: 'nanoclaw', placement: 'local', scopes: [] },
+      }));
+      expect(response.status, handle).toBe(400);
+    }
+    expect(await database.select().from(schema.agentProvisions)).toEqual([]);
+    expect(await database.select().from(schema.identities).where(eq(schema.identities.subtype, 'agent'))).toEqual([]);
+  });
+
+  it.each([false, true])('returns collision 409 without random suffixes and keeps display names independent (org=%s)', async org => {
+    const prefix = org ? 'artifact-jin' : 'ryan-jin';
+    const body = { servingDid: org ? ORG : HUMAN, name: 'First free-text name', harness: 'nanoclaw', placement: 'local', scopes: [] };
+    const post = (fields = {}) => provision(request('agents/provision', {
+      actingAs: org ? ORG : undefined, body: { ...body, ...fields },
+    }));
+    expect((await post()).status).toBe(201);
+    const conflict = await post({ name: 'Entirely different name' });
+    expect(conflict.status).toBe(409);
+    expect(await conflict.json()).toEqual({ error: 'handle taken, add a suffix' });
+    const suffixed = await post({ handle: `${prefix}-travel`, name: body.name });
+    expect(suffixed.status).toBe(201);
+    expect((await suffixed.json()).provision).toMatchObject({ handle: `${prefix}-travel`, displayName: body.name });
+    const rows = await database.select().from(schema.agentProvisions);
+    expect(rows.map(row => row.handle).sort()).toEqual([prefix, `${prefix}-travel`].sort());
+    expect(rows.every(row => row.displayName === body.name)).toBe(true);
+  });
+});
+
 async function mintProvision(scopes = ['evidence:publish']) {
   const response = await provision(request('agents/provision', {
     actingAs: ORG,
-    body: { servingDid: ORG, name: 'Org assistant', harness: 'nanoclaw', placement: 'local', scopes },
+    body: { servingDid: ORG, name: 'Org assistant', handle: 'org-agent', harness: 'nanoclaw', placement: 'local', scopes },
   }));
   expect(response.status).toBe(201);
   const { provision: row } = await response.json();
@@ -217,7 +313,7 @@ describe('real organization provisioning (#3001 ruling a)', () => {
     expect((await personal.json()).agents).toEqual([]);
     const conflict = await provision(request('agents/provision', { actingAs: ORG, body }));
     expect(conflict.status).toBe(409);
-    expect((await conflict.json()).error).toBe('Handle already taken');
+    expect((await conflict.json()).error).toBe('handle taken, add a suffix');
   });
 
   it('adopts a historical orphan through real org auth, original key proof, grant signing and org listing', async () => {
@@ -330,7 +426,7 @@ describe('real organization provisioning (#3001 ruling a)', () => {
 
   it('preserves both legacy personal-agent rows through the real provision POST', async () => {
     const response = await provision(request('agents/provision', {
-      body: { servingDid: HUMAN, name: 'Personal assistant', harness: 'nanoclaw', placement: 'local', scopes: [] },
+      body: { servingDid: HUMAN, name: 'Personal assistant', handle: 'personal-agent', harness: 'nanoclaw', placement: 'local', scopes: [] },
     }));
     expect(response.status).toBe(201);
     const { provision: row } = await response.json();

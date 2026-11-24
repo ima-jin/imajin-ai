@@ -52,7 +52,7 @@ async function createAgentAndShowCopyButton() {
   render(<AgentsPage />);
   await waitFor(() => expect(screen.queryByText('Loading agents…')).toBeNull());
   fireEvent.click(screen.getByText('+ Create Agent'));
-  fireEvent.change(screen.getByLabelText('Handle'), { target: { value: 'travel' } });
+  fireEvent.change(screen.getByLabelText('Suffix (optional)'), { target: { value: 'travel' } });
   fireEvent.click(screen.getByRole('button', { name: 'Create Agent' }));
   return screen.findByText('Copy OpenClaw Config');
 }

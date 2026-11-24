@@ -56,6 +56,16 @@ beforeEach(() => {
 });
 
 describe('POST /auth/api/agents/provision', () => {
+  it('returns a provision collision as 409 with the add-suffix guidance, not a failed 201', async () => {
+    requireAuthMock.mockResolvedValue({ identity: { id: OWNER } });
+    createProvisionMock.mockRejectedValue(new ProvisionErrorMock('handle taken, add a suffix', 409));
+    const response = await POST(makeRequest('POST', {
+      servingDid: OWNER, name: 'Unrelated display name', handle: '', harness: 'nanoclaw', placement: 'local', scopes: [],
+    }));
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({ error: 'handle taken, add a suffix' });
+  });
+
   it('rejects a caller acting under X-Acting-For agent delegation', async () => {
     requireAuthMock.mockResolvedValue({ identity: { id: 'did:imajin:agent', actingFor: OWNER } });
 
