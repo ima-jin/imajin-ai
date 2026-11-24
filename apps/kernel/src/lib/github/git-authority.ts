@@ -6,6 +6,7 @@ import { introspectGrant } from '@/src/lib/auth/grants';
 import { isLiveAppAuthorization } from '@/src/lib/auth/live-app-authorization';
 import { mcpOAuthContext } from '@/src/lib/mcp/agent-binding';
 import { getMcpResource } from '@/src/lib/mcp/oauth-config';
+import { mapWithConcurrency } from '@/src/lib/async/sequential';
 import { GITHUB_CONNECTOR_DID } from './constants';
 
 export interface GitAuthority { actorDid: string; ownerDid: string; grantId?: string }
@@ -60,14 +61,14 @@ export async function gitAuthority(request: Request): Promise<GitAuthority | num
   const rows = await db.select({ ownerDid: delegationGrants.delegatorDid }).from(delegationGrants)
     .where(and(eq(delegationGrants.agentDid, caller.actorDid),
       eq(delegationGrants.status, 'active'), gt(delegationGrants.expiresAt, new Date())));
-  const authorized: GitAuthority[] = [];
-  for (const ownerDid of new Set(rows.map(row => row.ownerDid))) {
+  const grants = await mapWithConcurrency([...new Set(rows.map(row => row.ownerDid))], 4, async (ownerDid): Promise<GitAuthority | null> => {
     const grant = await introspectGrant({
       agentDid: caller.actorDid, delegatorDid: ownerDid, capability: 'github:read',
       targetDid: GITHUB_CONNECTOR_DID,
     });
-    if (grant.authorized) authorized.push({ actorDid: caller.actorDid, ownerDid, grantId: grant.grantId });
-  }
+    return grant.authorized ? { actorDid: caller.actorDid, ownerDid, grantId: grant.grantId } : null;
+  });
+  const authorized = grants.filter((grant): grant is GitAuthority => grant !== null);
   const selection = selected ?? caller.boundOwner;
   if (authorized.length > 1 && !selected) return 409;
   if (selection) return authorized.find(grant => grant.ownerDid === selection) ?? 403;
