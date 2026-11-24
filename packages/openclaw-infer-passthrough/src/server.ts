@@ -33,6 +33,7 @@ import { stripTrailingSlashes } from './url-utils.js';
 import type { ProxyConfig } from './types.js';
 import { handleAgentRequest, readAgentCredential, type AgentEndpoint } from './agent-handler.js';
 import { installGracefulShutdown } from './shutdown.js';
+import { forwardGitRequest } from './git-handler.js';
 
 const log = createLogger('openclaw-infer-passthrough');
 
@@ -239,6 +240,10 @@ async function routeAgentRequest(
   if (req.method === 'GET' && (path === '/health' || path === '/healthz')) {
     res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
     res.end(JSON.stringify({ ...health.snapshot(), ok: true, authMode: 'agent', credentialRequired: true }));
+    return;
+  }
+  if (path.startsWith('/github/git/')) {
+    await forwardGitRequest(config, req, res);
     return;
   }
   const endpoint = agentEndpoint(req.method, path);
