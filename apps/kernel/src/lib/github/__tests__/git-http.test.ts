@@ -106,4 +106,38 @@ describe('sealed credential upstream transport', () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(token, { headers: { 'Content-Type': token } })));
     expect((await fetchGitRead(request(), target(), token)).status).toBe(502);
   });
+  it('sanitizes pack stream errors and propagates consumer cancellation upstream', async () => {
+    const token = randomBytes(32).toString('hex');
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(new ReadableStream({
+      start(controller) { controller.error(new Error(token)); },
+    }), { headers: { 'Content-Type': advertisement } })));
+    const response = await fetchGitRead(request(), target(), token);
+    await expect(response.text()).rejects.toThrow('Git upstream stream unavailable');
+    const cancel = vi.fn();
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(new ReadableStream({ cancel }), {
+      headers: { 'Content-Type': advertisement },
+    })));
+    const canceled = await fetchGitRead(request(), target(), token);
+    await canceled.body?.cancel();
+    expect(cancel).toHaveBeenCalled();
+  });
+  it('forwards binary POST bodies, protocol version and a bounded cancellation signal only', async () => {
+    const token = randomBytes(32).toString('hex');
+    const bytes = randomBytes(100);
+    const req = new Request(`${root}git-upload-pack`, {
+      method: 'POST', body: bytes,
+      headers: { 'Content-Type': 'application/x-git-upload-pack-request', 'Git-Protocol': 'version=2', Cookie: 'untrusted' },
+    });
+    const parsed = gitReadTarget(req);
+    if (parsed instanceof Response) throw new Error('bad test target');
+    const fetcher = vi.fn().mockResolvedValue(new Response(bytes, { headers: { 'Content-Type': parsed.contentType } }));
+    vi.stubGlobal('fetch', fetcher);
+    const result = await fetchGitRead(req, parsed, token);
+    expect(Buffer.from(await result.arrayBuffer())).toEqual(bytes);
+    const init = fetcher.mock.calls[0][1];
+    expect(init.body).toBe(req.body);
+    expect(init.signal).toBeInstanceOf(AbortSignal);
+    expect(new Headers(init.headers).get('git-protocol')).toBe('version=2');
+    expect(new Headers(init.headers).has('cookie')).toBe(false);
+  });
 });

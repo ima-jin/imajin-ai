@@ -204,6 +204,7 @@ import {
   exchangeCodeAndStore,
   readConfigFlow,
   readConfigSetup,
+  readGitRepository,
   requestDeviceCode,
   pollDeviceTokenOnce,
   DEFAULT_LIST_LIMIT,
@@ -330,6 +331,38 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+});
+
+describe('git read connector credential gate', () => {
+  const request = () => new Request(`https://kernel.test/github/git/${REPO}.git/info/refs?service=git-upload-pack`);
+  const target = {
+    repo: REPO, suffix: 'info/refs?service=git-upload-pack' as const,
+    contentType: 'application/x-git-upload-pack-advertisement',
+  };
+  it('loads the owner credential through the existing gate, never returning it', async () => {
+    grant(['github:read']);
+    sealedOAuth();
+    vi.mocked(fetch).mockResolvedValue(new Response('0000', { headers: { 'Content-Type': target.contentType } }));
+    const response = await readGitRepository(OWNER, request(), target);
+    expect(await response.text()).toBe('0000');
+    expect(loadMock).toHaveBeenCalledWith(oauthVaultField(OWNER));
+    expect(new Headers(vi.mocked(fetch).mock.calls[0][1]?.headers).get('authorization'))
+      .toBe(`Basic ${Buffer.from('x-access-token:gho_at').toString('base64')}`);
+  });
+  it('denies a missing/revoked connector grant before loading any token', async () => {
+    noGrant();
+    await expect(readGitRepository(OWNER, request(), target)).rejects.toThrow('github_no_grant');
+    expect(loadMock).not.toHaveBeenCalled();
+    expect(fetch).not.toHaveBeenCalled();
+  });
+  it('does not cache grants or credentials across discovery and pack requests', async () => {
+    grant(['github:read']);
+    vi.mocked(fetch).mockResolvedValue(new Response('0000', { headers: { 'Content-Type': target.contentType } }));
+    await (await readGitRepository(OWNER, request(), target)).text();
+    noGrant();
+    await expect(readGitRepository(OWNER, request(), target)).rejects.toThrow('github_no_grant');
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
 });
 
 // ── #1528 fetch helpers ────────────────────────────────────────────────────

@@ -26,10 +26,10 @@ const agent = 'did:imajin:agent';
 const owner = 'did:imajin:owner';
 const other = 'did:imajin:other';
 const payload = () => ({
-  sub: agent, azp: 'did:imajin:client', scope: 'github:read', aud: 'imajin:apps', attestationId: 'authorization',
+  sub: owner, azp: agent, scope: 'github:read', aud: 'imajin:apps', attestationId: 'authorization',
 });
 const authorization = () => ({
-  type: 'app.authorized', issuerDid: agent, subjectDid: 'did:imajin:client',
+  type: 'app.authorized', issuerDid: owner, subjectDid: agent,
   payload: { scopes: ['github:read'] }, revokedAt: null, expiresAt: null,
 });
 function req(headers: Record<string, string> = {}, bearer = true) {
@@ -73,9 +73,10 @@ describe('git owner authority', () => {
     expect(await gitAuthority(req({ 'X-Acting-For': 'did:imajin:stranger' }))).toBe(403);
   });
   it('cannot override a consent-bound owner and still requires the multi-owner selector', async () => {
-    verify.mockResolvedValue({ ...payload(), actingFor: owner });
+    verify.mockResolvedValue({ ...payload(), sub: agent, actingFor: owner });
+    rows([owner], { subtype: 'agent' }, { ...authorization(), issuerDid: agent });
     expect(await gitAuthority(req({ 'X-Acting-For': other }))).toBe(403);
-    rows([owner, other]);
+    rows([owner, other], { subtype: 'agent' }, { ...authorization(), issuerDid: agent });
     expect(await gitAuthority(req())).toBe(409);
     expect(binding).toHaveBeenCalled();
   });

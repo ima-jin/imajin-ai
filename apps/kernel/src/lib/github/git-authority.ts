@@ -30,25 +30,21 @@ async function liveAuthorization(payload: AppTokenPayload): Promise<boolean> {
 }
 
 async function bearerIdentity(request: Request, bearer: string): Promise<Caller | null> {
-    if (!bearer.startsWith('Bearer ')) return null;
-    const payload = await verifyAppToken(bearer.slice(7));
-    if (!payload || payload.isServiceToken || !payload.sub
-      || ![APP_TOKEN_DEFAULT_AUDIENCE, getMcpResource()].includes(payload.aud ?? '')
-      || !new Set(payload.scope.split(/\s+/)).has('github:read')) return null;
-    if (!await liveAuthorization(payload)) return null;
-    const [identity] = await db.select().from(identities).where(and(
-      eq(identities.id, payload.sub), isNull(identities.suspendedAt),
-    )).limit(1);
-    if (!identity) return null;
-    if (identity.subtype === 'agent') {
-      if (request.headers.has('x-acting-as')) return null;
-      if (payload.actingFor) await mcpOAuthContext(payload);
-      return { actorDid: payload.sub, boundOwner: payload.actingFor };
-    }
-    // Org selectors for direct human calls use the same verified membership gate.
-    if (identity.subtype !== 'human' || payload.actingFor) return null;
-    if (request.headers.has('x-acting-for') || request.headers.has('x-acting-as')) return null;
-    return { actorDid: payload.sub, ownerDid: payload.sub };
+  if (!bearer.startsWith('Bearer ')) return null;
+  const payload = await verifyAppToken(bearer.slice(7));
+  if (!payload || payload.isServiceToken || !payload.sub || !payload.azp
+    || ![APP_TOKEN_DEFAULT_AUDIENCE, getMcpResource()].includes(payload.aud ?? '')
+    || !new Set(payload.scope.split(/\s+/)).has('github:read')) return null;
+  if (!await liveAuthorization(payload) || request.headers.has('x-acting-as')) return null;
+  // OAuth binds an agent subject to a client; legacy PoP tokens authenticate azp.
+  // In neither case is a human resource-owner sub the caller of this operation.
+  const actorDid = payload.actingFor ? payload.sub : payload.azp;
+  const [identity] = await db.select().from(identities).where(and(
+    eq(identities.id, actorDid), isNull(identities.suspendedAt),
+  )).limit(1);
+  if (identity?.subtype !== 'agent') return null;
+  if (payload.actingFor) await mcpOAuthContext(payload);
+  return { actorDid, boundOwner: payload.actingFor };
 }
 
 /** A selector narrows authority; it never creates authority or picks an arbitrary owner. */
