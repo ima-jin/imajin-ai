@@ -75,6 +75,7 @@ import {
 import { readReadAllowlist, filterOrgs, filterRepos, isRepoAllowed } from './allowlist';
 import { GITHUB_CONNECTOR_DID } from './constants';
 import { pendingApprovalMessage } from './pending-message';
+import { fetchGitRead, type GitReadTarget } from './git-http';
 import { connectionVaultField } from '../kernel/connection-slots';
 import { currentConnectionSlot } from '../kernel/connector-connection-context';
 import {
@@ -329,6 +330,14 @@ async function requireGrantAndToken(ownerDid: string, scope: string): Promise<st
     );
   }
   return pat;
+}
+
+/** Kernel-only git operation. The credential never leaves the connector as data. */
+export async function readGitRepository(
+  ownerDid: string, request: Request, target: GitReadTarget,
+): Promise<Response> {
+  const token = await requireGrantAndToken(ownerDid, 'github:read');
+  return fetchGitRead(request, target, token);
 }
 
 // ── Confirm rail + append/mutate tiering (#1366, #1370) ──────────────────────────
