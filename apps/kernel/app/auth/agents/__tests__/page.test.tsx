@@ -197,7 +197,7 @@ describe('org delegator context (#2997)', () => {
   });
 
   it('provisions for the selected org DID rather than the human session DID', async () => {
-    const spy = installFetch([], {}, { did: orgDid, name: 'Agrifortress', isOrganization: true, actorDid });
+    const spy = installFetch([], {}, { did: orgDid, name: 'Agrifortress', handle: 'agrifortress', isOrganization: true, actorDid });
     render(<AgentsPage />);
     await screen.findByRole('region', { name: 'Grant delegator' });
     fireEvent.click(screen.getByRole('button', { name: '+ Provision Agent' }));
@@ -206,7 +206,7 @@ describe('org delegator context (#2997)', () => {
     await waitFor(() => expect(spy).toHaveBeenCalledWith('/auth/api/agents/provision', expect.objectContaining({
       method: 'POST',
       body: JSON.stringify({
-        servingDid: orgDid, name: 'Org assistant', harness: 'nanoclaw',
+        servingDid: orgDid, name: 'Org assistant', handle: 'agrifortress-jin', harness: 'nanoclaw',
         placement: 'hosted', scopes: [], model: { provider: 'anthropic:claude' },
       }),
     })));
@@ -482,8 +482,8 @@ describe('create-agent acting identity (#3192)', () => {
       },
     }, owner);
     const input = await openCreate();
-    expect(screen.getByText(`${owner.handle}-jin`)).toBeDefined();
-    if (owner.isOrganization) expect(screen.queryByText('ryan-jin')).toBeNull();
+    expect(screen.getByText(`@${owner.handle}-jin`)).toBeDefined();
+    if (owner.isOrganization) expect(screen.queryByText('@ryan-jin')).toBeNull();
     const ownerLabel = screen.getByText(`Owned by @${owner.handle} — ${owner.name}`);
     expect(within(ownerLabel).getByText(owner.did)).toBeDefined();
     fireEvent.change(input, { target: { value: 'Travel!' } });

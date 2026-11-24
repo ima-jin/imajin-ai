@@ -21,6 +21,7 @@ import { desc, eq, and } from 'drizzle-orm';
 import { db, identities, agentProvisions, type AgentProvisionRow, type AgentProvisionStep, type AgentProvisionEnvelopeManifest } from '@/src/db';
 import { generateId } from '@/src/lib/kernel/id';
 import { mintAgentIdentity, validateHandle, MintAgentIdentityError } from './agent-identity';
+import { composeAgentHandle } from './agent-handle';
 import { issueGrant, revokeGrant } from './grants';
 import { generateEnvelope, renderNanoClaw, renderOpenClaw, validateIntentScopes, type ContextEnvelopeInput, type BrainVia, type RenderedTree } from '@imajin/claw-envelope';
 import { publish } from '@imajin/bus';
@@ -64,29 +65,6 @@ function errorMessage(err: unknown): string {
 
 function nowIso(): string {
   return new Date().toISOString();
-}
-
-/**
- * Strip a leading/trailing run of `-` in guaranteed linear time (#2074, S8786).
- *
- * Deliberately not `.replace(/(^-+|-+$)/g, '')`: `-+$` is an unanchored
- * quantifier immediately before an end anchor, which forces backtracking
- * engines into O(n^2) work whenever that anchor doesn't hold at the position
- * the quantifier first commits to. A backward scan has no such edge case.
- */
-function trimDashes(value: string): string {
-  let start = 0;
-  while (start < value.length && value[start] === '-') start += 1;
-  let end = value.length;
-  while (end > start && value[end - 1] === '-') end -= 1;
-  return value.slice(start, end);
-}
-
-/** Directory/handle-safe slug, plus a short random suffix so concurrent same-name provisions don't collide on the global handle-uniqueness constraint. */
-function deriveHandle(name: string): string {
-  const slug = trimDashes(name.toLowerCase().replace(/[^a-z0-9]+/g, '-')).slice(0, 40);
-  const suffix = generateId('').slice(1, 7);
-  return `${slug || 'agent'}-${suffix}`;
 }
 
 export function validateHarness(harness: unknown): asserts harness is ProvisionHarness {
@@ -138,6 +116,15 @@ async function appendStep(id: string, steps: AgentProvisionStep[], step: AgentPr
   return nextSteps;
 }
 
+async function recordMintFailure(id: string, steps: AgentProvisionStep[], error: unknown): Promise<AgentProvisionRow> {
+  const message = error instanceof MintAgentIdentityError ? error.message : errorMessage(error);
+  await appendStep(id, steps, { step: 'mint_identity', status: 'error', at: nowIso(), error: message }, { status: 'failed' });
+  if (error instanceof MintAgentIdentityError && error.status === 409) {
+    throw new ProvisionError('handle taken, add a suffix', 409);
+  }
+  return (await getProvision(id))!;
+}
+
 export async function getProvision(id: string): Promise<AgentProvisionRow | null> {
   const [row] = await db.select().from(agentProvisions).where(eq(agentProvisions.id, id)).limit(1);
   return row ?? null;
@@ -150,16 +137,19 @@ export async function listProvisions(servingDid: string): Promise<AgentProvision
     .where(eq(agentProvisions.servingDid, servingDid))
     .orderBy(desc(agentProvisions.createdAt));
 }
-async function resolveProvisionHandle(input: Pick<CreateProvisionInput, 'name' | 'handle'>): Promise<string> {
-  const handle = input.handle === undefined || input.handle === '' ? deriveHandle(input.name) : input.handle;
+async function resolveProvisionHandle(input: Pick<CreateProvisionInput, 'servingDid' | 'handle'>): Promise<string> {
+  const [owner] = await db.select({ handle: identities.handle }).from(identities)
+    .where(eq(identities.id, input.servingDid)).limit(1);
+  if (!owner) throw new ProvisionError('Serving identity not found', 404);
+  const handle = input.handle === undefined || input.handle === '' ? composeAgentHandle(owner.handle, '') : input.handle;
   try {
-    validateHandle(handle);
+    validateHandle(handle, owner.handle);
   } catch (error) {
     if (error instanceof MintAgentIdentityError) throw new ProvisionError(error.message, error.status);
     throw error;
   }
   const [taken] = await db.select({ id: identities.id }).from(identities).where(eq(identities.handle, handle)).limit(1);
-  if (taken) throw new ProvisionError('Handle already taken', 409);
+  if (taken) throw new ProvisionError('handle taken, add a suffix', 409);
   return handle;
 }
 
@@ -218,9 +208,7 @@ export async function createProvision(input: CreateProvisionInput): Promise<Agen
     agentDid = agent.did;
     steps = await appendStep(id, steps, { step: 'mint_identity', status: 'ok', at: nowIso() }, { agentDid, status: 'identity_minted' });
   } catch (err) {
-    const message = err instanceof MintAgentIdentityError ? err.message : errorMessage(err);
-    await appendStep(id, steps, { step: 'mint_identity', status: 'error', at: nowIso(), error: message }, { status: 'failed' });
-    return (await getProvision(id))!;
+    return recordMintFailure(id, steps, err);
   }
 
   // Step 2: issue minimal grants (skipped, not failed, when zero scopes were requested).

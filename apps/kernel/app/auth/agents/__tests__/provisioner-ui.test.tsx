@@ -101,7 +101,7 @@ function installFetch(agents: AgentFixture[], provisions: ProvisionFixture[], ov
     }
     if (url.endsWith('/auth/api/agents') && method === 'GET') {
       return { ok: true, status: 200, json: async () => ({
-        agents, delegator: { did: OWNER, name: 'Ryan', isOrganization: false, actorDid: OWNER },
+        agents, delegator: { did: OWNER, name: 'Ryan', handle: 'ryan', isOrganization: false, actorDid: OWNER },
       }) } as unknown as Response;
     }
     if (url.endsWith('/auth/api/session')) {
@@ -312,26 +312,65 @@ describe('downloading a local-placement bundle', () => {
 });
 
 describe('Provision agent wizard', () => {
-  it.each(['ab', 'Bad Handle!'])('disables provisioning for invalid handle %s', async handle => {
+  it.each(['', 'travel', 'x'])('uses the shared owner-prefix field independently of the display name: suffix=%s', async suffix => {
+    const spy = await renderAgentsPage([], [], {
+      '/auth/api/agents/provision': async (_url, init) => Response.json(init?.method === 'POST'
+        ? { error: 'handle taken, add a suffix' } : { provisions: [] }, { status: init?.method === 'POST' ? 409 : 200 }),
+    });
+    fireEvent.click(screen.getByRole('button', { name: '+ Provision Agent' }));
+    const input = screen.getByLabelText('Suffix (optional)');
+    expect(screen.getByText('@ryan-jin')).toBeDefined();
+    expect(screen.getByText('Owned by @ryan — Ryan')).toBeDefined();
+    expect((input as HTMLInputElement).required).toBe(false);
+    fireEvent.change(input, { target: { value: suffix } });
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Free text, not a slug!' } });
+    const expected = `ryan-jin${suffix ? `-${suffix}` : ''}`;
+    expect(screen.getByText(`Handle: @${expected}`)).toBeDefined();
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'A different display name' } });
+    expect(screen.getByText(`Handle: @${expected}`)).toBeDefined();
+    fireEvent.click(screen.getByRole('button', { name: 'Provision' }));
+    expect(await screen.findByText('handle taken, add a suffix')).toBeDefined();
+    expect(spy).toHaveBeenCalledWith('/auth/api/agents/provision', expect.objectContaining({
+      method: 'POST', body: expect.stringContaining(`"handle":"${expected}"`),
+    }));
+    expect(screen.getByText('Provision new agent')).toBeDefined();
+  });
+
+  it('blocks provision when the validated owner is unavailable instead of using the personal session', async () => {
+    const spy = await renderAgentsPage([], [], {
+      '/auth/api/agents': async () => Response.json({ agents: [], delegator: null }),
+    });
+    fireEvent.click(screen.getByRole('button', { name: '+ Provision Agent' }));
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Agent' } });
+    fireEvent.change(screen.getByLabelText('Handle'), { target: { value: 'arbitrary' } });
+    expect(screen.getByRole('button', { name: 'Provision' })).toHaveProperty('disabled', true);
+    fireEvent.click(screen.getByRole('button', { name: 'Provision' }));
+    expect(spy).not.toHaveBeenCalledWith('/auth/api/agents/provision', expect.objectContaining({ method: 'POST' }));
+  });
+
+  it.each(['ryan-jin', 'ryan-jin-x', 'x'.repeat(56)])('disables provisioning for invalid suffix %s', async handle => {
     await renderAgentsPage([], []);
     fireEvent.click(screen.getByRole('button', { name: '+ Provision Agent' }));
     fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Agent' } });
-    fireEvent.change(screen.getByLabelText('Handle (optional)'), { target: { value: handle } });
+    fireEvent.change(screen.getByLabelText('Suffix (optional)'), { target: { value: handle } });
     expect(screen.getByRole('button', { name: 'Provision' })).toHaveProperty('disabled', true);
-    expect(screen.getByRole('alert').textContent).toBe('Invalid handle');
+    expect(screen.getByRole('alert').textContent).toBe(handle.startsWith('ryan-jin')
+      ? 'Enter only the optional suffix, not @ryan-jin. Leave it blank for @ryan-jin.'
+      : 'Handle must be 3-64 characters');
   });
 
   it('submits an org-selected custom handle using the org DID rather than the session DID', async () => {
     const spy = await renderAgentsPage([], [], {
       '/auth/api/agents': async (url, init) => {
         if (url.endsWith('/auth/api/agents/provision')) return { ok: true, json: async () => init?.method === 'POST' ? { provision: provision() } : { provisions: [] } } as Response;
-        return { ok: true, json: async () => ({ agents: [], delegator: { did: 'did:imajin:artifact', name: 'Artifact', isOrganization: true, actorDid: OWNER } }) } as Response;
+        return { ok: true, json: async () => ({ agents: [], delegator: { did: 'did:imajin:artifact', name: 'Artifact', handle: 'artifact', isOrganization: true, actorDid: OWNER } }) } as Response;
       },
     });
     expect(screen.getByRole('region', { name: 'Adopt orphaned agent' })).toBeDefined();
     fireEvent.click(screen.getByRole('button', { name: '+ Provision Agent' }));
     fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Artifact Jin' } });
-    fireEvent.change(screen.getByLabelText('Handle (optional)'), { target: { value: 'artifact-jin' } });
+    expect(screen.getByText('@artifact-jin')).toBeDefined();
+    expect((screen.getByLabelText('Suffix (optional)') as HTMLInputElement).value).toBe('');
     fireEvent.click(screen.getByRole('button', { name: 'Provision' }));
     await waitFor(() => expect(spy).toHaveBeenCalledWith('/auth/api/agents/provision', expect.objectContaining({
       method: 'POST', body: expect.stringContaining('"servingDid":"did:imajin:artifact"'),
@@ -415,6 +454,7 @@ describe('Provision agent wizard', () => {
           body: JSON.stringify({
             servingDid: OWNER,
             name: 'Travel Agent',
+            handle: 'ryan-jin',
             harness: 'nanoclaw',
             placement: 'local',
             scopes: ['messages:write'],

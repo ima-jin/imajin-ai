@@ -9,14 +9,14 @@
  * themselves.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-
 type Row = Record<string, unknown>;
 type Predicate = (row: Row) => boolean;
 
 interface DescSpec { __desc: string }
 
-const { store, AGENT_PROVISIONS_TABLE } = vi.hoisted(() => {
+const { store, identityStore, AGENT_PROVISIONS_TABLE } = vi.hoisted(() => {
   const store = new Map<string, Record<string, unknown>>();
+  const identityStore = new Map<string, Record<string, unknown>>();
   const AGENT_PROVISIONS_TABLE = {
     __table: 'agent_provisions',
     id: 'id', servingDid: 'servingDid', delegatorDid: 'delegatorDid', agentDid: 'agentDid',
@@ -25,7 +25,7 @@ const { store, AGENT_PROVISIONS_TABLE } = vi.hoisted(() => {
     envelopeManifest: 'envelopeManifest', grantId: 'grantId', idempotencyKey: 'idempotencyKey',
     createdAt: 'createdAt', updatedAt: 'updatedAt', revokedAt: 'revokedAt',
   };
-  return { store, AGENT_PROVISIONS_TABLE };
+  return { store, identityStore, AGENT_PROVISIONS_TABLE };
 });
 
 const { mintAgentIdentityMock, MintAgentIdentityErrorMock } = vi.hoisted(() => {
@@ -82,7 +82,7 @@ vi.mock('@/src/db', () => ({
     }),
     select: () => ({
       from: (table: unknown) => ({
-        where: (predicate: Predicate) => queryable(table === AGENT_PROVISIONS_TABLE ? [...store.values()].filter(predicate) : []),
+        where: (predicate: Predicate) => queryable([...(table === AGENT_PROVISIONS_TABLE ? store : identityStore).values()].filter(predicate)),
       }),
     }),
     update: () => ({
@@ -127,6 +127,9 @@ const AGENT_DID = 'did:imajin:new-agent';
 
 beforeEach(() => {
   store.clear();
+  identityStore.clear();
+  identityStore.set(SERVING_DID, { id: SERVING_DID, handle: 'ryan' });
+  identityStore.set('did:imajin:someone-else', { id: 'did:imajin:someone-else', handle: 'other' });
   vi.clearAllMocks();
   mintAgentIdentityMock.mockResolvedValue({
     did: AGENT_DID,
@@ -139,15 +142,60 @@ beforeEach(() => {
 });
 
 describe('createProvision — happy path', () => {
-  it.each([undefined, ''])('derives the existing handle when custom handle is %j', async handle => {
+  it.each(['ryan-jin-ryan-jin', 'ryan-jin-ryan-jin-x', 'another-jin'])('rejects a nonconforming provision handle %s', async handle => {
+    await expect(createProvision({
+      servingDid: SERVING_DID, name: 'Anything', handle, harness: 'nanoclaw', placement: 'local', scopes: [],
+    })).rejects.toMatchObject({ status: 400 });
+    expect(mintAgentIdentityMock).not.toHaveBeenCalled();
+    expect(store.size).toBe(0);
+  });
+
+  it('returns 409 for a collision without generating an alternate handle', async () => {
+    identityStore.set(AGENT_DID, { id: AGENT_DID, handle: 'ryan-jin' });
+    await expect(createProvision({
+      servingDid: SERVING_DID, name: 'Different name', harness: 'nanoclaw', placement: 'local', scopes: [],
+    })).rejects.toMatchObject({ status: 409, message: 'handle taken, add a suffix' });
+    expect(mintAgentIdentityMock).not.toHaveBeenCalled();
+    expect(store.size).toBe(0);
+  });
+
+  it('derives the base from the serving org, never the authenticating human or display name', async () => {
+    identityStore.set('did:imajin:artifact', { id: 'did:imajin:artifact', handle: 'artifact' });
+    const result = await createProvision({
+      servingDid: 'did:imajin:artifact', actorDid: SERVING_DID,
+      name: 'Travel Agent', harness: 'nanoclaw', placement: 'local', scopes: [],
+    });
+    expect(result.handle).toBe('artifact-jin');
+    expect(mintAgentIdentityMock).toHaveBeenCalledWith(expect.objectContaining({
+      actingDid: 'did:imajin:artifact', handle: 'artifact-jin', displayName: 'Travel Agent',
+    }));
+  });
+
+  it('fails closed when the serving principal is missing', async () => {
+    identityStore.clear();
+    await expect(createProvision({
+      servingDid: SERVING_DID, name: 'Anything', harness: 'nanoclaw', placement: 'local', scopes: [],
+    })).rejects.toMatchObject({ status: 404, message: 'Serving identity not found' });
+    expect(mintAgentIdentityMock).not.toHaveBeenCalled();
+  });
+
+  it('uses an explicit unprefixed handle for an owner without a handle, never a name-derived default', async () => {
+    identityStore.set(SERVING_DID, { id: SERVING_DID, handle: null });
+    const input = { servingDid: SERVING_DID, name: 'Free text!', harness: 'nanoclaw' as const, placement: 'local' as const, scopes: [] };
+    await expect(createProvision(input)).rejects.toMatchObject({ status: 400, message: 'handle is required' });
+    expect(await createProvision({ ...input, handle: 'custom-agent' })).toMatchObject({ handle: 'custom-agent', displayName: 'Free text!' });
+  });
+
+  it.each([undefined, ''])('uses the owner base handle when the supplied handle is %j', async handle => {
     const result = await createProvision({ servingDid: SERVING_DID, name: 'Travel Agent', handle, harness: 'nanoclaw', placement: 'local', scopes: [] });
-    expect(result.handle).toMatch(/^travel-agent-/);
+    expect(result.handle).toBe('ryan-jin');
   });
 
   it('passes an exact custom handle to minting', async () => {
-    const result = await createProvision({ servingDid: SERVING_DID, name: 'Artifact Jin', handle: 'artifact-jin', harness: 'nanoclaw', placement: 'local', scopes: [] });
-    expect(result.handle).toBe('artifact-jin');
-    expect(mintAgentIdentityMock).toHaveBeenCalledWith(expect.objectContaining({ handle: 'artifact-jin', provisionId: result.id }));
+    const result = await createProvision({ servingDid: SERVING_DID, name: 'Artifact Jin', handle: 'ryan-jin-travel', harness: 'nanoclaw', placement: 'local', scopes: [] });
+    expect(result.handle).toBe('ryan-jin-travel');
+    expect(result.displayName).toBe('Artifact Jin');
+    expect(mintAgentIdentityMock).toHaveBeenCalledWith(expect.objectContaining({ handle: 'ryan-jin-travel', provisionId: result.id }));
   });
 
   it.each(['ab', 'a'.repeat(65), 'Bad Handle!', 123, null])('refuses invalid custom handle %j before mint', async handle => {
@@ -265,13 +313,14 @@ describe('createProvision — idempotent retry', () => {
 });
 
 describe('createProvision — partial-failure legibility', () => {
-  it('leaves a legible failed row when identity minting throws, without attempting grants', async () => {
+  it('returns 409 for a mint-time collision while retaining the failed provision record', async () => {
     mintAgentIdentityMock.mockRejectedValueOnce(new MintAgentIdentityErrorMock('Handle already taken', 409));
 
-    const provision = await createProvision({
+    await expect(createProvision({
       servingDid: SERVING_DID, name: 'Will Fail', harness: 'nanoclaw', placement: 'hosted', scopes: ['messages:write'],
-    });
+    })).rejects.toMatchObject({ status: 409, message: 'handle taken, add a suffix' });
 
+    const provision = [...store.values()][0];
     expect(provision.status).toBe('failed');
     expect(provision.agentDid).toBeFalsy();
     expect(issueGrantMock).not.toHaveBeenCalled();
@@ -293,20 +342,22 @@ describe('createProvision — partial-failure legibility', () => {
     expect(steps[0]).toMatchObject({ step: 'mint_identity', status: 'error', error: 'db unreachable' });
   });
 
-  it('derives a fallback "agent" slug when the name has no slug-safe characters', async () => {
+  it('keeps the base handle independent of a display name with no slug-safe characters', async () => {
     const provision = await createProvision({
       servingDid: SERVING_DID, name: '!!!', harness: 'nanoclaw', placement: 'local', scopes: [],
     });
 
-    expect(provision.handle).toMatch(/^agent-/);
+    expect(provision.handle).toBe('ryan-jin');
+    expect(provision.displayName).toBe('!!!');
   });
 
-  it('trims leading and trailing dashes produced by non-slug-safe characters at either end (#2074 S8786)', async () => {
+  it('never turns display-name punctuation into a handle suffix', async () => {
     const provision = await createProvision({
       servingDid: SERVING_DID, name: '--Foo Bar!!--', harness: 'nanoclaw', placement: 'local', scopes: [],
     });
 
-    expect(provision.handle).toMatch(/^foo-bar-[0-9a-f]+$/);
+    expect(provision.handle).toBe('ryan-jin');
+    expect(provision.displayName).toBe('--Foo Bar!!--');
   });
 
   it('leaves a legible failed row when grant issuance fails after identity mint succeeds, and does not re-mint on a later call with the same key', async () => {

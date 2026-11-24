@@ -44,9 +44,17 @@ export class MintAgentIdentityError extends Error {
   }
 }
 
-export function validateHandle(handle: unknown): asserts handle is string {
-  const error = agentHandleError(handle);
+export function validateHandle(handle: unknown, ownerHandle?: string | null): asserts handle is string {
+  const error = agentHandleError(handle, ownerHandle);
   if (error) throw new MintAgentIdentityError(error, 400);
+}
+
+function isHandleCollision(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false;
+  const failure = error as { code?: string; constraint?: string; constraint_name?: string; cause?: unknown };
+  const constraint = failure.constraint ?? failure.constraint_name ?? '';
+  return (failure.code === '23505' && ['identities_handle_unique', 'identities_handle_key'].includes(constraint))
+    || isHandleCollision(failure.cause);
 }
 
 /**
@@ -78,12 +86,8 @@ export async function mintAgentIdentity(input: MintAgentIdentityInput): Promise<
   if (!servingIdentity) {
     throw new MintAgentIdentityError('Serving identity not found', 404);
   }
-  // Public creates use the stored acting principal, never the personal session.
-  // Internal provisions retain their existing naming contract (#3399 scope).
-  if (!input.provisionId) {
-    const error = agentHandleError(handle, servingIdentity.handle);
-    if (error) throw new MintAgentIdentityError(error, 400);
-  }
+  // Every mint uses the stored acting/serving principal, including provisions.
+  validateHandle(handle, servingIdentity.handle);
   const isOrganization = ['business', 'community', 'family'].includes(servingIdentity.scope);
   // #3193: plain create has no operator-selected scopes/provision lifecycle.
   // Refuse instead of inventing authority or minting another orphan.
@@ -141,6 +145,9 @@ export async function mintAgentIdentity(input: MintAgentIdentityInput): Promise<
       addedBy: input.actingDid,
       addedVia: 'agent',
     });
+  }).catch((error: unknown) => {
+    if (isHandleCollision(error)) throw new MintAgentIdentityError(`Handle @${handle} is already taken`, 409);
+    throw error;
   });
 
   return {

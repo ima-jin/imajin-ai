@@ -21,6 +21,7 @@ describe('agent handle rules', () => {
     }
     for (const suffix of [prefix, `${prefix}-x`, `${prefix}x`]) {
       expect(agentSuffixError(owner, suffix)).toContain('Enter only the optional suffix');
+      expect(agentHandleError(`${prefix}-${suffix}`, owner)).toContain('Enter only the optional suffix');
     }
     for (const full of ['travel', `${prefix}-`, `${prefix}x`, 'another-jin']) {
       expect(agentHandleError(full, owner)).toContain(`Handle must be @${prefix} or`);

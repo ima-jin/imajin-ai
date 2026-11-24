@@ -1,6 +1,10 @@
 /** Client-safe handle rules shared by the create form and identity minting. */
 const HANDLE_REGEX = /^[a-z0-9_-]+$/;
 
+function suffixOnlyError(prefix: string): string {
+  return `Enter only the optional suffix, not @${prefix}. Leave it blank for @${prefix}.`;
+}
+
 export function agentHandlePrefix(ownerHandle: string | null | undefined): string {
   return ownerHandle ? `${ownerHandle}-jin` : '';
 }
@@ -13,6 +17,7 @@ export function agentHandleError(handle: unknown, ownerHandle?: string | null): 
   if (prefix && handle !== prefix && !(handle.startsWith(`${prefix}-`) && handle.length > prefix.length + 1)) {
     return `Handle must be @${prefix} or @${prefix}-<suffix> for the acting owner`;
   }
+  if (prefix && handle.slice(prefix.length + 1).startsWith(prefix)) return suffixOnlyError(prefix);
   return null;
 }
 
@@ -25,7 +30,7 @@ export function composeAgentHandle(ownerHandle: string | null | undefined, suffi
 export function agentSuffixError(ownerHandle: string | null | undefined, suffix: string): string | null {
   const prefix = agentHandlePrefix(ownerHandle);
   if (prefix && suffix.startsWith(prefix)) {
-    return `Enter only the optional suffix, not @${prefix}. Leave it blank for @${prefix}.`;
+    return suffixOnlyError(prefix);
   }
   return agentHandleError(composeAgentHandle(ownerHandle, suffix), ownerHandle);
 }

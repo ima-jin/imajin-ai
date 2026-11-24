@@ -103,6 +103,29 @@ describe('validateHandle', () => {
 });
 
 describe('mintAgentIdentity', () => {
+  it.each([
+    { code: '23505', constraint: 'identities_handle_unique' },
+    { cause: { code: '23505', constraint_name: 'identities_handle_key' } },
+  ])('translates a concurrent handle uniqueness failure into a readable 409: %j', async error => {
+    pushSelectResult([]);
+    pushSelectResult([{ scope: 'actor', handle: 'ryan' }]);
+    mockTransaction.mockRejectedValueOnce(error);
+    await expect(mintAgentIdentity({ handle: 'ryan-jin', actingDid: ACTING_DID })).rejects.toMatchObject({
+      status: 409, message: 'Handle @ryan-jin is already taken',
+    });
+  });
+
+  it.each([
+    { code: '23505', constraint: 'identities_public_key_unique' },
+    { code: '23503', constraint: 'identities_handle_unique' },
+    null,
+  ])('does not misclassify an unrelated database failure as a handle collision: %j', async error => {
+    pushSelectResult([]);
+    pushSelectResult([{ scope: 'actor', handle: 'ryan' }]);
+    mockTransaction.mockRejectedValueOnce(error);
+    await expect(mintAgentIdentity({ handle: 'ryan-jin', actingDid: ACTING_DID })).rejects.toBe(error);
+  });
+
   it.each(['ryan-jin', 'ryan-jin-x', 'ryan-jin-travel'])('mints %s for the stored acting owner', async handle => {
     pushSelectResult([]);
     pushSelectResult([{ scope: 'actor', handle: 'ryan' }]);
@@ -118,11 +141,12 @@ describe('mintAgentIdentity', () => {
     expect(mockTransaction).not.toHaveBeenCalled();
   });
 
-  it('keeps internal provision naming unchanged even when the owner has a handle', async () => {
+  it.each(['provision-agent', 'ryan-jin-ryan-jin'])('does not exempt internal provisions from handle validation: %s', async handle => {
     pushSelectResult([]);
     pushSelectResult([{ scope: 'actor', handle: 'ryan' }]);
-    expect(await mintAgentIdentity({ handle: 'provision-agent', actingDid: ACTING_DID, provisionId: 'internal' }))
-      .toMatchObject({ handle: 'provision-agent' });
+    await expect(mintAgentIdentity({ handle, actingDid: ACTING_DID, provisionId: 'internal' }))
+      .rejects.toMatchObject({ status: 400 });
+    expect(mockTransaction).not.toHaveBeenCalled();
   });
 
   it.each([true, false])('requires a matching locked provision before org mint (exists=%s)', async exists => {
