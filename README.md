@@ -1,4 +1,5 @@
 # Imajin
+<!-- Docs replay in progress; refs #2028. -->
 
 **identity and authority for AI agents.**
 
