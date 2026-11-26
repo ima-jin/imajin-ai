@@ -1,6 +1,6 @@
 {
   "name": "@imajin/config",
-  "version": "0.8.36",
+  "version": "0.8.37",
   "private": true,
   "description": "identity and authority for AI agents. Service routing, session configuration and route helpers for Imajin (alpha).",
   "license": "MIT",
