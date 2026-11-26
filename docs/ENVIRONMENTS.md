@@ -46,6 +46,13 @@ The shared `@imajin/db` client bounds pools, acquisition and statement deadlines
 liveness probes use that same pool. Defaults and `DB_*` overrides are in the
 [database deadline runbook](../deploy/README.md#database-deadlines-and-pool-stall-reproduction).
 
+Kernel-owned listeners always use the DB-aware kernel liveness path. Independent
+HTTP listeners opt in through their ecosystem entry's `LIVENESS_PATH`, a
+loopback-relative path such as `/health`; undeclared apps and portless workers
+are not HTTP-probed or restarted by the watchdog. `PM2_ALERT_WEBHOOK_FILE`
+selects its protected webhook file; production post-deploy checks use the same
+file as cron. See [liveness operations](ops/DEPLOY-POSTURE.md#health-checks-and-liveness).
+
 Use root SQL migrations through `scripts/migrate.mjs` or `scripts/migrate.sh`.
 Never use `drizzle-kit push`, reset a deployed database or delete migration rows.
 A fresh kernel uses the generated kernel baseline and post-cut files; existing

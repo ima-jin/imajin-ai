@@ -4,157 +4,127 @@
 
 your agents act as themselves, on your authority, and every action is signed.
 
-Imajin is alpha. [Book a demo, or join the alpha as a tester, integrator or partner](https://imajin.ai/alpha); this is not self-serve onboarding.
+Imajin is alpha. [Book a demo or join as a tester, integrator or partner](https://imajin.ai/alpha); this is not self-serve onboarding.
 
-Point your agent at it: start with this guide and the service specs below. Every action is a signed event that anyone can verify, including a third party's own agent. Cost and credit are recorded per identity, and .fair turns that into who gets paid.
+Point your agent at it: use your runtime with the Imajin plugin and kernel to establish identity, delegated authority and a signed record. Every action is a signed event that anyone can verify, including a third party's own agent. Cost and credit are recorded per identity, and .fair turns that into who gets paid.
 
 ## What Imajin is
 
-The kernel serves six primitives: **Attestation · Communication · Attribution · Settlement · Discovery · Revocation**. Identity is the subject of those primitives, not an additional primitive. The kernel supplies shared rails for authenticating actors, checking authority and recording outcomes.
+The kernel serves **Attestation · Communication · Attribution · Settlement · Discovery · Revocation**, plus shared rails. Identity is their subject, not another primitive. Apps built on Imajin register separate identities and integrate through scoped public APIs, not kernel imports or another service's tables. Broker-agent and corpus are internal services.
 
-The kernel hosts shared identity, profile, connection, communication, media, payment and operational services. Apps built on Imajin have their own identities, codebases and deployment responsibilities. They integrate through public scoped contracts, not imports from kernel source or SQL against another service's tables. The app template and registered-app contract describe that boundary. Broker-agent and corpus are internal services with their own runbooks; their presence in this repository does not make them registered vertical apps.
-
-The canonical node origin used in the links below is `https://jin.imajin.ai`. A self-hosted node has its own origin and configuration. Service specs describe contracts, not a claim that a service is deployed, publicly accessible or authorized for a caller. The repository is source-available under the [Imajin Network License](https://github.com/ima-jin/imajin-ai/blob/main/LICENSE.md).
+Imajin is source-available under the [Imajin Network License](https://github.com/ima-jin/imajin-ai/blob/main/LICENSE.md). Source support and service specs are not deployment evidence or permission grants.
 
 ## Key concepts
 
-Imajin records proof of history, not proof of work. A signature establishes that a particular key signed particular bytes. It does not establish that an assertion is true. An actor-key signature, a node-witnessed record and an unsigned operational log have different evidentiary strength. An integration should preserve that distinction rather than calling every recorded action a user signature.
+Imajin records proof of history, not proof that a statement is true. Actor-key signatures, node-witnessed actions and unsigned logs have different evidentiary strength. Revocation withdraws current authority while retaining tombstones and provenance, not deleting signed history.
 
-### Identity and DIDs
+- **Identity:** People, agents and groups have distinct DIDs. Key-backed identities use Ed25519; soft identities have no actor signing key. Standing tiers are soft, preliminary, established, steward and operator, not blanket permission.
+- **Acting identity:** Human `x-acting-as` organization context requires live membership, role and allowed services. A refusal never falls back to the personal DID. An agent proves its own identity; assignment does not itself grant a capability.
+- **Agent handles:** Create and Provision use the stored acting owner's `@<owner>-jin` prefix with an optional suffix. Leave the UI suffix blank for the base; APIs send the full handle. Collisions return 409 rather than random renaming; owners without handles supply an explicit full handle. Existing agents keep their handles.
+- **Attribution and settlement:** A .fair manifest describes credit and economic distribution, not proof of payment. Fees and signature verification depend on the flow. MJN is receipt-backed and withdrawable subject to rail rules; emitted MJNx is not withdrawable, and the ledger does not silently convert units.
+- **Connectors:** Vendor, purpose (`inference` or `billing`), holder DID and slot are independent. Provider spelling grants no authority. Human member grants and an agent's verified principal relationship are separate; apps receive authorized operations, not provider keys.
+- **Custody:** Node-sealed and delegation-grant entries coexist. Tier 0 remains node-controlled, not zero-custody. Organization keys are write-only, including for the loading admin; metadata is not credential release.
 
-People, agents, devices, families, communities and businesses are not one interchangeable account. Identity has a scope and, where applicable, a subtype. Key-backed registration derives a `did:imajin:` identifier from the base58-encoded public-key bytes and verifies an Ed25519 signature. DFOS linking is separate and optional; a DID does not itself prove external chain verification.
+### Identity, disclosure and proof
 
-Soft identities do not have an actor signing key. The standing tiers are soft, preliminary, established, steward and operator. A tier is one input to route authorization, not an unrestricted capability or a universal portable reputation score. Read the auth contract for the registration, verified onboarding and authentication flow appropriate to your caller. Soft identity resolution does not by itself establish a browser session.
+Key-backed registration derives a `did:imajin:` identifier from base58 public-key bytes and verifies Ed25519 proof. DFOS linking is separate and optional. Soft identity resolution is not verified onboarding or a browser session. Use verified effective identity for ownership, names, handles and labels, not the raw controller DID.
 
-A human session and the identity the human is acting for are separate. `x-acting-as` selects an organization or business context. The server checks live membership, role and the controller's allowed services before using that DID for ownership or attribution. Use the verified effective identity for names, handles, defaults and labels as well as authorization. Never substitute the personal DID when an organization action is refused.
+Agent handles are validated against the stored serving principal. Entering the whole prefix in a suffix field or an invalid full handle is refused; there is no name-derived random fallback. A selected owner cannot grant authority by changing a label. Organization provisioning and orphan adoption retain their own human-admin and proof requirements.
 
-Agent delegation is distinct from human organization act-as. An agent proves its own identity and acts under the principal's authority. A relationship showing whom the agent serves is not sufficient evidence that a particular capability is permitted. The auth and service contracts define the grants, expiry, revocation and compatibility checks applied to each operation.
+An attestation's documented signer and payload determine what it proves. Node-witnessed records are not device-key countersignatures. Private legal-entity fields and sealed bank identifiers use dedicated disclosure helpers; generic media or vault permissions cannot disclose them. Replacement and revocation preserve signed history.
 
-### Attestation, disclosure and revocation
+Operator approval authorizes its specific operation or ceiling, not user consent or an agent's grant. Long-running work must tolerate expiry and revocation. Signed loop events, decisions and outcomes are principal-scoped; a transport acknowledgement proves attempted delivery, not completed work or an acquired lease. Private briefs and artifacts retain their access controls. Consult the Jin spec and loop contracts rather than treating harness-local references as public capabilities.
 
-Attestations bind a statement to its issuer and subject. Mechanical attestations can be node-signed on behalf of an authenticated action; they do not imply possession of the human's or organization's private key. Consumers should check the recorded proof model rather than inferring it from a DID or display label.
+### Settlement and ledger units
 
-Private documents and legal-entity data have their own disclosure policies. A broad media permission does not reveal sealed bank identifiers or authorize every legal-entity field. Consumer reads use the dedicated disclosure helpers and current consent, not copied metadata. Document signatures bind the documented content payload; do not infer request-specific consent unless the signed bytes actually bind that request.
+Creative attribution and payment shares are different fields. Use shared manifest builders and the owning pay contract rather than copying a fee chain. Protocol, platform, node, buyer, tax, scope and processor handling depend on the flow; there is no universal two-percent fee or blanket unsigned-manifest rejection. A payment receipt and recorded settlement outcome, not a manifest alone, establish payment.
 
-Revocation changes active authority while retaining its provenance. Signed tombstones and revoked grant rows remain history; hiding a record from live reads is not deletion. Rejoining an organization or reconnecting a provider does not restore a revoked member grant or clear a retained suspension policy.
+MJN follows receipt currency and withdrawal rules. MJNx is emitted for in-platform use. Accepted-unit checks reject unsupported units, without automatic conversion, a fixed fiat peg or a token-launch guarantee.
 
-### .fair, settlement and units
+### Connectors, delegation and custody
 
-A `.fair` manifest describes attribution and economic distribution. Creative credit and payment shares are not the same field. Use the shared builder, validator and signing helpers instead of assembling a fee chain by hand. A manifest is not proof that money moved; a payment receipt and the ledger's recorded settlement outcome carry that meaning.
+Registration, operator approval, member consent and agent delegation are independent gates. Organization key lifecycle requires live human owner/admin act-as with connections-service authority. Human members require an active member grant; assigned agents use verified principal relationships and live allowed-service and revocation checks.
 
-Settlement behavior depends on its entry point and funding path. The canonical builder includes protocol, platform, node and buyer components; optional scope, tax and processor handling can affect a flow. There is no universal two-percent fee promise. Signature verification also differs between funded settlement and other paths, so do not claim that every unsigned manifest is rejected. Consult the pay contract and shared settlement implementation for the chosen flow.
+The registry separates vendor from purpose and holder. Billing credentials do not authorize inference, or vice versa. App upstreams retain the member-approved declaration binding independently of their vendor hostname; names or metadata cannot substitute for that binding. Suspensions survive reconnecting and retagging, and rejoining does not restore revoked member grants.
 
-MJN is receipt-backed and withdrawable subject to the applicable receipt currency, funding and withdrawal rules. MJNx is emitted for in-platform use and is not withdrawable. Balances are separate per DID and unit. Settlement checks the target's accepted units and rejects unsupported units instead of silently converting MJNx to MJN. Neither a fixed fiat peg nor a future token launch is an integration guarantee.
+Member-held Postman access permits reviewed saved-data reads at the fixed official target, not arbitrary writes or live request execution. App-hosted upstreams declare exact destinations and method/path ceilings. Permission-set changes require reconnection. Writes need distinct scope and a reason; redirects and credential echoes are refused. Credentials stay in the kernel; no DB transaction spans upstream network I/O. Successful calls and admitted upstream failures retain signed outcome metadata, while admission refusals do not write permanent outcomes.
 
-### Agents, delegation and approval
-
-An agent has its own DID, signing key and credentials. Personal agent setup and organization provisioning are distinct flows. Organization provisioning and orphan adoption require the documented live human administrator checks and proof; an identity selector or a copied personal credential cannot substitute for them.
-
-Operator approval authorizes a particular operation or ceiling; it does not replace a user's consent, an app's requested scope or an agent's live grant. Long-running work must tolerate grants expiring or being revoked. Re-read authority at the documented boundary and display a refusal rather than falling back to shared credentials.
-
-The operator interface records signed loop events, decisions and command outcomes. A transport acknowledgement means delivery was attempted, not that work completed or a lease was acquired. Private briefs and artifacts retain their own access controls. Consult the Jin spec and loop contracts instead of interpreting local harness references as public capabilities.
-
-### Connectors and custody
-
-People connect provider accounts on their Imajin profiles. Apps witness connected state and invoke authorized kernel operations; they do not implement their own copy of credential lifecycle or receive raw provider keys. App registration, organization membership, operator approval and member consent each answer a different authorization question.
-
-The vault supports node-sealed entries and delegation-grant entries. Tier 0 remains node-controlled, not zero-custody. Optional external-owner custody does not establish a universal deployment posture. Seal secrets through the documented credential controls, never chat, source, logs, issue text or copied environment examples.
-
-Organization-held provider keys are write-only, including for the loading admin. Live human owner/admin authorization with connections-service access controls lifecycle and member grants. Metadata reads expose status and provenance, not the credential or a generic export path. A human member requires an active per-member grant to use an org-held key. An assigned agent uses its verified principal relationship; live assignment, allowed services and revocation still apply per call.
-
-Member-held Postman access is a separate personal lifecycle. The kernel injects the credential only to the fixed official target and exposes reviewed saved-data reads, not arbitrary writes or live-request execution. App callers require the documented scope and current member consent; app-service callers also need operator approval. Organization tagging is attribution and standing, not transfer of secret ownership. Administrative suspension is checked before custody access.
-
-For app-hosted upstreams, the app declares exact destinations and method/path permissions on its registration. The member connects to that declaration and approves the permissions. Connection status returns a plain-text review list; a disconnected status is not evidence of prior consent. Changing the permission set requires reconnecting, while reordering it does not.
-
-Invocation is kernel-mediated. Read and write authority are separate; writes also require a documented reason. The destination is bound to member consent, credential injection stays in the kernel, redirects are refused and credential echoes are not returned. Successful calls and authorized upstream failures have signed member/app/org outcome metadata; authorization or admission refusals write nothing permanent. No database transaction spans upstream network I/O. The connections spec supplies limits, validation and error details.
+Vault node-sealed and delegation-grant custody have different limits. Optional external-owner custody is not a universal deployment posture. Seal credentials only through documented controls, never source, chat, commands or logs.
 
 ### Communication and security limits
 
-Chat uses TLS in transit and stores plaintext at rest on the hosting node in `chat.messages_v2.content`. Push notifications carry the first 200 characters of the message preview. Message encryption is planned but not implemented; no forward-secrecy or post-compromise guarantee is made. Published public key bundles do not provide current message encryption.
-
-The kernel's WebSocket transport shares its HTTP server. Transport protection does not make stored message content secret from the hosting node. Integrations must account for notification previews and the service's current access controls rather than promising stronger confidentiality.
+Chat uses TLS in transit and stores plaintext at rest on the hosting node in `chat.messages_v2.content`. Push notifications carry the first 200 characters of the message preview. Message encryption is planned but not implemented; public key bundles do not protect current messages. No forward-secrecy or post-compromise guarantee is made. WebSocket transport shares the kernel HTTP server; that does not hide stored content from the host.
 
 ## How to integrate
 
 ### Connect an agent
 
-Give the agent its own DID and signing key through the existing [auth contract](https://jin.imajin.ai/auth/api/spec). The agent authenticates as itself. A person grants the required scoped delegation, bounded by capability, audience and expiry; revocation withdraws that authority. Keep the agent signer separate from the principal it serves. A relationship or selected DID alone is not permission to use the principal's connectors.
+Give the agent its own DID and signing key through the [auth contract](https://jin.imajin.ai/auth/api/spec). A person grants scoped delegation for the capabilities and audience it needs, with expiry and revocation. Keep the agent signer distinct from the principal it serves.
 
-The kernel's Streamable HTTP [MCP server](https://mcp.imajin.ai/mcp) is served at `/mcp`. Follow its protected-resource and authorization-server discovery, then the authorization-code flow with PKCE and explicit human consent. An agent-bound authorization records the agent and selected assigned principal separately. The token's subject remains the agent; each agent needs its own client registration and protected credential/refresh store, even on a shared runtime. Consent scopes are a ceiling, not a grant of all MCP tools. Surface and per-tool checks apply, and connector operations recheck their live authority. A request header cannot change a consent-bound assignment; a different principal or wider scope needs fresh consent.
+Use the kernel's [MCP server](https://mcp.imajin.ai/mcp), served at `/mcp`, with protected-resource/OAuth discovery, authorization code, PKCE and explicit consent. Each agent needs its own client and credential/refresh store. A consent-bound agent/principal pair cannot be switched by a request header; new principals or wider scopes need fresh consent. Tokens are resource-bound and scopes are only a ceiling; tools still enforce live authority.
 
-For contact with one person, the node serves `/reach/<handle>/mcp` and that person's `/reach/<handle>/openapi.json`. This is a reach-only surface, not the full kernel MCP catalogue. Public discovery does not authorize messaging: gated `reach_send` and requester-private `reach_status` calls require authority bound to that recipient. A reach bearer is not a general kernel API token, and receiving permission to contact a person never means acting as that person.
+For contacting one person, use their `/reach/<handle>/mcp` and `/reach/<handle>/openapi.json` on the node. Public discovery is not contact permission: gated calls need recipient-bound authority. A reach bearer is not a general kernel token or authority to act as the recipient.
 
-The [OpenClaw plugin](https://github.com/ima-jin/openclaw-imajin-plugin) is the working example of an agent runtime integrating with the kernel under its own identity and explicit authority. Use the [kernel MCP runbook](https://github.com/ima-jin/imajin-ai/blob/main/docs/ops/openclaw-mcp.md) for the consent walk and agent/principal isolation. Use MCP for equivalent tools and retain the plugin's direct identity, attestation and inbound-message listener paths where documented; not every plugin operation has become an MCP tool.
+The [OpenClaw plugin](https://github.com/ima-jin/openclaw-imajin-plugin) is the working integration example. Follow the [MCP runbook](https://github.com/ima-jin/imajin-ai/blob/main/docs/ops/openclaw-mcp.md) for consent and principal isolation; retain the plugin's documented direct identity, attestation and inbound-message paths where MCP is not equivalent.
 
-### Build and register an app
+### Build an app
 
-Start from the [app template](https://github.com/ima-jin/imajin-app-template) and [registered-app contract](https://github.com/ima-jin/imajin-ai/blob/main/docs/REGISTRATION.md). Give the app a distinct identity and declared permissions. Keep runtime credentials server-side. Use published `@ima-jin/*` SDK packages for external apps; `@imajin/*` is the workspace import scope. A manifest's `private` flag is a publishing safety measure, not evidence that an SDK is unavailable.
+Start with the [registered-app contract](https://github.com/ima-jin/imajin-ai/blob/main/docs/REGISTRATION.md) and [app template](https://github.com/ima-jin/imajin-app-template). Use published `@ima-jin/*` SDKs externally; `@imajin/*` is the workspace scope, and `private: true` is not publication evidence.
 
-For app-owned signing keys, follow the SDK bootstrap and keystore contract. For declared app secrets, manifest sync creates declaration slots only. Generated credentials need a separate signed generation action; operator-supplied values need masked entry and a separate countersignature. Pending staging is not an active credential. Load approved vault credentials into typed server-only configuration before dynamically importing a database or server module that consumes them; do not copy values into `process.env`.
+Begin sign-in in the app's own handler, preserve isolated callback state and exchange the short-lived single-use code with proof of the app's signing key. Trust the kernel-returned subject, not client profile fields. Keep app cookies isolated from the kernel and other apps. The [auth-client README](https://github.com/ima-jin/imajin-ai/blob/main/packages/auth-client/README.md) owns the SDK contract.
 
-### Sign a person into the app
+Use user-delegated tokens for consented user operations and operator-approved app-service tokens only for their documented machine operations. Neither substitutes for a human session where required. Manifest secret sync creates slots only: signed Generate or masked Set plus countersignature activates approved material. Load vault credentials into typed server-only memory before DB/server imports, never into client bundles or `process.env`.
 
-Use the [auth-client SDK](https://github.com/ima-jin/imajin-ai/blob/main/packages/auth-client/README.md). Begin sign-in at the app's own login handler so it creates app-isolated state before redirecting to kernel consent. Keep the registered callback and full public app URL consistent, including a basePath where the app uses one.
+### Discover models and connector authority
 
-Forward root callback parameters before applying app login or claim gates. The callback verifies state and exchanges the short-lived, single-use authorization code using proof of possession of the app's signing key. Establish the session only from the kernel-returned subject and attestation. Client profile fields are display data, not identity authority.
+`GET /infer/v1/self` returns the agent's identity, usable models, inference routes, authority, grant status and fixing controls. Read-only MCP/HTTP rows reuse tool-call authorization predicates, including `authorizedScopes`, without probing credentials. Inference scope is not tool authority. The `?agents=1` operator view backs serving-agent cards on `/jin` and requires a direct authorized principal session; it does not expose agents' private connectors.
 
-Configure the same stable app DID for session handlers and readers. The SDK derives an app-specific host-only cookie name; the kernel session cookie is reserved. Signing out of one app must not clear the kernel's session or another app's cookie. Read the SDK contract for explicit cookie overrides and redirect handling.
+Use the calling agent's refreshed credential with the [passthrough](https://github.com/ima-jin/imajin-ai/blob/main/packages/openclaw-infer-passthrough/README.md). A configured selector never grants access to another identity's key; there is no agent-mode shared, personal or direct-provider fallback after refusal. Billing reconciliation uses a separate sealed credential and billing scope; incurred usage is not a complete provider invoice, and missing cost is not evidence of free use.
 
-### Call a service
+### Clone or fetch GitHub repositories
 
-Fetch the owning service's live spec before implementing a request. Use the documented token type and scopes rather than inferring them from a URL. User-delegated app tokens carry consented user authority. App-service tokens authenticate machine operations with current operator-approved service scopes; they do not impersonate a human session.
+Use the agent-mode loopback passthrough and the owner's active primary GitHub connector plus live `github:read` delegation. Only the kernel contacts GitHub with the owner's sealed credential. Push is refused; host-static mode does not serve git and there is no proxy mint, GitHub login or direct fallback.
 
-For business-context operations, preserve the selected acting identity and handle a denied role or service selection explicitly. An arbitrary DID in a request body is a selector, never authority. Where an operation requires a human session, an agent or app token is not a substitute.
+Supply the fresh Imajin Bearer only through process memory/environment, never persistent git configuration. Multiple eligible owners require `X-Acting-For`; it narrows granted authority and cannot override a consent-bound owner. Do not send inference's `x-acting-as` header on the agent git lane. Grants and connector authority are rechecked per protocol request. Revocation denies the next request, not bytes already transferred.
 
-Do not use internal keys, development previews or cron handlers as public integration shortcuts. Specs enumerate contracts; the implementation and security disclosures explain deployment qualifications. Handle refusals, expiry, revocation and rate limits as normal control flow without retrying under another identity.
+The node-signed `github.git.fetch` record describes a requested operation, not successful transfer. Per-grant repository allowlists are not implemented: the selected credential's readable repositories bound access. Follow the [git-read runbook](https://github.com/ima-jin/imajin-ai/blob/main/docs/agents/github-git-read-proxy.md) for configuration, refusal behavior and private-repository verification; the GitHub service spec currently describes OAuth/connection operations, not this transport.
 
-### Add agent or model access
+### Run a node
 
-Authenticate as the calling agent and obtain only the principal grants needed for the task. For inference, discover the caller's usable models and routing diagnostics rather than hard-coding a provider lane or assuming every loaded key is usable. The agent remains the signer even when a verified principal supplies the credential. Human member grants and assigned-agent relationships remain distinct.
+Use [contributor setup](https://github.com/ima-jin/imajin-ai/blob/main/docs/DEVELOPER.md), [environments](https://github.com/ima-jin/imajin-ai/blob/main/docs/ENVIRONMENTS.md) and [deployment](https://github.com/ima-jin/imajin-ai/blob/main/deploy/README.md). The kernel has no basePath; independently owned apps own theirs. Kernel-owned liveness uses a bounded shared-pool query. Independent listeners opt in with ecosystem `LIVENESS_PATH`; an undeclared app is not an HTTP-watchdog target.
 
-Agent self-discovery through `GET /infer/v1/self` returns the authenticated agent's identity, held inference routes, authority, grant status, usable models and fixing controls. Its read-only MCP/HTTP rows reuse the tool-call authorization predicates and report the authority lane and `authorizedScopes` without probing credentials. Inference scope does not grant tool authority.
-
-The `?agents=1` operator view supplies the bound-serving-agent cards on `/jin` through the same projection and live inference resolver. It requires a direct principal session, with org owner/admin authority for org act-as, refuses agent delegation and does not disclose agents' private connectors or other clients.
-
-Provider-billed reconciliation uses separately sealed billing credentials and explicit billing scope. It is not the same as incurred usage metering. A missing cost is not evidence that usage is free, and kernel-observed usage is not a complete provider invoice.
-
-### Run a node or an internal service
-
-Use the [contributor setup](https://github.com/ima-jin/imajin-ai/blob/main/docs/DEVELOPER.md), [environment guide](https://github.com/ima-jin/imajin-ai/blob/main/docs/ENVIRONMENTS.md) and [deployment runbook](https://github.com/ima-jin/imajin-ai/blob/main/deploy/README.md). The kernel has no basePath; independently deployed apps own their routing prefixes and deployment procedures. Source support alone does not prove a host is configured or a rollout is complete.
-
-Corpus is a separate internal daemon reached through its configured service URL. GitHub partitions use the registry-resolved source-owner group DID and explicit owner-issued grants; workspace sources remain principal-owned. Membership, a registry stub or a local GitHub CLI login is not source-owner consent. See the [corpus-owned runbook](https://github.com/ima-jin/imajin-ai/blob/main/apps/corpus/README.md) for connector selection, its private `/spec`, and operational procedures.
+Corpus is an internal daemon with a private configured service address and its own `/spec`. GitHub partitions require registry-resolved source-owner groups and explicit owner grants; membership, stubs and a local CLI login are not authority. Follow the [corpus runbook](https://github.com/ima-jin/imajin-ai/blob/main/apps/corpus/README.md).
 
 ## Service specifications
 
-Each link corresponds to a service spec definition in the kernel source. Substitute the integrating node's origin as appropriate. These contracts are the route catalogue; they are not a deployment inventory, a release history or a permission grant.
+These links derive from checked-in service definitions and their spec handlers, not deployment inventory or permission. Substitute your node's origin. Specs are the route catalogue, not this guide. The git transport's dedicated runbook supplements the GitHub OAuth spec.
 
-- [Auth API](https://jin.imajin.ai/auth/api/spec): Authentication, schemas and operation contracts.
-- [Calendar API](https://jin.imajin.ai/calendar/api/spec): Authentication, schemas and operation contracts.
-- [Chat API](https://jin.imajin.ai/chat/api/spec): Authentication, schemas and operation contracts.
-- [Cloudflare API](https://jin.imajin.ai/cloudflare/api/spec): Authentication, schemas and operation contracts.
-- [Connections API](https://jin.imajin.ai/connections/api/spec): Authentication, schemas and operation contracts.
-- [Github API](https://jin.imajin.ai/github/api/spec): Authentication, schemas and operation contracts.
-- [Google API](https://jin.imajin.ai/google/api/spec): Not publicly served at this origin; consult the [spec source](https://github.com/ima-jin/imajin-ai/blob/main/apps/kernel/api-spec/google.yaml).
-- [Infer API](https://jin.imajin.ai/infer/api/spec): Authentication, schemas and operation contracts.
-- [Jin API](https://jin.imajin.ai/jin/api/spec): Authentication, schemas and operation contracts.
-- [Media API](https://jin.imajin.ai/media/api/spec): Authentication, schemas and operation contracts.
-- [Notify API](https://jin.imajin.ai/notify/api/spec): Authentication, schemas and operation contracts.
-- [Pay API](https://jin.imajin.ai/pay/api/spec): Authentication, schemas and operation contracts.
-- [Profile API](https://jin.imajin.ai/profile/api/spec): Authentication, schemas and operation contracts.
-- [Quickbooks API](https://jin.imajin.ai/quickbooks/api/spec): Authentication, schemas and operation contracts.
-- [Registry API](https://jin.imajin.ai/registry/api/spec): Authentication, schemas and operation contracts.
-- [Usage API](https://jin.imajin.ai/usage/api/spec): Authentication, schemas and operation contracts.
-- [Vault API](https://jin.imajin.ai/vault/api/spec): Authentication, schemas and operation contracts.
+- [Auth API](https://jin.imajin.ai/auth/api/spec): Service-owned schemas, authentication and errors.
+- [Calendar API](https://jin.imajin.ai/calendar/api/spec): Service-owned schemas, authentication and errors.
+- [Chat API](https://jin.imajin.ai/chat/api/spec): Service-owned schemas, authentication and errors.
+- [Cloudflare API](https://jin.imajin.ai/cloudflare/api/spec): Service-owned schemas, authentication and errors.
+- [Connections API](https://jin.imajin.ai/connections/api/spec): Service-owned schemas, authentication and errors.
+- [GitHub API](https://jin.imajin.ai/github/api/spec): Service-owned schemas, authentication and errors.
+- [Google API](https://jin.imajin.ai/google/api/spec): Not publicly served at this origin; no public spec handler is defined. Consult the [contract source](https://github.com/ima-jin/imajin-ai/blob/main/apps/kernel/api-spec/google.yaml).
+- [Infer API](https://jin.imajin.ai/infer/api/spec): Service-owned schemas, authentication and errors.
+- [Jin API](https://jin.imajin.ai/jin/api/spec): Service-owned schemas, authentication and errors.
+- [Media API](https://jin.imajin.ai/media/api/spec): Service-owned schemas, authentication and errors.
+- [Notify API](https://jin.imajin.ai/notify/api/spec): Service-owned schemas, authentication and errors.
+- [Pay API](https://jin.imajin.ai/pay/api/spec): Service-owned schemas, authentication and errors.
+- [Profile API](https://jin.imajin.ai/profile/api/spec): Service-owned schemas, authentication and errors.
+- [QuickBooks API](https://jin.imajin.ai/quickbooks/api/spec): Service-owned schemas, authentication and errors.
+- [Registry API](https://jin.imajin.ai/registry/api/spec): Service-owned schemas, authentication and errors.
+- [Usage API](https://jin.imajin.ai/usage/api/spec): Service-owned schemas, authentication and errors.
+- [Vault API](https://jin.imajin.ai/vault/api/spec): Service-owned schemas, authentication and errors.
+
+Corpus has a [service-owned runbook and private spec source](https://github.com/ima-jin/imajin-ai/blob/main/apps/corpus/README.md); do not assume a public kernel path.
 
 ## Further reading
 
-- [Concise agent entry point](https://imajin.ai/llms.txt): Platform shape and integration starting points.
-- [Developer guide](https://imajin.ai/developer-guide): Consumer-facing concepts and integration guidance.
+- [Concise agent entry point](https://imajin.ai/llms.txt) and [full integration guide](https://imajin.ai/llms-full.txt): Concepts and integration flows.
+- [Developer guide](https://imajin.ai/developer-guide) and [contributor setup](https://github.com/ima-jin/imajin-ai/blob/main/docs/DEVELOPER.md): Consumer integration and local node setup.
 - [Whitepaper](https://imajin.ai/whitepaper): Primitive grammar and economic model.
-- [How it works](https://imajin.ai/how-it-works): The three pillars and how an agent runtime, the Imajin plugin and the kernel fit together.
-- [Compare](https://imajin.ai/compare): Where Imajin sits next to identity providers, agent frameworks, hosted assistants and web3 agent projects.
-- [Why we built it this way](https://imajin.ai/project): The reasoning behind the design, the current state and its honest limits.
-- [Join the alpha](https://imajin.ai/alpha): Apply as a tester, integrator or partner, or book a demo.
-- [Canonical patterns](https://github.com/ima-jin/imajin-ai/blob/main/docs/guide/canonical-patterns.md): Shared implementation boundaries.
-- [Security disclosures](https://github.com/ima-jin/imajin-ai/blob/main/SECURITY.md): Trust assumptions and implementation limits.
-- [Repository](https://github.com/ima-jin/imajin-ai): Source, app/package READMEs and operator documentation.
+- [How it works](https://imajin.ai/how-it-works), [compare](https://imajin.ai/compare) and [why we built it this way](https://imajin.ai/project): Positioning and implementation limits.
+- [Join the alpha](https://imajin.ai/alpha): Book a demo or apply as tester, integrator or partner.
+- [Security disclosures](https://github.com/ima-jin/imajin-ai/blob/main/SECURITY.md): Trust boundaries and limitations.
+- [Repository](https://github.com/ima-jin/imajin-ai): Source and service-owned docs.

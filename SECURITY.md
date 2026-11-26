@@ -103,6 +103,15 @@ close them as the work lands. As of this writing:
   personal-connector fallback exists. The private kernel-to-corpus credential
   transport must remain on a trusted network or TLS. See the
   [owner migration and credential runbook](apps/corpus/README.md).
+- **GitHub checkout delegation is not repository-scoped.** The read-only git
+  transport checks the owner's live `github:read` grant and primary connector
+  on every protocol request; only the kernel accesses the GitHub credential.
+  An eligible grant permits reads of any repository that credential can read,
+  not just repositories in the connector's discovery disclosure list. Push is
+  refused, but revocation cannot retract bytes already transferred or end an
+  in-flight transfer immediately. The node-signed requested-operation record
+  proves an attempt, not a completed checkout. See the
+  [git-read contract](docs/agents/github-git-read-proxy.md).
 - **The node key is a server secret.** `AUTH_PRIVATE_KEY` sits in the kernel's process
   environment and plays every node role at once: signing identity, vault sealing and
   delegation keys, session-token key. A kernel compromise can forge anything the node

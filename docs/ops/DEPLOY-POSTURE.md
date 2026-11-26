@@ -8,7 +8,7 @@ Development deployment follows successful CI on main through [deploy-dev.yml](..
 
 The release path is **dispatch Release → review and merge its PR → automatic tag and deployment dispatch → production approval**. The Release workflow chooses the bump from the latest release tag and changes workspace manifests in lockstep. Feature changes do not edit manifest versions. Do not create tags by hand or deploy with a manual production `git pull`.
 
-Release branch pushes and PR creation use a GitHub App installation token, scoped to `imajin-ai` with **Contents: Read & write** and **Pull requests: Read & write** only. Ryan provisions the App and the Actions variable `RELEASE_APP_ID` and Actions secret `RELEASE_APP_PRIVATE_KEY` in the GitHub UI. Missing configuration fails before branching. Keep **Allow GitHub Actions to create and approve pull requests OFF**. The app bot opens the PR automatically and CI starts on `pull_request`; no manual PR or CI dispatch, PAT or bypass actor is needed. Ryan's review and the production approval remain unchanged. See [release setup and verification](../npm-publishing.md#cutting-a-release-tag-is-truth--2285).
+Release branch pushes and PR creation use a GitHub App installation token, scoped to `imajin-ai` with **Contents: Read & write** and **Pull requests: Read & write** only. Ryan provisions the App and the Actions variable `RELEASE_APP_ID` and Actions secret `RELEASE_APP_PRIVATE_KEY` in the GitHub UI. Missing configuration fails before branching. Keep **Allow GitHub Actions to create and approve pull requests OFF**. The app bot opens the PR automatically and CI starts on `pull_request`; no manual PR or CI dispatch, PAT or bypass actor is needed. Ryan's review and the production approval remain unchanged. See [release setup and verification](../npm-publishing.md#cutting-a-release).
 
 `scripts/lib/git-version.mjs` supplies the shared Git tag lookup for the release bump base, falling back to the manifest only when no release tag exists.
 
@@ -41,7 +41,7 @@ Each service reports migration state from its own database connection. The kerne
 
 Migration failure, build failure, listener reaping failure and restart failure are deployment failures. The build report distinguishes restart failure from compilation/port-reaping failures. Use the [deployment runbook](../../deploy/README.md) for exit-code interpretation.
 
-PM2 `online` proves a process exists, not that HTTP responds. Kernel process-liveness checks avoid DB, vault and sibling fan-out. Aggregate readiness answers a different question and must not trigger kernel restart merely because a sibling is unhealthy. The [liveness watchdog](../../deploy/README.md#http-liveness-watchdog) documents bounded checks, persistent cooldown/outbox, node-operator attribution and explicit installation. Its source and stub tests do not establish installation on a host.
+PM2 `online` proves a process exists, not that HTTP responds. Kernel process-liveness checks use a bounded query through the shared DB pool, with no vault or sibling HTTP fan-out. Aggregate readiness answers a different question and must not trigger kernel restart merely because a sibling is unhealthy. The [liveness watchdog](../../deploy/README.md#http-liveness-watchdog) documents bounded checks, persistent cooldown/outbox, node-operator attribution and explicit installation. Its source and stub tests do not establish installation on a host.
 
 `scripts/ci-guard-required-contexts.mjs` verifies that declared required CI jobs exist. Live branch-protection checks require suitable ruleset-read authority; an advisory check without that authority is not proof of the live setting. Rebase a migration-bearing branch against current main before readiness and resolve numbering collisions without rewriting applied history.
 
@@ -104,7 +104,7 @@ On state load, counters and pending receipts for apps no longer selected are pru
 
 `PM2_HEALTH_LIVENESS=0` skips the HTTP probe. It exists only for test fixtures whose ecosystem declares no port. It is on by default; do not set it in dev or production.
 
-The same release bounds database waits on the auth and session paths (they answer `503` with `Retry-After` instead of hanging) and reaps only stale `ClientRead` backends, so a stuck connection pool degrades into retryable errors rather than a hung kernel.
+Database waits on the auth and session paths are bounded (they answer `503` with `Retry-After` instead of hanging). The reaper terminates only stale `ClientRead` backends matching its database/role predicate, so a stuck pool has a recovery path rather than an unbounded wait.
 
 ## Rollback and recovery
 
