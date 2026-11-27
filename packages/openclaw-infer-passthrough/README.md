@@ -6,10 +6,13 @@ mint, re-mint, catalog cache or direct-key fallback for agent calls.
 The kernel alone verifies authority and resolves connector policy.
 See the canonical [headers, JWT and error contract](../../deploy/infer-passthrough/README.md#calling-agent-contract).
 
+That opening selector contract describes inference; git uses the distinct
+owner-selection and refusal contract under GitHub checkouts below.
+
 ## Purpose and protocol
 
 This local proxy forwards OpenAI-compatible completions/model discovery,
-Anthropic Messages/count-tokens and MCP JSON-RPC to the kernel. The
+Anthropic Messages/count-tokens, MCP JSON-RPC and read-only GitHub smart HTTP to the kernel. The
 [inference spec](https://jin.imajin.ai/infer/api/spec),
 [MCP runbook](../../docs/ops/openclaw-mcp.md) and
 [deployment contract](../../deploy/infer-passthrough/README.md) own the full
@@ -44,6 +47,23 @@ Keep each credential server-side and short-lived. A shared `unused-placeholder`
 or static OpenClaw bearer is not a valid agent credential. A harness that can
 only configure static headers needs a compatible per-agent credential adapter;
 pointing its base URL at this proxy alone is insufficient.
+
+### GitHub checkouts
+
+In agent mode, the loopback `/github/git/` transport forwards a fresh calling-agent
+Bearer credential to the kernel for clone/fetch. Use the
+[git-read runbook](../../docs/agents/github-git-read-proxy.md) for the non-secret
+URL rewrite and process-only header injection. Git has no `x-api-key` fallback.
+Do not copy the inference `x-acting-as` selector into git requests: agent git
+authority uses the owner's live `github:read` grant and, when needed,
+`X-Acting-For`. A selector cannot override a consent-bound owner.
+
+Push is refused, host-static does not serve this transport, and there is no
+proxy mint, credential helper, GitHub login or direct GitHub fallback. Only
+the kernel accesses the owner's GitHub credential. Its signed fetch record
+describes a requested operation, not a completed transfer. Per-grant repository
+allowlists are not implemented; the selected credential's readable repositories
+bound access. Source support does not prove a private-repository checkout on a host.
 
 ## Personal and organization authority
 

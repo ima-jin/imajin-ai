@@ -1,6 +1,6 @@
 {
   "name": "@imajin/vault-core",
-  "version": "0.8.36",
+  "version": "0.8.37",
   "private": true,
   "description": "identity and authority for AI agents. Vault models, integrity verification, sealing and delegation for Imajin (alpha).",
   "license": "MIT",

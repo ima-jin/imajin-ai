@@ -1,6 +1,6 @@
 {
   "name": "@imajin/cid",
-  "version": "0.8.36",
+  "version": "0.8.37",
   "private": true,
   "description": "identity and authority for AI agents. Deterministic CIDv1 helpers for Imajin (alpha).",
   "license": "MIT",

@@ -1,6 +1,6 @@
 {
   "name": "@imajin/fair",
-  "version": "0.8.36",
+  "version": "0.8.37",
   "private": true,
   "description": "identity and authority for AI agents. Attribution types, validation, manifest building and React components for Imajin (alpha).",
   "license": "MIT",

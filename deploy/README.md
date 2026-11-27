@@ -4,8 +4,9 @@ The tracked ecosystem files are the source of truth for in-repo PM2 definitions.
 
 ## HTTP liveness watchdog
 **Installation is an operator action after the reviewed kernel deployment.** PM2 `online` proves a process exists, not that HTTP answers.
-`deploy/liveness-probe.mjs` checks every HTTP listener in the selected tracked
-ecosystem config. Portless `*-kernel-cron` workers are explicitly excluded;
+`deploy/liveness-probe.mjs` checks kernel-owned HTTP listeners and independently
+owned listeners that declare `env.LIVENESS_PATH` in the selected tracked
+ecosystem config. Portless workers and undeclared independent apps are excluded;
 this is not a heartbeat for background jobs. Reconcile any extra live PM2 app
 into the tracked config before enabling it. No SSH, timer installation or
 live restart is part of this change.
@@ -19,7 +20,12 @@ The probe runs as `jin` with the same `PM2_HOME` as the apps, and invokes only
 `pm2 pid <name>` / `pm2 restart <name>` with argument arrays, never a shell,
 `jlist` (which includes secrets), `all`, or `--update-env`.
 
-Each target is `http://127.0.0.1:<port>/api/health?liveness=1`.
+Kernel-owned targets use `http://127.0.0.1:<port>/api/health?liveness=1`;
+the kernel ecosystem working directory defines that ownership, and an
+alternative declaration cannot override it. Other HTTP listeners opt in with a
+loopback-relative absolute `LIVENESS_PATH`, such as `/health`, never a full URL.
+They are probed at that declared path. No declaration means no HTTP probe,
+restart, failure counter or receipt for that independent app.
 For the kernel, this query checks **the same shared pool with SELECT 1**,
 bounded to **1.5 seconds**, cancelling the query on timeout. A full/wedged pool
 returns 503 rather than a false process-only 200. No separate connection can
@@ -35,6 +41,8 @@ prevents two probes racing. SIGTERM/SIGINT finish the current bounded sweep,
 then remove the lock. After SIGKILL/host failure, inspect the lock's PID before
 removing a stale lock; **never discard the state/outbox** to restart the probe.
 Archive old delivered history under operator control rather than deleting it.
+On state load, counters and pending receipts for retired targets are pruned;
+delivered receipt history and pending receipts for current targets remain.
 
 The outbox delivers (at most five pending receipts per sweep) to
 `/jin/api/internal/ops-events` on that environment's kernel, authenticated with
@@ -59,8 +67,9 @@ operator evidence.
 Operator steps (repeat for dev/prod, do not execute from an agent run):
 
 1. Deploy this code through the normal reviewed release/deploy pipeline.
-   Verify `GET /api/health?liveness=1` answers within 2s with `database: true`; verify every tracked
-   app actually implements `/api/health` (a 404 is a configuration failure).
+   Verify `GET /api/health?liveness=1` answers within 2s with `database: true`;
+   verify each selected listener implements its configured path. A 404 is a
+   configuration failure; unrelated undeclared apps must remain unselected.
 2. Check the appropriate kernel env file contains the existing internal key
    without displaying it, and that node metadata has the intended operator DID.
 3. From `/home/jin/prod/imajin-ai`, inspect safely with
@@ -161,7 +170,7 @@ Edit the tracked config through a reviewed PR. The deploy workflows copy it into
 
 Production deployment follows Release dispatch, reviewed release PR, automatic tag/deploy dispatch and the existing production approval. Redeploy an approved ref through that workflow. Do not create tags by hand, bypass approval or use a manual production pull.
 
-The release PR is opened automatically by a scoped GitHub App token, also used for the branch push; its `pull_request` event starts CI. Ryan provisions the App on `imajin-ai` only with Contents and Pull requests read/write permissions, the Actions variable `RELEASE_APP_ID` and Actions secret `RELEASE_APP_PRIVATE_KEY`. Keep the Actions PR-creation setting OFF. See [release setup](../docs/npm-publishing.md#cutting-a-release-tag-is-truth--2285); do not open the PR by hand or substitute a PAT.
+The release PR is opened automatically by a scoped GitHub App token, also used for the branch push; its `pull_request` event starts CI. Ryan provisions the App on `imajin-ai` only with Contents and Pull requests read/write permissions, the Actions variable `RELEASE_APP_ID` and Actions secret `RELEASE_APP_PRIVATE_KEY`. Keep the Actions PR-creation setting OFF. See [release setup](../docs/npm-publishing.md#cutting-a-release); do not open the PR by hand or substitute a PAT.
 
 ## Kernel environment loading
 
@@ -188,6 +197,8 @@ Each ecosystem app has an explicit shutdown timeout. Do not shorten it to PM2's 
 `scripts/check-pm2-restarts.sh` compares restart counters within a sliding window and reports crash loops. `scripts/check-pm2-status.sh` reports parked errored/stopped declared apps, respecting intentional stops and one-shot policy. `scripts/pm2-health-check.sh` runs the install preflight and both checks with the worst exit result.
 
 The deploy workflows run the idempotent `scripts/install-pm2-health-cron.sh` per environment and execute a post-deploy check. The schedule logs problems in the environment's PM2 health log. Optional webhook configuration is stored in a protected file rather than embedded in crontab. Without a webhook, failures remain in logs and deployment results.
+
+The wrapper reads `PM2_ALERT_WEBHOOK_FILE` or the protected per-scope default and supplies the probe's webhook in memory. Production post-deploy checks select the same file as cron. Pending receipts for selected targets keep the watchdog nonzero until delivered; do not clear the outbox to silence a delivery failure.
 
 - `PM2_ALERT_WEBHOOK` is the optional repository secret used by the installer, stored in the protected `~/.config/imajin/pm2-alert-webhook.<scope>` file for cron.
 - `RESTART_ALERT_WEBHOOK` overrides the restart-check webhook in the environment; keep its value out of crontab and logs.

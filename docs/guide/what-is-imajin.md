@@ -1,6 +1,6 @@
 # What is Imajin
 
-Imajin is a composable agent layer. Identity, delegation, attestation, and settlement — the infrastructure that any agent runtime composes on top of.
+**identity and authority for AI agents.** Imajin is the trust layer beneath your agent runtime for identity, delegation, attestation and settlement. Follow the canonical [positioning](../POSITIONING.md); Imajin is alpha, with [demo and alpha intake](https://imajin.ai/alpha) rather than self-serve onboarding.
 
 It's not a platform. It's not an agent framework. It's the layer underneath both.
 

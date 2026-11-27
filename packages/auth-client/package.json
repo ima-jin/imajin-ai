@@ -1,6 +1,6 @@
 {
   "name": "@imajin/auth-client",
-  "version": "0.8.36",
+  "version": "0.8.37",
   "private": true,
   "description": "identity and authority for AI agents. App sign-in, session management and Next.js route handlers for Imajin (alpha).",
   "license": "MIT",

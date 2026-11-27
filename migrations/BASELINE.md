@@ -34,6 +34,25 @@ The root migrations below are kernel-owned in `ownership.json`, additive and ide
 
 Apply these files in filename order only when absent from the ledger, after any pending `0228`–`0230` files. The fixed cut through `0215`, baseline inventory, historical checksums and existing ledger rows remain unchanged.
 
+### Connector purpose and normalization
+
+`0240_connectors_purpose_normalise.sql` is an ordinary kernel-owned post-cut
+migration. It adds `purpose` (`inference` or `billing`) and uniqueness on
+`(owner_did, provider, purpose, slot)`. Vendor, holder and purpose are independent;
+legacy provider spelling is not an authorization rule. App upstreams use the
+declared hostname as vendor while retaining their member-approved binding.
+
+Before applying it, inspect the read-only
+[`scripts/0240-connectors-purpose-dry-run.sql`](../scripts/0240-connectors-purpose-dry-run.sql)
+against the intended environment through the approved operator procedure.
+Connector normalized-key collisions and unresolved upstreams are reported and
+left untouched. Suspension normalized-key collisions abort the transaction;
+do not fold rows or infer a holder from a provider prefix to bypass refusal.
+Existing connector ids, credentials, grant references, provenance and history
+are preserved. A repeat run is idempotent. Apply all genuinely pending root
+files in order; do not move the fixed baseline cut or claim production migration
+from a source check.
+
 ## Known name-only drift
 The recorded deployed and fresh-baseline catalogs have identical definitions
 but six different names (deployed → fresh baseline):

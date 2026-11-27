@@ -1,6 +1,6 @@
 {
   "name": "@imajin/db",
-  "version": "0.8.36",
+  "version": "0.8.37",
   "private": true,
   "description": "identity and authority for AI agents. Shared Postgres and Drizzle database primitives for Imajin (alpha).",
   "license": "MIT",

@@ -1,6 +1,6 @@
 {
   "name": "@imajin/ui",
-  "version": "0.8.36",
+  "version": "0.8.37",
   "private": true,
   "description": "identity and authority for AI agents. Shared UI components and theming for Imajin apps (alpha).",
   "license": "MIT",

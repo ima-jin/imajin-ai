@@ -22,11 +22,13 @@ App sign-in starts in the app's login handler, preserves callback state and exch
 
 An agent has its own DID and credentials. Organization agents use provisioning rather than the personal create flow. Orphan adoption checks live human administrator authority and original-key proof without changing the agent DID or key. Assignment describes whom an agent serves; current grants and per-operation checks determine its authority.
 
+Create and Provision show the stored acting owner's `@<owner>-jin` prefix and an optional suffix. Leave the suffix blank for the base handle; enter only the suffix for another agent. API clients send the full composed handle. Minting checks the stored serving principal, not a client-supplied owner name. Invalid or doubled prefixes are rejected; a collision returns 409 and requires a chosen suffix, never a random rename. An owner without a handle must supply an explicit full handle. Existing handles remain unchanged.
+
 ## Connectors and inference
 
 People connect providers on their profiles. Apps inspect safe connected state and invoke scoped kernel operations; provider keys remain in kernel custody.
 
-Organization-held keys are sealed under the org DID in a separate registry namespace. Human owner/admin act-as with connections-service access controls lifecycle and member grants. Values are write-only, including for the loading admin. Reads expose metadata, not secrets or generic vault export. Tier 0 remains node-controlled; unsupported external-owner loads fail closed.
+Organization-held keys are sealed under the org DID. The registry records the vendor in `provider`, use in `purpose` (`inference` or `billing`), and custody holder in `ownerDid`; a provider-name prefix grants no authority. Human owner/admin act-as with connections-service access controls lifecycle and member grants. Values are write-only, including for the loading admin. Reads expose metadata, not secrets or generic vault export. Tier 0 remains node-controlled; unsupported external-owner loads fail closed.
 
 A human org owner/admin extends an org-held key's expiry from `/jin/vault/renew` through `POST /api/vault/org-held/renew`. This files a `vault:renew-org-held-key` proposal on the countersigned operator-approval rail. Approval extends expiry and re-signs the same grant in place with a signed `vault.key.renewed` attestation; the credential is never unsealed, regenerated or copied.
 
@@ -45,6 +47,8 @@ MCP/HTTP connector rows reuse the tool-call authorization predicates; inference 
 Denied rows name an existing fixing control and acting DID. `configurationStatus: not-disclosed` prevents disclosure of a selected principal's private installations; `configured: false` in that state does not mean no connection exists. App HTTP upstream rows are restricted to the authenticated service app's declared catalogue and exact current binding. Known unconfigured connectors remain listed; unknown signer-owned providers use `family: http`, `usable: null` and `grantStatus: not-evaluated`. Gateway-host/channel fallbacks are outside this kernel projection. Responses are private/no-store and contain no credentials, vault references or raw exception details. Live curl/revoke acceptance remains an operator step after merge.
 
 The [inference spec](https://jin.imajin.ai/infer/api/spec) defines discovery and routing. The [passthrough package](../../packages/openclaw-infer-passthrough/README.md) and [host deployment runbook](../../deploy/infer-passthrough/README.md) define the separate gateway transport, auth-mode declaration and production evidence gate.
+
+Agents can clone and fetch GitHub repositories through the loopback passthrough and kernel using their own scoped credential and the owner's live `github:read` grant. Only the kernel accesses the GitHub credential; push is refused. Multiple eligible owners require an explicit `X-Acting-For` selector, which cannot widen authority. The node-signed record describes a requested operation, not completed transfer. Repository allowlists per delegation grant are not implemented: access extends to repositories the selected owner's credential can read. Follow the [git-read runbook](../../docs/agents/github-git-read-proxy.md) for process-only credential injection and private-repository verification.
 
 ## Attribution, payments and private records
 

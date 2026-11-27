@@ -20,6 +20,8 @@ For a human acting as a business or organization, preserve the selected `x-actin
 
 An agent authenticates with its own identity and credentials. Assignment establishes whom it serves; capability grants and live checks establish authority. Personal create, org provisioning and orphan adoption have distinct proof requirements. See the [auth spec](https://jin.imajin.ai/auth/api/spec).
 
+Agent Create and Provision use the acting owner's stored `@<owner>-jin` prefix with an optional suffix. Leave the UI suffix blank for the base; APIs take the full handle. Invalid or doubled prefixes are refused, and collisions return 409 rather than auto-renaming. An owner without a handle supplies an explicit full handle. Existing agents keep their handles. See the [provisioner guide](agents/envelope-provisioner.md#choose-the-handle).
+
 ## Register an app and sign in
 
 Start with the [app template](https://github.com/ima-jin/imajin-app-template) and [registration contract](REGISTRATION.md). Declare only required scopes. App discovery visibility and sign-in audience are independent: a private app can let anyone consent without making those people organization members. The owner controls widening that audience; a delegate cannot silently widen it.
@@ -58,6 +60,8 @@ See the [pay spec](https://jin.imajin.ai/pay/api/spec) and [whitepaper](mjn-whit
 
 People connect providers on their profiles; apps inspect safe status and invoke authorized kernel actions. Apps do not receive provider secrets or duplicate connector lifecycle.
 
+Connector records separate vendor (`provider`), use (`purpose`: `inference` or `billing`), holder (`ownerDid`) and connection slot. Provider spelling is not authority; billing and inference credentials are not interchangeable. App upstreams retain their exact member-approved binding independently of the hostname used as vendor.
+
 Organization-held keys are write-only, including for the loading administrator. Human owner/admin act-as with connections-service access controls loading, revocation and member grants. Human members need active grants; assigned agents use their verified principal relationship. Current assignment, membership, allowed services and revocation are checked per call.
 
 Member-held Postman access is personal, with a fixed target and reviewed saved-data reads. App-hosted upstreams declare exact destinations and permissions; connecting credentials does not grant app authority without member consent. Writes have a separate scope ceiling and reason requirement. Permission-set changes require reconnection.
@@ -71,6 +75,8 @@ Successful upstream calls and authorized upstream failures have signed outcome m
 Use the calling agent's own credentials and explicit principal grants. Discover usable models and safe route diagnostics from the [inference contract](https://jin.imajin.ai/infer/api/spec), rather than assuming every loaded connector is callable. Configuration metadata for a tool connector does not prove its tool authority.
 
 The [passthrough package](../packages/openclaw-infer-passthrough/README.md) and [host runbook](../deploy/infer-passthrough/README.md) define gateway transport and auth-mode declaration. An identity selector never grants key access; do not fall back to a gateway credential after agent refusal.
+
+For GitHub clone/fetch, use the agent-mode loopback transport and the owner's live `github:read` delegation. Only the kernel holds the GitHub credential; push and shared-credential fallback are refused. Per-grant repository allowlists are not implemented. Follow the [git-read runbook](agents/github-git-read-proxy.md) rather than installing a GitHub token or login on the agent host. Its node-signed record is an attempted operation, not completion evidence.
 
 Incurred usage is the kernel's meter, not a complete provider invoice. Provider-billed reconciliation needs its own sealed billing credential and scope. Missing cost is not proof of free use. The [usage spec](https://jin.imajin.ai/usage/api/spec) defines both views.
 

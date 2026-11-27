@@ -23,6 +23,23 @@ editor (`/auth/agents`).
 
 ## 2. Flow
 
+### Choose the handle
+
+Create and Provision use the acting owner's stored handle: `@<owner>-jin`
+with an optional `-<suffix>`. In the UI, leave the suffix blank for the base
+handle or enter only the suffix; the prefix is fixed. API callers send the
+full handle. An omitted or empty provisioning handle selects the base when
+the owner has a handle; an owner without one must provide a full handle.
+
+Validation uses the stored serving principal, including organization act-as,
+not a caller-provided owner prefix. Handles are 3–64 lowercase letters, digits,
+underscores or hyphens. Doubled prefixes and a trailing empty suffix are
+rejected. A taken base or suffixed handle returns 409; choose a suffix rather
+than expecting an automatic random rename. Existing identities are not renamed.
+See the [auth spec](https://jin.imajin.ai/auth/api/spec) for service schemas and the
+[kernel guide](../../apps/kernel/README.md#identity-and-app-integration)
+for the identity boundary.
+
 ```mermaid
 flowchart LR
   Owner["Owner"] -->|"POST /auth/api/agents/provision\n{servingDid, name, harness,\nplacement, scopes, model}"| Route["Kernel provisioner route"]
@@ -103,7 +120,7 @@ so both routes share one identity-minting code path),
 - Provision badges (harness, placement, status) on each agent card, joined
   client-side from `GET /auth/api/agents/provision` on the agent's DID.
 - A "Provision agent" flow, distinct from the pre-existing bare "Create
-  Agent" form: name -> harness -> placement -> scopes (checkboxes sourced
+  Agent" form: name and optional handle suffix -> harness -> placement -> scopes (checkboxes sourced
   from `@imajin/auth/grant-scopes`'s closed registry) -> model/route -> review.
 - Per-agent expandable detail: envelope manifest (file names + manual steps),
   the provision's own grant (reusing the existing `GrantCard`), a "Revoke
