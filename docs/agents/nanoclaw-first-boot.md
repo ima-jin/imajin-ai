@@ -83,7 +83,10 @@ supported adapter/build seam; do not patch an upstream source tree ad hoc.
 
 Register the agent through the existing authorized agent flow, preserving the
 selected principal and real human controller. A personal grant does not authorize
-an org assignment. Keep returned key material in protected credential storage;
+an org assignment. Create and Provision fix the acting owner's `@<owner>-jin`
+prefix; leave the suffix blank for the base or enter only a chosen suffix.
+API callers send the full handle. Collisions return 409 rather than silently
+renaming; an owner without a handle must supply a full one. Keep returned key material in protected credential storage;
 never extract it into a shell command or log. Render the envelope with the real
 agent DID and review generated non-secret settings before staging them.
 

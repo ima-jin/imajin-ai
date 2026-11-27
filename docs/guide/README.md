@@ -1,6 +1,6 @@
 # Imajin Developer Guide
 
-**The composable agent layer.** Identity, delegation, attestation, and settlement — the infrastructure any agent runtime composes on top of.
+**identity and authority for AI agents.** Use the trust layer with your agent runtime for identity, delegation, attestation and settlement. Public copy follows the canonical [positioning](../POSITIONING.md); Imajin is alpha.
 
 ---
 
@@ -25,7 +25,7 @@
 ## For Contributors & Coding Agents
 
 - **[Canonical Patterns](./canonical-patterns.md)** — the one correct primitive for each seam (auth, settlement, .fair, checkout identity). Read before writing code at a primitive boundary; do not re-implement these inline.
-- **[Legal entity and sealed bank details](../DEVELOPER.md#sealed-bank-details-api-3075)** — distinct private-record and per-field disclosure contracts; no generic media/vault shortcut.
+- **[Legal entity and sealed bank details](../../apps/kernel/README.md#attribution-payments-and-private-records)** — distinct private-record and per-field disclosure contracts; no generic media/vault shortcut.
 - **[Corpus ownership and credentials](../../apps/corpus/README.md)** — owner-DID partitions, live grants, OAuth connector selection and signed migration.
 - **[Kernel integration](../../apps/kernel/README.md#attribution-payments-and-private-records)** — recipient-organization payer control, private-record disclosure and current settlement boundaries.
 
@@ -39,6 +39,8 @@
 - **[Domain ownership](./domain-ownership.md#domain-scoped-credentials)** — verified bindings and grantee-visible Cloudflare zone grants.
 - **[Vault SSH deploy](../deploy/vault-ssh-deploy.md)** — purpose-scoped certificates, GitHub OIDC and host/runner requirements.
 - **[Inference release deployment](../../deploy/infer-passthrough/README.md)** — exact-SHA production evidence, mint-backed health and rollback.
+- **[Agent provisioning](../agents/envelope-provisioner.md#choose-the-handle)** — owner-prefixed handles, optional suffixes and explicit collision handling.
+- **[Agent GitHub checkouts](../agents/github-git-read-proxy.md)** — read-only clone/fetch under live owner grants, without a GitHub credential on the agent host.
 
 ## Quick Links
 

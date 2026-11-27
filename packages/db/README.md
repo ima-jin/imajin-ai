@@ -38,7 +38,11 @@ or external database server is used.
 `scripts/pm2-health-check.sh prod` now runs the existing
 `deploy/liveness-probe.mjs` in `--once --execute --watchdog` mode after the
 crash-loop and process-status checks, using the same ecosystem inventory.
-Every HTTP listener is checked on loopback at `/api/health?liveness=1`.
+Kernel-owned HTTP listeners are checked on loopback at `/api/health?liveness=1`.
+Independent listeners opt in with ecosystem `env.LIVENESS_PATH` and use that
+loopback-relative path. Undeclared independent apps and portless workers get no
+HTTP probe, restart, failure counter or receipt; a declaration cannot override
+the kernel's health path. See the [target-selection contract](../../docs/ops/DEPLOY-POSTURE.md#health-checks-and-liveness).
 The kernel endpoint performs `SELECT 1` through its actual pool (1.5-second
 bound), without registry/HTTP fan-out. The probe's total HTTP deadline is
 5 seconds; a non-2xx response, redirect, or timeout is a failure.
@@ -61,6 +65,9 @@ credential is already available, signed ops-event delivery remains in use.
 Failed deliveries stay in the durable outbox; unhealthy probes or pending
 alerts produce a nonzero watchdog result. Neither raw errors nor credentials
 are printed.
+State loading prunes retired targets' counters and pending receipts, retaining
+delivered history and pending receipts for current targets. Cron and production
+post-deploy checks use the same protected webhook-file resolution.
 
 ### Installation and operator verification (Jin only)
 This change ships code; the agent does not SSH, install, restart production

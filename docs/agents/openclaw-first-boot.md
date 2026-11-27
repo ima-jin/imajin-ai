@@ -189,7 +189,12 @@ applied honestly to a harness this task could not clone and inspect.
 ### Local placement (fully supported today)
 
 1. In the Agent View wizard (`/auth/agents`), pick `OpenClaw` as the
-   harness and `Local (download bundle)` as placement, then **Provision**.
+   harness and `Local (download bundle)` as placement. The handle prefix is
+   the acting owner's `@<owner>-jin`; leave the optional suffix blank for
+   the base handle or enter only the suffix. API callers send the full
+   handle. A collision returns 409 and needs a chosen suffix, not an
+   automatic rename. Owners without a handle supply an explicit full handle.
+   Then select **Provision**.
 2. Click **Download bundle** on the resulting provision card.
 3. Follow the bundle's own `openclaw/SETUP.md` (rendered per-agent, with the
    real agent DID and a placeholder `keypairPath` already filled in) —
