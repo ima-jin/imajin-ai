@@ -150,9 +150,12 @@ it('persists three cron failures, issues exactly one pm2 restart, and scopes it 
 
 it('retains an alert when webhook delivery fails or throws', async () => {
   vi.stubEnv('AUTH_INTERNAL_API_KEY', '');
-  vi.stubEnv('RESTART_ALERT_WEBHOOK', 'https://watchdog.test/alert');
+  vi.stubEnv('RESTART_ALERT_WEBHOOK', 'https://watchdog.test/PRIVATE_WEBHOOK_PATH');
   vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('unreachable'); }));
+  const log = vi.spyOn(console, 'error').mockImplementation(() => {});
   expect(await deliverWatchdog({ app: 'prod-jin' }, 7000)).toBe(false);
+  expect(log.mock.calls.join(' ')).toContain('/ops-alert');
+  expect(log.mock.calls.join(' ')).not.toContain('PRIVATE_WEBHOOK_PATH');
 });
 
 it.each(['dev', 'prod'])('skips a port-less %s kernel before any state or pm2 access', async environment => {

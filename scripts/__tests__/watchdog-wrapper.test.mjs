@@ -23,7 +23,45 @@ afterEach(async () => {
   if (work) { await rm(work, { recursive: true, force: true }); work = undefined; }
 });
 
-const sources = ['cron', 'post-deploy', 'dry-run', 'failed-delivery', 'abandoned-lock',
+async function faultFixture(source, statePath, ecosystem) {
+  const faults = {
+    'abandoned-lock': () => writeFile(`${statePath}.lock`, '2147483647', { mode: 0o600 }),
+    'live-lock': () => writeFile(`${statePath}.lock`, String(process.pid)),
+    'invalid-lock': () => writeFile(`${statePath}.lock`, '0'),
+    'recovery-busy': async () => {
+      await writeFile(`${statePath}.lock`, '2147483647');
+      await writeFile(`${statePath}.lock.recovery`, 'busy');
+    },
+    'invalid-state': () => writeFile(statePath, '{'),
+    'state-write': () => mkdir(`${statePath}.tmp`),
+    'invalid-config': () => writeFile(ecosystem, 'throw new Error("Do not log arbitrary config text");'),
+  };
+  await faults[source]?.();
+}
+
+function checkResult(result, source, statePath, ecosystem, scope) {
+  const output = result.stdout + result.stderr;
+  expect(output).not.toContain('Do not log arbitrary');
+  expect(output).not.toContain('inspect configuration');
+  const diagnostic = {
+    'live-lock': ['state lock', `${statePath}.lock`, 'EEXIST'],
+    'invalid-lock': ['state lock', `${statePath}.lock`, 'INVALID_OR_UNAVAILABLE'],
+    'recovery-busy': ['state lock recovery', `${statePath}.lock.recovery`, 'EEXIST'],
+    'invalid-state': ['state read/parse', statePath, 'INVALID_OR_UNAVAILABLE'],
+    'state-write': ['state write', `${statePath}.tmp`],
+    'invalid-config': ['configuration', ecosystem, 'INVALID_OR_UNAVAILABLE'],
+    'pm2-unavailable': ['PM2 pid', `${scope}-jin`, 'ENOENT'],
+  }[source];
+  const expectedExit = source === 'invalid-config' ? 2
+    : Number(Boolean(diagnostic) || ['failed-delivery', 'kernel-failure'].includes(source));
+  expect(result.code ?? 0, output).toBe(expectedExit);
+  for (const part of diagnostic ?? []) {
+    expect(output).toContain(part.includes(work) ? JSON.stringify(part) : part);
+  }
+  return Boolean(diagnostic);
+}
+
+const sources = ['cron', 'post-deploy', 'dry-run', 'no-webhook-healthy', 'failed-delivery', 'abandoned-lock',
   'live-lock', 'invalid-lock', 'recovery-busy', 'invalid-state', 'state-write', 'invalid-config', 'pm2-unavailable', 'kernel-failure'];
 it.each(['dev', 'prod'].flatMap(scope => sources.map(source => [scope, source])))('verifies %s %s without leaking its URL', async (scope, source) => {
   const workflow = parse(await readFile(join(root, `.github/workflows/deploy-${scope}.yml`), 'utf8'));
@@ -81,24 +119,12 @@ child.execFile[require('node:util').promisify.custom] = (file, args, options) =>
 `);
   const event = { id: 'pending-target', app: `${scope}-jin`, outcome: 'restarted' };
   const statePath = join(work, `${scope}.json`);
-  await writeFile(statePath, JSON.stringify({ events: source === 'dry-run' ? [] : [{ event, delivered: false }] }));
-  if (source === 'abandoned-lock') {
-    // A killed one-shot leaves this file forever. The next healthy cron run
-    // must reclaim a provably dead owner, not require a server-side edit.
-    await writeFile(`${statePath}.lock`, '2147483647', { mode: 0o600 });
-  }
-  if (source === 'live-lock') await writeFile(`${statePath}.lock`, String(process.pid));
-  if (source === 'invalid-lock') await writeFile(`${statePath}.lock`, '0');
-  if (source === 'recovery-busy') {
-    await writeFile(`${statePath}.lock`, '2147483647');
-    await writeFile(`${statePath}.lock.recovery`, 'busy');
-  }
-  if (source === 'invalid-state') await writeFile(statePath, '{');
-  if (source === 'state-write') await mkdir(`${statePath}.tmp`);
-  if (source === 'invalid-config') await writeFile(ecosystem, 'throw new Error("Do not log arbitrary config text");');
+  const noReceipt = ['dry-run', 'no-webhook-healthy'].includes(source);
+  await writeFile(statePath, JSON.stringify({ events: noReceipt ? [] : [{ event, delivered: false }] }));
+  await faultFixture(source, statePath, ecosystem);
   const webhookFile = join(work, source === 'post-deploy' ? basename(step.env.PM2_ALERT_WEBHOOK_FILE) : 'cron-webhook');
   const webhook = `http://127.0.0.1:${port}/${source === 'failed-delivery' ? 'unavailable' : 'receipt'}`;
-  await writeFile(webhookFile, `${webhook}\n`, { mode: 0o600 });
+  if (source !== 'no-webhook-healthy') await writeFile(webhookFile, `${webhook}\n`, { mode: 0o600 });
   const env = {
     ...process.env, PATH: `${bin}${process.platform === 'win32' ? ';' : ':'}${process.env.PATH}`,
     NODE_OPTIONS: `--require="${preload.replaceAll('\\', '/')}"`,
@@ -115,28 +141,10 @@ child.execFile[require('node:util').promisify.custom] = (file, args, options) =>
   try { result = await exec(...invocation, {
     cwd: root, env, timeout: 20_000,
   }); } catch (error) { result = error; }
-  const output = result.stdout + result.stderr;
-  expect(output).not.toContain(webhook);
-  expect(output).not.toContain('Do not log arbitrary');
-  expect(output).not.toContain('inspect configuration');
-  const diagnostic = {
-    'live-lock': ['state lock', `${statePath}.lock`, 'EEXIST'],
-    'invalid-lock': ['state lock', `${statePath}.lock`, 'INVALID_OR_UNAVAILABLE'],
-    'recovery-busy': ['state lock', `${statePath}.lock`, 'EEXIST'],
-    'invalid-state': ['state read/parse', statePath, 'INVALID_OR_UNAVAILABLE'],
-    'state-write': ['state write', `${statePath}.tmp`],
-    'invalid-config': ['configuration', ecosystem, 'INVALID_OR_UNAVAILABLE'],
-    'pm2-unavailable': ['PM2 pid', `${scope}-jin`, 'ENOENT'],
-  }[source];
-  const expectedExit = source === 'invalid-config' ? 2
-    : Number(Boolean(diagnostic) || ['failed-delivery', 'kernel-failure'].includes(source));
-  expect(result.code ?? 0, output).toBe(expectedExit);
-  if (diagnostic) {
-    for (const part of diagnostic) expect(output).toContain(part.includes(work) ? JSON.stringify(part) : part);
-    return;
-  }
+  expect(result.stdout + result.stderr).not.toContain(webhook);
+  if (checkResult(result, source, statePath, ecosystem, scope)) return;
   const state = JSON.parse(await readFile(statePath, 'utf8'));
   expect(Object.keys(state.apps)).toEqual([`${scope}-jin`, `${scope}-declared`]);
-  expect(state.events).toEqual(source === 'dry-run' ? [] : [{ event, delivered: source !== 'failed-delivery' }]);
-  expect(receipts).toEqual(source === 'dry-run' ? [] : [{ text: `HTTP liveness: ${scope}-jin restarted`, ...event }]);
+  expect(state.events).toEqual(noReceipt ? [] : [{ event, delivered: source !== 'failed-delivery' }]);
+  expect(receipts).toEqual(noReceipt ? [] : [{ text: `HTTP liveness: ${scope}-jin restarted`, ...event }]);
 }, 25_000);

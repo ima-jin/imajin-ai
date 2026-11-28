@@ -22,14 +22,22 @@ const ERROR_CODES = new Set([
   'EROFS', 'EMFILE', 'EIO', 'ESRCH', 'ERR_MODULE_NOT_FOUND',
 ]);
 
+class ProbeFailure extends Error {
+  constructor(operation, path, error) {
+    const code = ERROR_CODES.has(error?.code) ? error.code : 'INVALID_OR_UNAVAILABLE';
+    super(`Liveness probe failed: ${operation} ${JSON.stringify(path)} (${code})`);
+  }
+}
+
 function diagnostic(operation, path, error) {
-  const code = ERROR_CODES.has(error?.code) ? error.code : 'INVALID_OR_UNAVAILABLE';
-  return new Error(`Liveness probe failed: ${operation} ${JSON.stringify(path)} (${code})`);
+  return new ProbeFailure(operation, path, error);
 }
 
 async function stateOperation(operation, path, action) {
   try { return await action(); }
-  catch (error) { throw diagnostic(`state ${operation}`, path, error); }
+  catch (error) {
+    throw error instanceof ProbeFailure ? error : diagnostic(`state ${operation}`, path, error);
+  }
 }
 
 /** Only ESRCH proves a dead owner; permission errors and invalid PIDs fail closed. */
@@ -40,7 +48,7 @@ async function acquireStateLock(path) {
   // Serialize reclaimers: none may unlink a replacement lock another created.
   // A recovery interrupted here fails closed with this path in the diagnostic.
   const recoveryPath = `${path}.recovery`;
-  const recovery = await open(recoveryPath, 'wx', 0o600);
+  const recovery = await stateOperation('lock recovery', recoveryPath, () => open(recoveryPath, 'wx', 0o600));
   try {
     const owner = Number(await readFile(path, 'utf8'));
     if (!Number.isSafeInteger(owner) || owner < 1) throw new Error('Invalid lock owner');
@@ -166,7 +174,7 @@ async function deliverWatchdog(event, kernelPort) {
       method: 'POST', redirect: 'error',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ text: `HTTP liveness: ${event.app} ${event.outcome}`, ...event }),
-    });
+    }, POLICY.timeoutMs, '/ops-alert');
     return response.ok;
   } catch { return false; }
 }
@@ -275,8 +283,7 @@ function parseOptions(args) {
   };
 }
 
-async function main(args = process.argv.slice(2)) {
-  const options = parseOptions(args);
+async function loadTargets(options) {
   const configPath = options.ecosystem ? resolve(options.ecosystem)
     : fileURLToPath(new URL(`./ecosystem.${options.environment}.config.js`, import.meta.url));
   let targets;
@@ -284,6 +291,24 @@ async function main(args = process.argv.slice(2)) {
     const config = await import(pathToFileURL(configPath).href);
     targets = targetsFromConfig(config.default).filter(target => target.app.startsWith(`${options.environment}-`));
   } catch (error) { throw diagnostic('configuration', configPath, error); }
+  return targets;
+}
+
+async function loadState(path, targets) {
+  let state;
+  try { state = JSON.parse(await readFile(path, 'utf8')); }
+  catch (error) {
+    if (error.code !== 'ENOENT') throw diagnostic('state read/parse', path, error);
+    state = {};
+  }
+  try { pruneState(state, targets); }
+  catch (error) { throw diagnostic('state shape', path, error); }
+  return state;
+}
+
+async function main(args = process.argv.slice(2)) {
+  const options = parseOptions(args);
+  const targets = await loadTargets(options);
   const kernelPort = targets.find((target) => target.app === `${options.environment}-jin`)?.port;
   if (options.watchdog && !kernelPort) {
     console.info(JSON.stringify({
@@ -304,14 +329,7 @@ async function main(args = process.argv.slice(2)) {
   process.once('SIGINT', shutdown);
   try {
     await stateOperation('lock owner write', lockPath, () => lock.writeFile(String(process.pid)));
-    let state;
-    try { state = JSON.parse(await readFile(path, 'utf8')); }
-    catch (error) {
-      if (error.code !== 'ENOENT') throw diagnostic('state read/parse', path, error); // Never silently discard counters/outbox.
-      state = {};
-    }
-    try { pruneState(state, targets); }
-    catch (error) { throw diagnostic('state shape', path, error); }
+    const state = await loadState(path, targets);
     const persist = async (value) => {
       await stateOperation('write', `${path}.tmp`, () =>
         writeFile(`${path}.tmp`, JSON.stringify(value), { mode: 0o600 }));
@@ -344,7 +362,7 @@ async function main(args = process.argv.slice(2)) {
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   try { if (await main() === false) process.exitCode = 1; }
   catch (error) {
-    console.error(error.message.startsWith('Liveness probe failed:')
+    console.error(error instanceof ProbeFailure
       ? error.message : 'Liveness probe failed: invalid arguments or probe state');
     process.exitCode = 1;
   }

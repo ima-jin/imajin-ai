@@ -5,4 +5,4 @@ export class InternalFetchError extends Error {
   readonly durationMs: number;
   constructor(targetPath: string, code: string, durationMs: number);
 }
-export function internalFetch(url: string, init?: RequestInit, timeoutMs?: number): Promise<Response>;
+export function internalFetch(url: string, init?: RequestInit, timeoutMs?: number, diagnosticPath?: string): Promise<Response>;
