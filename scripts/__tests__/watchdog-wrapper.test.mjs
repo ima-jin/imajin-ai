@@ -23,7 +23,7 @@ afterEach(async () => {
   if (work) { await rm(work, { recursive: true, force: true }); work = undefined; }
 });
 
-it.each(['cron', 'post-deploy', 'dry-run', 'failed-delivery'])('verifies the %s health-check environment without leaking its URL', async source => {
+it.each(['cron', 'post-deploy', 'dry-run', 'failed-delivery', 'abandoned-lock'])('verifies the %s health-check environment without leaking its URL', async source => {
   const workflow = parse(await readFile(join(root, '.github/workflows/deploy-prod.yml'), 'utf8'));
   const step = workflow.jobs.deploy.steps.find(value => value.name === 'Post-deploy pm2 health check');
   expect(step.env).toEqual({ PM2_ALERT_WEBHOOK_FILE: '/home/jin/.config/imajin/pm2-alert-webhook.prod' });
@@ -75,6 +75,11 @@ child.execFile[require('node:util').promisify.custom] = (file, args, options) =>
   const event = { id: 'pending-target', app: 'prod-jin', outcome: 'restarted' };
   const statePath = join(work, 'prod.json');
   await writeFile(statePath, JSON.stringify({ events: source === 'dry-run' ? [] : [{ event, delivered: false }] }));
+  if (source === 'abandoned-lock') {
+    // A killed one-shot leaves this file forever. The next healthy cron run
+    // must reclaim a provably dead owner, not require a server-side edit.
+    await writeFile(`${statePath}.lock`, '2147483647', { mode: 0o600 });
+  }
   const webhookFile = join(work, source === 'post-deploy' ? basename(step.env.PM2_ALERT_WEBHOOK_FILE) : 'cron-webhook');
   const webhook = `http://127.0.0.1:${port}/${source === 'failed-delivery' ? 'unavailable' : 'receipt'}`;
   await writeFile(webhookFile, `${webhook}\n`, { mode: 0o600 });
@@ -93,7 +98,7 @@ child.execFile[require('node:util').promisify.custom] = (file, args, options) =>
   try { result = await exec(...invocation, {
     cwd: root, env, timeout: 20_000,
   }); } catch (error) { result = error; }
-  expect(result.code ?? 0).toBe(source === 'failed-delivery' ? 1 : 0);
+  expect(result.code ?? 0, result.stdout + result.stderr).toBe(source === 'failed-delivery' ? 1 : 0);
   const state = JSON.parse(await readFile(statePath, 'utf8'));
   expect(Object.keys(state.apps)).toEqual(['prod-jin', 'prod-declared']);
   expect(state.events).toEqual(source === 'dry-run' ? [] : [{ event, delivered: source !== 'failed-delivery' }]);
