@@ -57,7 +57,7 @@ async function readResponse(url, init, signal, targetPath, started) {
  * non-cooperative fetch implementation must not keep a request handler alive.
  * Callers retain their existing 401/403/503/null fail-closed contracts.
  */
-async function internalFetch(url, init = {}, timeoutMs = INTERNAL_FETCH_TIMEOUT_MS, diagnosticPath) {
+async function internalFetch(url, init = {}, timeoutMs = INTERNAL_FETCH_TIMEOUT_MS, diagnosticPath = null) {
   if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs >= 100_000) {
     throw new TypeError('Internal fetch timeout must be 1..99999ms');
   }
