@@ -3,7 +3,7 @@ import { promisify } from 'node:util';
 import { randomUUID } from 'node:crypto';
 import { readFile, writeFile, rename, mkdir, open, unlink } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
-import { pathToFileURL, URL } from 'node:url';
+import { pathToFileURL, fileURLToPath, URL } from 'node:url';
 import { homedir } from 'node:os';
 import { setTimeout, clearTimeout } from 'node:timers';
 import process from 'node:process';
@@ -16,6 +16,46 @@ const POLICY = Object.freeze({
   intervalMs: 15_000, timeoutMs: 5_000, failures: 3,
   startupGraceMs: 90_000, cooldownMs: 300_000,
 });
+
+const ERROR_CODES = new Set([
+  'EACCES', 'EPERM', 'ENOENT', 'ENOTDIR', 'EISDIR', 'EEXIST', 'ENOSPC',
+  'EROFS', 'EMFILE', 'EIO', 'ESRCH', 'ERR_MODULE_NOT_FOUND',
+]);
+
+function diagnostic(operation, path, error) {
+  const code = ERROR_CODES.has(error?.code) ? error.code : 'INVALID_OR_UNAVAILABLE';
+  return new Error(`Liveness probe failed: ${operation} ${JSON.stringify(path)} (${code})`);
+}
+
+async function stateOperation(operation, path, action) {
+  try { return await action(); }
+  catch (error) { throw diagnostic(`state ${operation}`, path, error); }
+}
+
+/** Only ESRCH proves a dead owner; permission errors and invalid PIDs fail closed. */
+async function acquireStateLock(path) {
+  const create = () => open(path, 'wx', 0o600);
+  try { return await create(); }
+  catch (error) { if (error.code !== 'EEXIST') throw error; }
+  // Serialize reclaimers: none may unlink a replacement lock another created.
+  // A recovery interrupted here fails closed with this path in the diagnostic.
+  const recoveryPath = `${path}.recovery`;
+  const recovery = await open(recoveryPath, 'wx', 0o600);
+  try {
+    const owner = Number(await readFile(path, 'utf8'));
+    if (!Number.isSafeInteger(owner) || owner < 1) throw new Error('Invalid lock owner');
+    try { process.kill(owner, 0); }
+    catch (error) {
+      if (error.code !== 'ESRCH') throw error;
+      await unlink(path);
+      return await create();
+    }
+    throw Object.assign(new Error('Lock owner is alive'), { code: 'EEXIST' });
+  } finally {
+    await recovery.close();
+    await unlink(recoveryPath);
+  }
+}
 
 function sequential(items, operation) {
   return items.reduce((pending, item) => pending.then(() => operation(item)), Promise.resolve());
@@ -139,12 +179,14 @@ function createProbe(state, dependencies = {}, policy = POLICY) {
   };
   state.apps ??= {};
   state.events ??= [];
+  let healthy = true;
 
   async function checkTarget(target, execute) {
     let currentPid;
     try { currentPid = await deps.pid(target.app); }
-    catch {
-      console.error(JSON.stringify({ service: 'liveness-probe', app: target.app, error: 'PM2_PID_UNAVAILABLE' }));
+    catch (error) {
+      console.error(diagnostic('PM2 pid', target.app, error).message);
+      healthy = false;
       return;
     }
     const previous = state.apps[target.app];
@@ -158,6 +200,7 @@ function createProbe(state, dependencies = {}, policy = POLICY) {
     // A deliberately stopped/missing app is not a wedged online listener.
     if (!currentPid) { entry.failures = 0; return; }
     if (await deps.check(target)) { entry.failures = 0; return; }
+    healthy = false;
     entry.failures = Math.min(entry.failures + 1, policy.failures);
     const now = deps.now();
     if (entry.failures < policy.failures || now - entry.firstSeen < policy.startupGraceMs
@@ -182,6 +225,7 @@ function createProbe(state, dependencies = {}, policy = POLICY) {
   return {
     state,
     async tick(targets, { execute = false, kernelPort } = {}) {
+      healthy = true;
       // Serial state writes, parallelism isn't needed for this small inventory.
       await sequential(targets, (target) => checkTarget(target, execute));
       if (execute) {
@@ -195,6 +239,7 @@ function createProbe(state, dependencies = {}, policy = POLICY) {
         });
       }
       await deps.persist(state);
+      return healthy;
     },
   };
 }
@@ -232,9 +277,13 @@ function parseOptions(args) {
 
 async function main(args = process.argv.slice(2)) {
   const options = parseOptions(args);
-  const config = await import(options.ecosystem
-    ? pathToFileURL(resolve(options.ecosystem)).href : `./ecosystem.${options.environment}.config.js`);
-  const targets = targetsFromConfig(config.default).filter(target => target.app.startsWith(`${options.environment}-`));
+  const configPath = options.ecosystem ? resolve(options.ecosystem)
+    : fileURLToPath(new URL(`./ecosystem.${options.environment}.config.js`, import.meta.url));
+  let targets;
+  try {
+    const config = await import(pathToFileURL(configPath).href);
+    targets = targetsFromConfig(config.default).filter(target => target.app.startsWith(`${options.environment}-`));
+  } catch (error) { throw diagnostic('configuration', configPath, error); }
   const kernelPort = targets.find((target) => target.app === `${options.environment}-jin`)?.port;
   if (options.watchdog && !kernelPort) {
     console.info(JSON.stringify({
@@ -246,30 +295,34 @@ async function main(args = process.argv.slice(2)) {
   if (!kernelPort) throw new Error('Kernel target is required');
   if (options.execute && !options.watchdog && !process.env.AUTH_INTERNAL_API_KEY) throw new Error('Ops-event credential is required');
   const path = join(process.env.IMAJIN_LIVENESS_STATE_DIR || join(homedir(), '.imajin', 'liveness'), `${options.environment}.json`);
-  await mkdir(dirname(path), { recursive: true, mode: 0o700 });
-  const lock = await open(`${path}.lock`, 'wx', 0o600);
+  await stateOperation('directory', dirname(path), () => mkdir(dirname(path), { recursive: true, mode: 0o700 }));
+  const lockPath = `${path}.lock`;
+  const lock = await stateOperation('lock', lockPath, () => acquireStateLock(lockPath));
   const stop = new globalThis.AbortController();
   const shutdown = () => stop.abort();
   process.once('SIGTERM', shutdown);
   process.once('SIGINT', shutdown);
   try {
-    await lock.writeFile(String(process.pid));
+    await stateOperation('lock owner write', lockPath, () => lock.writeFile(String(process.pid)));
     let state;
     try { state = JSON.parse(await readFile(path, 'utf8')); }
     catch (error) {
-      if (error.code !== 'ENOENT') throw error; // Never silently discard counters/outbox.
+      if (error.code !== 'ENOENT') throw diagnostic('state read/parse', path, error); // Never silently discard counters/outbox.
       state = {};
     }
-    pruneState(state, targets);
+    try { pruneState(state, targets); }
+    catch (error) { throw diagnostic('state shape', path, error); }
     const persist = async (value) => {
-      await writeFile(`${path}.tmp`, JSON.stringify(value), { mode: 0o600 });
-      await rename(`${path}.tmp`, path);
+      await stateOperation('write', `${path}.tmp`, () =>
+        writeFile(`${path}.tmp`, JSON.stringify(value), { mode: 0o600 }));
+      await stateOperation('rename', path, () => rename(`${path}.tmp`, path));
     };
     const probe = createProbe(state, {
       persist, ...(options.watchdog ? { deliver: deliverWatchdog } : {}),
     });
+    let healthy = true;
     await runTicks(async () => {
-      await probe.tick(targets, { ...options, kernelPort });
+      healthy = await probe.tick(targets, { ...options, kernelPort });
       console.info(JSON.stringify({
         service: 'liveness-probe', environment: options.environment,
         execute: options.execute, apps: state.apps,
@@ -277,22 +330,23 @@ async function main(args = process.argv.slice(2)) {
       }));
     }, { once: options.once, signal: stop.signal });
     return !options.watchdog || (
-      !Object.values(state.apps).some(app => app.failures > 0)
+      healthy && !Object.values(state.apps).some(app => app.failures > 0)
       && !state.events.some(receipt => !receipt.delivered)
     );
   } finally {
     process.removeListener('SIGTERM', shutdown);
     process.removeListener('SIGINT', shutdown);
-    await lock.close();
-    await unlink(`${path}.lock`);
+    await stateOperation('lock close', lockPath, () => lock.close());
+    await stateOperation('lock release', lockPath, () => unlink(lockPath));
   }
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   try { if (await main() === false) process.exitCode = 1; }
-  catch {
-    console.error('Liveness probe failed; inspect configuration, PM2 availability and state-file permissions');
+  catch (error) {
+    console.error(error.message.startsWith('Liveness probe failed:')
+      ? error.message : 'Liveness probe failed: invalid arguments or probe state');
     process.exitCode = 1;
   }
 }
-export { POLICY, targetsFromConfig, createProbe, checkHealth, parseOptions, runTicks, main, deliverWatchdog };
+export { POLICY, targetsFromConfig, createProbe, checkHealth, parseOptions, runTicks, main, deliverWatchdog, acquireStateLock };

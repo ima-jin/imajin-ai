@@ -38,8 +38,12 @@ Restart attempts are saved **before** the command in
 `~/.imajin/liveness/{dev,prod}.json`. That file also retains counters, cooldowns
 and an ops-event outbox. Writes use an atomic rename; a per-environment lock
 prevents two probes racing. SIGTERM/SIGINT finish the current bounded sweep,
-then remove the lock. After SIGKILL/host failure, inspect the lock's PID before
-removing a stale lock; **never discard the state/outbox** to restart the probe.
+then remove the lock. After SIGKILL/host failure, the next probe reclaims the
+lock only when its recorded PID is provably absent. Live or unverifiable owners
+fail closed. Recovery is serialized by an exclusive `.lock.recovery` file;
+an interrupted recovery fails closed and names the lock in the diagnostic.
+Inspect ownership before removing a leftover recovery marker;
+**never discard the state/outbox** to restart the probe.
 Archive old delivered history under operator control rather than deleting it.
 On state load, counters and pending receipts for retired targets are pruned;
 delivered receipt history and pending receipts for current targets remain.
