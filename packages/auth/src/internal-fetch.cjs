@@ -57,11 +57,13 @@ async function readResponse(url, init, signal, targetPath, started) {
  * non-cooperative fetch implementation must not keep a request handler alive.
  * Callers retain their existing 401/403/503/null fail-closed contracts.
  */
-async function internalFetch(url, init = {}, timeoutMs = INTERNAL_FETCH_TIMEOUT_MS) {
+async function internalFetch(url, init = {}, timeoutMs = INTERNAL_FETCH_TIMEOUT_MS, diagnosticPath = null) {
   if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs >= 100_000) {
     throw new TypeError('Internal fetch timeout must be 1..99999ms');
   }
-  const targetPath = new URL(url).pathname;
+  // Webhook paths may themselves be credentials. Their callers supply a
+  // fixed diagnostic label without changing the actual request URL.
+  const targetPath = diagnosticPath ?? new URL(url).pathname;
   const started = Date.now();
   const controller = new AbortController();
   const callerSignal = init.signal;

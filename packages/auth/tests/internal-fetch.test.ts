@@ -85,6 +85,19 @@ describe('internalFetch total deadline', () => {
     expect(JSON.stringify(vi.mocked(console.error).mock.calls)).not.toContain(code);
   });
 
+  it('uses a fixed diagnostic label when the request path is credential-bearing', async () => {
+    const url = 'https://webhook.test/PRIVATE_PATH?token=PRIVATE_QUERY';
+    const fetch = vi.fn(async () => { throw new Error('PRIVATE_UPSTREAM_TEXT'); });
+    vi.stubGlobal('fetch', fetch);
+    await expect(internalFetch(url, {}, INTERNAL_FETCH_TIMEOUT_MS, '/ops-alert'))
+      .rejects.toMatchObject({ targetPath: '/ops-alert', code: 'INTERNAL_FETCH_FAILED' });
+    expect(fetch.mock.calls[0][0]).toBe(url);
+    const output = JSON.stringify(vi.mocked(console.error).mock.calls);
+    expect(output).toContain('/ops-alert');
+    expect(output).not.toContain('PRIVATE');
+    expect(output).not.toContain('webhook.test');
+  });
+
   it.each([0, -1, Number.NaN, 1.5, 100_000])('rejects invalid timeout %s before fetching', async (timeout) => {
     const fetch = vi.fn();
     vi.stubGlobal('fetch', fetch);
